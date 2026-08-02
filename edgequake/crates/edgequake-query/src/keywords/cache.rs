@@ -2,7 +2,7 @@
 //!
 //! Provides multi-level caching:
 //! - In-memory LRU cache (fast, limited size)
-//! - PostgreSQL persistent cache (durable, shared across instances)
+//! - Durable L2 via SPEC-103 [`crate::cache::LlmResponseCache`] → `public.llm_cache`
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -10,6 +10,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use super::extractor::ExtractedKeywords;
+use crate::cache::llm_response_cache::{LlmCacheType, SharedLlmResponseCache};
 use crate::error::Result;
 
 /// Trait for keyword cache implementations.
@@ -201,6 +202,91 @@ impl KeywordCache for InMemoryKeywordCache {
 impl Default for InMemoryKeywordCache {
     fn default() -> Self {
         Self::new(1000) // Default 1000 entries
+    }
+}
+
+/// L1 memory + optional L2 durable LLM response cache (SPEC-103).
+///
+/// Keys are already LR-shaped storage keys (`{mode}:keywords:{hash}-cache`).
+pub struct TieredKeywordCache {
+    l1: InMemoryKeywordCache,
+    l2: Option<SharedLlmResponseCache>,
+}
+
+impl TieredKeywordCache {
+    pub fn new(l1: InMemoryKeywordCache, l2: Option<SharedLlmResponseCache>) -> Self {
+        Self { l1, l2 }
+    }
+
+    pub fn memory_only(max_size: usize) -> Self {
+        Self::new(InMemoryKeywordCache::new(max_size), None)
+    }
+
+    pub fn with_durable(max_size: usize, durable: SharedLlmResponseCache) -> Self {
+        Self::new(InMemoryKeywordCache::new(max_size), Some(durable))
+    }
+}
+
+#[async_trait]
+impl KeywordCache for TieredKeywordCache {
+    async fn get(&self, key: &str) -> Result<Option<ExtractedKeywords>> {
+        if let Some(hit) = self.l1.get(key).await? {
+            return Ok(Some(hit));
+        }
+        let Some(l2) = &self.l2 else {
+            return Ok(None);
+        };
+        let Some(raw) = l2.get_return(key).await else {
+            return Ok(None);
+        };
+        match serde_json::from_str::<ExtractedKeywords>(&raw) {
+            Ok(kw) => {
+                let _ = self
+                    .l1
+                    .set(key, &kw, Some(Duration::from_secs(24 * 60 * 60)))
+                    .await;
+                Ok(Some(kw))
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, key = %key, "SPEC-103 keyword L2 deserialize failed");
+                Ok(None)
+            }
+        }
+    }
+
+    async fn set(
+        &self,
+        key: &str,
+        keywords: &ExtractedKeywords,
+        ttl: Option<Duration>,
+    ) -> Result<()> {
+        self.l1.set(key, keywords, ttl).await?;
+        if let Some(l2) = &self.l2 {
+            match serde_json::to_string(keywords) {
+                Ok(raw) => {
+                    l2.set_return(key, LlmCacheType::Keywords, &raw, None).await;
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "SPEC-103 keyword L2 serialize failed");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn delete(&self, key: &str) -> Result<()> {
+        self.l1.delete(key).await
+    }
+
+    async fn clear(&self) -> Result<()> {
+        if let Some(l2) = &self.l2 {
+            l2.clear_l1();
+        }
+        self.l1.clear().await
+    }
+
+    async fn stats(&self) -> CacheStats {
+        self.l1.stats().await
     }
 }
 

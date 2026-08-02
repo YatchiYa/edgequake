@@ -2,7 +2,7 @@
 
 **Status:** Diagnosis ✓ · cold-fair pack `c1cold` · Acc Fact peer unchanged  
 **Date:** 2026-07-21  
-**Cross-ref:** [061](./061-lightrag-law-first-principles-eq.md) · [059](./059-c1b-latency-ceiling-keyword-embed.md) · [062](./062-c1e-fast-keyword-llm.md)  
+**Cross-ref:** [061](./061-lightrag-law-first-principles-eq.md) · [059](./059-c1b-latency-ceiling-keyword-embed.md) · [062](./062-c1e-fast-keyword-llm.md) · **[SPEC-103](../../../103-llm-cache/)** (EQ durable LR-parity cache)  
 **Law sources:** LightRAG `enable_llm_cache=True` · `tools/bench001/bench001/lightrag_runner.py`
 
 ---

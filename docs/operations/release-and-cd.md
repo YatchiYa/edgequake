@@ -19,6 +19,9 @@ make codegen-openapi-refresh # OpenAPI snapshot + schema.d.ts from ApiDoc
 cd edgequake && cargo test -p edgequake-api --test spec027_api_contract && cd ..
 make release-gates          # fmt + workspace clippy + SPEC-006/018 + WebUI + version/OpenAPI parity
 make test-e2e-lint          # Playwright flake anti-patterns
+# SPEC-001 LightRAG Acc (local mandatory — see section below; not in release_gates.sh / CI):
+make bench001-doctor
+make bench                  # or: make bench-warm
 # Optional deeper proofs:
 make spec020-qc-proof-strict # SPEC-020 E2E (migration-038 strict)
 make spec020-qc-proof-full    # SPEC-020 + require Ollama (0 skips)
@@ -84,6 +87,45 @@ docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.22.0
 docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.22.0-pg16
 docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.22.0-pg17
 ```
+
+## SPEC-001 LightRAG Acc (before tag)
+
+**Mandatory local gate** before tagging a product cut. Dual-SUT GraphRAG-Bench Acc (EdgeQuake `mix` vs LightRAG `mix`, medical-mid **n=200**) is **not** part of `make release-gates` or GitHub Actions — it needs Mistral keys, Postgres, LightRAG, and ~1–3h+ wall time. Same class as SPEC-042 battle tests: required at cut time, not CI.
+
+**Not substitutes:** `make spec046-acc` (deterministic Hybrid ACC, no LightRAG) · `make bench001-smoke-acc` (n=40 daily only — **not** the release Acc score) · Acc Beat / “EQ beats LightRAG” (promote checklist STOP unless CI excludes 0).
+
+### Prerequisites
+
+- `MISTRAL_API_KEY` (SUT + judge; also export `LLM_API_KEY=$MISTRAL_API_KEY` if needed)
+- Postgres up; Acc-pinned backend (`make bench` starts it via `bench001-acc-backend`)
+- LightRAG importable (`pip` package or `BENCH001_LIGHTRAG_REPO=/path/to/LightRAG`)
+- Optional warm reuse: `BENCH001_EQ_WORKSPACE_ID=<full-corpus-uuid>`
+
+Protocol: [SPEC-001 index](../../specs/001-benchmark/000-index.md) · runbook [010](../../specs/001-benchmark/010-smoke-then-core-runbook.md) · public SSOT [eq-vs-lightrag-acc-bench](../comparisons/eq-vs-lightrag-acc-bench.md).
+
+### Commands
+
+```bash
+export MISTRAL_API_KEY=...
+make bench001-doctor          # EQ /health, keys, LightRAG, fixture preflight
+make bench                    # Acc backend → doctor → medical-mid n=200 → publish/latest/
+# Warm query-only (full-corpus workspace already ingested):
+# export BENCH001_EQ_WORKSPACE_ID=<uuid>   # or omit for auto-resolve
+# make bench-warm
+```
+
+Optional early fail (does **not** replace `make bench`): `make bench001-smoke-acc` (n=40).
+
+### Pass criteria (fail-closed)
+
+| Check | Requirement |
+|-------|-------------|
+| Validity | `specs/001-benchmark/e2e/artifacts/publish/latest/scorecard.json` → `valid: true` (dual-SUT + official judge + L2 + empty-answer/context ≤5%) |
+| Pins | Fair Acc profile (`P0_mistral_small_mix_chunk1200_*`), EQ/LR `mix`, chunk 1200/100, retrieve top-k **30** |
+| Artifacts | `publish/latest/`: `BUSINESS_REPORT.md`, `EXEC_SUMMARY.txt`, `SUMMARY.md`, `scorecard.json` |
+| Claims | Peer / statistical-tie language only unless [080 promote checklist](../../specs/001-benchmark/001-edgquake-improvements/080-phase-g-promote-checklist.md) is green |
+
+After a successful run, refresh [docs/comparisons/eq-vs-lightrag-acc-bench.md](../comparisons/eq-vs-lightrag-acc-bench.md) if Acc or archive pointers moved. Do **not** tag until this gate is green (or an explicitly attested current `valid: true` pack for the cut).
 
 ## SPEC-042 Verification (before tag)
 

@@ -146,7 +146,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         db-start postgres-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
-        spec091-upgrade-soak spec091-gates \
+        spec091-upgrade-soak spec091-gates spec103-llm-cache-proof \
         spec93-migration-assessment spec93-migration-assessment-pg16 \
         spec93-migration-assessment-pg17 spec93-migration-assessment-pg18 \
         check-deps status \
@@ -1966,6 +1966,13 @@ spec93-migration-assessment-pg18: ## SPEC-93: realism soak on PG18 only
 # SPEC-091 IW0–IW5 local gate (mirrors .github/workflows/spec091-data-layer.yml::spec091-data-layer).
 # Requires DATABASE_URL pointing at a Postgres with pgvector + AGE (make postgres-start).
 # Soft-skips are disabled here (EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1) so a missing DB fails loud.
+spec103-llm-cache-proof: ## SPEC-103: unit + contract LLM cache proof (MemoryKV L2)
+	@echo "$(BOLD)$(BLUE)SPEC-103 LLM cache proof$(RESET)"
+	@cd $(ROOT_DIR)/edgequake && \
+	  cargo test -p edgequake-query --lib cache::llm_response_cache -- --nocapture && \
+	  cargo test -p edgequake-query --test contract_spec103_llm_cache -- --nocapture
+	@echo "$(GREEN)SPEC-103 contract proof OK$(RESET) (optional postgres: cargo test -p edgequake-query --features postgres --test e2e_spec103_llm_cache_persist -- --ignored)"
+
 spec091-gates: ## SPEC-091: run wired data-layer e2e + contracts (serial)
 	@echo "$(BOLD)$(BLUE)SPEC-091 data-layer gates$(RESET) (serial; needs DATABASE_URL)"
 	@test -f $(ROOT_DIR)/specs/091-simplify-data-layer/measurements/rm4-explain-hot-paths.md || \
@@ -2965,7 +2972,7 @@ sys.exit(1 if bad else 0)" "$$_H" \
 	    EDGEQUAKE_CHUNK_OVERLAP="$(BENCH001_EQ_CHUNK_OVERLAP)" \
 	    EDGEQUAKE_LLM_MODEL="$(BENCH001_ACC_LLM_MODEL)" \
 	    EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS="$(BENCH001_ACC_EXTRACT_CONCURRENCY)" \
-	    EDGEQUAKE_MIX_FUSION=rrf; \
+	    EDGEQUAKE_MIX_FUSION=round_robin; \
 	fi
 
 .PHONY: bench001-backend-lrlike
@@ -3044,7 +3051,8 @@ bench001-smoke-fast-acc: bench001-install bench001-acc-backend ## Acc-lift smoke
 	export EDGEQUAKE_ADAPTIVE_CHUNKING="$(BENCH001_EQ_ADAPTIVE_CHUNKING)"; \
 	export EDGEQUAKE_CHUNK_SIZE="$(BENCH001_EQ_CHUNK_SIZE)"; \
 	export EDGEQUAKE_CHUNK_OVERLAP="$(BENCH001_EQ_CHUNK_OVERLAP)"; \
-	export EDGEQUAKE_MIX_FUSION="$${EDGEQUAKE_MIX_FUSION:-rrf}"; \
+	export EDGEQUAKE_MIX_FUSION="$${EDGEQUAKE_MIX_FUSION:-round_robin}"; \
+	export BENCH001_ALLOW_ROUND_ROBIN="$${BENCH001_ALLOW_ROUND_ROBIN:-1}"; \
 	export BENCH001_INGEST_MAX_CHARS="$${BENCH001_INGEST_MAX_CHARS:-$(BENCH001_INGEST_MAX_CHARS)}"; \
 	export BENCH001_INGEST_TIMEOUT_S="$${BENCH001_INGEST_TIMEOUT_S:-$(BENCH001_INGEST_TIMEOUT_S)}"; \
 	export BENCH001_LLM_PROVIDER=mistral; \
@@ -3077,7 +3085,7 @@ bench001-smoke-fast-acc: bench001-install bench001-acc-backend ## Acc-lift smoke
 	  --eval-concurrency "$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
 	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/smoke-fast/SUMMARY.md"
 
-bench001-smoke-acc: bench001-install bench001-acc-backend ## Acc-lift smoke n=40: gold + small + LR-like Mix + fair chunk 1200
+bench001-smoke-acc: bench001-install bench001-acc-backend ## Acc-lift smoke n=40: gold + small + 086 E2-occ Mix + fair chunk 1200
 	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
 	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
 	export BENCH001_PUBLICATION=1; \
@@ -3086,8 +3094,16 @@ bench001-smoke-acc: bench001-install bench001-acc-backend ## Acc-lift smoke n=40
 	export EDGEQUAKE_ADAPTIVE_CHUNKING=0; \
 	export EDGEQUAKE_CHUNK_SIZE=1200; \
 	export EDGEQUAKE_CHUNK_OVERLAP=100; \
-	export EDGEQUAKE_MIX_FUSION=rrf; \
-	export EDGEQUAKE_HYBRID_FUSION=rrf; \
+	export EDGEQUAKE_MIX_FUSION=round_robin; \
+	export EDGEQUAKE_HYBRID_FUSION=round_robin; \
+	export BENCH001_ALLOW_ROUND_ROBIN=1; \
+	export BENCH001_EQ_ENABLE_RERANK=0; \
+	export EDGEQUAKE_GRAPH_WALK=bfs; \
+	export EDGEQUAKE_ENTITY_RANK=retrieval; \
+	export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1; \
+	export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1; \
+	export EDGEQUAKE_L2_BM25_UNION=1; \
+	export EDGEQUAKE_L2_BM25_MODE=fact_replace; \
 	export EDGEQUAKE_LLM_PROVIDER=mistral; \
 	export EDGEQUAKE_LLM_MODEL="$(BENCH001_ACC_LLM_MODEL)"; \
 	export EDGEQUAKE_VISION_PROVIDER=mistral; \
@@ -3131,12 +3147,12 @@ bench001-smoke-acc: bench001-install bench001-acc-backend ## Acc-lift smoke n=40
 	  --judge-provider mistral --judge-model "$(BENCH001_ACC_JUDGE_MODEL)" \
 	  --judge-embedding-model mistral-embed \
 	  --answer-style gold \
-	  --profile-id P0_mistral_small_mix_chunk1200_v1 \
+	  --profile-id ACC_E2OCC_086_v1 \
 	  --query-concurrency "$(BENCH001_ACC_QUERY_CONCURRENCY)" \
 	  --eval-concurrency "$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
 	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/smoke/SUMMARY.md"
 
-bench001-medical-mid: bench001-install bench001-acc-backend ## Publish Acc medical-mid n=200 (50/type; supersets smoke)
+bench001-medical-mid: bench001-install bench001-acc-backend ## Acc medical-mid n=200 (086 E2-occ Acc law; SKIP publish/latest unless ALLOW)
 	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
 	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
 	export BENCH001_PUBLICATION=1; \
@@ -3145,8 +3161,20 @@ bench001-medical-mid: bench001-install bench001-acc-backend ## Publish Acc medic
 	export EDGEQUAKE_ADAPTIVE_CHUNKING=0; \
 	export EDGEQUAKE_CHUNK_SIZE=1200; \
 	export EDGEQUAKE_CHUNK_OVERLAP=100; \
-	export EDGEQUAKE_MIX_FUSION=rrf; \
-	export EDGEQUAKE_HYBRID_FUSION=rrf; \
+	export EDGEQUAKE_MIX_FUSION=round_robin; \
+	export EDGEQUAKE_HYBRID_FUSION=round_robin; \
+	export BENCH001_ALLOW_ROUND_ROBIN=1; \
+	export BENCH001_EQ_ENABLE_RERANK=0; \
+	export EDGEQUAKE_GRAPH_WALK=bfs; \
+	export EDGEQUAKE_ENTITY_RANK=retrieval; \
+	export EDGEQUAKE_KG_CHUNK_PICK=vector; \
+	export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1; \
+	export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1; \
+	export EDGEQUAKE_BM25_RETRIEVAL=1; \
+	export EDGEQUAKE_L2_BM25_UNION=1; \
+	export EDGEQUAKE_L2_BM25_MODE=fact_replace; \
+	export EDGEQUAKE_L2_BM25_MIX_TOP_K=30; \
+	if [ "$${BENCH001_ALLOW_PUBLISH_LATEST:-0}" != "1" ]; then export BENCH001_SKIP_PUBLISH_LATEST=1; fi; \
 	export EDGEQUAKE_LLM_PROVIDER=mistral; \
 	export EDGEQUAKE_LLM_MODEL="$(BENCH001_ACC_LLM_MODEL)"; \
 	export EDGEQUAKE_VISION_PROVIDER=mistral; \
@@ -3180,8 +3208,10 @@ bench001-medical-mid: bench001-install bench001-acc-backend ## Publish Acc medic
 	export PYTHONUNBUFFERED=1; \
 	_QONLY_FLAG="--force-ingest"; \
 	if [ "$${BENCH001_QUERY_ONLY:-0}" = "1" ]; then _QONLY_FLAG="--query-only"; fi; \
-	echo "$(YELLOW)→ Acc medical-mid n=200 PUBLICATION: api=$$EDGEQUAKE_API_URL$(RESET)"; \
+	echo "$(YELLOW)→ Acc medical-mid n=200 PUBLICATION (086 E2-occ): api=$$EDGEQUAKE_API_URL$(RESET)"; \
 	echo "$(YELLOW)  llm/vision/judge=$(BENCH001_ACC_LLM_MODEL) embed=mistral-embed chunk=1200/100 corpus=FULL$(RESET)"; \
+	echo "$(YELLOW)  mix=round_robin · rerank=0 · bfs · occ_sort · LR_BUDGET · Fact L2 fact_replace$(RESET)"; \
+	if [ "$${BENCH001_SKIP_PUBLISH_LATEST:-0}" = "1" ]; then echo "$(YELLOW)  SKIP publish/latest (set BENCH001_ALLOW_PUBLISH_LATEST=1 to replace)$(RESET)"; fi; \
 	echo "$(BLUE)  monitor: make bench001-watch STAGE=medical-mid$(RESET)"; \
 	python3 -m bench001.cli medical-mid --api "$$EDGEQUAKE_API_URL" $$_QONLY_FLAG \
 	  --llm-provider mistral --llm-model "$(BENCH001_ACC_LLM_MODEL)" \
@@ -3190,17 +3220,35 @@ bench001-medical-mid: bench001-install bench001-acc-backend ## Publish Acc medic
 	  --judge-provider mistral --judge-model "$(BENCH001_ACC_JUDGE_MODEL)" \
 	  --judge-embedding-model mistral-embed \
 	  --answer-style gold \
-	  --profile-id P0_mistral_small_mix_chunk1200_v1 \
+	  --profile-id ACC_E2OCC_086_v1 \
 	  --query-concurrency "$(BENCH001_ACC_QUERY_CONCURRENCY)" \
 	  --eval-concurrency "$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
 	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/medical-mid/SUMMARY.md"
 
+# SPEC-086 Phase A: labeled medical-mid under Acc E2-occ law; never overwrite publish/latest.
+bench001-086-phase-a: ## 086 Phase A: Acc-law E2-occ medical-mid (query-only; SKIP publish/latest)
+	@set -e; \
+	if [ -z "$${BENCH001_EQ_WORKSPACE_ID:-}" ]; then \
+	  BENCH001_EQ_WORKSPACE_ID="$$(cd tools/bench001 && PYTHONPATH=. python3 -m bench001.cli resolve-warm-workspace)"; \
+	  echo "$(GREEN)086-phase-a: warm workspace $${BENCH001_EQ_WORKSPACE_ID}$(RESET)"; \
+	fi; \
+	export BENCH001_EQ_WORKSPACE_ID; \
+	export BENCH001_QUERY_ONLY=1; \
+	export BENCH001_SKIP_PUBLISH_LATEST=1; \
+	export BENCH001_PUBLISH_PEER="$${BENCH001_PUBLISH_PEER:-ACC_E2OCC_086_v1}"; \
+	export BENCH001_ALLOW_PUBLISH_LATEST=0; \
+	$(MAKE) bench001-medical-mid --no-print-directory; \
+	echo "$(GREEN)→ Phase A peer: specs/001-benchmark/e2e/artifacts/publish/peers/ACC_E2OCC_086_v1/ (if published)$(RESET)"; \
+	echo "$(GREEN)→ Gates: ctx≥0.48 · Fact ER≥0.90 · Acc CI not LR-ahead$(RESET)"
+
 # ---------------------------------------------------------------------------
 # Primary stakeholder entry: make bench
 # Fair GraphRAG-Bench Acc (EQ Mix vs LightRAG Mix, n=200 medical-mid) + business publish pack.
+# SPEC-086: skips publish/latest unless BENCH001_ALLOW_PUBLISH_LATEST=1 (Beat promote only).
 # Chain: install → Acc backend → doctor → medical-mid → BUSINESS_REPORT in publish/latest/
+# Mandatory local pre-tag gate (not in release_gates.sh / CI) — see docs/operations/release-and-cd.md
 # ---------------------------------------------------------------------------
-bench: bench001-install ## Publishable Acc dual-SUT + business report (n=200 medical-mid)
+bench: bench001-install ## Acc dual-SUT n=200 (086 E2-occ); publish/latest only if ALLOW_PUBLISH_LATEST=1
 	@echo "$(BLUE)→ make bench: Acc backend → doctor → dual-SUT Acc (n=200 medical-mid)$(RESET)"
 	@$(MAKE) bench001-acc-backend --no-print-directory
 	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \

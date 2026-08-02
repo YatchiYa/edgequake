@@ -78,6 +78,9 @@ impl QueryEngine {
         let prepared = self.pipeline_prepare(&request, &providers).await?;
         stats.embedding_time_ms = prepared.embedding_time_ms;
         stats.keyword_time_ms = prepared.keyword_time_ms;
+        stats.keyword_cache_hit = self
+            .keyword_cache_hit_flag
+            .load(std::sync::atomic::Ordering::Relaxed);
 
         if request.context_only {
             if let Some(cache) = &self.result_cache {
@@ -787,12 +790,20 @@ impl QueryEngine {
                 question_type,
                 Some(request.response_type_or_default()),
             );
-            let cache_key = crate::cache::answer_cache_key(&prompt);
+            let mode_str = mode.as_str();
+            let cache_key = crate::cache::llm_cache_storage_key(
+                mode_str,
+                crate::cache::LlmCacheType::Query,
+                &crate::cache::hash_query_prompt(&prompt),
+            );
 
-            // 064 product answer cache (opt-in). Skip for vision / empty context.
-            if !has_images && !final_context.is_empty() {
-                if let Some(cache) = self.answer_cache.as_ref() {
-                    if let Some(cached) = cache.get(&cache_key) {
+            // SPEC-103 answer cache. Active when explicitly wired or env allows.
+            // Skip vision / empty context (no poison empty answers — LAW edge case).
+            let answer_active = self.answer_cache.is_some()
+                || crate::cache::answer_cache_enabled_from_env();
+            if answer_active && !has_images && !final_context.is_empty() {
+                if let Some(cache) = self.llm_response_cache.as_ref() {
+                    if let Some(cached) = cache.get_return(&cache_key).await {
                         stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;
                         stats.ttft_ms = Some(0);
                         stats.answer_cache_hit = true;
@@ -804,7 +815,33 @@ impl QueryEngine {
                             .await?;
                         stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;
                         if !result.0.is_empty() {
-                            cache.set(&cache_key, &result.0);
+                            cache
+                                .set_return(
+                                    &cache_key,
+                                    crate::cache::LlmCacheType::Query,
+                                    &result.0,
+                                    Some(&prompt),
+                                )
+                                .await;
+                        }
+                        result
+                    }
+                } else if let Some(cache) = self.answer_cache.as_ref() {
+                    // Legacy sync L1 path (tests that only call with_answer_cache pre-103).
+                    let legacy_key = crate::cache::answer_cache_key(&prompt);
+                    if let Some(cached) = cache.get(&legacy_key) {
+                        stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;
+                        stats.ttft_ms = Some(0);
+                        stats.answer_cache_hit = true;
+                        let tokens = cached.split_whitespace().count();
+                        (cached, tokens)
+                    } else {
+                        let result = self
+                            .generate_rag_answer(&request, &final_context, providers, question_type)
+                            .await?;
+                        stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;
+                        if !result.0.is_empty() {
+                            cache.set(&legacy_key, &result.0);
                         }
                         result
                     }

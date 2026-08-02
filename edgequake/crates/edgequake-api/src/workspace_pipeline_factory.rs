@@ -90,7 +90,8 @@ impl WorkspacePipelineFactory {
             }
         };
 
-        let extract_role = edgequake_core::resolve_role_llm(&ws, edgequake_core::LlmRole::Extract);
+        // SPEC-086: EXTRACT≠QUERY — env pin beats workspace llm_roles.extract.
+        let extract_role = edgequake_core::resolve_extract_role_llm(&ws);
         let llm_provider =
             create_safe_extraction_llm_provider(&extract_role.provider, &extract_role.model);
         let embedding_provider = create_safe_embedding_provider(

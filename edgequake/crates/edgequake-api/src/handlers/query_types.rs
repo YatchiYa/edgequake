@@ -401,6 +401,10 @@ pub struct QueryStreamStats {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub answer_cache_hit: bool,
 
+    /// True when keywords served from LLM response cache (SPEC-103).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keyword_cache_hit: bool,
+
     /// LLM provider used for generation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_provider: Option<String>,
@@ -463,6 +467,7 @@ impl QueryStreamStats {
             tokens_per_second: stats.tokens_per_second,
             query_mode,
             answer_cache_hit: stats.answer_cache_hit,
+            keyword_cache_hit: stats.keyword_cache_hit,
             llm_provider: stats.llm_provider,
             llm_model: stats.llm_model,
             context_empty: stats.context_empty,
@@ -633,9 +638,13 @@ pub struct QueryStats {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ttft_ms: Option<u64>,
 
-    /// True when answer served from product answer cache (064).
+    /// True when answer served from product answer cache (064 / SPEC-103).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub answer_cache_hit: bool,
+
+    /// True when keywords served from LLM response cache (SPEC-103).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keyword_cache_hit: bool,
 
     /// Total time in ms.
     pub total_time_ms: u64,

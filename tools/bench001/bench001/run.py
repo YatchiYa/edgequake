@@ -82,9 +82,12 @@ def doctor(*, base_url: str | None = None) -> int:
         )
         qe = ((h.get("operational") or {}).get("query_engine") or {})
         mix_fusion = qe.get("mix_fusion")
-        print(f"EQ mix_fusion={mix_fusion} (Acc wants rrf)")
-        if mix_fusion and str(mix_fusion).lower() == "round_robin":
-            print("WARN: mix_fusion=round_robin — Acc default is rrf (set EDGEQUAKE_MIX_FUSION=rrf)")
+        print(f"EQ mix_fusion={mix_fusion} (Acc law 086 wants round_robin)")
+        if mix_fusion and str(mix_fusion).lower() == "rrf":
+            print(
+                "WARN: mix_fusion=rrf — Acc law 086 is round_robin "
+                "(set EDGEQUAKE_MIX_FUSION=round_robin + BENCH001_ALLOW_ROUND_ROBIN=1)"
+            )
     except Exception as exc:  # noqa: BLE001
         print(f"EQ health FAIL @ {base}: {exc}")
         ok = False

@@ -60,9 +60,15 @@ ACC_EXPORTS = {
     "EDGEQUAKE_DEFAULT_LLM_MODEL": "mistral-small-latest",
     "EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER": "mistral",
     "EDGEQUAKE_DEFAULT_EMBEDDING_MODEL": "mistral-embed",
-    "EDGEQUAKE_MIX_FUSION": "rrf",
-    "EDGEQUAKE_HYBRID_FUSION": "rrf",
-    # 076: local_first (Acc) · naive_first = LightRAG _merge_all_chunks order.
+    # SPEC-086 Acc law = E2-occ (LR-identity Mix + occurrence_sort + Fact L2).
+    # Prior P0 RRF/PPR/degree kept as labeled peer only — not Acc headline.
+    "EDGEQUAKE_MIX_FUSION": "round_robin",
+    "EDGEQUAKE_HYBRID_FUSION": "round_robin",
+    "BENCH001_ALLOW_ROUND_ROBIN": "1",
+    "BENCH001_EQ_ENABLE_RERANK": "0",
+    # SPEC-103 LAW-C7: Acc cold peer — never claim warm LLM-cache latency.
+    "EDGEQUAKE_LLM_CACHE": "0",
+    # 076: local_first (Acc) · naive_first = LightRAG _merge_all_chunks order (REJECT Acc).
     "EDGEQUAKE_RR_ORDER": "local_first",
     # SPEC-001 Phase 1 relevancy prune — OFF by default for Acc headline.
     # Cosine ablation: EDGEQUAKE_MIX_RELEVANCY_PRUNE=1 SCORE=cosine (postprocess).
@@ -72,8 +78,7 @@ ACC_EXPORTS = {
     "EDGEQUAKE_MIX_RELEVANCY_MIN_KEEP": "8",
     "EDGEQUAKE_MIX_RELEVANCY_SCORE_FLOOR": "0.25",
     "EDGEQUAKE_MIX_GRAPH_SOFT_PRUNE": "0",
-    # SPEC-001 CE / PathRAG — BM25 + PATH_PRUNE off for Acc headline (022 P0).
-    # Soft path only with labeled CE+protect: PATH_PRUNE=1 + FRACTION=0.4.
+    # Post-fuse rerank OFF under Acc law (086); BM25 engine kept for labeled CE peers.
     "EDGEQUAKE_RERANKER": "bm25",
     "EDGEQUAKE_RERANKER_PROVIDER": "",
     # DashScope intl + qwen3-rerank (china gte-rerank-v2 rejects many intl keys).
@@ -88,15 +93,15 @@ ACC_EXPORTS = {
     "EDGEQUAKE_PATH_PRUNE_ENTITY_MIN_KEEP": "4",
     # CE Acc recovery: keep first-stage Mix ranks (0 = pure CE).
     "EDGEQUAKE_RERANK_PROTECT_FIRST": "0",
-    # Acc-win E2: query_score | degree | retrieval (default degree = headline).
-    "EDGEQUAKE_ENTITY_RANK": "degree",
-    # Acc headline: PPR walk. LR-identity / bfs ablations override via shell.
-    "EDGEQUAKE_GRAPH_WALK": "ppr",
-    # KG→chunk: VECTOR (cosine) default; WEIGHT escape. Acc LR budget off below.
+    # 086 Acc law: retrieval order (not degree hubs).
+    "EDGEQUAKE_ENTITY_RANK": "retrieval",
+    # 086 Acc law: BFS (LR-identity); PPR remains labeled ablation.
+    "EDGEQUAKE_GRAPH_WALK": "bfs",
+    # KG→chunk: VECTOR (cosine) default; WEIGHT escape.
     "EDGEQUAKE_KG_CHUNK_PICK": "vector",
     # 051: default | lightrag (incident edges sorted by rank+weight).
     "EDGEQUAKE_RELATION_SELECT": "default",
-    # Acc-win E3b: Mix RRF arm weights (default equal 1/1/1).
+    # Acc-win E3b: Mix arm weights (default equal 1/1/1).
     "EDGEQUAKE_MIX_LOCAL_WEIGHT": "1",
     "EDGEQUAKE_MIX_GLOBAL_WEIGHT": "1",
     "EDGEQUAKE_MIX_NAIVE_WEIGHT": "1",
@@ -110,13 +115,13 @@ ACC_EXPORTS = {
     "EDGEQUAKE_POPULAR_NODE_FALLBACK": "0",
     "EDGEQUAKE_CONTENT_HEADINGS": "0",
     "EDGEQUAKE_KEYWORD_LEXICAL_BOOST": "0",
-    # 024 Fact VECTOR parity — off for Acc headline until Q4 promote.
-    "EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT": "0",
-    # In-arm BM25/FTS fusion (default on). Fair LR Mix dense-only → set 0 (077 E1).
+    # 086 Acc law: occurrence_sort on (E2 keep).
+    "EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT": "1",
+    # In-arm BM25/FTS fusion (default on). Dense BM25=0 REJECT Acc (077 E1).
     "EDGEQUAKE_BM25_RETRIEVAL": "1",
-    # Mix KG→chunk timing: per_arm (default) | post_truncate (078 R3 / LR order).
+    # Mix KG→chunk timing: per_arm (default) | post_truncate (078 R3 REJECT Acc).
     "EDGEQUAKE_KG_CHUNK_PICK_TIMING": "per_arm",
-    "EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET": "0",
+    "EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET": "1",
     # 025 CE recall recovery — default min_rerank stays engine 0.1 unless overridden.
     "EDGEQUAKE_MIN_RERANK_SCORE": "0.1",
     "EDGEQUAKE_MIN_CHUNK_BUDGET_RATIO": "0.4",
@@ -137,9 +142,14 @@ ACC_EXPORTS = {
     # Latency pack sets KEYWORD_LLM_MODEL=ministral-3b-latest (same provider).
     "EDGEQUAKE_KEYWORD_LLM_PROVIDER": "",
     "EDGEQUAKE_KEYWORD_LLM_MODEL": "",
-    "EDGEQUAKE_L2_BM25_UNION": "0",
+    # 086 Phase B EXTRACT≠QUERY — empty = workspace llm_model (Acc QUERY pin).
+    # Labeled ingest: EDGEQUAKE_EXTRACT_LLM_MODEL=mistral-medium-latest.
+    "EDGEQUAKE_EXTRACT_LLM_PROVIDER": "",
+    "EDGEQUAKE_EXTRACT_LLM_MODEL": "",
+    # 086 Acc law: Fact L2 fact_replace (Acc≠L2 list split kept by design).
+    "EDGEQUAKE_L2_BM25_UNION": "1",
     "EDGEQUAKE_L2_BM25_MIX_TOP_K": "30",
-    "EDGEQUAKE_L2_BM25_MODE": "union",
+    "EDGEQUAKE_L2_BM25_MODE": "fact_replace",
     # 080 D2 — type-aware Mix arm weights (off until lr-intent-w-fact-l2).
     "EDGEQUAKE_MIX_INTENT_WEIGHTS": "0",
     # 035 Fact CE∩BM25 protect — off until a1fp Acc promote.
@@ -298,6 +308,8 @@ def write_start_sh(*, port: int) -> None:
         "EDGEQUAKE_KEYWORD_MODE",
         "EDGEQUAKE_KEYWORD_LLM_PROVIDER",
         "EDGEQUAKE_KEYWORD_LLM_MODEL",
+        "EDGEQUAKE_EXTRACT_LLM_PROVIDER",
+        "EDGEQUAKE_EXTRACT_LLM_MODEL",
         "EDGEQUAKE_FACT_PROTECT_BM25",
         "EDGEQUAKE_COVERAGE_PROTECT_FIRST",
         "EDGEQUAKE_TOPIC_ENTITY_ADMIT",
@@ -417,6 +429,12 @@ def wait_health(*, port: int, timeout_s: int) -> int:
                     sys.path.insert(0, str(REPO / "tools" / "bench001"))
                     from bench001.acc_env import backend_pin_mismatches
 
+                    # SPEC-086: Acc law is round_robin — pin check must see ALLOW.
+                    if ACC_EXPORTS.get("BENCH001_ALLOW_ROUND_ROBIN"):
+                        os.environ.setdefault(
+                            "BENCH001_ALLOW_ROUND_ROBIN",
+                            ACC_EXPORTS["BENCH001_ALLOW_ROUND_ROBIN"],
+                        )
                     health = json.loads(r.stdout)
                     bad = backend_pin_mismatches(health)
                     if bad:

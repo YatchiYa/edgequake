@@ -118,8 +118,12 @@ def lr_query_param_overrides() -> dict[str, Any]:
 
 
 def eq_enable_rerank() -> bool:
-    """Whether EQ query requests post-fuse rerank (default on; LR-identity sets 0)."""
-    raw = (os.environ.get("BENCH001_EQ_ENABLE_RERANK") or "1").strip().lower()
+    """Whether EQ query requests post-fuse rerank.
+
+    SPEC-086 Acc law default OFF (E2-occ). Set BENCH001_EQ_ENABLE_RERANK=1 for
+    labeled CE / prior-P0 peers.
+    """
+    raw = (os.environ.get("BENCH001_EQ_ENABLE_RERANK") or "0").strip().lower()
     return raw not in {"0", "false", "off", "no"}
 
 
@@ -339,6 +343,12 @@ def publish_pin_fields() -> dict[str, Any]:
         ),
         "keyword_llm_model": (
             (os.environ.get("EDGEQUAKE_KEYWORD_LLM_MODEL") or "").strip() or None
+        ),
+        "extract_llm_provider": (
+            (os.environ.get("EDGEQUAKE_EXTRACT_LLM_PROVIDER") or "").strip() or None
+        ),
+        "extract_llm_model": (
+            (os.environ.get("EDGEQUAKE_EXTRACT_LLM_MODEL") or "").strip() or None
         ),
         "fact_protect_bm25": (
             os.environ.get("EDGEQUAKE_FACT_PROTECT_BM25") or ""

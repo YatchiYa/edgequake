@@ -558,7 +558,14 @@ impl VectorStorage for PgVectorStorage {
     async fn ping(&self) -> Result<()> {
         let pool = self.pool.get().await?;
 
-        let sql = format!("SELECT 1 FROM {} LIMIT 1", self.table_name);
+        // SPEC-091: typed backend is SSOT — legacy `eq_*_vectors` may already be
+        // dropped (migration 131) or never created for the default namespace.
+        // Health must probe the typed table, not a retired fleet relation.
+        let sql = if crate::legacy_vector_writes_stopped() {
+            "SELECT 1 FROM chunk_embeddings LIMIT 1".to_string()
+        } else {
+            format!("SELECT 1 FROM {} LIMIT 1", self.table_name)
+        };
 
         sqlx::query(&sql)
             .fetch_optional(&pool)

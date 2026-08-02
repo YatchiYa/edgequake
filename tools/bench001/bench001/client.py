@@ -409,7 +409,11 @@ class EdgeQuakeClient:
         )
 
     def count_entity_vectors(self) -> int | None:
-        """Count entity rows in the workspace vector table (032 density gate)."""
+        """Count entity embedding rows for the workspace (032 density gate).
+
+        Prefers typed ``entity_embeddings`` (SPEC-091 / typed_embeddings backend).
+        Falls back to legacy per-workspace ``eq_*_vectors`` tables when present.
+        """
         wid = (self.workspace_id or "").strip()
         if not wid:
             return None
@@ -431,23 +435,42 @@ class EdgeQuakeClient:
         if not url:
             return None
         prefix = wid.replace("-", "")[:8]
-        table = f"eq_eq_default_ws_{prefix}_vectors"
+        legacy_table = f"eq_eq_default_ws_{prefix}_vectors"
         conn = None
         try:
             conn = psycopg2.connect(url.split("?")[0])
             with conn.cursor() as cur:
+                # Typed fleet/workspace entity embeddings (current SSOT).
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema='public' AND table_name='entity_embeddings'
+                    """
+                )
+                if int(cur.fetchone()[0]) > 0:
+                    cur.execute(
+                        """
+                        SELECT COUNT(*) FROM entity_embeddings
+                        WHERE workspace_id = %s::uuid
+                        """,
+                        (wid,),
+                    )
+                    typed_n = int(cur.fetchone()[0])
+                    if typed_n > 0:
+                        return typed_n
+                # Legacy per-workspace vector table (pre-typed_embeddings).
                 cur.execute(
                     """
                     SELECT COUNT(*) FROM information_schema.tables
                     WHERE table_schema='public' AND table_name=%s
                     """,
-                    (table,),
+                    (legacy_table,),
                 )
                 if int(cur.fetchone()[0]) == 0:
                     return 0
                 cur.execute(
                     f"""
-                    SELECT COUNT(*) FROM {table}
+                    SELECT COUNT(*) FROM {legacy_table}
                     WHERE metadata->>'type' = 'entity'
                     """
                 )

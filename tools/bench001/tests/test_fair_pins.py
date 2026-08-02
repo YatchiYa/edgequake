@@ -39,9 +39,11 @@ def test_publish_fairness_defaults(monkeypatch):
     eq = eq_query_overrides()
     assert eq["max_results"] == 30
     assert eq["rerank_top_k"] == 30
-    assert eq["enable_rerank"] is True
+    # SPEC-086 Acc law default: post-fuse rerank OFF
+    assert eq["enable_rerank"] is False
+    monkeypatch.setenv("BENCH001_EQ_ENABLE_RERANK", "1")
+    assert eq_query_overrides()["enable_rerank"] is True
     monkeypatch.setenv("BENCH001_EQ_ENABLE_RERANK", "0")
-    assert eq_query_overrides()["enable_rerank"] is False
     pins = publish_pin_fields()
     assert pins["mix_arm_gate"] is False
     assert pins["eq_enable_rerank"] is False
