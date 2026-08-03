@@ -237,35 +237,24 @@ impl PostgresConfig {
     /// (security S2) we map any character outside `[A-Za-z0-9_]` to `_`. Hyphens
     /// keep their historical mapping to `_` so existing deployments are unaffected.
     pub fn table_prefix(&self) -> String {
-        let sanitized: String = self
-            .namespace
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '_' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect();
-        format!("eq_{}", sanitized)
+        crate::namespace_tables::table_prefix_for_namespace(&self.namespace)
     }
 
     /// AGE graph catalog name (SPEC-104 LAW-I1 SSOT).
     ///
     /// `namespace = "default"` → prefix `eq_default` → `eq_eq_default_graph`.
     pub fn age_graph_name(&self) -> String {
-        format!("eq_{}_graph", self.table_prefix())
+        crate::namespace_tables::age_graph_name_for_namespace(&self.namespace)
     }
 
     /// Unqualified KV table name (`eq_{prefix}_kv`) — SPEC-104 LAW-I1.
     pub fn bare_kv_table(&self) -> String {
-        format!("eq_{}_kv", self.table_prefix())
+        crate::namespace_tables::bare_kv_table_for_namespace(&self.namespace)
     }
 
     /// Unqualified vectors table name (`eq_{prefix}_vectors`) — SPEC-104 LAW-I1.
     pub fn bare_vectors_table(&self) -> String {
-        format!("eq_{}_vectors", self.table_prefix())
+        crate::namespace_tables::bare_vectors_table_for_namespace(&self.namespace)
     }
 
     /// Qualified KV table for this namespace (`public.eq_{prefix}_kv`).

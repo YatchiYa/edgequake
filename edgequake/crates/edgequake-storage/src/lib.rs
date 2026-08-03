@@ -99,6 +99,7 @@ pub mod kv_key_schema;
 pub mod legacy_store_census;
 pub mod metadata_filter_sql;
 pub mod mm_asset_storage;
+pub mod namespace_tables;
 pub mod original_storage;
 pub mod outbox;
 #[cfg(feature = "postgres")]
@@ -213,6 +214,10 @@ pub use error::StorageError;
 pub use kv_family_cutover::{
     kv_family_mode_from_env, KvFamilyMode, KV_FAMILY_CHUNK, KV_FAMILY_COMPENSATION_QUARANTINE,
     KV_FAMILY_ENV_PREFIX, KV_FAMILY_METADATA, KV_FAMILY_WSDOC,
+};
+pub use namespace_tables::{
+    age_graph_name_for_namespace, bare_kv_table_for_namespace, bare_vectors_table_for_namespace,
+    sanitize_namespace_segment, table_prefix_for_namespace,
 };
 #[cfg(feature = "postgres")]
 pub use outbox::PostgresOutboxSink;

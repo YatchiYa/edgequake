@@ -63,18 +63,14 @@ pub struct InspectorConfig {
 
 impl InspectorConfig {
     /// Build config using the same namespace → relation naming as
-    /// [`edgequake_storage::PostgresConfig`] / AGE graph storage (SPEC-104 LAW-I1).
+    /// [`edgequake_storage::table_prefix_for_namespace`] / AGE graph storage (SPEC-104 LAW-I1).
     ///
     /// `namespace` `"default"` → prefix `eq_default` → graph `eq_eq_default_graph`.
     pub fn for_namespace(namespace: &str) -> Self {
-        let cfg = edgequake_storage::PostgresConfig {
-            namespace: namespace.to_string(),
-            ..Default::default()
-        };
         Self {
-            kv_table: cfg.bare_kv_table(),
-            vector_table: cfg.bare_vectors_table(),
-            graph_name: cfg.age_graph_name(),
+            kv_table: edgequake_storage::bare_kv_table_for_namespace(namespace),
+            vector_table: edgequake_storage::bare_vectors_table_for_namespace(namespace),
+            graph_name: edgequake_storage::age_graph_name_for_namespace(namespace),
             null_rate_warning_threshold: 0.05,
             null_rate_critical_threshold: 0.20,
             sync_lag_warning_threshold: 0.01,
@@ -1760,14 +1756,22 @@ mod spec104_tests {
     #[test]
     fn e2e_104_02_for_namespace_sanitizes_like_postgres_config() {
         let cfg = InspectorConfig::for_namespace("my-ws");
-        let storage = edgequake_storage::PostgresConfig {
-            namespace: "my-ws".into(),
-            ..Default::default()
-        };
-        assert_eq!(cfg.graph_name, storage.age_graph_name());
-        assert_eq!(cfg.kv_table, storage.bare_kv_table());
-        assert_eq!(cfg.vector_table, storage.bare_vectors_table());
-        assert_eq!(storage.table_prefix(), "eq_my_ws");
+        assert_eq!(
+            cfg.graph_name,
+            edgequake_storage::age_graph_name_for_namespace("my-ws")
+        );
+        assert_eq!(
+            cfg.kv_table,
+            edgequake_storage::bare_kv_table_for_namespace("my-ws")
+        );
+        assert_eq!(
+            cfg.vector_table,
+            edgequake_storage::bare_vectors_table_for_namespace("my-ws")
+        );
+        assert_eq!(
+            edgequake_storage::table_prefix_for_namespace("my-ws"),
+            "eq_my_ws"
+        );
     }
 
     #[test]
