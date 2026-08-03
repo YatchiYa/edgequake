@@ -347,7 +347,12 @@ impl PostgresAGEGraphStorage {
             return Ok(Vec::new());
         }
 
-        // Use direct SQL with UNNEST for batch parameter binding
+        // WHY (SPEC-106 / #356): All graphid comparisons must go via ::text —
+        // Apache AGE's graphid type has no registered = operator in the PostgreSQL
+        // type system. Direct graphid equality on EDGE start/end ids produced
+        // "operator does not exist: ag_catalog.graphid = ag_catalog.graphid" during
+        // KG relationship merge (get_edges_for_nodes_batch). Same LAW-G1 pattern as
+        // pg_get_nodes_with_degrees_batch / Issue #214.
         let sql = format!(
             r#"
             WITH input(v, ord) AS (
@@ -358,7 +363,7 @@ impl PostgresAGEGraphStorage {
               SELECT (to_json(v)::text)::ag_catalog.agtype AS node_id, ord FROM input
             ),
             vids AS (
-              SELECT n.id AS vid, i.node_id
+              SELECT n.id::text AS vid_text, i.node_id
               FROM {}."Node" AS n
               JOIN ids i ON ag_catalog.agtype_access_operator(
                   VARIADIC ARRAY[n.properties, '"node_id"'::ag_catalog.agtype]
@@ -368,8 +373,8 @@ impl PostgresAGEGraphStorage {
                    src.node_id::text AS source_id,
                    tgt.node_id::text AS target_id
             FROM {}."EDGE" AS e
-            JOIN vids src ON src.vid = e.start_id
-            JOIN vids tgt ON tgt.vid = e.end_id
+            JOIN vids src ON src.vid_text = e.start_id::text
+            JOIN vids tgt ON tgt.vid_text = e.end_id::text
             "#,
             self.graph_name, self.graph_name
         );

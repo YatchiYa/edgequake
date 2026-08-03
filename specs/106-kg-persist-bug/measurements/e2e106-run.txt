@@ -1,0 +1,6 @@
+date=2026-08-03T14:20:00Z
+test=e2e_spec106_graphid_edges_batch
+DATABASE_URL=from_/tmp/edgequake-db-url
+result=ok 3 passed 0 failed
+cases=E2E-106-01,E2E-106-02,E2E-106-03
+audit=zero raw JOIN vids src ON src.vid = e.start_id

@@ -312,6 +312,18 @@ jobs:
           echo "Running PostgreSQL AGE graph integration tests..."
           cargo test --package edgequake-storage --test postgres_integration --features postgres -- test_postgres_age --test-threads=1
 
+      - name: Run SPEC-106 graphid edges-batch E2E (Issue #356)
+        working-directory: edgequake
+        env:
+          DATABASE_URL: postgresql://edgequake_test:test_password_123@localhost:5432/edgequake_test
+          POSTGRES_PASSWORD: test_password_123
+          POSTGRES_DB: edgequake_test
+          POSTGRES_USER: edgequake_test
+          EDGEQUAKE_REQUIRE_POSTGRES_TESTS: "1"
+        run: |
+          echo "Running SPEC-106 get_edges_for_nodes_batch ::text join regression..."
+          cargo test -p edgequake-storage --features postgres --test e2e_spec106_graphid_edges_batch -- --test-threads=1
+
   coverage-postgres:
     # WHY: Tarpaulin across the PostgreSQL feature set is significantly slower
     # than the functional integration checks and is not a first-principles

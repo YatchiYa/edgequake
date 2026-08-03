@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Issue #356 / SPEC-106 — KG persist `graphid = graphid` operator error** — Relationship merge called `get_edges_for_nodes_batch`, whose SQL still joined raw `ag_catalog.graphid` (`src.vid = e.start_id`). Apache AGE does not register `=` for `graphid`, so persist failed with `operator does not exist: ag_catalog.graphid = ag_catalog.graphid` (still present on **v0.24.0**; #214 had fixed degrees only). Fix: LAW-G1 `::text` casts matching `pg_get_nodes_with_degrees_batch`. E2E: `e2e_spec106_graphid_edges_batch`. Spec: [`specs/106-kg-persist-bug/`](specs/106-kg-persist-bug/).
+
 ## [0.24.0] — 2026-08-03
 
 Minor: production data-layer monitor harden (SPEC-104) and legacy cutover assert (SPEC-105, migration **142**).
