@@ -229,7 +229,7 @@ pub async fn storage_inspect(
             .ok_or_else(|| ApiError::Internal("Postgres pool not available".into()))?;
         let inspector = StorageInspector::new(
             std::sync::Arc::new(pool.clone()),
-            InspectorConfig::default(),
+            InspectorConfig::for_namespace("default"),
         );
         let report = inspector.inspect().await;
         Ok(Json(report))
@@ -303,7 +303,7 @@ pub async fn storage_repair(
             .ok_or_else(|| ApiError::Internal("Postgres pool not available".into()))?;
         let inspector = StorageInspector::new(
             std::sync::Arc::new(pool.clone()),
-            InspectorConfig::default(),
+            InspectorConfig::for_namespace("default"),
         );
         let report = inspector.inspect().await;
 

@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **SPEC-105 legacy cutover harden** — unknown `EDGEQUAKE_VECTOR_BACKEND` → typed (not legacy); shared `legacy_store_census` SSOT; cutover refuses `legacy_tables` when vectors census is empty / 131 applied; migration **142** asserts empty leftovers (aborts if rows — finish 125–131 `--confirm-drop` first); expandable migrate / boot **defer** 142 while durable legacy rows remain (≤0.22 mid-upgrade soft-exit); workspace embedding counts prefer `chunk_embeddings`. Era-aware INV/FTS dual-read preserved for ≤0.22 mid-upgrade. Spec: [`specs/105-fix-legacy/`](specs/105-fix-legacy/).
+- **SPEC-104 production data-layer monitors** — StorageInspector no longer probes `workspaces.id` (42703) or hard-coded `edgequake."Node"` (42P01); AGE graph / KV / vectors names come from `PostgresConfig` SSOT (`eq_*_graph`). INV-03 dual-reads `public.chunks`|legacy KV; INV-01 prefers typed `chunk_embeddings` and fails visible when no store exists; multi-graph M038 GIN visibility. Spec: [`specs/104-fix-datalayer/`](specs/104-fix-datalayer/).
+
+### Changed
+
+- **Tenant create HTTP contract (breaking vs 0.22)** — `POST /api/v1/tenants` is idempotent get-or-create by slug at the service layer (`Error::Conflict`):
+  - **201** — new slug inserted
+  - **200** — same slug + same display name (retry-safe)
+  - **409** — same slug + different display name (was often **400** / unique-violation noise)
+  Spec: [`specs/104-fix-datalayer/06-issue-04-tenant-slug-race.md`](specs/104-fix-datalayer/06-issue-04-tenant-slug-race.md).
+
 ## [0.23.0] — 2026-08-02
 
 Minor: SPEC-091 relational data-layer cutover (migrations **106–141**), LD-15 boot never migrates, standalone parse API, LightRAG-parity LLM cache, wizard/onboarding, and Acc honesty refresh.

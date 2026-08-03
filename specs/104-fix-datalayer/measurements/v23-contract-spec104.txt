@@ -1,0 +1,21 @@
+   Compiling edgequake-api v0.23.0 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-api)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.59s
+     Running tests/contract_spec104_datalayer.rs (target/debug/deps/contract_spec104_datalayer-40a79b4267819bff)
+
+running 11 tests
+test e2e_104_04_source_tenant_atomic_upsert ... ok
+test e2e_104_05_source_gin_check_all_graphs ... ok
+test e2e_104_03_source_inv03_dual_presence ... ok
+test e2e_104_06_naming_helpers_match_inspector ... ok
+test e2e_104_02_source_graph_not_hardcoded_edgequake ... ok
+test e2e_104_01_source_uses_workspace_id_not_id ... ok
+SKIP: no KV table (post-125) — dual-read path N/A
+test e2e_104_07_pg_inv03_clear_when_kv_chunk_present ... ok
+SKIP e2e_104_10: create_graph failed and graph absent: error returned from database: operator class "graphid_ops" does not exist for access method "btree"
+test e2e_104_10_pg_gin_missing_on_extra_graph ... ok
+test e2e_104_pg_tenant_slug_get_or_create ... ok
+test e2e_104_09_pg_tenant_same_name_ok_diff_name_detectable ... ok
+test e2e_104_pg_inspector_inv03_orphan_fires ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+

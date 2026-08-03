@@ -1,0 +1,1 @@
+{"timestamp":"2026-08-03T09:30:42.349644Z","duration_ms":12,"schema_issues":[],"invariant_violations":[{"invariant_id":"INV-03","severity":"Warning","description":"1 indexed documents have no KV chunks (SAGA failure?)","count":1,"sample_ids":["bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"]}],"recommended_repairs":[],"auto_repaired":[],"has_critical":false,"has_warning":true}

@@ -735,11 +735,32 @@ async fn run_migrate_cli(args: &[String]) -> Result<()> {
             .any(|(v, _)| migrate_console::is_irreversible_drop(*v))
     {
         let expandables = migrate_console::pending_expandable_versions(&pending);
-        if !expandables.is_empty() {
+        let defer_142 = edgequake_storage::any_legacy_rows(&bundle.query)
+            .await
+            .context("legacy census before expandable migrate")?;
+        let expandables_to_apply: Vec<i64> = expandables
+            .iter()
+            .copied()
+            .filter(|v| {
+                !(defer_142
+                    && edgequake_api::state::migration_bootstrap::is_legacy_cutover_assert(*v))
+            })
+            .collect();
+        if !expandables_to_apply.is_empty() {
             println!(
-                "applying SAFE SCHEMA (expandable) migration(s) {expandables:?} \
+                "applying SAFE SCHEMA (expandable) migration(s) {expandables_to_apply:?} \
                  (DROP OLD deferred until --confirm-drop)…"
             );
+            if defer_142
+                && expandables.iter().any(|v| {
+                    edgequake_api::state::migration_bootstrap::is_legacy_cutover_assert(*v)
+                })
+            {
+                println!(
+                    "  note: SPEC-105 migration 142 deferred — durable legacy rows remain; \
+                     finish --confirm-drop (125/126/131) first."
+                );
+            }
             let report =
                 match edgequake_api::state::migration_bootstrap::run_postgres_expandable_migrations(
                     &bundle.admin,
@@ -766,6 +787,11 @@ async fn run_migrate_cli(args: &[String]) -> Result<()> {
                 .collect();
             migrate_console::print_applied_this_run(&applied);
             migrate_console::print_post_hooks(&bundle.admin).await;
+        } else if defer_142 {
+            println!(
+                "no SAFE SCHEMA to apply this run (SPEC-105 migration 142 deferred while \
+                 durable legacy rows remain)."
+            );
         }
 
         let remaining =
@@ -776,8 +802,12 @@ async fn run_migrate_cli(args: &[String]) -> Result<()> {
         if remaining.is_empty() {
             return Ok(());
         }
-        if edgequake_api::state::migration_bootstrap::pending_only_irreversible_drops(
+        let defer_142_after = edgequake_storage::any_legacy_rows(&bundle.query)
+            .await
+            .context("legacy census after expandable migrate")?;
+        if edgequake_api::state::migration_bootstrap::pending_ok_to_serve(
             &remaining_versions,
+            defer_142_after,
         ) {
             match edgequake_storage::migration_engine::advisor::posture(&bundle.query).await {
                 Ok(p) => migrate_console::print_guard(&p, &p.residue),
@@ -786,7 +816,8 @@ async fn run_migrate_cli(args: &[String]) -> Result<()> {
             migrate_console::print_irreversible_pending_soft_exit(&remaining);
             info!(
                 remaining = ?remaining_versions,
-                "edgequake migrate: expandable train done; irreversible drop(s) deferred"
+                defer_legacy_cutover_assert = defer_142_after,
+                "edgequake migrate: expandable train done; irreversible drop(s)/deferred 142 left"
             );
             return Ok(());
         }

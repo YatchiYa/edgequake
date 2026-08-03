@@ -119,6 +119,30 @@ Exit code **78** usually means: schema and binary disagree.
 
 ---
 
+## API behavior note (SPEC-104, post-0.23.0 patch)
+
+No new SQL migrations for SPEC-104 — code-only monitor / tenant fixes. Operators should know the **tenant create** HTTP contract changed vs 0.22:
+
+| `POST /api/v1/tenants` | Status |
+| --- | --- |
+| New slug | **201 Created** |
+| Same slug + same name | **200 OK** (idempotent) |
+| Same slug + different name | **409 Conflict** (was often 400) |
+
+Storage inspect (`GET /api/v1/admin/storage/inspect`) on a SPEC-104+ binary must not emit Postgres `42703` (`workspaces.id`) or `42P01` (`edgequake."Node"`). Details: [`specs/104-fix-datalayer/`](../../specs/104-fix-datalayer/).
+
+### SPEC-105 (legacy cutover assert — migration **142**)
+
+Upgrade from **≤ v0.22.0** is unchanged until irreversible drops finish:
+
+1. Roll write-stop binary → `edgequake migrate` (expandable, including toward **142**)
+2. When durable `eq_*_kv` / `eq_*_vectors` rows remain: `edgequake migrate --confirm-drop` (**125 / 126 / 131**)
+3. Migration **142** then drops **empty** leftovers and sets `server_config.legacy_stores_forbidden`; it **aborts** if rows remain (never silent delete). While durable legacy rows remain, expandable `edgequake migrate` **defers** 142 (soft-exit OK) so mid-upgrade fleets are not blocked.
+
+Unknown `EDGEQUAKE_VECTOR_BACKEND` now selects **typed_embeddings** (not legacy). Spec: [`specs/105-fix-legacy/`](../../specs/105-fix-legacy/).
+
+---
+
 ## Rollback
 
 | When | How |

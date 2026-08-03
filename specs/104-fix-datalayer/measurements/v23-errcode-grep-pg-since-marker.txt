@@ -1,0 +1,4 @@
+# Post-window filter (MARKER 2026-08-03T10:15:55Z / 10:15 UTC)
+# docker logs lines with timestamps >= 2026-08-03 10:15:55
+PASS: zero matching errcodes in Postgres logs since MARKER
+# Note: full-file historical hits (pre-SPEC-104 binary) are in v23-errcode-grep-pg.txt

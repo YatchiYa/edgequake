@@ -1,0 +1,13 @@
+=== workspaces PK columns ===
+workspace_id
+(PASS: no id column — INV-D2 uses workspace_id)
+=== AGE graphs eq_%_graph ===
+eq_eq_default_graph
+=== schema named edgequake? ===
+edgequake  (legacy/empty namespace may exist; inspector must NOT query edgequake."Node")
+=== M038 GIN on eq_eq_default_graph ===
+idx_node_source_ids_gin
+=== all GIN source_ids indexes ===
+eq_eq_default_graph.idx_node_source_ids_gin
+=== VERDICT ===
+PASS: PK workspace_id; graph SSOT eq_eq_default_graph; GIN present (SPEC-104 #5 observability)

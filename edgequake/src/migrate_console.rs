@@ -80,7 +80,12 @@ pub fn migration_class_tag(version: i64) -> &'static str {
         "  [DROP OLD — irreversible chunk vectors]"
     } else if version == FLEET_VECTOR_DROP_MIGRATION {
         "  [DROP OLD — irreversible vector fleet]"
-    } else if (106..=124).contains(&version) || (127..=130).contains(&version) {
+    } else if version == 142 {
+        "  [ASSERT — SPEC-105; after confirm-drop / empty residue]"
+    } else if (106..=124).contains(&version)
+        || (127..=130).contains(&version)
+        || (132..=141).contains(&version)
+    {
         "  [SAFE SCHEMA — expandable]"
     } else {
         ""
@@ -119,15 +124,22 @@ pub fn print_irreversible_pending_soft_exit(remaining: &[(i64, String)]) {
     eprintln!("══════════════════════════════════════════════════════════════════");
     eprintln!(" VERDICT: OK TO START THE SERVER");
     eprintln!("══════════════════════════════════════════════════════════════════");
-    eprintln!(" Why: every SAFE SCHEMA migration is applied.");
-    eprintln!("      Only optional DROP OLD step(s) remain — they delete legacy");
-    eprintln!("      tables after data has been copied. They are NOT required for");
-    eprintln!("      serving on typed defaults.");
+    eprintln!(" Why: every required SAFE SCHEMA migration is applied.");
+    eprintln!("      Only optional DROP OLD step(s) remain — and/or SPEC-105");
+    eprintln!("      assert 142 deferred while durable legacy rows remain.");
+    eprintln!("      They are NOT required for serving on typed defaults.");
     eprintln!();
-    eprintln!(" Still pending (human-gated — will NOT run without --confirm-drop):");
+    eprintln!(" Still pending (human-gated / deferred):");
     for (v, desc) in remaining {
         eprintln!("  • {v} — {desc}{}", migration_class_tag(*v));
-        eprintln!("      plain English: {}", irreversible_drop_plain(*v));
+        if is_irreversible_drop_version(*v) {
+            eprintln!("      plain English: {}", irreversible_drop_plain(*v));
+        } else if *v == 142 {
+            eprintln!(
+                "      plain English: asserts empty leftovers after confirm-drop; \
+                 deferred while legacy rows remain"
+            );
+        }
     }
     eprintln!();
     eprintln!(" Readiness light (above):");
@@ -137,6 +149,7 @@ pub fn print_irreversible_pending_soft_exit(remaining: &[(i64, String)]) {
     eprintln!(" When readiness is GREEN:");
     eprintln!("    1. Take a backup");
     eprintln!("    2. edgequake migrate --confirm-drop");
+    eprintln!("    3. edgequake migrate            # applies deferred 142 assert");
     eprintln!(" Preview anytime: edgequake migrate dry-run");
     eprintln!(" Rollback after a drop = restore from backup (no undo SQL).");
     eprintln!("══════════════════════════════════════════════════════════════════");

@@ -32,6 +32,10 @@ pub enum Error {
     #[error("Validation error: {0}")]
     Validation(String),
 
+    /// Conflict with an existing resource (natural key / unique constraint semantics).
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
     /// Not found error
     #[error("Not found: {0}")]
     NotFound(String),
@@ -68,6 +72,11 @@ impl Error {
     /// Create a new validation error.
     pub fn validation<S: Into<String>>(msg: S) -> Self {
         Error::Validation(msg.into())
+    }
+
+    /// Create a conflict error (unique natural key already held by another identity).
+    pub fn conflict<S: Into<String>>(msg: S) -> Self {
+        Error::Conflict(msg.into())
     }
 
     /// Create a new internal error.
@@ -129,6 +138,15 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "Validation error: invalid document format"
+        );
+    }
+
+    #[test]
+    fn test_error_conflict() {
+        let error = Error::conflict("Tenant slug 'acme' already exists");
+        assert_eq!(
+            error.to_string(),
+            "Conflict: Tenant slug 'acme' already exists"
         );
     }
 

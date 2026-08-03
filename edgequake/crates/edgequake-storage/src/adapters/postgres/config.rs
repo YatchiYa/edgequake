@@ -251,6 +251,23 @@ impl PostgresConfig {
         format!("eq_{}", sanitized)
     }
 
+    /// AGE graph catalog name (SPEC-104 LAW-I1 SSOT).
+    ///
+    /// `namespace = "default"` → prefix `eq_default` → `eq_eq_default_graph`.
+    pub fn age_graph_name(&self) -> String {
+        format!("eq_{}_graph", self.table_prefix())
+    }
+
+    /// Unqualified KV table name (`eq_{prefix}_kv`) — SPEC-104 LAW-I1.
+    pub fn bare_kv_table(&self) -> String {
+        format!("eq_{}_kv", self.table_prefix())
+    }
+
+    /// Unqualified vectors table name (`eq_{prefix}_vectors`) — SPEC-104 LAW-I1.
+    pub fn bare_vectors_table(&self) -> String {
+        format!("eq_{}_vectors", self.table_prefix())
+    }
+
     /// Qualified KV table for this namespace (`public.eq_{prefix}_kv`).
     pub fn qualified_kv_table(&self) -> String {
         qualified_kv_table_name(&self.table_prefix())
@@ -342,6 +359,20 @@ mod tests {
     fn test_table_prefix() {
         let config = PostgresConfig::default().with_namespace("my-workspace");
         assert_eq!(config.table_prefix(), "eq_my_workspace");
+    }
+
+    #[test]
+    fn e2e_104_06_age_graph_and_bare_relation_names() {
+        let default = PostgresConfig::default();
+        assert_eq!(default.age_graph_name(), "eq_eq_default_graph");
+        assert_eq!(default.bare_kv_table(), "eq_eq_default_kv");
+        assert_eq!(default.bare_vectors_table(), "eq_eq_default_vectors");
+
+        let ws = PostgresConfig::default().with_namespace("my-ws");
+        assert_eq!(ws.table_prefix(), "eq_my_ws");
+        assert_eq!(ws.age_graph_name(), "eq_eq_my_ws_graph");
+        assert_eq!(ws.bare_kv_table(), "eq_eq_my_ws_kv");
+        assert_eq!(ws.bare_vectors_table(), "eq_eq_my_ws_vectors");
     }
 
     #[test]

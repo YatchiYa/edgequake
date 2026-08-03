@@ -1,0 +1,4 @@
+# Current staging binary: PORT 8090, build 2026-08-03T10:11:39Z, git 9dc3a3317
+# GET /api/v1/admin/storage/inspect @ MARKER → HTTP 200, has_critical=false, schema_issues=0, violations=0
+# PASS: no new 42703/42P01 from inspect path after SPEC-104 A+ binary
+# Historical /tmp/edgequake-backend.log hits (pre-fix INV-C graph_name=edgequake) listed below for honesty:

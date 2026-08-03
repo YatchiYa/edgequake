@@ -645,8 +645,10 @@ impl AppState {
         // SPEC-021 P3-01: Log the entity sync mode for observability
         {
             use crate::storage_inspector::{InspectorConfig, StorageInspector};
-            let inspector =
-                StorageInspector::new(Arc::new(admin_pool.clone()), InspectorConfig::default());
+            let inspector = StorageInspector::new(
+                Arc::new(admin_pool.clone()),
+                InspectorConfig::for_namespace("default"),
+            );
             let report = inspector.inspect().await;
             if report.has_critical {
                 tracing::error!(

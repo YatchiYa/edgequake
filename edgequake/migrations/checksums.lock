@@ -1,5 +1,5 @@
 # Migration Immutability Lockfile
-# Updated: 2026-08-01
+# Updated: 2026-08-03
 #
 # PURPOSE: Every line records the SHA-384 of a migration file at the time it was
 # declared stable. This file is the source of truth for the migration-guard CI
@@ -153,4 +153,5 @@ d6cf54b722cd3fd31d013852f1e12f744fb365ca4f80ddd9428224e7bab5f5218d4e84e653b6d835
 0cab492b7cafe93df1bf0aa36c1926c930d52aa6f111dbfb8185bb7eb92c967804701b0655c83b058fad30a238f2f99c  139_spec098_entity_spine_ensure.sql
 7fb35d301ae3d5070592172c0b12270a411a852e23529e059aea5ab0534bbf2b7fe2536a272476429a65bc6ee21dafc4  140_spec098_edge_arbiter_reconcile.sql
 b969b4e24111a3e0c9742d67a4fd65fe6ec33832881a5a7d9ba934544ec27644f565f892f4b243101c816512b3ec30ab  141_spec098_document_lifecycle_status.sql
+10a3d983cba4f18cb05d8818b6ab658f2c8eedbcef92d4376e4a67a38d81fcfa0b2f9e5e81a676a9e352f599eee56d3c  142_spec105_legacy_cutover_assert.sql
 

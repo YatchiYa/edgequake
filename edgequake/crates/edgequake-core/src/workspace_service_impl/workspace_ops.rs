@@ -476,29 +476,43 @@ impl WorkspaceServiceImpl {
         .await
         .map_err(|e| Error::internal(format!("Failed to get workspace stats: {}", e)))?;
 
-        // Shared default-namespace vector table (product pin). Missing table → 0
-        // (boot may not have created it yet). Dedicated per-workspace tables are
-        // counted via workspace_id column when present on the shared table.
+        // SPEC-105: prefer typed `chunk_embeddings` (via chunks.workspace_id).
+        // Fall back to legacy `eq_eq_default_vectors` only when that table exists
+        // (≤0.22 mid-upgrade); missing either → 0.
         let embedding_count = match sqlx::query_scalar::<_, i64>(
             r#"
             SELECT COUNT(*)::BIGINT
-            FROM eq_eq_default_vectors
-            WHERE workspace_id = $1
+            FROM public.chunk_embeddings ce
+            INNER JOIN public.chunks c ON c.id = ce.chunk_id
+            WHERE c.workspace_id = $1
             "#,
         )
-        .bind(workspace_id.to_string())
+        .bind(workspace_id)
         .fetch_one(&self.pool)
         .await
         {
             Ok(n) => n,
-            Err(e) => {
-                tracing::debug!(
-                    workspace_id = %workspace_id,
-                    error = %e,
-                    "SPEC-091: embedding_count projection unavailable (vector table missing?); reporting 0"
-                );
-                0
-            }
+            Err(_) => match sqlx::query_scalar::<_, i64>(
+                r#"
+                SELECT COUNT(*)::BIGINT
+                FROM eq_eq_default_vectors
+                WHERE workspace_id = $1
+                "#,
+            )
+            .bind(workspace_id.to_string())
+            .fetch_one(&self.pool)
+            .await
+            {
+                Ok(n) => n,
+                Err(e) => {
+                    tracing::debug!(
+                        workspace_id = %workspace_id,
+                        error = %e,
+                        "SPEC-105: embedding_count projection unavailable; reporting 0"
+                    );
+                    0
+                }
+            },
         };
 
         Ok(WorkspaceStats {

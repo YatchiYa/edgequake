@@ -1,0 +1,10 @@
+{
+    "timestamp": "2026-08-03T10:15:55.523562Z",
+    "duration_ms": 320,
+    "schema_issues": [],
+    "invariant_violations": [],
+    "recommended_repairs": [],
+    "auto_repaired": [],
+    "has_critical": false,
+    "has_warning": false
+}

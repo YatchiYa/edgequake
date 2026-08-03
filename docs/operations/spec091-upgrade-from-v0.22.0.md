@@ -5,8 +5,9 @@ title: "SPEC-091 Upgrade from v0.22.0"
 # SPEC-091 — Upgrade from published v0.22.0
 
 > **Start here if you want the short version:** [Migrate to v0.23.0](./migrate-to-0.23.md) (plain-language paths for fresh install vs upgrade).
-> **Audience:** operators upgrading a live Postgres from GHCR **v0.22.0** (migrations ≤ **105**, KV SSOT) to **v0.23.0** (migrations **106–141**: typed relational SSOT + irreversible KV/vector drops + RM0–RM5 outbox drain / citation / chunk FTS / AGE citation indexes + SPEC-098 spine/lifecycle).
+> **Audience:** operators upgrading a live Postgres from GHCR **v0.22.0** (migrations ≤ **105**, KV SSOT) to **v0.23.0+** (migrations **106–142**: typed relational SSOT + irreversible KV/vector drops + RM0–RM5 outbox drain / citation / chunk FTS / AGE citation indexes + SPEC-098 spine/lifecycle + **SPEC-105** legacy cutover assert).
 > **Spec:** [`specs/091-simplify-data-layer/`](../../specs/091-simplify-data-layer/) · risks R-21..R-29 in `09-risk-register.md` · RM program in [`22-ingestion-migration-system-assessment.md`](../../specs/091-simplify-data-layer/22-ingestion-migration-system-assessment.md).
+> **Legacy cutover (SPEC-105):** after 125/126/131 `--confirm-drop`, migration **142** asserts empty leftovers (aborts if rows remain). Unknown `EDGEQUAKE_VECTOR_BACKEND` → typed. Pack: [`specs/105-fix-legacy/`](../../specs/105-fix-legacy/).
 > **Automated proof:** `make spec93-migration-assessment` (PG16/17/18 realism) · `make spec091-upgrade-soak` (smoke) · `make spec091-gates`.
 > **Formal pack:** [`specs/93-migration-assessment/`](../../specs/93-migration-assessment/).
 

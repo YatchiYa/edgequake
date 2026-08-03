@@ -832,6 +832,7 @@ impl From<edgequake_core::Error> for ApiError {
         match e {
             CoreError::NotFound(msg) => ApiError::NotFound(msg),
             CoreError::Validation(msg) => ApiError::ValidationError(msg),
+            CoreError::Conflict(msg) => ApiError::Conflict(msg),
             CoreError::Config(msg) => ApiError::ConfigError(msg),
             CoreError::Storage(se) => ApiError::Storage(se),
             CoreError::Llm(le) => ApiError::Llm(le),

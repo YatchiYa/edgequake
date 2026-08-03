@@ -24,7 +24,7 @@
 //! |----|-------|---------------|
 //! | INV-01 | Every chunk vector has a KV entry | eq_*_vectors, eq_*_kv |
 //! | INV-02 | Every entity vector has an AGE Node | eq_*_vectors, AGE |
-//! | INV-03 | Indexed documents have ≥1 chunk | documents, eq_*_kv |
+//! | INV-03 | Indexed documents have ≥1 chunk | documents, public.chunks (SPEC-104) |
 //! | INV-04 | CQRS sync lag (entities vs AGE) | entities, AGE |
 //! | INV-05 | No stuck PDFs (processing > 1h) | pdf_documents |
 
@@ -47,7 +47,7 @@ pub struct InspectorConfig {
     pub kv_table: String,
     /// Vector table name (e.g. "eq_eq_default_vectors").
     pub vector_table: String,
-    /// AGE graph name (e.g. "edgequake").
+    /// AGE graph name (e.g. "eq_eq_default_graph") — LAW-I1 SSOT with storage.
     pub graph_name: String,
     /// Threshold (0.0-1.0) above which null materialized columns are a warning.
     pub null_rate_warning_threshold: f64,
@@ -61,19 +61,52 @@ pub struct InspectorConfig {
     pub pdf_stuck_minutes: i64,
 }
 
-impl Default for InspectorConfig {
-    fn default() -> Self {
+impl InspectorConfig {
+    /// Build config using the same namespace → relation naming as
+    /// [`edgequake_storage::PostgresConfig`] / AGE graph storage (SPEC-104 LAW-I1).
+    ///
+    /// `namespace` `"default"` → prefix `eq_default` → graph `eq_eq_default_graph`.
+    pub fn for_namespace(namespace: &str) -> Self {
+        let cfg = edgequake_storage::PostgresConfig {
+            namespace: namespace.to_string(),
+            ..Default::default()
+        };
         Self {
-            kv_table: "eq_eq_default_kv".to_string(),
-            vector_table: "eq_eq_default_vectors".to_string(),
-            graph_name: "edgequake".to_string(),
-            null_rate_warning_threshold: 0.05,  // 5%
-            null_rate_critical_threshold: 0.20, // 20%
-            sync_lag_warning_threshold: 0.01,   // 1%
-            sync_lag_critical_threshold: 0.10,  // 10%
+            kv_table: cfg.bare_kv_table(),
+            vector_table: cfg.bare_vectors_table(),
+            graph_name: cfg.age_graph_name(),
+            null_rate_warning_threshold: 0.05,
+            null_rate_critical_threshold: 0.20,
+            sync_lag_warning_threshold: 0.01,
+            sync_lag_critical_threshold: 0.10,
             pdf_stuck_minutes: 60,
         }
     }
+}
+
+impl Default for InspectorConfig {
+    fn default() -> Self {
+        Self::for_namespace("default")
+    }
+}
+
+/// Defense-in-depth for interpolated relation names (data-engineering: never
+/// concatenate unvalidated identifiers). Names come from `PostgresConfig`
+/// sanitization, but inspector still gates before `format!` into SQL.
+///
+/// Allowlist: PostgreSQL unquoted identifier shape `[A-Za-z_][A-Za-z0-9_]*`.
+pub(crate) fn require_safe_sql_ident(name: &str) -> Result<&str, String> {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return Err("empty SQL identifier".into());
+    };
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return Err(format!("unsafe SQL identifier start: {name:?}"));
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(format!("unsafe SQL identifier: {name:?}"));
+    }
+    Ok(name)
 }
 
 /// Severity level of an inspection finding.
@@ -411,6 +444,90 @@ impl StorageInspector {
 
         // Check 5: Invalid indexes
         self.check_invalid_indexes(report).await;
+
+        // Check 6: SPEC-104 / LAW-I4 — M038 source_ids GIN on every eq_*_graph
+        self.check_all_graphs_node_source_ids_gin(report).await;
+    }
+
+    /// SPEC-104 harden EC-05 (partial): GIN presence on all AGE graphs, not only default.
+    async fn check_all_graphs_node_source_ids_gin(&self, report: &mut InspectorReport) {
+        let graphs: Vec<String> = match sqlx::query_scalar(
+            r#"
+            SELECT name::text
+            FROM ag_catalog.ag_graph
+            WHERE name::text LIKE 'eq\_%\_graph' ESCAPE '\'
+            ORDER BY 1
+            "#,
+        )
+        .fetch_all(self.pool.as_ref())
+        .await
+        {
+            Ok(g) => g,
+            Err(e) => {
+                warn!(error = %e, "StorageInspector: failed to list ag_catalog.ag_graph");
+                // Fall back to configured graph only.
+                self.check_node_source_ids_gin_for(report, &self.config.graph_name)
+                    .await;
+                return;
+            }
+        };
+
+        if graphs.is_empty() {
+            self.check_node_source_ids_gin_for(report, &self.config.graph_name)
+                .await;
+            return;
+        }
+
+        for graph in &graphs {
+            self.check_node_source_ids_gin_for(report, graph).await;
+        }
+    }
+
+    /// SPEC-104 issue #5: missing `idx_node_source_ids_gin` makes node-count
+    /// probes time out (57014) under load.
+    async fn check_node_source_ids_gin_for(&self, report: &mut InspectorReport, graph: &str) {
+        let sql = r#"
+            SELECT EXISTS (
+              SELECT 1 FROM pg_indexes
+              WHERE schemaname = $1
+                AND indexname = 'idx_node_source_ids_gin'
+            )
+        "#;
+        match sqlx::query_scalar::<_, bool>(sql)
+            .bind(graph)
+            .fetch_one(self.pool.as_ref())
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                report.add_schema_issue(SchemaDriftIssue {
+                    check_name: format!("m038_idx_node_source_ids_gin:{graph}"),
+                    severity: Severity::Warning,
+                    description: format!(
+                        "Missing idx_node_source_ids_gin on graph schema '{graph}' — node-count probes may hit 57014"
+                    ),
+                    details: Some(
+                        "Apply migration 038 / graph lifecycle ensure_indexes (SPEC-006/089/104)"
+                            .to_string(),
+                    ),
+                });
+            }
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    graph = %graph,
+                    "StorageInspector: failed to check idx_node_source_ids_gin"
+                );
+                report.add_schema_issue(SchemaDriftIssue {
+                    check_name: format!("m038_idx_node_source_ids_gin_query:{graph}"),
+                    severity: Severity::Warning,
+                    description: format!(
+                        "Could not verify idx_node_source_ids_gin on '{graph}': {e}"
+                    ),
+                    details: None,
+                });
+            }
+        }
     }
 
     async fn check_extensions(&self, report: &mut InspectorReport) {
@@ -601,19 +718,61 @@ impl StorageInspector {
         self.check_inv_d2_orphan_workspace_tables(report).await;
     }
 
-    /// INV-01: Every chunk vector has a KV entry.
+    /// INV-01: Every chunk vector/embedding has a matching chunk text row (SPEC-104 harden).
+    ///
+    /// Priority: `chunk_embeddings` (typed SSOT) → legacy `{vector_table}` → visible
+    /// schema Warning (never silent green when no store exists — EC-18).
     async fn check_inv01_orphaned_chunk_vectors(&self, report: &mut InspectorReport) {
-        let sql = format!(
-            r#"SELECT v.id
-               FROM {vec} v
-               WHERE v.metadata->>'type' = 'chunk'
-                 AND NOT EXISTS (
-                     SELECT 1 FROM {kv} k WHERE k.key = v.id
-                 )
-               LIMIT 100"#,
-            vec = self.config.vector_table,
-            kv = self.config.kv_table,
-        );
+        let chunk_embeddings_exist: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='chunk_embeddings')"
+        )
+        .fetch_one(self.pool.as_ref())
+        .await
+        .unwrap_or(false);
+
+        if chunk_embeddings_exist {
+            let sql = r#"
+                SELECT ce.chunk_id::text
+                FROM public.chunk_embeddings ce
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM public.chunks c WHERE c.id = ce.chunk_id
+                )
+                LIMIT 100
+            "#;
+            match sqlx::query_scalar::<_, String>(sql)
+                .fetch_all(self.pool.as_ref())
+                .await
+            {
+                Ok(ids) if !ids.is_empty() => {
+                    let severity = if ids.len() >= 100 {
+                        Severity::Critical
+                    } else {
+                        Severity::Warning
+                    };
+                    report.add_violation(InvariantViolation {
+                        invariant_id: "INV-01".to_string(),
+                        severity,
+                        description: format!(
+                            "{} orphaned chunk_embeddings row(s) (no public.chunks row)",
+                            ids.len()
+                        ),
+                        count: ids.len(),
+                        sample_ids: ids.into_iter().take(5).collect(),
+                    });
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    warn!(error = %e, "INV-01: chunk_embeddings query failed");
+                    report.add_schema_issue(SchemaDriftIssue {
+                        check_name: "inv01_chunk_embeddings_query".to_string(),
+                        severity: Severity::Warning,
+                        description: format!("INV-01 chunk_embeddings query failed: {e}"),
+                        details: None,
+                    });
+                }
+            }
+            return;
+        }
 
         let vec_exists: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1)"
@@ -624,8 +783,102 @@ impl StorageInspector {
         .unwrap_or(false);
 
         if !vec_exists {
+            report.add_schema_issue(SchemaDriftIssue {
+                check_name: "inv01_no_vector_ssot".to_string(),
+                severity: Severity::Warning,
+                description: "No chunk_embeddings or legacy vector table — cannot evaluate INV-01"
+                    .to_string(),
+                details: Some(format!(
+                    "Looked for public.chunk_embeddings and public.{}",
+                    self.config.vector_table
+                )),
+            });
             return;
         }
+
+        let kv_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1)"
+        )
+        .bind(&self.config.kv_table)
+        .fetch_one(self.pool.as_ref())
+        .await
+        .unwrap_or(false);
+
+        let vec = match require_safe_sql_ident(&self.config.vector_table) {
+            Ok(v) => v,
+            Err(e) => {
+                report.add_schema_issue(SchemaDriftIssue {
+                    check_name: "inv01_unsafe_vector_ident".to_string(),
+                    severity: Severity::Critical,
+                    description: e,
+                    details: None,
+                });
+                return;
+            }
+        };
+        let kv = if kv_exists {
+            match require_safe_sql_ident(&self.config.kv_table) {
+                Ok(k) => Some(k.to_string()),
+                Err(e) => {
+                    report.add_schema_issue(SchemaDriftIssue {
+                        check_name: "inv01_unsafe_kv_ident".to_string(),
+                        severity: Severity::Critical,
+                        description: e,
+                        details: None,
+                    });
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+
+        // Prefer typed document_id column when present (A+ join key); else id/split_part.
+        let has_document_id: bool = sqlx::query_scalar(
+            "SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name=$1 AND column_name='document_id'
+            )",
+        )
+        .bind(&self.config.vector_table)
+        .fetch_one(self.pool.as_ref())
+        .await
+        .unwrap_or(false);
+
+        let chunk_match = if has_document_id {
+            r#"EXISTS (
+                 SELECT 1 FROM public.chunks c
+                 WHERE c.id::text = v.id
+                    OR (v.document_id IS NOT NULL AND c.document_id::text = v.document_id::text)
+                    OR c.document_id::text = split_part(v.id, '-chunk-', 1)
+               )"#
+        } else {
+            r#"EXISTS (
+                 SELECT 1 FROM public.chunks c
+                 WHERE c.id::text = v.id
+                    OR c.document_id::text = split_part(v.id, '-chunk-', 1)
+               )"#
+        };
+
+        // Legacy: chunk-typed vectors without chunks coverage; if KV exists also require no KV key.
+        let sql = if let Some(ref kv) = kv {
+            format!(
+                r#"SELECT v.id
+                   FROM {vec} v
+                   WHERE v.metadata->>'type' = 'chunk'
+                     AND NOT ({chunk_match})
+                     AND NOT EXISTS (SELECT 1 FROM {kv} k WHERE k.key = v.id)
+                   LIMIT 100"#
+            )
+        } else {
+            format!(
+                r#"SELECT v.id
+                   FROM {vec} v
+                   WHERE v.metadata->>'type' = 'chunk'
+                     AND NOT ({chunk_match})
+                   LIMIT 100"#
+            )
+        };
 
         match sqlx::query_scalar::<_, String>(&sql)
             .fetch_all(self.pool.as_ref())
@@ -640,28 +893,51 @@ impl StorageInspector {
                 report.add_violation(InvariantViolation {
                     invariant_id: "INV-01".to_string(),
                     severity,
-                    description: format!("{} orphaned chunk vectors (no KV entry)", ids.len()),
+                    description: format!(
+                        "{} orphaned legacy chunk vectors (no public.chunks coverage)",
+                        ids.len()
+                    ),
                     count: ids.len(),
                     sample_ids: ids.into_iter().take(5).collect(),
                 });
             }
-            _ => {}
+            Ok(_) => {}
+            Err(e) => {
+                warn!(error = %e, "INV-01: legacy vector query failed");
+                report.add_schema_issue(SchemaDriftIssue {
+                    check_name: "inv01_legacy_vector_query".to_string(),
+                    severity: Severity::Warning,
+                    description: format!("INV-01 legacy vector query failed: {e}"),
+                    details: None,
+                });
+            }
         }
     }
 
-    /// INV-03: Every indexed document has ≥1 KV chunk.
+    /// INV-03: Indexed documents must prove chunk text via `public.chunks` **or**
+    /// legacy KV `{id}-chunk-%` when the KV table still exists (SPEC-104 harden / EC-16).
+    ///
+    /// Fires only when **neither** store proves presence — never false-positive on
+    /// KV-era healthy docs, never silent after mig 125.
     async fn check_inv03_indexed_docs_without_chunks(&self, report: &mut InspectorReport) {
-        let sql = format!(
-            r#"SELECT d.id::text
-               FROM public.documents d
-               WHERE d.status = 'indexed'
-                 AND NOT EXISTS (
-                     SELECT 1 FROM {kv} k
-                     WHERE k.key LIKE d.id::text || '-chunk-%'
-                 )
-               LIMIT 20"#,
-            kv = self.config.kv_table,
-        );
+        let chunks_exist: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='chunks')"
+        )
+        .fetch_one(self.pool.as_ref())
+        .await
+        .unwrap_or(false);
+
+        if !chunks_exist {
+            report.add_schema_issue(SchemaDriftIssue {
+                check_name: "inv03_chunks_table".to_string(),
+                severity: Severity::Critical,
+                description: "public.chunks missing — cannot evaluate INV-03".to_string(),
+                details: Some(
+                    "Run pending migrations (chunks since mig 002 / SPEC-091)".to_string(),
+                ),
+            });
+            return;
+        }
 
         let kv_exists: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1)"
@@ -671,9 +947,46 @@ impl StorageInspector {
         .await
         .unwrap_or(false);
 
-        if !kv_exists {
-            return;
-        }
+        let sql = if kv_exists {
+            let kv = match require_safe_sql_ident(&self.config.kv_table) {
+                Ok(k) => k,
+                Err(e) => {
+                    report.add_schema_issue(SchemaDriftIssue {
+                        check_name: "inv03_unsafe_kv_ident".to_string(),
+                        severity: Severity::Critical,
+                        description: e,
+                        details: None,
+                    });
+                    return;
+                }
+            };
+            format!(
+                r#"
+                SELECT d.id::text
+                FROM public.documents d
+                WHERE d.status = 'indexed'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM public.chunks c WHERE c.document_id = d.id
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM {kv} k
+                      WHERE k.key LIKE d.id::text || '-chunk-%'
+                  )
+                LIMIT 20
+                "#
+            )
+        } else {
+            r#"
+                SELECT d.id::text
+                FROM public.documents d
+                WHERE d.status = 'indexed'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM public.chunks c WHERE c.document_id = d.id
+                  )
+                LIMIT 20
+            "#
+            .to_string()
+        };
 
         match sqlx::query_scalar::<_, String>(&sql)
             .fetch_all(self.pool.as_ref())
@@ -689,14 +1002,23 @@ impl StorageInspector {
                     invariant_id: "INV-03".to_string(),
                     severity,
                     description: format!(
-                        "{} indexed documents have no KV chunks (SAGA failure?)",
+                        "{} indexed documents have no public.chunks and no KV chunk keys (SAGA failure?)",
                         ids.len()
                     ),
                     count: ids.len(),
                     sample_ids: ids.into_iter().take(5).collect(),
                 });
             }
-            _ => {}
+            Ok(_) => {}
+            Err(e) => {
+                warn!(error = %e, "INV-03: query failed");
+                report.add_schema_issue(SchemaDriftIssue {
+                    check_name: "inv03_query".to_string(),
+                    severity: Severity::Warning,
+                    description: format!("INV-03 query failed: {e}"),
+                    details: None,
+                });
+            }
         }
     }
 
@@ -1162,11 +1484,14 @@ impl StorageInspector {
 
     /// INV-D2 (SPEC-021 P-B3): orphan workspace tables.
     ///
-    /// WHY: each workspace creates `eq_<workspace>_kv` and `eq_<workspace>_vectors`
+    /// WHY: each workspace may create `eq_<workspace>_kv` and `eq_<workspace>_vectors`
     /// tables. When a workspace is deleted from `workspaces`, its storage tables
     /// are NOT dropped (no cascade), leaving orphan tables that consume disk and
     /// confuse the inspector's per-workspace checks. We list storage tables
     /// whose workspace id has no row in `workspaces`.
+    ///
+    /// SPEC-104: PK column is `workspace_id` (never `id`). Fail-visible on SQL
+    /// errors (LAW-I2). Only UUID-shaped table names are probed (EC-01..03).
     async fn check_inv_d2_orphan_workspace_tables(&self, report: &mut InspectorReport) {
         let sql = r#"
             SELECT table_name
@@ -1182,6 +1507,12 @@ impl StorageInspector {
             Ok(t) => t,
             Err(e) => {
                 warn!(error = %e, "INV-D2: failed to list workspace tables");
+                report.add_schema_issue(SchemaDriftIssue {
+                    check_name: "inv_d2_list_tables".to_string(),
+                    severity: Severity::Warning,
+                    description: format!("INV-D2 failed to list workspace tables: {e}"),
+                    details: None,
+                });
                 return;
             }
         };
@@ -1189,24 +1520,42 @@ impl StorageInspector {
             return;
         }
 
-        // Extract the workspace id from `eq_<uuid>_kv|vectors`.
         let mut orphans = Vec::new();
+        let mut probe_errors = 0usize;
         for table in &tables {
-            let parts: Vec<&str> = table.splitn(3, '_').collect();
-            // parts: ["eq", "<uuid>", "kv"/"vectors"]
-            if parts.len() < 3 {
+            let Some(ws_id) = extract_uuid_workspace_id_from_storage_table(table) else {
                 continue;
+            };
+            match sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS (SELECT 1 FROM workspaces WHERE workspace_id::text = $1)",
+            )
+            .bind(ws_id)
+            .fetch_one(self.pool.as_ref())
+            .await
+            {
+                Ok(false) => orphans.push(table.clone()),
+                Ok(true) => {}
+                Err(e) => {
+                    probe_errors += 1;
+                    warn!(
+                        error = %e,
+                        table = %table,
+                        workspace_id = %ws_id,
+                        "INV-D2: workspace existence probe failed"
+                    );
+                }
             }
-            let ws_id = parts[1];
-            let exists: bool =
-                sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM workspaces WHERE id::text = $1)")
-                    .bind(ws_id)
-                    .fetch_one(self.pool.as_ref())
-                    .await
-                    .unwrap_or(true); // on error, assume exists (avoid false positive)
-            if !exists {
-                orphans.push(table.clone());
-            }
+        }
+
+        if probe_errors > 0 {
+            report.add_schema_issue(SchemaDriftIssue {
+                check_name: "inv_d2_workspace_probe".to_string(),
+                severity: Severity::Warning,
+                description: format!(
+                    "INV-D2: {probe_errors} workspace existence probe(s) failed (see logs)"
+                ),
+                details: None,
+            });
         }
 
         if !orphans.is_empty() {
@@ -1226,10 +1575,21 @@ impl StorageInspector {
     fn build_repair_recommendations(&self, report: &mut InspectorReport) {
         for violation in &report.invariant_violations {
             let repair = match violation.invariant_id.as_str() {
-                "INV-01" => Some(RepairAction::DeleteOrphanedVectors {
-                    count: violation.count,
-                    ids: violation.sample_ids.clone(),
-                }),
+                "INV-01" => {
+                    if violation.description.contains("chunk_embeddings") {
+                        Some(RepairAction::LogOnly {
+                            message: format!(
+                                "INV-01: {} orphaned chunk_embeddings — repair via typed backfill/delete, not legacy vector DELETE",
+                                violation.count
+                            ),
+                        })
+                    } else {
+                        Some(RepairAction::DeleteOrphanedVectors {
+                            count: violation.count,
+                            ids: violation.sample_ids.clone(),
+                        })
+                    }
+                }
                 "INV-D" => Some(RepairAction::DeleteOrphanedVectors {
                     count: violation.count,
                     ids: violation.sample_ids.clone(),
@@ -1365,5 +1725,79 @@ impl StorageInspector {
                 Ok(false)
             }
         }
+    }
+}
+
+/// Extract a UUID workspace id from `eq_<uuid>_kv` / `eq_<uuid>_vectors`.
+///
+/// Non-UUID namespaces (e.g. `eq_custom_kv`) return `None` so INV-D2 does not
+/// probe them (SPEC-104 EC-01..03).
+pub(crate) fn extract_uuid_workspace_id_from_storage_table(table: &str) -> Option<&str> {
+    let rest = table.strip_prefix("eq_")?;
+    let id_part = rest
+        .strip_suffix("_vectors")
+        .or_else(|| rest.strip_suffix("_kv"))?;
+    if uuid::Uuid::parse_str(id_part).is_ok() {
+        Some(id_part)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod spec104_tests {
+    use super::*;
+
+    #[test]
+    fn e2e_104_02_default_graph_matches_storage_naming() {
+        let cfg = InspectorConfig::default();
+        assert_eq!(cfg.graph_name, "eq_eq_default_graph");
+        assert_eq!(cfg.kv_table, "eq_eq_default_kv");
+        assert_eq!(cfg.vector_table, "eq_eq_default_vectors");
+        assert_ne!(cfg.graph_name, "edgequake");
+    }
+
+    #[test]
+    fn e2e_104_02_for_namespace_sanitizes_like_postgres_config() {
+        let cfg = InspectorConfig::for_namespace("my-ws");
+        let storage = edgequake_storage::PostgresConfig {
+            namespace: "my-ws".into(),
+            ..Default::default()
+        };
+        assert_eq!(cfg.graph_name, storage.age_graph_name());
+        assert_eq!(cfg.kv_table, storage.bare_kv_table());
+        assert_eq!(cfg.vector_table, storage.bare_vectors_table());
+        assert_eq!(storage.table_prefix(), "eq_my_ws");
+    }
+
+    #[test]
+    fn e2e_104_01_extract_uuid_workspace_table() {
+        let id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let tbl = format!("eq_{id}_kv");
+        assert_eq!(extract_uuid_workspace_id_from_storage_table(&tbl), Some(id));
+        assert_eq!(
+            extract_uuid_workspace_id_from_storage_table(&format!("eq_{id}_vectors")),
+            Some(id)
+        );
+        assert_eq!(
+            extract_uuid_workspace_id_from_storage_table("eq_eq_default_kv"),
+            None
+        );
+        assert_eq!(
+            extract_uuid_workspace_id_from_storage_table("eq_customns_kv"),
+            None
+        );
+    }
+
+    #[test]
+    fn require_safe_sql_ident_allowlist() {
+        assert_eq!(
+            require_safe_sql_ident("eq_eq_default_kv").unwrap(),
+            "eq_eq_default_kv"
+        );
+        assert!(require_safe_sql_ident("").is_err());
+        assert!(require_safe_sql_ident("eq;drop").is_err());
+        assert!(require_safe_sql_ident("1bad").is_err());
+        assert!(require_safe_sql_ident("eq-default").is_err());
     }
 }

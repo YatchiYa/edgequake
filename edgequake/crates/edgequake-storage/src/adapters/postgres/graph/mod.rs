@@ -110,7 +110,7 @@ impl PostgresAGEGraphStorage {
     /// Create graph storage using a shared connection pool (SPEC-011).
     pub fn with_pool(pool: PostgresPool, config: PostgresConfig) -> Self {
         let prefix = config.table_prefix();
-        let graph_name = format!("eq_{}_graph", prefix);
+        let graph_name = config.age_graph_name();
         let namespace = config.namespace.clone();
 
         Self {

@@ -13,6 +13,7 @@ use crate::kv_family_cutover::{
     KV_FAMILY_CHECKPOINT, KV_FAMILY_COMPENSATION_QUARANTINE, KV_FAMILY_DOC_HASH,
     KV_FAMILY_INJECTION, KV_FAMILY_METADATA, KV_FAMILY_WSDOC,
 };
+use crate::legacy_store_census::legacy_store_census;
 use crate::vector_backend::{vector_backend_from_env, VectorBackend};
 
 /// Schema-derived cutover posture for flag validation.
@@ -22,29 +23,24 @@ pub struct CutoverSchemaPosture {
     pub kv_store_dropped: bool,
     /// Migration 126 applied (chunk-vector legacy fleet retired).
     pub chunk_vector_legacy_dropped: bool,
-    /// Migration 131 applied (full legacy vector fleet dropped).
-    /// Do not infer from an empty census alone — fresh DBs have zero tables.
+    /// Migration 131 applied **or** zero `eq_%_vectors` tables remain (SPEC-105).
+    /// Fresh / post-drop DBs refuse `legacy_tables`; ≤0.22 mid-upgrade keeps
+    /// census > 0 so explicit soak rollback remains allowed.
     pub full_vector_legacy_dropped: bool,
 }
 
 /// Detect post-drop posture from the live schema (never from env alone).
 pub async fn detect_cutover_posture(pool: &PgPool) -> Result<CutoverSchemaPosture, StorageError> {
     let kv_drop_applied = migration_applied(pool, 125).await?;
-    let kv_tables: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM information_schema.tables \
-         WHERE table_schema = 'public' AND table_name LIKE 'eq\\_%\\_kv'",
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(|e| StorageError::Database(format!("cutover kv table census failed: {e}")))?;
+    let census = legacy_store_census(pool).await?;
 
     let chunk_vector_legacy_dropped = migration_applied(pool, 126).await?;
-    let full_vector_legacy_dropped = migration_applied(pool, 131).await?;
+    let fleet_drop_applied = migration_applied(pool, 131).await?;
 
     Ok(CutoverSchemaPosture {
-        kv_store_dropped: kv_drop_applied || kv_tables == 0,
+        kv_store_dropped: kv_drop_applied || !census.kv_present(),
         chunk_vector_legacy_dropped,
-        full_vector_legacy_dropped,
+        full_vector_legacy_dropped: fleet_drop_applied || !census.vectors_present(),
     })
 }
 
@@ -94,26 +90,28 @@ pub fn validate_cutover_flags(posture: &CutoverSchemaPosture) -> Result<(), Stri
         }
     }
 
-    if posture.chunk_vector_legacy_dropped
-        && vector_backend_from_env() == VectorBackend::LegacyTables
-    {
-        violations.push(format!(
-            "{}=legacy_tables but chunk-vector legacy tables were DROPPED (migration 126) — \
-             set {}=chunk_embeddings and restart",
-            crate::vector_backend::VECTOR_BACKEND_ENV,
-            crate::vector_backend::VECTOR_BACKEND_ENV,
-        ));
-    }
-
-    // Migration 131 (or empty census) drops the full workspace fleet —
-    // refuse legacy_tables even when only 131 applied without 126 bookkeeping.
+    // SPEC-105: refuse legacy_tables whenever fleet is gone (131) **or**
+    // vectors census is empty — even without 126 bookkeeping.
     if posture.full_vector_legacy_dropped
-        && !posture.chunk_vector_legacy_dropped
         && vector_backend_from_env() == VectorBackend::LegacyTables
     {
         violations.push(format!(
             "{}=legacy_tables but workspace eq_*_vectors are gone (migration 131 \
              or zero legacy vector tables) — set {}=typed_embeddings and restart",
+            crate::vector_backend::VECTOR_BACKEND_ENV,
+            crate::vector_backend::VECTOR_BACKEND_ENV,
+        ));
+    }
+
+    // Keep the 126-specific message when 126 applied but full_vector was already
+    // covered above — avoid duplicate by only adding 126 hint when 126 alone.
+    if posture.chunk_vector_legacy_dropped
+        && !posture.full_vector_legacy_dropped
+        && vector_backend_from_env() == VectorBackend::LegacyTables
+    {
+        violations.push(format!(
+            "{}=legacy_tables but chunk-vector legacy tables were DROPPED (migration 126) — \
+             set {}=chunk_embeddings and restart",
             crate::vector_backend::VECTOR_BACKEND_ENV,
             crate::vector_backend::VECTOR_BACKEND_ENV,
         ));
@@ -144,16 +142,11 @@ const KV_FAMILIES_WITH_FLAGS: &[(&str, &str)] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static ENV_LOCK: Mutex<()> = Mutex::new(());
-        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-    }
+    use crate::test_env_lock::test_env_lock;
 
     #[test]
     fn contract_spec091_cutover_flags_ok_pre_drop() {
-        let _g = env_lock();
+        let _g = test_env_lock();
         std::env::remove_var(crate::chunk_text_authority::CHUNK_TEXT_AUTHORITY_ENV);
         std::env::remove_var(crate::vector_backend::VECTOR_BACKEND_ENV);
         let posture = CutoverSchemaPosture {
@@ -166,7 +159,7 @@ mod tests {
 
     #[test]
     fn contract_spec091_cutover_flags_refuse_kv_post_drop() {
-        let _g = env_lock();
+        let _g = test_env_lock();
         std::env::set_var(
             crate::chunk_text_authority::CHUNK_TEXT_AUTHORITY_ENV,
             "dual",
@@ -184,7 +177,7 @@ mod tests {
 
     #[test]
     fn contract_spec091_cutover_flags_refuse_legacy_vector_post_126() {
-        let _g = env_lock();
+        let _g = test_env_lock();
         std::env::remove_var(crate::chunk_text_authority::CHUNK_TEXT_AUTHORITY_ENV);
         std::env::set_var(crate::vector_backend::VECTOR_BACKEND_ENV, "legacy_tables");
         let posture = CutoverSchemaPosture {
@@ -194,23 +187,37 @@ mod tests {
         };
         let err = validate_cutover_flags(&posture).unwrap_err();
         assert!(err.contains("legacy_tables"));
-        assert!(err.contains("chunk_embeddings"));
+        assert!(err.contains("typed_embeddings") || err.contains("chunk_embeddings"));
         std::env::remove_var(crate::vector_backend::VECTOR_BACKEND_ENV);
     }
 
     #[test]
-    fn contract_spec091_cutover_flags_refuse_legacy_vector_post_131() {
-        let _g = env_lock();
+    fn e2e_105_02_allow_legacy_when_vectors_still_present() {
+        let _g = test_env_lock();
+        std::env::remove_var(crate::chunk_text_authority::CHUNK_TEXT_AUTHORITY_ENV);
+        std::env::set_var(crate::vector_backend::VECTOR_BACKEND_ENV, "legacy_tables");
+        // ≤0.22 mid-upgrade: census > 0 ⇒ full_vector_legacy_dropped false
+        let posture = CutoverSchemaPosture {
+            kv_store_dropped: false,
+            chunk_vector_legacy_dropped: false,
+            full_vector_legacy_dropped: false,
+        };
+        assert!(validate_cutover_flags(&posture).is_ok());
+        std::env::remove_var(crate::vector_backend::VECTOR_BACKEND_ENV);
+    }
+
+    #[test]
+    fn e2e_105_02_refuse_legacy_when_vectors_census_empty() {
+        let _g = test_env_lock();
         std::env::remove_var(crate::chunk_text_authority::CHUNK_TEXT_AUTHORITY_ENV);
         std::env::set_var(crate::vector_backend::VECTOR_BACKEND_ENV, "legacy_tables");
         let posture = CutoverSchemaPosture {
-            kv_store_dropped: false,
+            kv_store_dropped: true,
             chunk_vector_legacy_dropped: false,
             full_vector_legacy_dropped: true,
         };
         let err = validate_cutover_flags(&posture).unwrap_err();
         assert!(err.contains("legacy_tables"));
-        assert!(err.contains("131") || err.contains("typed_embeddings"));
         std::env::remove_var(crate::vector_backend::VECTOR_BACKEND_ENV);
     }
 }

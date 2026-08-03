@@ -48,3 +48,7 @@ cargo test -p edgequake-api --test contract_spec089_list_reconcile_after_page
 cargo test -p edgequake-api --features postgres --test e2e_spec089_list_page_reconcile
 cargo test -p edgequake-api --features postgres --test e2e_spec089_phase4
 ```
+
+## Related residuals
+
+- **SPEC-104 #5** ([`../104-fix-datalayer/07-issue-05-node-counts-timeout.md`](../104-fix-datalayer/07-issue-05-node-counts-timeout.md)): naming/`edgequake."Node"` is closed; GIN observability is closed. **57014 with GIN present** remains a measurement-gated capacity residual for this spec (do not raise `statement_timeout` without EXPLAIN proof).

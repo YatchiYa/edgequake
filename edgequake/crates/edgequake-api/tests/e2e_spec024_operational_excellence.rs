@@ -74,7 +74,7 @@ async fn spec024_health_exposes_operational_snapshot() {
         .expect("health must include read_model snapshot (Phase 4.6)");
     assert_eq!(
         read_model["merge_strategy"].as_str(),
-        Some("max(postgresql, kv)")
+        Some("relational_primary_kv_fallback")
     );
     assert_eq!(
         read_model["entity_count_graph_reconcile"].as_bool(),
@@ -122,9 +122,10 @@ async fn spec024_health_exposes_operational_snapshot() {
     let storage = operational
         .get("storage")
         .expect("health must include storage snapshot (pass 12)");
-    assert_eq!(storage["chunk_text_ssot"].as_str(), Some("kv"));
+    // SPEC-105 / SPEC-091: default authority is relational (typed chunks SSOT).
+    assert_eq!(storage["chunk_text_ssot"].as_str(), Some("relational"));
     assert_eq!(storage["vector_metadata_ref"].as_str(), Some("content_ref"));
-    assert_eq!(storage["chunk_kv_in_persister"].as_bool(), Some(true));
+    assert_eq!(storage["chunk_kv_in_persister"].as_bool(), Some(false));
 
     let task_queue = operational.get("task_queue").expect("task_queue");
     assert_eq!(task_queue["pressure"].as_str(), Some("normal"));

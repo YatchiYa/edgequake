@@ -146,12 +146,21 @@ impl WorkspaceService for InMemoryWorkspaceService {
     async fn create_tenant(&self, tenant: Tenant) -> Result<Tenant> {
         let mut tenants = self.tenants.write().await;
 
-        // Check slug uniqueness
-        if tenants.values().any(|t| t.slug == tenant.slug) {
-            return Err(Error::validation(format!(
-                "Tenant with slug '{}' already exists",
-                tenant.slug
-            )));
+        // SPEC-104 A+: same natural-key policy as PostgreSQL path (LAW-I3 / EC-11).
+        // Same slug + same name → idempotent get-or-create; different name → Conflict.
+        if let Some(existing) = tenants.values().find(|t| t.slug == tenant.slug).cloned() {
+            if existing.name.trim() != tenant.name.trim() {
+                return Err(Error::conflict(format!(
+                    "Tenant slug '{}' already exists (tenant_id={})",
+                    existing.slug, existing.tenant_id
+                )));
+            }
+            tracing::info!(
+                tenant_id = %existing.tenant_id,
+                slug = %existing.slug,
+                "Tenant slug already existed — returning existing (SPEC-104)"
+            );
+            return Ok(existing);
         }
 
         tenants.insert(tenant.tenant_id, tenant.clone());

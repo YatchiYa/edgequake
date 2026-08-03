@@ -95,6 +95,8 @@ pub mod graph_batch_dedupe;
 pub mod graph_metrics;
 pub mod kv_family_cutover;
 pub mod kv_key_schema;
+#[cfg(feature = "postgres")]
+pub mod legacy_store_census;
 pub mod metadata_filter_sql;
 pub mod mm_asset_storage;
 pub mod original_storage;
@@ -108,6 +110,9 @@ pub mod storage_op_metrics;
 pub mod traits;
 pub mod vector_backend;
 pub mod vector_id;
+
+#[cfg(test)]
+pub(crate) mod test_env_lock;
 
 pub use vector_backend::{
     legacy_vector_writes_stopped, vector_backend_from_env, vector_backend_reads_typed,
@@ -199,6 +204,10 @@ pub use conversation_types::{ConversationRow, FolderRow, MessageRow};
 #[cfg(feature = "postgres")]
 pub use cutover_flag_guard::{
     detect_cutover_posture, validate_cutover_flags, CutoverSchemaPosture,
+};
+#[cfg(feature = "postgres")]
+pub use legacy_store_census::{
+    any_legacy_rows, legacy_store_census, LegacyStoreCensus,
 };
 pub use error::StorageError;
 pub use kv_family_cutover::{

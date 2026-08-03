@@ -827,14 +827,49 @@ pub const BOOT_GATE_REFUSAL_PREFIX: &str = "BOOT_GATE_REFUSAL:";
 /// SPEC-091 irreversible drop versions (LD-07) — human-gated behind `--confirm-drop`.
 pub const IRREVERSIBLE_DROP_VERSIONS: &[i64] = &[125, 126, 131];
 
+/// SPEC-105 LAW-L5 — post-drop empty-residue assert (expandable, but deferred
+/// while durable `eq_*` rows remain so ≤0.22 mid-upgrade `migrate` / boot stay unblocked).
+pub const LEGACY_CUTOVER_ASSERT_VERSION: i64 = 142;
+
 /// True when `version` is an irreversible SPEC-091 drop migration.
 pub fn is_irreversible_drop(version: i64) -> bool {
     IRREVERSIBLE_DROP_VERSIONS.contains(&version)
 }
 
+/// True when `version` is the SPEC-105 legacy cutover assert migration.
+pub fn is_legacy_cutover_assert(version: i64) -> bool {
+    version == LEGACY_CUTOVER_ASSERT_VERSION
+}
+
 /// True when every pending version is an irreversible drop (no expandable drift).
 pub fn pending_only_irreversible_drops(pending: &[i64]) -> bool {
     !pending.is_empty() && pending.iter().copied().all(is_irreversible_drop)
+}
+
+/// Serve / soft-exit migrate when only DROP OLD (and optionally deferred 142) remain.
+///
+/// LAW-L5: while legacy rows exist, 142 must not block expandable migrate or boot.
+pub fn pending_ok_to_serve(pending: &[i64], defer_legacy_cutover_assert: bool) -> bool {
+    !pending.is_empty()
+        && pending.iter().copied().all(|v| {
+            is_irreversible_drop(v)
+                || (defer_legacy_cutover_assert && is_legacy_cutover_assert(v))
+        })
+}
+
+/// Expandable apply set: omit irreversible drops; omit 142 when deferred by residue.
+pub fn expandable_apply_versions(pending: &[i64], defer_legacy_cutover_assert: bool) -> Vec<i64> {
+    pending
+        .iter()
+        .copied()
+        .filter(|v| include_in_expandable_apply(*v, defer_legacy_cutover_assert))
+        .collect()
+}
+
+/// True when an embedded migration should run under ExpandableOnly.
+pub fn include_in_expandable_apply(version: i64, defer_legacy_cutover_assert: bool) -> bool {
+    !(is_irreversible_drop(version)
+        || (defer_legacy_cutover_assert && is_legacy_cutover_assert(version)))
 }
 
 /// Highest pending expandable version strictly below the lowest pending irreversible.
@@ -994,7 +1029,9 @@ pub async fn is_fresh_database(pool: &PgPool) -> Result<bool, sqlx::Error> {
 /// newer than the binary ⇒ refuse (downgrade protection). Pending **only**
 /// irreversible drops (125/126/131) soft-allow with WARN so local upgrade DBs
 /// can serve on typed defaults while the human-gated drop stays operator-owned.
-/// Only `edgequake migrate` (CLI mode) may proceed to apply.
+/// SPEC-105: pending 142 is soft-allowed while durable legacy rows remain
+/// (deferred assert — LAW-L5 ladder). Only `edgequake migrate` (CLI mode) may
+/// proceed to apply.
 pub async fn bootstrap_for_serving(pool: &PgPool) -> Result<MigrationBootstrapReport, sqlx::Error> {
     warn_if_removed_boot_flag_set();
     if !migrate_cli_mode() {
@@ -1019,15 +1056,20 @@ pub async fn bootstrap_for_serving(pool: &PgPool) -> Result<MigrationBootstrapRe
             .map(|m| m.version)
             .collect();
         if !pending.is_empty() {
-            if pending_only_irreversible_drops(&pending) {
+            let defer_142 = edgequake_storage::any_legacy_rows(pool)
+                .await
+                .map_err(|e| sqlx::Error::Protocol(format!("legacy census for boot gate: {e}")))?;
+            if pending_ok_to_serve(&pending, defer_142) {
                 tracing::warn!(
                     target: "edgequake.migration",
                     pending = ?pending,
+                    defer_legacy_cutover_assert = defer_142,
                     "OK TO SERVE — SAFE SCHEMA is complete; only optional DROP OLD \
-                     migration(s) {pending:?} remain. They delete legacy tables after \
-                     data copy is verified. Do NOT --confirm-drop while readiness is RED. \
-                     Preview: edgequake migrate dry-run. Apply when GREEN: \
-                     edgequake migrate --confirm-drop"
+                     and/or deferred SPEC-105 assert (142) remain. They delete or \
+                     assert legacy tables after data copy is verified. Do NOT \
+                     --confirm-drop while readiness is RED. Preview: edgequake \
+                     migrate dry-run. Apply drops when GREEN: edgequake migrate \
+                     --confirm-drop (then 142 on next expandable migrate)."
                 );
             } else {
                 return Err(sqlx::Error::Protocol(boot_gate_pending_message(&pending)));
@@ -1103,6 +1145,9 @@ async fn run_postgres_migrations_inner(
     );
 
     let applied_before = fetch_applied_versions(pool).await?;
+    let defer_legacy_cutover_assert = edgequake_storage::any_legacy_rows(pool)
+        .await
+        .map_err(|e| sqlx::Error::Protocol(format!("legacy census for migrate filter: {e}")))?;
     let pending: Vec<_> = MIGRATOR
         .migrations
         .iter()
@@ -1110,13 +1155,15 @@ async fn run_postgres_migrations_inner(
         .filter(|m| match mode {
             MigrationApplyMode::All => true,
             MigrationApplyMode::Through(cap) => m.version <= cap,
-            MigrationApplyMode::ExpandableOnly => !is_irreversible_drop(m.version),
+            MigrationApplyMode::ExpandableOnly => {
+                include_in_expandable_apply(m.version, defer_legacy_cutover_assert)
+            }
         })
         .collect();
 
     // Defense-in-depth (LAW-B1): serving never applies versioned SQL.
-    // Expandable pending ⇒ refuse. Irreversible-only pending ⇒ soft-allow
-    // (reconcile-only; drop stays operator-gated).
+    // Expandable pending ⇒ refuse. Irreversible-only (and deferred 142) pending
+    // ⇒ soft-allow (reconcile-only; drop/assert stay operator-gated).
     if !migrate_cli_mode() {
         let all_pending: Vec<i64> = MIGRATOR
             .migrations
@@ -1124,7 +1171,8 @@ async fn run_postgres_migrations_inner(
             .filter(|m| !applied_before.contains(&m.version))
             .map(|m| m.version)
             .collect();
-        if !all_pending.is_empty() && !pending_only_irreversible_drops(&all_pending) {
+        if !all_pending.is_empty() && !pending_ok_to_serve(&all_pending, defer_legacy_cutover_assert)
+        {
             return Err(sqlx::Error::Protocol(boot_gate_pending_message(
                 &all_pending,
             )));
@@ -1223,17 +1271,19 @@ async fn run_postgres_migrations_inner(
             MigrationApplyMode::ExpandableOnly => {
                 // Omit irreversible drop versions so expandables that sit *after*
                 // a gated DROP (e.g. 132 behind 131) still apply without confirm.
+                // SPEC-105: omit 142 while durable legacy rows remain (LAW-L5).
                 let filtered: Vec<_> = MIGRATOR
                     .migrations
                     .iter()
-                    .filter(|m| !is_irreversible_drop(m.version))
+                    .filter(|m| include_in_expandable_apply(m.version, defer_legacy_cutover_assert))
                     .cloned()
                     .collect();
                 info!(
                     target: "edgequake.migration",
                     step = "sqlx_run",
                     count = pending.len(),
-                    "Applying expandable sqlx migrations (irreversible drops omitted)"
+                    defer_legacy_cutover_assert,
+                    "Applying expandable sqlx migrations (irreversible drops omitted; 142 deferred if residue)"
                 );
                 let partial = sqlx::migrate::Migrator {
                     migrations: std::borrow::Cow::Owned(filtered),
@@ -1857,6 +1907,27 @@ mod tests {
         ];
         assert_eq!(max_expandable_target(&blocked_at_125), None);
         assert_eq!(pending_expandable_versions(&blocked_at_125), vec![128]);
+    }
+
+    #[test]
+    fn e2e_105_07_defer_142_while_legacy_residue() {
+        assert!(is_legacy_cutover_assert(LEGACY_CUTOVER_ASSERT_VERSION));
+        assert!(!is_irreversible_drop(LEGACY_CUTOVER_ASSERT_VERSION));
+
+        // Mid-upgrade: 131 + 142 with residue → OK to serve / soft-exit.
+        assert!(pending_ok_to_serve(&[131, 142], true));
+        // Without residue, 142 is hard expandable — must apply before serve.
+        assert!(!pending_ok_to_serve(&[131, 142], false));
+        assert!(pending_ok_to_serve(&[131], false));
+
+        assert_eq!(
+            expandable_apply_versions(&[131, 132, 142], true),
+            vec![132]
+        );
+        assert_eq!(
+            expandable_apply_versions(&[131, 132, 142], false),
+            vec![132, 142]
+        );
     }
 
     fn noop_migration_042() -> Migration042Report {
