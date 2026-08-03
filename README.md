@@ -5,7 +5,7 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.22.0-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.23.0-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
@@ -69,21 +69,36 @@ EDGEQUAKE_LLM_PROVIDER=ollama \
 curl -s http://localhost:8080/health | python3 -m json.tool
 ```
 
-> Pin a version: `EDGEQUAKE_VERSION=0.22.0 sh quickstart.sh`
+> Pin a version: `EDGEQUAKE_VERSION=0.23.0 sh quickstart.sh`
 
-### What's new in 0.22.0
+### What's new in 0.23.0
 
-- **SPEC-090 performance closeout** — role-split `PgPoolBundle` (query/ingest/queue/admin), optional `DATABASE_READ_URL` for the query pool, and `make spec090-perf-smoke` gates.
-- **`edgequake migrate`** — admin-pool migrate + reconcile with rich console output; serving boot is verify-only (0.22.0 gated it behind `EDGEQUAKE_ALLOW_BOOT_MIGRATE`; **HEAD removes that flag** — boot never applies schema, see LD-15 below).
-- **Schema cutovers** — M104 monthly `tasks` partitions; M105 PDF bytes SSOT in `pdf_document_blobs` (drops `pdf_documents.pdf_data`).
-- **ANN / embedding** — mutual-exclusive hot-workspace HNSW, index-shape manifest check, embedding identity columns on upsert.
+#### Database migration (read this first)
 
-**Upgrade:** run `edgequake migrate dry-run` then `edgequake migrate` (with `DATABASE_URL`) before starting a new binary. **Boot migration gating (SPEC-091 LD-15):** server start never applies schema — a behind/newer database makes boot exit **78** with a dry-run/migrate hint; `make dev` runs the migrate step visibly before the server. See [`specs/091-simplify-data-layer/17-boot-migration-gating.md`](specs/091-simplify-data-layer/17-boot-migration-gating.md).
+**The API never migrates the database.** Schema changes are an explicit operator step.
 
-Also in **0.21.3**: pool-safe `/health` (#336 / SPEC-089). **0.21.2**: dashboard stats N+1 (#334), shared guest (#335). **0.21.1**: SPEC-084 reliability.
+| Situation | What to run |
+|-----------|-------------|
+| **Fresh install** | `edgequake migrate` once, then start the API (`make dev` does this for you) |
+| **Upgrade from v0.22.0** | Backup → `migrate dry-run` → `migrate` → `migrate --confirm-drop` → start API |
+| **Server exits 78** | Schema behind or newer than the binary — run migrate, then restart |
+
+Irreversible drops (**125** KV, **126**/**131** vectors) need `--confirm-drop` and a backup; rollback after that is restore-only.
+
+Full plain-language guide: **[Migrate to v0.23.0](docs/operations/migrate-to-0.23.md)** · production soak: [SPEC-091 upgrade runbook](docs/operations/spec091-upgrade-from-v0.22.0.md).
+
+#### Highlights
+
+- **SPEC-091 relational data-layer cutover** — typed SSOT for chunks/shells/embeddings; migrations **106–141**; `edgequake migrate` / `dry-run` console.
+- **LD-15 boot migration gating** — behind/newer DB → exit **78** with migrate hint; `EDGEQUAKE_ALLOW_BOOT_MIGRATE` removed.
+- **SPEC-094 parse API** — stateless `POST /api/v1/parse` (+ backends + async jobs) for PDF→Markdown without document residue.
+- **SPEC-103 LLM cache** — LightRAG-parity keyword + answer cache (`EDGEQUAKE_LLM_CACHE` default on); Acc pins cache off for fair peers.
+- **Wizard / UX** — SPEC-101 setup wizard; SPEC-099/100 Documents CLS; SPEC-102 custom entity type colors; SPEC-096 multi-language KG extraction.
+
+Also in **0.22.0**: SPEC-090 multi-pool + migrate CLI + M104/M105. **0.21.3**: pool-safe `/health` (#336).
 ### Performance testing
 
-Publish Acc is **medical-mid n=200** (`make bench`) — not smoke n=40. Latest publish pack (`medical-mid-20260802T132630Z`): Acc EQ **0.811** vs LR **0.778** (Δ Acc 95% CI **[+0.001, +0.065]** — Acc point lead; L2 still trails — do **not** claim EQ beats LightRAG / Acc Beat). Fair cold latency ratio **1.02×** (`C1COLD_v1`). Smoke peers remain CI/ablation references only. Required local pre-tag gate: see [Release & CD § SPEC-001](docs/operations/release-and-cd.md#spec-001-lightrag-acc-before-tag).
+Publish Acc is **medical-mid n=200** (`make bench`) — not smoke n=40. Latest publish pack (`medical-mid-20260802T135513Z`): Acc EQ **0.807** vs LR **0.779** (Δ Acc 95% CI **[-0.005, +0.059]** — statistical tie; L2 incomplete — do **not** claim EQ beats LightRAG / Acc Beat). Fair cold latency ratio **1.02×** (`C1COLD_v1`). Smoke peers remain CI/ablation references only. Required local pre-tag gate: see [Release & CD § SPEC-001](docs/operations/release-and-cd.md#spec-001-lightrag-acc-before-tag).
 
 - [EQ vs LightRAG Acc Bench](docs/comparisons/eq-vs-lightrag-acc-bench.md) — measured scorecard
 - [BUSINESS_REPORT.md](specs/001-benchmark/e2e/artifacts/publish/latest/BUSINESS_REPORT.md) — regenerated by `make bench` (n=200)
@@ -296,10 +311,10 @@ docker compose -f docker-compose.prebuilt.yml up -d
 
 ```bash
 # Pin full stack to this release
-EDGEQUAKE_VERSION=0.22.0 docker compose -f docker-compose.quickstart.yml up -d
+EDGEQUAKE_VERSION=0.23.0 docker compose -f docker-compose.quickstart.yml up -d
 
 # Pin PostgreSQL major (optional; default tag follows EDGEQUAKE_VERSION → PG18)
-EDGEQUAKE_VERSION=0.22.0 EDGEQUAKE_POSTGRES_TAG=0.21.0-pg16 \
+EDGEQUAKE_VERSION=0.23.0 EDGEQUAKE_POSTGRES_TAG=0.21.0-pg16 \
   docker compose -f docker-compose.quickstart.yml up -d
 ```
 

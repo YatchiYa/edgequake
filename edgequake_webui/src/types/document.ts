@@ -14,7 +14,9 @@ export interface Document {
     | "partial_failure"
     | "failed"
     | "indexed"
-    | "cancelled";
+    | "cancelled"
+    | "deleting"
+    | "delete_failed";
   error_message?: string;
   /** Structured failure code (e.g. `server_restart_interrupted`). */
   failure_code?: string;

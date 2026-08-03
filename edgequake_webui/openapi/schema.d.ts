@@ -10313,6 +10313,7 @@ export interface components {
          *       "context_truncated": {},
          *       "embedding_time_ms": {},
          *       "generation_time_ms": {},
+         *       "keyword_cache_hit": {},
          *       "keyword_time_ms": {},
          *       "llm_model": {},
          *       "llm_provider": {},
@@ -10327,7 +10328,7 @@ export interface components {
          *     }
          */
         QueryStats: {
-            /** @description True when answer served from product answer cache (064). */
+            /** @description True when answer served from product answer cache (064 / SPEC-103). */
             answer_cache_hit?: boolean;
             /** @description Chunks from the global arm before merge. */
             arm_global_chunks?: number | null;
@@ -10368,6 +10369,8 @@ export interface components {
              * @description Generation time in ms.
              */
             generation_time_ms: number;
+            /** @description True when keywords served from LLM response cache (SPEC-103). */
+            keyword_cache_hit?: boolean;
             /**
              * Format: int64
              * @description Keyword extraction time in ms (059 C1b stage honesty).
@@ -10465,6 +10468,7 @@ export interface components {
          *       "context_truncated": {},
          *       "embedding_time_ms": {},
          *       "generation_time_ms": {},
+         *       "keyword_cache_hit": {},
          *       "keyword_time_ms": {},
          *       "llm_model": {},
          *       "llm_provider": {},
@@ -10508,6 +10512,8 @@ export interface components {
              * @description Generation time in ms.
              */
             generation_time_ms: number;
+            /** @description True when keywords served from LLM response cache (SPEC-103). */
+            keyword_cache_hit?: boolean;
             /**
              * Format: int64
              * @description Keyword extraction time in ms.

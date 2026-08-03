@@ -4,7 +4,7 @@ title: 'EdgeQuake Documentation'
 
 # EdgeQuake Documentation
 
-> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
 
 High-performance Graph-Enhanced RAG in Rust. PostgreSQL (pgvector + Apache AGE) is required for all server modes. Auth is enabled by default unless `EDGEQUAKE_DEV_MODE=true` or `AUTH_ENABLED=false`.
 
@@ -105,7 +105,7 @@ High-performance Graph-Enhanced RAG in Rust. PostgreSQL (pgvector + Apache AGE) 
 | [SDK index](sdks/README.md) | Python, TypeScript, Rust, Go, Java, Kotlin, Swift, C#, Ruby, PHP |
 | [Brutal SDK assessment](sdks/BRUTAL-ASSESSMENT.md) | Parity gaps and tiering (honest) |
 
-SDK packages are independently versioned (typically **0.4.0**) and are **not** the same number as the product release (**0.19.0**).
+SDK packages are independently versioned (typically **0.4.0**) and are **not** the same number as the product release (**0.23.0**).
 
 ### API Reference
 
@@ -135,6 +135,7 @@ SDK packages are independently versioned (typically **0.4.0**) and are **not** t
 | [Configuration](operations/configuration.md)                     | Env vars and model catalog               |
 | [Runtime auth hardening](operations/runtime-auth-hardening.md)   | Auth-on-by-default, bootstrap admin      |
 | [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)  | SPEC-057 claim/lease, cancel, replicas   |
+| [Migrate to v0.23.0](operations/migrate-to-0.23.md)              | Schema migrate: fresh install vs upgrade |
 | [Release and CD](operations/release-and-cd.md)                   | Tag, GHCR, quality gates                 |
 | [Monitoring](operations/monitoring.md)                           | Health, ready, metrics                   |
 | [Performance Tuning](operations/performance-tuning.md)           | Optimization guide                       |
@@ -142,8 +143,8 @@ SDK packages are independently versioned (typically **0.4.0**) and are **not** t
 | [Operations Overview](operations/index.md)                       | Local and CI/CD operating model          |
 | [Observability](OBSERVABILITY.md)                                | OTEL / tracing                           |
 | [SQLx offline mode](sqlx-offline-mode.md)                        | Offline query metadata                   |
-| [SPEC-083 improvements](083-improvements/README.md)              | First-principles defect pack + register  |
-| [Prod eq_* incident](083-improvements/INCIDENT-PROD-DIAGNOSIS.md) | Schema readiness / M092 maintenance     |
+| [SPEC-083 improvements](../specs/083-improvements/README.md)              | First-principles defect pack + register  |
+| [Prod eq_* incident](../specs/083-improvements/INCIDENT-PROD-DIAGNOSIS.md) | Schema readiness / M092 maintenance     |
 
 ### Security & Troubleshooting
 
@@ -159,7 +160,7 @@ SDK packages are independently versioned (typically **0.4.0**) and are **not** t
 | Goal                          | Go To                                                      |
 | ----------------------------- | ---------------------------------------------------------- |
 | Get running in 5 minutes      | [Quick Start](getting-started/quick-start.md)              |
-| Pin Docker images to 0.19.0   | [Docker quickstart](operations/docker-quickstart.md)       |
+| Pin Docker images to 0.23.0   | [Docker quickstart](operations/docker-quickstart.md)       |
 | Cancel / claim / lease ops    | [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md) |
 | See API contract              | [OpenAPI snapshot](../edgequake_webui/openapi/openapi.snapshot.json) |
 | Use an official SDK           | [SDKs](sdks/README.md)                                     |
@@ -177,7 +178,7 @@ SDK packages are independently versioned (typically **0.4.0**) and are **not** t
 │  Frontend: Next.js 16.2 | React 19 | Sigma                  │
 │  Storage:  PostgreSQL 16/17/18                              │
 │            pgvector 0.8.3 | Apache AGE 1.6/1.7              │
-│  Images:   ghcr.io/raphaelmansuy/edgequake*:0.19.0          │
+│  Images:   ghcr.io/raphaelmansuy/edgequake*:0.23.0          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -193,7 +194,7 @@ git clone https://github.com/raphaelmansuy/edgequake.git && cd edgequake && make
 Or pull prebuilt images:
 
 ```bash
-EDGEQUAKE_VERSION=0.19.0 docker compose -f docker-compose.quickstart.yml up -d
+EDGEQUAKE_VERSION=0.23.0 docker compose -f docker-compose.quickstart.yml up -d
 ```
 
 - API: http://localhost:8080
@@ -208,5 +209,5 @@ Apache-2.0
 ## Links
 
 - **GitHub**: [github.com/raphaelmansuy/edgequake](https://github.com/raphaelmansuy/edgequake)
-- **Releases**: [v0.19.0](https://github.com/raphaelmansuy/edgequake/releases/tag/v0.19.0)
+- **Releases**: [v0.23.0](https://github.com/raphaelmansuy/edgequake/releases/tag/v0.23.0)
 - **LightRAG Paper**: [arxiv.org/abs/2410.05779](https://arxiv.org/abs/2410.05779)

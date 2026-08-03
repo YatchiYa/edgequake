@@ -4,7 +4,7 @@ title: EdgeQuake Observability
 
 # EdgeQuake Observability
 
-> **Product: v0.19.0** · Spec: [SPEC-018](../specs/018-observability/README.md) · Ingestion ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Spec: [SPEC-018](../specs/018-observability/README.md) · Ingestion ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
 
 See [SPEC-018](../specs/018-observability/README.md) for the full audit and proof index.
 
@@ -51,7 +51,7 @@ Domain metrics (Prometheus `GET /metrics`):
 | `edgequake_task_queue_pending` | — | v0.16+ |
 | `edgequake_task_queue_processing` | — | v0.16+ |
 | `edgequake_task_queue_failed` | — | v0.16+ |
-| `edgequake_compensation_quarantine_total` | kind | v0.19 |
+| `edgequake_compensation_quarantine_total` | kind | v0.23 |
 | `edgequake_ingestion_failures_total` | failure_class, workspace | v0.16+ |
 | `edgequake_ingestion_chunk_strategy_total` | strategy | v0.16+ |
 | `edgequake_graph_quality_*` | — | v0.17+ |
@@ -61,7 +61,7 @@ Domain metrics (Prometheus `GET /metrics`):
 
 DB pool gauges update every 15s (configurable via `EDGEQUAKE_DB_POOL_METRICS_INTERVAL_SECS`) and on each `/metrics` scrape.
 
-### Queue pressure & store contention (v0.19)
+### Queue pressure & store contention (v0.23)
 
 `GET /api/v1/pipeline/queue-metrics` is the operator SSOT for backlog and ingestion health:
 

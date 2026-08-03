@@ -4,7 +4,7 @@ title: 'Extended API Reference'
 
 # Extended API Reference
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 > **Additional Endpoints for Tasks, Pipeline, Costs, and Lineage**
 
@@ -193,7 +193,7 @@ curl http://localhost:8080/api/v1/tasks?status=processing \
   -H "X-Workspace-ID: workspace-uuid"
 ```
 
-**Task types (v0.19.0):** `pdf_processing` (convert only), `insert` (KG ingest), and legacy insert paths for text/file admission.
+**Task types (v0.23.0):** `pdf_processing` (convert only), `insert` (KG ingest), and legacy insert paths for text/file admission.
 
 ### GET /api/v1/tasks/{track_id}
 

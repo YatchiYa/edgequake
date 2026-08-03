@@ -4,7 +4,7 @@ title: "PHP SDK"
 
 # PHP SDK
 
-> **Product: v0.19.0** · SDK package maturity: **experimental** (~0.4.x track)
+> **Product: v0.23.0** · SDK package maturity: **experimental** (~0.4.x track)
 
 **Location:** `sdks/php`  
 **Contract:** [`openapi.snapshot.json`](../../../edgequake_webui/openapi/openapi.snapshot.json)
@@ -47,11 +47,14 @@ $health = $client->health->check();
 echo $health['status']; // "healthy"
 ```
 
-## v0.19 API notes
+## v0.23 API notes
 
 - Set `workspaceId` (and tenant/user headers when auth is enabled) on `Config`.
 - Task cancel: `POST /api/v1/tasks/{track_id}/cancel` — see [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md). Typed helpers may lag Tier 1 SDKs; verify against OpenAPI.
 - PDF vision uploads and progress SSE are not uniformly wrapped — use raw HTTP or OpenAPI for progress/cancel until parity lands.
+- **Stateless parse (SPEC-094):** no typed wrapper yet — raw HTTP `POST /api/v1/parse` (multipart `file` + `options`; sync ≤ 15 pages / 20 MiB, async ≤ 1000 pages) + `GET /api/v1/parse/backends` + `GET /api/v1/parse/jobs/{id}`.
+- Document responses expose `display_status` / `ui_phase` (SPEC-057 P4) — prefer them over raw `status`/`stage` for progress UI.
+- **LLM cache (server-side):** `EDGEQUAKE_LLM_CACHE=1` default; `EDGEQUAKE_KEYWORD_CACHE` / `EDGEQUAKE_QUERY_ANSWER_CACHE` override — no client change.
 
 ## Test
 

@@ -4,7 +4,7 @@ title: "Release & CD Cycle"
 
 # Release & CD Cycle
 
-> **Product: v0.22.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 This document describes how to cut a release, run quality gates, and verify the published Docker images.
 
@@ -69,8 +69,8 @@ done
 
 ```bash
 # Example (current cut)
-git tag v0.22.0
-git push origin v0.22.0
+git tag v0.23.0
+git push origin v0.23.0
 ```
 
 This triggers `.github/workflows/release-docker.yml`, which:
@@ -80,12 +80,12 @@ This triggers `.github/workflows/release-docker.yml`, which:
 ## 4) Post-Publish Verification
 
 ```bash
-gh release view v0.22.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.22.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.22.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.22.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.22.0-pg16
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.22.0-pg17
+gh release view v0.23.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.23.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.23.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0-pg16
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0-pg17
 ```
 
 ## SPEC-001 LightRAG Acc (before tag)
@@ -141,10 +141,10 @@ Docker images are built and published automatically via GitHub Actions (`.github
 
 ```bash
 # Tag a release — triggers multi-arch docker build + publish to ghcr.io
-git tag v0.22.0 && git push origin v0.22.0
+git tag v0.23.0 && git push origin v0.23.0
 ```
 
-Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.22.0`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.23.0`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
 
 You can also trigger a manual Docker build + publish without a tag via the `workflow_dispatch` input on GitHub Actions (`Actions -> Release -- Docker (GHCR) -> Run workflow`).
 
@@ -190,10 +190,11 @@ See [AGENTS.md](../../AGENTS.md) for the full developer workflow, including:
 
 See [PostgreSQL migration guide](../../edgequake/docs/migrations/postgres-triple-track-spec042.md) for tier details.
 
-## SPEC-091 upgrade (v0.22.0 → HEAD with migrations 106–125)
+## SPEC-091 upgrade (v0.22.0 → v0.23.0 with migrations 106–141)
 
-Published **v0.22.0** stops at migration **105**. The working tree adds migrations **106–125**, including the irreversible generic KV drop (`125`). Do **not** treat a routine image bump as safe until the soak gate is green.
+Published **v0.22.0** stops at migration **105**. **v0.23.0** adds migrations **106–141**, including irreversible drops (`125` KV, `126` chunk-vector, `131` fleet-vector). Do **not** treat a routine image bump as safe until the soak gate is green.
 
+- Short guide: [migrate-to-0.23.md](./migrate-to-0.23.md)
 - Operator runbook: [spec091-upgrade-from-v0.22.0.md](./spec091-upgrade-from-v0.22.0.md)
 - Automated multi-tenant soak: `make spec93-migration-assessment` (PG16/17/18 realism; see [`specs/93-migration-assessment/`](../../specs/93-migration-assessment/)); smoke: `make spec091-upgrade-soak`
 - Spec status: [`specs/091-simplify-data-layer/README.md`](../../specs/091-simplify-data-layer/README.md)

@@ -59,7 +59,7 @@ test.describe("SPEC-098: selected bulk delete list honesty", () => {
     );
 
     await page.goto("/documents");
-    await page.waitForLoadState("networkidle").catch(() => undefined);
+    await page.waitForLoadState("domcontentloaded");
 
     for (const title of titles) {
       await expect(page.getByText(title).first()).toBeVisible({
@@ -121,7 +121,7 @@ test.describe("SPEC-098: selected bulk delete list honesty", () => {
     // Unit-level honesty is covered in vitest; this smoke waits for a failed
     // session panel if the environment already has delete_failed docs / sessions.
     await page.goto("/documents");
-    await page.waitForLoadState("networkidle").catch(() => undefined);
+    await page.waitForLoadState("domcontentloaded");
 
     const failedBadge = page
       .locator('[data-testid="status-badge"]')

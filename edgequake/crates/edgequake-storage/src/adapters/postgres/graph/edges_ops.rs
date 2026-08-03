@@ -90,10 +90,7 @@ impl PostgresAGEGraphStorage {
             "target_id".to_string(),
             serde_json::Value::String(target.to_string()),
         );
-        props_with_ids.insert(
-            "relation_type".to_string(),
-            serde_json::Value::String(rel),
-        );
+        props_with_ids.insert("relation_type".to_string(), serde_json::Value::String(rel));
         // WHY: AGE 1.6.0 does NOT support `ON CREATE SET` (apache/age#2347 is
         // unreleased) — "syntax error at or near ON". `SET r = <variable map>`
         // fails (apache/age#1634). The version-safe pattern is per-key
@@ -182,10 +179,7 @@ impl PostgresAGEGraphStorage {
                         serde_json::Value::String(target.clone()),
                     );
                     // D-30: keep MERGE key aligned with native arbiter.
-                    map.insert(
-                        "relation_type".to_string(),
-                        serde_json::Value::String(rel),
-                    );
+                    map.insert("relation_type".to_string(), serde_json::Value::String(rel));
                     Self::properties_to_cypher(&map)
                 })
                 .collect();
@@ -287,9 +281,7 @@ impl PostgresAGEGraphStorage {
                 .bind(target)
                 .execute(&mut *conn)
                 .await
-                .map_err(|e| {
-                    StorageError::Database(format!("native edge delete failed: {e}"))
-                })?;
+                .map_err(|e| StorageError::Database(format!("native edge delete failed: {e}")))?;
             return Ok(());
         }
         tracing::warn!(
@@ -705,9 +697,7 @@ impl PostgresAGEGraphStorage {
         let expected = edges.len() as u64;
 
         for chunk in edges.chunks(chunk_size) {
-            inserted_or_updated += self
-                .pg_upsert_edges_batch_native_chunk(chunk, mode)
-                .await?;
+            inserted_or_updated += self.pg_upsert_edges_batch_native_chunk(chunk, mode).await?;
         }
 
         // INNER JOIN drops edges whose endpoints are missing — surface that loudly.

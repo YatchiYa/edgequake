@@ -215,10 +215,7 @@ pub fn collect_source_references(properties: &HashMap<String, serde_json::Value>
         }
     }
 
-    if let Some(chunk) = properties
-        .get("source_chunk_id")
-        .and_then(|v| v.as_str())
-    {
+    if let Some(chunk) = properties.get("source_chunk_id").and_then(|v| v.as_str()) {
         push_provenance_ref(&mut refs, chunk);
     }
     if let Some(doc) = properties

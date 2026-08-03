@@ -4,7 +4,7 @@ title: 'Lineage Tracking Architecture'
 
 # Lineage Tracking Architecture
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 > Complete traceability from source documents to extracted entities
 

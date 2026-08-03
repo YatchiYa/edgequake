@@ -9,6 +9,7 @@ import { GOTO_OPTS } from "./helpers/app-ready";
 import { bootstrapDeterministicUiContext } from "./helpers/bootstrap-ui";
 import { skipUnlessLiveStack } from "./helpers/live-stack";
 import { gotoApp } from "./helpers/navigation";
+import { API_V1_URL } from "./helpers/backend-url";
 import {
   obtainAccessToken,
   tenantHeaders,
@@ -143,9 +144,6 @@ test.describe("Document text detail content (live)", () => {
     const docId = detailUrl.split("/documents/")[1]?.split(/[?#]/)[0];
     expect(docId).toBeTruthy();
 
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-      "http://localhost:8080/api/v1";
     const token = await obtainAccessToken(request);
     const headers = tenantHeaders(
       ctx.tenantId,
@@ -156,7 +154,7 @@ test.describe("Document text detail content (live)", () => {
     await expect
       .poll(
         async () => {
-          const res = await request.get(`${apiBase}/documents/${docId}`, {
+          const res = await request.get(`${API_V1_URL}/documents/${docId}`, {
             headers,
           });
           if (!res.ok()) return 0;

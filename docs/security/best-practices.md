@@ -4,7 +4,7 @@ title: 'Security Best Practices'
 
 # Security Best Practices
 
-> **Product: v0.19.0** · See also: [Runtime auth hardening](/docs/operations/runtime-auth-hardening/)
+> **Product: v0.23.0** · See also: [Runtime auth hardening](/docs/operations/runtime-auth-hardening/)
 
 > **Securing Your EdgeQuake Deployment**
 
@@ -123,7 +123,7 @@ iptables -A INPUT -p tcp --dport 5432 -j DROP
 
 ## Authentication
 
-EdgeQuake v0.19.0 uses a **fail-closed** auth model when enabled. Local dev (`make dev`, Docker quickstart) may set `EDGEQUAKE_DEV_MODE=true` for an open API — **never use that in production**.
+EdgeQuake v0.23.0 uses a **fail-closed** auth model when enabled. Local dev (`make dev`, Docker quickstart) may set `EDGEQUAKE_DEV_MODE=true` for an open API — **never use that in production**.
 
 | Mode | When | What callers need |
 | ---- | ---- | ----------------- |
@@ -552,7 +552,7 @@ See [Deployment § Multi-replica](/docs/operations/deployment/#multi-replica-tas
 
 `DATABASE_URL` is **required** for all server modes. In-memory storage has been removed — running without PostgreSQL exits with code 1.
 
-Supported PostgreSQL images: **16, 17, 18** (`ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg16|pg17|pg18`). Use TLS for remote databases (`sslmode=require` or stronger).
+Supported PostgreSQL images: **16, 17, 18** (`ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0-pg16|pg17|pg18`). Use TLS for remote databases (`sslmode=require` or stronger).
 
 ---
 

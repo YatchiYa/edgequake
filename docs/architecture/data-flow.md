@@ -4,19 +4,19 @@ title: 'EdgeQuake Data Flow'
 
 # EdgeQuake Data Flow
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 > How documents flow through ingestion and how queries are processed
 
 ---
 
-## v0.19.0 PDF Ingestion Sequence (SPEC-057)
+## v0.23.0 PDF Ingestion Sequence (SPEC-057)
 
 End-to-end flow for `POST /api/v1/documents/pdf`: **admit → claim → convert → markdown barrier → Insert → query**. Progress and cancel use server `task_id` (`pdf-<uuid>`).
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
-│ PDF upload sequence (v0.19.0)                                         │
+│ PDF upload sequence (v0.23.0)                                         │
 │                                                                       │
 │  Client --POST /documents/pdf--> API --enqueue--> Tasks               │
 │  Client <--task_id-------------- API                                  │
@@ -68,7 +68,7 @@ EdgeQuake has two main data flows:
 
 ## Document Ingestion Pipeline
 
-> **Note:** The diagram below describes the **Insert** (KG) phase internals. PDF uploads add an upstream **PdfProcessing** convert task and task-queue admit/claim/lease — see [v0.19.0 PDF sequence](#v0190-pdf-ingestion-sequence-spec-057) above.
+> **Note:** The diagram below describes the **Insert** (KG) phase internals. PDF uploads add an upstream **PdfProcessing** convert task and task-queue admit/claim/lease — see [v0.23.0 PDF sequence](#v0230-pdf-ingestion-sequence-spec-057) above.
 
 ### Sequence Diagram (Insert phase — text or post-convert markdown)
 
@@ -362,8 +362,8 @@ EdgeQuake has two main data flows:
 | **naive**  | Vector similarity only        | Simple factual queries    |
 | **local**  | Entity + neighbors (1-2 hops) | Specific entity questions |
 | **global** | Community aggregation         | Broad topic overviews     |
-| **hybrid** | Local + Global (default)      | General purpose           |
-| **mix**    | Weighted combination all      | Tunable precision/recall  |
+| **hybrid** | Local + Global + Naive        | Balanced retrieval        |
+| **mix**    | Weighted combination all      | Tunable precision/recall (**default**) |
 | **bypass** | No retrieval, direct LLM      | Creative tasks, chat      |
 
 ### Retrieval Detail by Mode
@@ -444,9 +444,9 @@ EdgeQuake has two main data flows:
 └──────────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                         HYBRID MODE (Default)                                │
+│                         HYBRID MODE                                        │
 │                                                                              │
-│  Combines Local + Global for balanced retrieval                              │
+│  Combines Local + Global + Naive (round-robin interleave)                   │
 │                                                                              │
 │  ┌────────────────────┐                                                      │
 │  │       Query        │                                                      │

@@ -204,8 +204,6 @@ pub fn pdf_api_paths(pdf_id: &str) -> (String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::auth_memory_store::AuthMemoryStore;
-    use crate::state::StorageMode;
     use edgequake_storage::adapters::memory::{
         MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
     };
@@ -220,21 +218,12 @@ mod tests {
             Arc::new(MemoryWorkspaceVectorRegistry::new(
                 Arc::clone(&vector) as Arc<dyn edgequake_storage::traits::VectorStorage>
             ));
-        StorageRuntime {
-            kv_storage: Arc::clone(&kv) as Arc<dyn edgequake_storage::traits::KVStorage>,
-            vector_storage: Arc::clone(&vector)
-                as Arc<dyn edgequake_storage::traits::VectorStorage>,
-            vector_registry: registry,
-            graph_storage: Arc::clone(&graph) as Arc<dyn edgequake_storage::traits::GraphStorage>,
-            auth_memory: Arc::new(AuthMemoryStore::new()),
-            #[cfg(feature = "postgres")]
-            pdf_storage: None,
-            #[cfg(feature = "postgres")]
-            original_storage: None,
-            #[cfg(feature = "postgres")]
-            mm_asset_storage: None,
-            mode: StorageMode::Memory,
-        }
+        StorageRuntime::for_memory_tests(
+            Arc::clone(&kv) as Arc<dyn edgequake_storage::traits::KVStorage>,
+            Arc::clone(&vector) as Arc<dyn edgequake_storage::traits::VectorStorage>,
+            registry,
+            Arc::clone(&graph) as Arc<dyn edgequake_storage::traits::GraphStorage>,
+        )
     }
 
     #[test]

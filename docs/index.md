@@ -4,7 +4,7 @@ description: Complete documentation for EdgeQuake — the Graph-RAG framework Bu
 template: splash
 hero:
   title: EdgeQuake Documentation
-  tagline: Everything you need to build, deploy, and scale Graph-RAG applications with EdgeQuake v0.19.0.
+  tagline: Everything you need to build, deploy, and scale Graph-RAG applications with EdgeQuake v0.23.0.
   actions:
     - text: Get Started
       link: /docs/getting-started/
@@ -15,7 +15,7 @@ hero:
       variant: minimal
 ---
 
-> **Product: v0.19.0** · Contract: OpenAPI snapshot · Spec ops: [Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness/)
+> **Product: v0.23.0** · Contract: OpenAPI snapshot · Spec ops: [Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness/)
 
 ## Explore the Documentation
 
@@ -26,7 +26,7 @@ hero:
 - **[API Reference](/docs/api-reference/)** — Guided REST overlays; full contract in OpenAPI.
 - **[Deep Dives](/docs/deep-dives/)** — In-depth technical explorations (progress, PDF vision, storage).
 - **[Operations](/docs/operations/)** — Docker quickstart, deployment, auth, cancel/lease, release CD.
-- **[SPEC-083 improvements](/docs/083-improvements/)** — First-principles defect register, roadmap, prod eq_* incident.
+- **[SPEC-083 improvements](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/specs/083-improvements/README.md)** — First-principles defect register, roadmap, prod eq_* incident.
 - **[SDKs](/docs/sdks/)** — Official clients (SDK package version ≠ product version).
 - **[Integrations](/docs/integrations/)** — Open WebUI, LangChain, thin custom HTTP.
 - **[Comparisons](/docs/comparisons/)** — LightRAG, GraphRAG, traditional RAG.

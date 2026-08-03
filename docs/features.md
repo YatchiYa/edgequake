@@ -2,11 +2,11 @@
 title: 'EdgeQuake Feature Registry'
 ---
 
-> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
 
 # EdgeQuake Feature Registry
 
-This file maintains traceability between code features, business requirements, and shipped releases (v0.11–v0.19).
+This file maintains traceability between code features, business requirements, and shipped releases (v0.11–v0.23).
 
 ## Index
 
@@ -33,7 +33,11 @@ This file maintains traceability between code features, business requirements, a
 | FEAT-019 | Documents List & Mix-Scale Perf Gates | Completed | [SPEC-054](../specs/054-fix-bugs-17/) / v0.18.0 |
 | FEAT-020 | Claim/Lease Delivery & Convert→Ingest SSOT | Completed | [SPEC-057](../specs/057-pipeline-reliability/000-index.md) / v0.19.0 |
 | FEAT-035 | OpenAPI Explorer (WebUI implementation) | Completed | [SPEC-035](../specs/035-api-explorer/) — code marker |
-| FEAT-102 | Custom Entity Type Colors (workspace graph) | Completed | [SPEC-102](../specs/102-custom-entity-type-colors/) / v0.22.0+ |
+| FEAT-094 | Standalone PDF→Markdown Parse API | Completed | [SPEC-094](../specs/94-api-markdown/00-spec.md) / v0.23.0 |
+| FEAT-096 | Multi-Language Extraction (workspace-scoped) | Completed | [SPEC-096](../specs/096-multi-language-extraction/) / v0.23.0 |
+| FEAT-101 | Wizard Onboarding & Setup API | Completed | [SPEC-101](../specs/101-wizard-mode-tenant-workspace/) / v0.23.0 |
+| FEAT-102 | Custom Entity Type Colors (workspace graph) | Completed | [SPEC-102](../specs/102-custom-entity-type-colors/) / v0.23.0 |
+| FEAT-103 | LightRAG-Parity LLM Cache | Completed | [SPEC-103](../specs/103-llm-cache/) / v0.23.0 |
 
 ---
 
@@ -197,11 +201,50 @@ WebUI `/api-explorer` driven by OpenAPI snapshot with auth token and workspace b
 
 ---
 
+### FEAT-094 — Standalone PDF→Markdown Parse API (SPEC-094)
+
+**Spec**: [specs/94-api-markdown](../specs/94-api-markdown/00-spec.md)  
+**Released**: v0.23.0 (2026-08-02)  
+**Status**: ✅ Completed
+
+Stateless `POST /api/v1/parse` (multipart or raw `application/pdf`) converts PDF→Markdown **without** document residue:
+
+- `GET /api/v1/parse/backends` — list available parse backends
+- `GET /api/v1/parse/jobs/{id}` — poll async parse jobs (in-memory TTL)
+- Sync ceiling 15 pages + 20 MiB; async up to 1000 pages (`Prefer: respond-async`)
+- Returns Markdown + timing/cost metrics only
+
+---
+
+### FEAT-101 — Wizard Onboarding & Setup API (SPEC-101)
+
+**Spec**: [specs/101-wizard-mode-tenant-workspace](../specs/101-wizard-mode-tenant-workspace/)  
+**Released**: v0.23.0 (2026-08-02)  
+**Status**: ✅ Completed
+
+First-run wizard onboarding: setup API + context selector + provider/workspace bootstrap.
+
+---
+
+### FEAT-103 — LightRAG-Parity LLM Cache (SPEC-103)
+
+**Spec**: [specs/103-llm-cache](../specs/103-llm-cache/)  
+**Released**: v0.23.0 (2026-08-02)  
+**Status**: ✅ Completed
+
+Unified keyword + answer `LlmResponseCache` (L1 memory + L2 `public.llm_cache`):
+
+- Master switch `EDGEQUAKE_LLM_CACHE` defaults **on**; overrides `EDGEQUAKE_KEYWORD_CACHE` / `EDGEQUAKE_QUERY_ANSWER_CACHE`
+- Acc pins cache **off** (`EDGEQUAKE_LLM_CACHE=0`) for fair cold peers
+- Proof: `make spec103-llm-cache-proof`
+
+---
+
 ### FEAT-096 — Multi-Language Extraction (SPEC-096 / GH-352)
 
 **Spec**: [specs/096-multi-language-extraction](../specs/096-multi-language-extraction/)  
 **Issue**: [#352](https://github.com/raphaelmansuy/edgequake/issues/352)  
-**Status**: ✅ Implemented (v0.22.0+)
+**Status**: ✅ Implemented (v0.23.0)
 
 Workspace-scoped `extraction_language` for KG entity/relationship natural-language output:
 
@@ -219,7 +262,7 @@ Workspace-scoped `extraction_language` for KG entity/relationship natural-langua
 ### FEAT-102 — Custom Entity Type Colors (SPEC-102)
 
 **Spec**: [specs/102-custom-entity-type-colors](../specs/102-custom-entity-type-colors/)  
-**Status**: ✅ Completed (v0.22.0+)
+**Status**: ✅ Completed (v0.23.0)
 
 Workspace-scoped `entity_type_colors` for knowledge-graph visualization:
 
@@ -231,7 +274,7 @@ Workspace-scoped `entity_type_colors` for knowledge-graph visualization:
 
 ---
 
-## Release Map (v0.11 → v0.19)
+## Release Map (v0.11 → v0.23)
 
 | Version | Date | Highlights |
 | ------- | ---- | ---------- |
@@ -244,9 +287,13 @@ Workspace-scoped `entity_type_colors` for knowledge-graph visualization:
 | 0.17.0 | 2026-07-14 | SPEC-043 model picker; SPEC-047 vision; SPEC-048/050 progress |
 | 0.18.0 | 2026-07-16 | SPEC-054 perf gates; OpenAPI snapshot freshness |
 | 0.19.0 | 2026-07-17 | SPEC-057 claim/lease; convert→ingest; cancel fairness |
+| 0.20.0 | 2026-07-21 | LightRAG Mix arms; Drawing display names; vision ingestion reliability |
+| 0.21.0 | 2026-07-23 | Query-API parity (074–085); D-30 multigraph arbiter; SPEC-083 closure |
+| 0.22.0 | 2026-07-26 | SPEC-090 multi-pool + migrate CLI; M104/M105 cutovers; boot migrate split |
+| 0.23.0 | 2026-08-02 | SPEC-091 relational data-layer cutover; SPEC-103 LLM cache; SPEC-094 parse API; wizard/onboarding |
 
 ---
 
-**Last Updated**: 2026-07-18  
-**Total Features (indexed)**: 21  
+**Last Updated**: 2026-08-03  
+**Total Features (indexed)**: 25  
 **OpenAPI SSOT**: [`edgequake_webui/openapi/openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json)

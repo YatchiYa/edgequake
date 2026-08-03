@@ -844,7 +844,7 @@ export function DocumentManager() {
                         key={entry.documentId}
                         trackId={liveTrackId}
                         documentName={entry.documentName}
-                        isPdf={shouldUsePdfReprocessPanel(entry.isPdf, entry.mode)}
+                        isPdf={shouldUsePdfReprocessPanel(Boolean(entry.isPdf), entry.mode)}
                         currentStage={liveDoc?.current_stage ?? 'cleaning'}
                         stageMessage={liveDoc?.stage_message}
                         onRemove={dismissSessionPanel}

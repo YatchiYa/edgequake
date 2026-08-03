@@ -39,11 +39,7 @@ async fn e2e_spec098_cypher_edge_multigraph() {
 
     // Batch: duplicate (src,tgt,rel) + multigraph + mixed-case + empty rel.
     let edges = vec![
-        (
-            "CYPH_A".into(),
-            "CYPH_B".into(),
-            props_rel("knows", "v1"),
-        ),
+        ("CYPH_A".into(), "CYPH_B".into(), props_rel("knows", "v1")),
         (
             "CYPH_A".into(),
             "CYPH_B".into(),
@@ -54,11 +50,7 @@ async fn e2e_spec098_cypher_edge_multigraph() {
             "CYPH_B".into(),
             props_rel("WORKS_WITH", "works"),
         ),
-        (
-            "CYPH_A".into(),
-            "CYPH_B".into(),
-            props_rel("", "empty-rel"),
-        ),
+        ("CYPH_A".into(), "CYPH_B".into(), props_rel("", "empty-rel")),
         (
             "CYPH_A".into(),
             "CYPH_B".into(),
@@ -73,11 +65,7 @@ async fn e2e_spec098_cypher_edge_multigraph() {
 
     // Single-edge Cypher path: second rel-type on same endpoints.
     graph
-        .upsert_edge(
-            "CYPH_A",
-            "CYPH_B",
-            props_rel("mentions", "single-path"),
-        )
+        .upsert_edge("CYPH_A", "CYPH_B", props_rel("mentions", "single-path"))
         .await
         .expect("SPEC-098: single-edge Cypher MERGE includes relation_type");
 

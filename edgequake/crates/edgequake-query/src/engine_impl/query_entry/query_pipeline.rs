@@ -799,8 +799,8 @@ impl QueryEngine {
 
             // SPEC-103 answer cache. Active when explicitly wired or env allows.
             // Skip vision / empty context (no poison empty answers — LAW edge case).
-            let answer_active = self.answer_cache.is_some()
-                || crate::cache::answer_cache_enabled_from_env();
+            let answer_active =
+                self.answer_cache.is_some() || crate::cache::answer_cache_enabled_from_env();
             if answer_active && !has_images && !final_context.is_empty() {
                 if let Some(cache) = self.llm_response_cache.as_ref() {
                     if let Some(cached) = cache.get_return(&cache_key).await {

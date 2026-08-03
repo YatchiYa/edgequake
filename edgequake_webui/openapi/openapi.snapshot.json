@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.22.0"
+    "version": "0.23.0"
   },
   "servers": [
     {
@@ -3098,8 +3098,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "recover_stuck"
+        "x-edgequake-v2-job-type": "recover_stuck",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -3156,8 +3156,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_failed"
+        "x-edgequake-v2-job-type": "reprocess_failed",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/scan": {
@@ -9044,8 +9044,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -9642,8 +9642,8 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     }
   },
@@ -22864,7 +22864,7 @@
         "properties": {
           "answer_cache_hit": {
             "type": "boolean",
-            "description": "True when answer served from product answer cache (064)."
+            "description": "True when answer served from product answer cache (064 / SPEC-103)."
           },
           "arm_global_chunks": {
             "type": [
@@ -22950,6 +22950,10 @@
             "format": "int64",
             "description": "Generation time in ms.",
             "minimum": 0
+          },
+          "keyword_cache_hit": {
+            "type": "boolean",
+            "description": "True when keywords served from LLM response cache (SPEC-103)."
           },
           "keyword_time_ms": {
             "type": "integer",
@@ -23044,6 +23048,7 @@
           "context_truncated": {},
           "embedding_time_ms": {},
           "generation_time_ms": {},
+          "keyword_cache_hit": {},
           "keyword_time_ms": {},
           "llm_model": {},
           "llm_provider": {},
@@ -23302,6 +23307,10 @@
             "description": "Generation time in ms.",
             "minimum": 0
           },
+          "keyword_cache_hit": {
+            "type": "boolean",
+            "description": "True when keywords served from LLM response cache (SPEC-103)."
+          },
           "keyword_time_ms": {
             "type": "integer",
             "format": "int64",
@@ -23405,6 +23414,7 @@
           "context_truncated": {},
           "embedding_time_ms": {},
           "generation_time_ms": {},
+          "keyword_cache_hit": {},
           "keyword_time_ms": {},
           "llm_model": {},
           "llm_provider": {},
@@ -28375,7 +28385,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.22.0",
+      "version": "0.23.0",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455)."
     },
     "defaultContentType": "application/json",

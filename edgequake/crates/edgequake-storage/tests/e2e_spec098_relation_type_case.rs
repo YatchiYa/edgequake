@@ -89,12 +89,11 @@ async fn e2e_spec098_relation_type_case() {
     assert_eq!(report.resolved, 1, "{report:?}");
     assert!(report.is_complete());
 
-    let n: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM relationship_embeddings WHERE workspace_id = $1",
-    )
-    .bind(workspace)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let n: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM relationship_embeddings WHERE workspace_id = $1")
+            .bind(workspace)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert!(n >= 1);
 }

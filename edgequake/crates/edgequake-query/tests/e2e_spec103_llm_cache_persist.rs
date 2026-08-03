@@ -12,7 +12,7 @@ use std::sync::Arc;
 use edgequake_llm::MockProvider;
 use edgequake_query::engine::QueryRequest;
 use edgequake_query::{QueryEngine, QueryEngineConfig, QueryMode};
-use edgequake_storage::traits::{GraphStorage, VectorStorage, KVStorage};
+use edgequake_storage::traits::{GraphStorage, KVStorage, VectorStorage};
 use edgequake_storage::{
     MemoryGraphStorage, MemoryVectorStorage, PostgresConfig, PostgresKVStorage,
 };

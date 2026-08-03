@@ -4,7 +4,8 @@ title: "SPEC-091 Upgrade from v0.22.0"
 
 # SPEC-091 — Upgrade from published v0.22.0
 
-> **Audience:** operators upgrading a live Postgres from GHCR **v0.22.0** (migrations ≤ **105**, KV SSOT) to a build that includes migrations **106–141** (typed relational SSOT + irreversible KV/vector drops + RM0–RM5 outbox drain / citation / chunk FTS / AGE citation indexes + SPEC-098 spine/lifecycle).
+> **Start here if you want the short version:** [Migrate to v0.23.0](./migrate-to-0.23.md) (plain-language paths for fresh install vs upgrade).
+> **Audience:** operators upgrading a live Postgres from GHCR **v0.22.0** (migrations ≤ **105**, KV SSOT) to **v0.23.0** (migrations **106–141**: typed relational SSOT + irreversible KV/vector drops + RM0–RM5 outbox drain / citation / chunk FTS / AGE citation indexes + SPEC-098 spine/lifecycle).
 > **Spec:** [`specs/091-simplify-data-layer/`](../../specs/091-simplify-data-layer/) · risks R-21..R-29 in `09-risk-register.md` · RM program in [`22-ingestion-migration-system-assessment.md`](../../specs/091-simplify-data-layer/22-ingestion-migration-system-assessment.md).
 > **Automated proof:** `make spec93-migration-assessment` (PG16/17/18 realism) · `make spec091-upgrade-soak` (smoke) · `make spec091-gates`.
 > **Formal pack:** [`specs/93-migration-assessment/`](../../specs/93-migration-assessment/).
@@ -25,7 +26,7 @@ title: "SPEC-091 Upgrade from v0.22.0"
 
 1. Verified backup / restore point (custom-format `pg_dump -Fc` recommended).
 2. pgvector ≥ 0.8.2 (0.8.5 preferred), AGE at the tier pin for your Postgres major.
-3. Every replica scheduled to run the **same** HEAD (write-stop) binary — no mixed fleets across the drop.
+3. Every replica scheduled to run the **same** v0.23.0 (write-stop) binary — no mixed fleets across the drop.
 4. Maintenance window sized for SQL backfills 117–124 + optional engine chunk-text job on large corpora.
 
 ## Flag matrix (upgrade-safe)
@@ -42,7 +43,7 @@ export EDGEQUAKE_KV_FAMILY_CHECKPOINT=relational
 export EDGEQUAKE_KV_FAMILY_ARTIFACT=relational
 export EDGEQUAKE_KV_FAMILY_INJECTION=relational
 export EDGEQUAKE_KV_FAMILY_METADATA=relational
-# Fence defaults ON at HEAD (LAW-IP1). Escape with off only during dual-write soak.
+# Fence defaults ON at v0.23.0 (LAW-IP1). Escape with off only during dual-write soak.
 # export EDGEQUAKE_SERVING_FENCE=off
 # Outbox drain defaults ON (RM0). Escape: EDGEQUAKE_OUTBOX_DRAIN=off
 # Do NOT set EDGEQUAKE_MIGRATION_CONFIRM_DROP=1 in a shared env file casually.
@@ -53,11 +54,11 @@ export EDGEQUAKE_KV_FAMILY_METADATA=relational
 ## Operator sequence
 
 ```ascii
- v0.22.0 (≤105)  →  backup  →  roll ALL replicas to HEAD (write-stop)
+ v0.22.0 (≤105)  →  backup  →  roll ALL replicas to v0.23.0 (write-stop)
                               →  edgequake migrate dry-run          # preview only (no writes)
                               →  edgequake migrate                  # refuses 125; prints guard
                               →  edgequake migrate --confirm-drop   # 106–131 (+ 132–137 SAFE)
-                              →  start HEAD API (boot migrate off; LD-15)
+                              →  start v0.23.0 API (boot migrate off; LD-15)
                               →  verify multi-WS query / wipe / assets / outbox drain
                               →  fence default on; confirm retrieval with query_ready
 ```
@@ -93,7 +94,7 @@ export EDGEQUAKE_KV_FAMILY_METADATA=relational
 
 1. **Backup** the database (`pg_dump -Fc` or volume snapshot). Record restore-point id.
 2. **Drain / stop writers** if your SLO requires a quiet window (recommended before confirm-drop).
-3. **Roll every API replica** to the HEAD binary that treats KV `42P01` as source-gone (write-stop). Do not leave a v0.22.0 API process attached after 125.
+3. **Roll every API replica** to the v0.23.0 binary that treats KV `42P01` as source-gone (write-stop). Do not leave a v0.22.0 API process attached after 125.
 4. With `DATABASE_URL` pointing at the admin/maintenance URL:
 
    ```bash
@@ -120,7 +121,7 @@ export EDGEQUAKE_KV_FAMILY_METADATA=relational
 
    sqlx applies pending migrations **106–125** in order. Family SQL backfills (117–124) run first; migration **125** then runs a **verified purge** of presence-conservative KV keys (`staging:hash` / `doc:hash` / `wsdoc` / `injection`) that already exist in typed SSOT, then the durable-row guard. If un-migrated residue remains, **125 aborts** and the DB stays pre-drop for that apply — fix residue, restore if needed, retry. On success, stdout includes per-version `applied …` lines and `KV store dropped (migration 125). Rollback = restore from backup.`
 
-6. **Start HEAD API** with the relational flag matrix above. LD-15: the boot is fail-closed verify-only — since step 5 applied every pending migration, the gate passes; had any migration remained pending, the server would refuse with exit **78** and a `migrate dry-run` / `migrate` hint.
+6. **Start v0.23.0 API** with the relational flag matrix above. LD-15: the boot is fail-closed verify-only — since step 5 applied every pending migration, the gate passes; had any migration remained pending, the server would refuse with exit **78** and a `migrate dry-run` / `migrate` hint.
 7. **Verify** per tenant/workspace:
    - `GET /health` healthy
    - document list non-empty where seeded
@@ -202,7 +203,7 @@ make spec091-upgrade-soak
 ```
 
 **SPEC-93** is the binding proof pack: [`specs/93-migration-assessment/`](../../specs/93-migration-assessment/).  
-It pulls `ghcr.io/raphaelmansuy/edgequake:0.22.0` + `edgequake-postgres:0.22.0-pg{16,17,18}`, seeds a realism corpus, dumps the DB, runs HEAD `migrate dry-run` (asserts preview + no schema advance), then `migrate --confirm-drop` through migrations **106–137**, and asserts post-drop isolation / list / wipe / assets / fence-on retrieval. Reports: `specs/93-migration-assessment/reports/` (matrix summary + per-major `verdict.md`).
+It pulls `ghcr.io/raphaelmansuy/edgequake:0.22.0` + `edgequake-postgres:0.22.0-pg{16,17,18}`, seeds a realism corpus, dumps the DB, runs v0.23.0 `migrate dry-run` (asserts preview + no schema advance), then `migrate --confirm-drop` through migrations **106–141**, and asserts post-drop isolation / list / wipe / assets / fence-on retrieval. Reports: `specs/93-migration-assessment/reports/` (matrix summary + per-major `verdict.md`).
 
 ## Manual soak with a real dump
 

@@ -110,20 +110,18 @@ async fn contract_spec098_relation_type_uppercase_resolve() {
     .await
     .expect("entities");
 
-    let src: Uuid = sqlx::query_scalar(
-        "SELECT id FROM entities WHERE workspace_id = $1 AND name = 'ALPHA'",
-    )
-    .bind(workspace)
-    .fetch_one(&pool)
-    .await
-    .expect("src id");
-    let tgt: Uuid = sqlx::query_scalar(
-        "SELECT id FROM entities WHERE workspace_id = $1 AND name = 'BETA'",
-    )
-    .bind(workspace)
-    .fetch_one(&pool)
-    .await
-    .expect("tgt id");
+    let src: Uuid =
+        sqlx::query_scalar("SELECT id FROM entities WHERE workspace_id = $1 AND name = 'ALPHA'")
+            .bind(workspace)
+            .fetch_one(&pool)
+            .await
+            .expect("src id");
+    let tgt: Uuid =
+        sqlx::query_scalar("SELECT id FROM entities WHERE workspace_id = $1 AND name = 'BETA'")
+            .bind(workspace)
+            .fetch_one(&pool)
+            .await
+            .expect("tgt id");
 
     sqlx::query(
         "INSERT INTO relationships \
@@ -154,6 +152,9 @@ async fn contract_spec098_relation_type_uppercase_resolve() {
         .expect("rel mirror");
 
     assert_eq!(report.eligible, 1);
-    assert_eq!(report.resolved, 1, "uppercase SSOT must resolve: {report:?}");
+    assert_eq!(
+        report.resolved, 1,
+        "uppercase SSOT must resolve: {report:?}"
+    );
     assert!(report.is_complete());
 }

@@ -2,7 +2,7 @@
 title: 'Query Modes Deep-Dive'
 ---
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Query Modes Deep-Dive
 
@@ -385,9 +385,9 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 ## Hybrid Mode
 
-> **FEAT0104**: Combines Local and Global (Default)
+> **FEAT0104**: Combines Local, Global, and Naive (round-robin interleave)
 
-Hybrid mode uses both vector search and full graph traversal, combining the precision of Local with the coverage of Global. It's the default mode because it handles the widest variety of queries.
+Hybrid mode interleaves the **Local**, **Global**, and **Naive** arms round-robin, pulling chunk candidates from each. It is **not** the default — `mix` is (see [Mix Mode](#mix-mode)); use `hybrid` when you want a deterministic three-arm interleave without weight tuning.
 
 ### How It Works
 
@@ -404,10 +404,10 @@ Hybrid mode uses both vector search and full graph traversal, combining the prec
 │  ┌─────────────────┐                 ┌─────────────────┐        │
 │  │  LOCAL PATH     │                 │  GLOBAL PATH    │        │
 │  │                 │                 │                 │        │
-│  │  • Vector search│                 │  • Community    │        │
-│  │  • Entity lookup│                 │    summaries    │        │
-│  │  • Neighborhood │                 │  • Topic context│        │
-│  │    traversal    │                 │                 │        │
+│  │  • Vector search│                 │  • Relationship │        │
+│  │  • Entity lookup│                 │    vectors      │        │
+│  │  • Neighborhood │                 │  • Degree       │        │
+│  │    traversal    │                 │    fallback     │        │
 │  └────────┬────────┘                 └────────┬────────┘        │
 │           │                                   │                 │
 │           │  ┌───────────────────────────┐    │                 │
@@ -433,9 +433,10 @@ Hybrid mode uses both vector search and full graph traversal, combining the prec
 ✅ **Good for:**
 
 - Complex, multi-faceted questions
-- When you're unsure which mode to use
-- Production default
+- Deterministic Local + Global + Naive interleave
 - Comprehensive answers needed
+
+> **Not the default.** The production default is `mix` (weighted/RRF fusion); `hybrid` is the round-robin alternative.
 
 ❌ **Avoid when:**
 
@@ -466,31 +467,32 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 ## Mix Mode
 
-> **FEAT0105**: Weighted combination with tunable parameters
+> **FEAT0105**: Weighted blend of all three arms (**production default**)
 
-Mix mode allows explicit weighting between vector and graph retrieval. Use it when you need fine-grained control over the retrieval strategy.
+Mix mode runs the **Local**, **Global**, and **Naive** arms in parallel and blends their results by weighted score (min-max normalized per arm, then weighted sum — `QueryEngineConfig::{mix_local_weight, mix_global_weight, mix_naive_weight}`, which need not sum to 1). This is the **production default**: API handlers fall back to `QueryMode::Mix` when `mode` is omitted.
 
 ### Configuration
+
+Mix arm weights are set **per request** via `mix_weights` on the query body (overrides engine/env defaults):
 
 ```json
 {
   "query": "Your question here",
   "mode": "mix",
-  "params": {
-    "vector_weight": 0.7,
-    "graph_weight": 0.3
-  }
+  "mix_weights": { "local": 1.0, "global": 1.0, "naive": 1.0 }
 }
 ```
+
+Fleet defaults are engine config / env: `EDGEQUAKE_MIX_LOCAL_WEIGHT`, `EDGEQUAKE_MIX_GLOBAL_WEIGHT`, `EDGEQUAKE_MIX_NAIVE_WEIGHT` (need not sum to 1). Fusion is round-robin by default; `EDGEQUAKE_MIX_FUSION=rrf` is an ablation option.
 
 ### When to Use
 
 ✅ **Good for:**
 
+- Production defaults — best coverage with weighted fusion
+- Per-request arm tuning via `mix_weights`
 - A/B testing retrieval strategies
-- Domain-specific tuning
-- When default weights don't work well
-- Research and experimentation
+- Domain-specific tuning via env weights
 
 ---
 
@@ -535,7 +537,7 @@ curl -X POST http://localhost:8080/api/v1/query \
 │                                                                 │
 │  Local   ████████░░░░░░░░░░░░  (Vector + Graph node)            │
 │                                                                 │
-│  Global  ██████████░░░░░░░░░░  (Graph communities)              │
+│  Global  ██████████░░░░░░░░░░  (Relationship vectors)           │
 │                                                                 │
 │  Hybrid  ████████████████░░░░  (All sources)                    │
 │                                                                 │
@@ -555,13 +557,14 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 ```rust
 QueryEngineConfig {
-    default_mode: QueryMode::Mix,  // production default
-    max_chunks: 10,
-    max_entities: 20,
-    max_context_tokens: 4000,
+    default_mode: QueryMode::Mix,  // production default (from code)
+    max_entities: 60,             // LightRAG top_k=60 parity
+    max_relationships: 60,
+    max_chunks: 20,               // LightRAG chunk_top_k=20 parity
+    max_context_tokens: 30000,
     graph_depth: 2,
-    min_score: 0.1,
-    include_sources: true,
+    min_score: 0.1,               // EDGEQUAKE_MIN_ENTITY_SCORE override
+    use_keyword_extraction: true,
 }
 ```
 
@@ -601,11 +604,11 @@ Vector pre-filter uses materialized `document_id` columns (Tier 2/3) — see [Ve
 
 | Parameter            | Default | Effect                                  |
 | -------------------- | ------- | --------------------------------------- |
-| `max_chunks`         | 10      | More chunks = more context, higher cost |
-| `max_entities`       | 20      | More entities = richer graph context    |
-| `max_context_tokens` | 4000    | Token budget for LLM context            |
+| `max_chunks`         | 20      | More chunks = more context, higher cost |
+| `max_entities`       | 60      | More entities = richer graph context    |
+| `max_context_tokens` | 30000   | Token budget for LLM context            |
 | `graph_depth`        | 2       | How many hops in graph traversal        |
-| `min_score`          | 0.1     | Similarity threshold for inclusion      |
+| `min_score`          | 0.1     | Similarity threshold for inclusion (`EDGEQUAKE_MIN_ENTITY_SCORE`) |
 
 ### Mode-Specific Tuning
 

@@ -626,9 +626,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                                          bare entities.name must match entity:NAME; ensure \
                                          PostgresEntitySink wrote the spine before fleet mirror; \
                                          SPEC-098 misses: {:?})",
-                                        report.resolved,
-                                        report.eligible,
-                                        report.misses
+                                        report.resolved, report.eligible, report.misses
                                     )),
                                 ));
                             }

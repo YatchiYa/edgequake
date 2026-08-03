@@ -4,7 +4,7 @@ title: 'Integration: LangChain'
 
 # Integration: LangChain
 
-> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 Use EdgeQuake as a retriever (or full RAG backend) in [LangChain](https://langchain.com/) Python apps.
 

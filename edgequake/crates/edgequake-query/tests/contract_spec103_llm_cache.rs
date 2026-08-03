@@ -3,8 +3,10 @@
 //! Normative cases from `specs/103-llm-cache/04-e2e-test-matrix.md`.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
+
+use tokio::sync::Mutex;
 
 use async_trait::async_trait;
 use edgequake_llm::MockProvider;
@@ -18,10 +20,10 @@ use edgequake_query::keywords::{
     QueryIntent, TieredKeywordCache,
 };
 use edgequake_query::{QueryEngine, QueryEngineConfig, QueryMode};
-use edgequake_storage::traits::{GraphStorage, VectorStorage, KVStorage};
+use edgequake_storage::traits::{GraphStorage, KVStorage, VectorStorage};
 use edgequake_storage::{MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage};
 
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
 struct CountingKeywordExtractor {
     calls: Arc<AtomicUsize>,
@@ -76,7 +78,7 @@ async fn spec103_tiered_memory_then_postgres() {
 
 #[tokio::test]
 async fn spec103_keyword_hit_skips_llm() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().await;
     std::env::set_var("EDGEQUAKE_LLM_CACHE", "1");
     std::env::remove_var("EDGEQUAKE_KEYWORD_CACHE");
 
@@ -106,13 +108,16 @@ async fn spec103_keyword_hit_skips_llm() {
     assert!(!hit_flag.load(Ordering::Relaxed));
 
     let _ = extractor.extract_extended(q).await.unwrap();
-    assert_eq!(calls.load(Ordering::SeqCst), 1, "second extract must skip inner");
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "second extract must skip inner"
+    );
     assert!(extractor.last_cache_hit());
 
     // New extractor + fresh L1; same KV L2 must serve without inner call.
     let durable2: Arc<dyn LlmResponseCache> = Arc::new(TieredLlmResponseCache::with_kv(kv));
-    let cache2: Arc<dyn KeywordCache> =
-        Arc::new(TieredKeywordCache::with_durable(100, durable2));
+    let cache2: Arc<dyn KeywordCache> = Arc::new(TieredKeywordCache::with_durable(100, durable2));
     let extractor2 = CachedKeywordExtractor::with_model(
         Arc::new(CountingKeywordExtractor {
             calls: Arc::clone(&calls),
@@ -133,7 +138,7 @@ async fn spec103_keyword_hit_skips_llm() {
 
 #[tokio::test]
 async fn spec103_query_answer_hit_skips_generate() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().await;
     std::env::set_var("EDGEQUAKE_LLM_CACHE", "1");
     std::env::remove_var("EDGEQUAKE_QUERY_ANSWER_CACHE");
 
@@ -203,7 +208,7 @@ async fn spec103_query_answer_hit_skips_generate() {
 
 #[tokio::test]
 async fn spec103_master_off_disables_both() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().await;
     std::env::set_var("EDGEQUAKE_LLM_CACHE", "0");
     std::env::remove_var("EDGEQUAKE_KEYWORD_CACHE");
     std::env::remove_var("EDGEQUAKE_QUERY_ANSWER_CACHE");
@@ -237,7 +242,7 @@ async fn spec103_master_off_disables_both() {
 
 #[tokio::test]
 async fn spec103_persist_across_engine_rebuild() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().await;
     std::env::set_var("EDGEQUAKE_LLM_CACHE", "1");
     std::env::remove_var("EDGEQUAKE_QUERY_ANSWER_CACHE");
 
@@ -315,7 +320,7 @@ async fn spec103_persist_across_engine_rebuild() {
 
 #[tokio::test]
 async fn spec103_vision_or_empty_context_bypass() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().await;
     std::env::set_var("EDGEQUAKE_LLM_CACHE", "1");
     std::env::remove_var("EDGEQUAKE_QUERY_ANSWER_CACHE");
 

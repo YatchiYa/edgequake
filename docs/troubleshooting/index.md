@@ -3,7 +3,7 @@ title: Troubleshooting
 description: Diagnose and resolve common issues with EdgeQuake pipelines and deployments.
 ---
 
-> **Product: v0.19.0** · Ingestion SSOT: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Ingestion SSOT: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 Guides for diagnosing and resolving common EdgeQuake issues.
 
@@ -11,7 +11,7 @@ Guides for diagnosing and resolving common EdgeQuake issues.
 
 - **[Common Issues](/docs/troubleshooting/common-issues/)** — Solutions to frequently encountered errors: upload format mistakes, server startup, PDF extraction, query failures, and database issues.
 
-## Pipeline reliability (v0.19)
+## Pipeline reliability (v0.23)
 
 Ingestion cancel, lease, and multi-replica behavior are documented in depth in the ops runbook. The troubleshooting guide covers the operator-facing symptoms:
 

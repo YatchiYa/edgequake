@@ -38,11 +38,7 @@ async fn e2e_spec098_edge_upsert_cardinality() {
 
     // Duplicate (src,tgt,rel) + multigraph + mixed-case + empty rel in one batch.
     let edges = vec![
-        (
-            "CARD_A".into(),
-            "CARD_B".into(),
-            props_rel("knows", "v1"),
-        ),
+        ("CARD_A".into(), "CARD_B".into(), props_rel("knows", "v1")),
         (
             "CARD_A".into(),
             "CARD_B".into(),
@@ -53,11 +49,7 @@ async fn e2e_spec098_edge_upsert_cardinality() {
             "CARD_B".into(),
             props_rel("WORKS_WITH", "works"),
         ),
-        (
-            "CARD_A".into(),
-            "CARD_B".into(),
-            props_rel("", "empty-rel"),
-        ),
+        ("CARD_A".into(), "CARD_B".into(), props_rel("", "empty-rel")),
         (
             "CARD_A".into(),
             "CARD_B".into(),

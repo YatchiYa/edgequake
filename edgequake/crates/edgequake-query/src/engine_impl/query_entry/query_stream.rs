@@ -180,8 +180,8 @@ impl QueryEngine {
             crate::cache::LlmCacheType::Query,
             &crate::cache::hash_query_prompt(&prompt),
         );
-        let answer_cache_on = self.answer_cache.is_some()
-            || crate::cache::answer_cache_enabled_from_env();
+        let answer_cache_on =
+            self.answer_cache.is_some() || crate::cache::answer_cache_enabled_from_env();
         if answer_cache_on && !context.is_empty() {
             if let Some(cache) = self.llm_response_cache.as_ref() {
                 if let Some(cached) = cache.get_return(&cache_key).await {

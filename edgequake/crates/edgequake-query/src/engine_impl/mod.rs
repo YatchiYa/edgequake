@@ -500,10 +500,7 @@ impl QueryEngine {
     }
 
     /// Attach unified LLM response cache (tests / custom backends).
-    pub fn with_llm_response_cache(
-        mut self,
-        cache: crate::cache::SharedLlmResponseCache,
-    ) -> Self {
+    pub fn with_llm_response_cache(mut self, cache: crate::cache::SharedLlmResponseCache) -> Self {
         self.llm_response_cache = Some(cache);
         if self.answer_cache.is_none() {
             self.answer_cache = Some(Arc::new(crate::cache::InMemoryAnswerCache::with_defaults()));

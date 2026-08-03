@@ -38,6 +38,7 @@
 pub mod cache;
 pub mod config;
 pub mod conversation_service;
+pub mod entity_type_colors;
 pub mod env;
 pub mod error;
 pub mod graph_mapping;
@@ -52,7 +53,6 @@ pub mod sota_bridge;
 pub mod tenant_manager;
 pub mod token_budget;
 pub mod types;
-pub mod entity_type_colors;
 pub mod utils;
 pub mod workspace_model_update;
 pub mod workspace_service;

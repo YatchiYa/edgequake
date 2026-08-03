@@ -104,12 +104,9 @@ fn workspace_to_response(workspace: &edgequake_core::Workspace) -> WorkspaceResp
             .get("extraction_language")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
-        entity_type_colors: workspace
-            .metadata
-            .get("entity_type_colors")
-            .and_then(|v| {
-                serde_json::from_value::<std::collections::HashMap<String, String>>(v.clone()).ok()
-            }),
+        entity_type_colors: workspace.metadata.get("entity_type_colors").and_then(|v| {
+            serde_json::from_value::<std::collections::HashMap<String, String>>(v.clone()).ok()
+        }),
         created_at: workspace.created_at.to_rfc3339(),
         updated_at: workspace.updated_at.to_rfc3339(),
     }

@@ -2,7 +2,7 @@
 title: "Configuration Reference"
 ---
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Configuration Reference
 
@@ -368,6 +368,30 @@ Postgres task rows are the delivery SSOT; the in-memory channel is a wake signal
 **Multi-replica:** Set `EDGEQUAKE_REPLICAS>1` and `EDGEQUAKE_TASK_DELIVERY=bridged` (or `notify_only`). Correctness remains `claim_next` + lease — never process from channel payload alone.
 
 **Convert vs ingest (P2):** PDF admission enqueues convert-only (`pdf_processing`); after durable markdown, a separate `insert` task runs under its own lease/timeout. Cancel semantics: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
+
+---
+
+### SPEC-091 Data Layer & SPEC-103 LLM Cache (v0.23.0)
+
+Relational data-layer cutover (typed SSOT) and the LightRAG-parity response cache. Most defaults assume a **post-drop** database; mid-upgrade fleets must follow the [SPEC-091 runbook](spec091-upgrade-from-v0.22.0.md).
+
+| Variable | Type | Default | Description |
+| -------- | ---- | ------- | ----------- |
+| `EDGEQUAKE_MIGRATION_MODE` | String | `verify` | Migration engine mode (`off` \| `verify` \| `automatic`); `edgequake migrate` console is the canonical path |
+| `EDGEQUAKE_MIGRATION_CONFIRM_DROP` | Boolean | `0` | Acknowledge irreversible drops (**125** KV, **126/131** vectors); also via `edgequake migrate --confirm-drop` |
+| `EDGEQUAKE_VECTOR_BACKEND` | String | `typed_embeddings` | Vector write SSOT; `legacy_tables` only for pre-drop fleets |
+| `EDGEQUAKE_CHUNK_TEXT_AUTHORITY` | String | `relational` | Chunk-text SSOT (`relational` post-SPEC-091; `kv` pre-drop) |
+| `EDGEQUAKE_KV_FAMILY_*` | String | `relational` | Per-family KV routing (`artifact`, `cache`, `checkpoint`, `compensation_quarantine`, `doc_hash`, `injection`, `metadata`, `wsdoc`) |
+| `EDGEQUAKE_SERVING_FENCE` | Boolean | `1` | Fail-closed serving when typed tables are missing; set `off`/`false`/`0` to disable |
+| `EDGEQUAKE_OUTBOX_DRAIN` | String | `on` | Outbox drain mode (`off` \| `dry-run` \| `on`) for ingest compensations |
+| `EDGEQUAKE_CITATION_REQUIRE` | Boolean | `1` | Fail-closed citation requirement (`source_chunk_ids`) on merges |
+| `EDGEQUAKE_CONTEXTUAL_CHUNK` | Boolean | `0` | Contextual chunk preamble injection (default off) |
+| `EDGEQUAKE_LLM_CACHE` | Boolean | `1` | **Master** LLM cache switch (keywords + answers); set `0`/`false` to disable both |
+| `EDGEQUAKE_KEYWORD_CACHE` | Boolean | follows master | Keyword-extraction cache override (SPEC-103) |
+| `EDGEQUAKE_QUERY_ANSWER_CACHE` | Boolean | follows master | Query-answer cache override (SPEC-103) |
+| `EDGEQUAKE_EXTRACTION_LANGUAGE` | String | `English` | Fleet default KG extraction NL language (SPEC-096); workspace metadata overrides |
+
+> **Acc note:** The benchmark pins `EDGEQUAKE_LLM_CACHE=0` for fair cold peers. Irreversible drops (**125** KV, **126/131** vectors) are human-gated via the CLI flag `edgequake migrate --confirm-drop` or the `EDGEQUAKE_MIGRATION_CONFIRM_DROP=1` env var — never set it casually in shared env files.
 
 ---
 
@@ -848,12 +872,12 @@ DATABASE_URL="postgresql://user:pass@pgbouncer:6432/edgequake?application_name=e
 
 ### Query Tuning
 
-| Setting        | Via API   | Default | Description            |
-| -------------- | --------- | ------- | ---------------------- |
-| `max_chunks`   | Per query | 10      | Max chunks retrieved   |
-| `max_entities` | Per query | 20      | Max entities retrieved |
-| `temperature`  | Per query | 0.7     | LLM temperature        |
-| `max_tokens`   | Per query | 16384   | Max response tokens (HTTP safety layer default) |
+| Setting        | Scope   | Default | Description            |
+| -------------- | ------- | ------- | ---------------------- |
+| `max_results`  | Per query | 20   | Max chunks retrieved (falls back to engine `max_chunks`) |
+| `max_entities` | Engine config | 60 | Max entities retrieved |
+| `temperature`  | Chat API | 0.7 | LLM temperature (chat requests only; query requests have no temperature field) |
+| `max_tokens`   | HTTP safety layer | 16384 | Max response tokens (`EDGEQUAKE_LLM_MAX_TOKENS` overrides) |
 
 ---
 
@@ -908,7 +932,7 @@ EdgeQuake validates configuration at startup:
 ```
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║   ⚡ EdgeQuake v0.19.0                                        ║
+║   ⚡ EdgeQuake v0.23.0                                        ║
 ║                                                              ║
 ║   🐘 Storage: POSTGRESQL (persistent)
 ║   🌐 Server:  http://0.0.0.0:8080

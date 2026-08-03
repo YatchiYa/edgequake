@@ -4,7 +4,7 @@ title: 'Document Upload Quick Reference'
 
 # Document Upload Quick Reference
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 > **Choose the Right Endpoint for Your Upload Method**
 

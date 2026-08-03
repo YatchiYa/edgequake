@@ -4,13 +4,13 @@ title: 'Deep Dive: Pipeline Progress Tracking'
 
 # Deep Dive: Pipeline Progress Tracking
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 > Real-time monitoring of document ingestion, PDF conversion, and deletion.
 
 EdgeQuake exposes progress through **WebSocket streams**, **REST polling**, and **SSE**. All examples use `http://localhost:8080` (default backend port).
 
-**Authoritative contract:** [`edgequake_webui/openapi/openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) (version `0.19.0`).
+**Authoritative contract:** [`edgequake_webui/openapi/openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) (version `0.23.0`).
 
 ---
 

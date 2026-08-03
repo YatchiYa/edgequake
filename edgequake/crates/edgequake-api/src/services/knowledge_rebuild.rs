@@ -255,8 +255,8 @@ mod tests {
         );
         apply_rebuild_to_properties(&mut props, &[]);
         assert_eq!(props.get("source_ids"), Some(&json!([])));
-        assert!(props.get("source_chunk_id").is_none());
-        assert!(props.get("source_document_id").is_none());
+        assert!(!props.contains_key("source_chunk_id"));
+        assert!(!props.contains_key("source_document_id"));
         assert_eq!(props.get("source_id"), Some(&json!("ws::ENTITY")));
     }
 

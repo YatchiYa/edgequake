@@ -59,10 +59,7 @@ async fn e2e_spec098_edge_upsert_perf() {
         let mut samples = Vec::new();
         for _ in 0..5 {
             let start = Instant::now();
-            graph
-                .upsert_edges_batch(&edges)
-                .await
-                .expect("perf upsert");
+            graph.upsert_edges_batch(&edges).await.expect("perf upsert");
             samples.push(start.elapsed().as_millis());
         }
         samples.sort_unstable();

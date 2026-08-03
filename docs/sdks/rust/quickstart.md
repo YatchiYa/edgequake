@@ -4,7 +4,7 @@ title: "Rust SDK — quickstart"
 
 # Rust SDK — quickstart
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
 
 > **Crate: ~0.4.0** (≠ product version)
 

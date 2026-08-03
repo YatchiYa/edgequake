@@ -281,9 +281,7 @@ impl PdfDocumentStorage for MemoryPdfStorage {
         let mut documents = self.documents.write().map_err(map_lock_err)?;
         // Mirror Postgres: never shrink stored body on conflict.
         let content = match documents.get(document_id) {
-            Some(existing) if existing.content.len() > content.len() => {
-                existing.content.clone()
-            }
+            Some(existing) if existing.content.len() > content.len() => existing.content.clone(),
             _ => content.to_string(),
         };
         documents.insert(

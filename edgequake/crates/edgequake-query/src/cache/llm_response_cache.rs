@@ -163,9 +163,7 @@ fn envelope(cache_type: LlmCacheType, value: &str, original_prompt: Option<&str>
 }
 
 fn parse_return(v: &Value) -> Option<String> {
-    v.get("return")
-        .and_then(|x| x.as_str())
-        .map(str::to_string)
+    v.get("return").and_then(|x| x.as_str()).map(str::to_string)
 }
 
 /// In-process L1 LRU+TTL.
@@ -300,9 +298,7 @@ impl LlmResponseCache for TieredLlmResponseCache {
             return Some(v);
         }
         if let Some(v) = self.l2.get_return(key).await {
-            self.l1
-                .set_return(key, LlmCacheType::Query, &v, None)
-                .await;
+            self.l1.set_return(key, LlmCacheType::Query, &v, None).await;
             return Some(v);
         }
         None

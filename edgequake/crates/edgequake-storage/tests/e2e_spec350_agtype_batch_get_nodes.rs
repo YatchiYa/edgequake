@@ -36,7 +36,7 @@ async fn e2e_spec350_agtype_batch_get_nodes() {
         .await
         .expect("native upsert must succeed");
 
-    let result = graph.get_nodes_batch(&[node_id.clone()]).await;
+    let result = graph.get_nodes_batch(std::slice::from_ref(&node_id)).await;
     match &result {
         Ok(map) => {
             assert!(

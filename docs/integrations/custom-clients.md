@@ -4,7 +4,7 @@ title: 'Integration: Custom Clients'
 
 # Integration: Custom Clients
 
-> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 Thin HTTP cookbook for custom integrations. **Use official SDKs when possible** — they track OpenAPI and handle auth, retries, and DTOs.
 

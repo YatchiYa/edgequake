@@ -176,12 +176,12 @@ fn collect_source_references_ignores_edge_endpoint_topology() {
 #[test]
 fn collect_source_references_keeps_legacy_node_pipe_join() {
     let mut props = HashMap::new();
-    props.insert(
-        "source_id".to_string(),
-        json!("docA-chunk-0|docB-chunk-1"),
-    );
+    props.insert("source_id".to_string(), json!("docA-chunk-0|docB-chunk-1"));
     let refs = collect_source_references(&props);
-    assert_eq!(refs, vec!["docA-chunk-0".to_string(), "docB-chunk-1".to_string()]);
+    assert_eq!(
+        refs,
+        vec!["docA-chunk-0".to_string(), "docB-chunk-1".to_string()]
+    );
 }
 
 #[tokio::test]
@@ -214,10 +214,7 @@ async fn find_edges_by_source_prefixes_matches_singular_chunk_id() {
     // Poisoned arrays + singular citation (science_one shape).
     props.insert("source_id".to_string(), json!("ws::A"));
     props.insert("source_ids".to_string(), json!(["ws::A"]));
-    props.insert(
-        "source_chunk_id".to_string(),
-        json!("doc-singular-chunk-3"),
-    );
+    props.insert("source_chunk_id".to_string(), json!("doc-singular-chunk-3"));
     storage.upsert_edge("A", "B", props).await.unwrap();
 
     let filter = EdgeListFilter {
