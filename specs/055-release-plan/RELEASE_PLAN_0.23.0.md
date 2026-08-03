@@ -44,13 +44,13 @@ Phase 3 — Local quality gates
 [x] 3-F  make check-extension-pins
 
 Phase 4 — Commit + push (gated — needs explicit approval)
-[ ] 4-A  git commit -m "release: bump to v0.23.0"
-[ ] 4-B  git push origin feat/version-023 (or merge to default cut branch)
+[x] 4-A  git commit -m "release: bump to v0.23.0"
+[x] 4-B  git push origin feat/version-023 (or merge to default cut branch)
 
 Phase 5 — Tag + CI/CD (gated)
-[ ] 5-A  git tag v0.23.0 && git push origin v0.23.0
-[ ] 5-B  gh release view v0.23.0
-[ ] 5-C  docker buildx imagetools inspect GHCR tags (api/frontend/postgres + pg16/pg17/pg18)
+[x] 5-A  git tag v0.23.0 && git push origin v0.23.0
+[x] 5-B  gh release view v0.23.0
+[x] 5-C  docker buildx imagetools inspect GHCR tags (api/frontend/postgres + pg16/pg17/pg18)
 ```
 
 ---
