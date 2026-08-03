@@ -8,15 +8,15 @@
 
 ## Gate evidence
 
-| Gate | Result | Notes |
-|------|--------|-------|
-| `make release-gates` | PASS | fmt/clippy/SPEC-006/018/WebUI/version+OpenAPI parity **0.24.0** |
-| `contract_spec104_datalayer` | PASS 11/11 | PG soft-skips where expected |
-| `contract_spec105_legacy` | PASS 8/8 | mid-upgrade census note OK |
-| `spec027_api_contract` | PASS | OpenAPI `info.version` = **0.24.0** |
-| `make spec091-upgrade-soak` | **PASS** 19/0 | Applied 125/126/131/**142**; health + multi-tenant gates GREEN |
-| `make bench001-doctor` | PASS | EQ healthy; Acc keys/LightRAG present |
-| Acc pack attestation | **ATTEST** | `publish/latest` `valid: true` (2026-08-02, medical-mid n=200, profile `P0_mistral_small_mix_chunk1200_*`); SPEC-104/105 do not change Acc SUT pins |
+| Gate                         | Result        | Notes                                                                                                                                               |
+| ------------------------------| ---------------| -----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `make release-gates`         | PASS          | fmt/clippy/SPEC-006/018/WebUI/version+OpenAPI parity **0.24.0**                                                                                     |
+| `contract_spec104_datalayer` | PASS 11/11    | PG soft-skips where expected                                                                                                                        |
+| `contract_spec105_legacy`    | PASS 8/8      | mid-upgrade census note OK                                                                                                                          |
+| `spec027_api_contract`       | PASS          | OpenAPI `info.version` = **0.24.0**                                                                                                                 |
+| `make spec091-upgrade-soak`  | **PASS** 19/0 | Applied 125/126/131/**142**; health + multi-tenant gates GREEN                                                                                      |
+| `make bench001-doctor`       | PASS          | EQ healthy; Acc keys/LightRAG present                                                                                                               |
+| Acc pack attestation         | **ATTEST**    | `publish/latest` `valid: true` (2026-08-02, medical-mid n=200, profile `P0_mistral_small_mix_chunk1200_*`); SPEC-104/105 do not change Acc SUT pins |
 
 ## Spec assessments
 
@@ -33,7 +33,11 @@
 
 | Check | Result |
 |-------|--------|
-| `gh release view v0.24.0` | pending |
-| `ghcr.io/raphaelmansuy/edgequake:0.24.0` | pending |
-| `edgequake-frontend:0.24.0` | pending |
-| `edgequake-postgres:0.24.0` (+ pg16/17/18) | pending |
+| Workflow `release-docker` run 30812944260 | **success** (all 16 jobs) |
+| `gh release view v0.24.0` | **OK** — https://github.com/raphaelmansuy/edgequake/releases/tag/v0.24.0 |
+| `ghcr.io/raphaelmansuy/edgequake:0.24.0` | **OK** multi-arch amd64+arm64 |
+| `edgequake-frontend:0.24.0` | **OK** multi-arch amd64+arm64 |
+| `edgequake-postgres:0.24.0` | **OK** multi-arch amd64+arm64 |
+| `edgequake-postgres:0.24.0-pg16` | **OK** |
+| `edgequake-postgres:0.24.0-pg17` | **OK** |
+| `edgequake-postgres:0.24.0-pg18` | **OK** |
