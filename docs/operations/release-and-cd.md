@@ -4,7 +4,7 @@ title: "Release & CD Cycle"
 
 # Release & CD Cycle
 
-> **Product: v0.24.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.24.1** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 This document describes how to cut a release, run quality gates, and verify the published Docker images.
 
@@ -69,8 +69,8 @@ done
 
 ```bash
 # Example (current cut)
-git tag v0.24.0
-git push origin v0.24.0
+git tag v0.24.1
+git push origin v0.24.1
 ```
 
 This triggers `.github/workflows/release-docker.yml`, which:

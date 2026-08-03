@@ -1,7 +1,8 @@
 # SPEC-106 — KG Persist graphid Operator Bug (#356)
 
 > **Source:** [GitHub #356](https://github.com/raphaelmansuy/edgequake/issues/356)  
-> **Product pin confirmed broken:** **v0.24.0**  
+> **Broken through:** **v0.24.0**  
+> **Shipped in:** **v0.24.1**  
 > **Fix:** LAW-G1 `::text` joins in `pg_get_edges_for_nodes_batch`
 
 ## Status board
@@ -11,7 +12,8 @@
 | RCA | Closed | [03](03-root-cause.md) |
 | Code fix | Closed | [04](04-fix-plan.md) |
 | Similar-site audit | Closed (one open site; now fixed) | [07](07-similar-issues.md) |
-| E2E-106-01..03 | Closed | [05](05-e2e-test-matrix.md) |
+| E2E-106-01..03 | Closed + CI | [05](05-e2e-test-matrix.md) |
+| Product cut | **v0.24.1** | CHANGELOG / GHCR |
 
 ## Document map
 
