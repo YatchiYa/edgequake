@@ -238,6 +238,11 @@ fn local_provider_key(provider_name: &str) -> Option<&'static str> {
     match provider_name.trim().to_ascii_lowercase().as_str() {
         "ollama" => Some("ollama"),
         "lmstudio" | "lm-studio" | "lm_studio" => Some("lmstudio"),
+        "omlx" | "o-mlx" | "o_mlx" => Some("omlx"),
+        "mtplx" | "mtp-lx" | "mtp_lx" => Some("mtplx"),
+        "llamacpp" | "llama-server" | "llama.cpp" => Some("llamacpp"),
+        "vllm-mlx" | "vllm_mlx" | "vllmmx" => Some("vllm-mlx"),
+        "mlx-lm" | "mlx_lm" | "mlxlm" => Some("mlx-lm"),
         _ => None,
     }
 }

@@ -640,24 +640,17 @@ impl TaskStorage for PostgresTaskStorage {
         }
     }
 
-    /**
-     * @dataop      DATA-PG-TASKS-CLAIM-NEXT-140
-     * @engine      postgres
-     * @intent      Hold-aware, tenant-priority, workspace-fair claim (SKIP LOCKED).
-     * @tables      tasks
-     * @indexes     idx_tasks_claim_pending_workspace_created, idx_tasks_stale_processing_lease,
-     *              idx_tasks_fairness_hold_until
-     * @complexity  time: O(B + W) bounded sample B≈1000 + ws/tenant load; space: O(1)
-     * @limits      - Concurrent workers safe via FOR UPDATE SKIP LOCKED (two sargable arms)
-     *              - Lease TTL required; expired processing rows reclaimable
-     *              - Active fairness_hold_until excludes Pending from claim (SPEC-057 INV-06)
-     *              - fairness_parked_at excluded via state machine CLAIM_PENDING_GUARD_SQL (SPEC-091 R-18)
-     *              - Deadlock risk if other paths lock tasks by track_id inconsistently
-     * @scaling     Cost bounded by sample size, not full backlog depth (SPEC-090 F-090-11)
-     * @tests       tests/e2e_spec090_claim_bounded.rs, tests/postgres_claim_lease.rs
-     * @pgversions  16: ok | 17: ok | 18: ok
-     * @docs        specs/088-data-layer/postgres.md#data-pg-tasks-claim-next-140
-     */
+    // @dataop      DATA-PG-TASKS-CLAIM-NEXT-140
+    // @engine      postgres
+    // @intent      Hold-aware, tenant-priority, workspace-fair claim (SKIP LOCKED).
+    // @tables      tasks
+    // @indexes     idx_tasks_claim_pending_workspace_created, idx_tasks_stale_processing_lease, idx_tasks_fairness_hold_until
+    // @complexity  time: O(B + W) bounded sample B≈1000 + ws/tenant load; space: O(1)
+    // @limits      Concurrent workers safe via FOR UPDATE SKIP LOCKED (two sargable arms). Lease TTL required; expired processing rows reclaimable. Active fairness_hold_until excludes Pending from claim (SPEC-057 INV-06). fairness_parked_at excluded via state machine CLAIM_PENDING_GUARD_SQL (SPEC-091 R-18). Deadlock risk if other paths lock tasks by track_id inconsistently.
+    // @scaling     Cost bounded by sample size, not full backlog depth (SPEC-090 F-090-11)
+    // @tests       tests/e2e_spec090_claim_bounded.rs, tests/postgres_claim_lease.rs
+    // @pgversions  16: ok | 17: ok | 18: ok
+    // @docs        specs/088-data-layer/postgres.md#data-pg-tasks-claim-next-140
     async fn claim_next_with_policy(
         &self,
         worker_id: &str,
