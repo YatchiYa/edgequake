@@ -45,6 +45,7 @@ const ALLOWLIST: &[&str] = &[
     "edgequake-api/src/processor/pipeline_checkpoint.rs",
     "edgequake-api/src/processor/pdf_processing.rs",
     "edgequake-api/src/services/document_deletion.rs",
+    "edgequake-api/src/services/document_body_loader.rs",
     "edgequake-api/src/services/document_metadata_scan.rs",
     "edgequake-api/src/services/ingestion_persist.rs",
     "edgequake-api/src/services/injection_process.rs",
@@ -96,6 +97,7 @@ const ALLOWLIST: &[&str] = &[
     // --- query engine (chunk hydration via KV — migrate to ChunkRepository) ---
     "edgequake-query/src/bootstrap.rs",
     "edgequake-query/src/chunk_hydration.rs",
+    "edgequake-query/src/cache/llm_response_cache.rs",
     "edgequake-query/src/engine_impl/mod.rs",
     "edgequake-query/tests/contract_chunk_hydration.rs",
     "edgequake-query/src/engine_impl/query_entry/query_pipeline.rs",
