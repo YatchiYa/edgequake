@@ -18026,6 +18026,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Tenant already existed (idempotent get-or-create by slug) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantResponse"];
+                };
+            };
             /** @description Tenant created */
             201: {
                 headers: {

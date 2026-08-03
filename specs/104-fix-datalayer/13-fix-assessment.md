@@ -13,7 +13,7 @@
  │ INV-01 split_part│     │ document_id join │     │ INV-C default ns │
  │ best-effort      │     │ + safe SQL idents│     │ only (cost)      │
  └──────────────────┘     └──────────────────┘     └──────────────────┘
- Ship: YES as 0.23.x patch. Domain policy + DE hygiene closed; #5 remains capacity.
+ Ship: YES as **0.24.0**. Domain policy + DE hygiene closed; #5 remains capacity.
 ```
 
 | Issue | Grade v2 | Grade v3 (A+) | Notes |
@@ -83,4 +83,4 @@
 - [x] Multi-graph GIN
 - [x] Contracts updated (A+)
 - [x] Staging inspect: zero 42703/42P01 since MARKER; INV-03 only true orphans ([measurements/](measurements/))
-- [x] Release notes: duplicate slug same name → 200; different name → 409 ([`CHANGELOG.md`](../../CHANGELOG.md) Unreleased)
+- [x] Release notes: duplicate slug same name → 200; different name → 409 ([`CHANGELOG.md`](../../CHANGELOG.md) **0.24.0**)

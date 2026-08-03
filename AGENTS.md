@@ -813,7 +813,7 @@ Checklist summary:
 5. `git tag vX.Y.Z && git push origin vX.Y.Z` → GHCR via `release-docker.yml`
 6. Verify: `gh release view vX.Y.Z` + `docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:X.Y.Z`
 
-Current product pin: **v0.23.0**.
+Current product pin: **v0.24.0**.
 
 ## Automation & Agent Workflow
 

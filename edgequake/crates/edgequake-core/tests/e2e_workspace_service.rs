@@ -75,7 +75,10 @@ mod tenant_crud_tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("already exists"), "{err}");
-        assert!(err.contains("Conflict") || err.starts_with("Conflict"), "{err}");
+        assert!(
+            err.contains("Conflict") || err.starts_with("Conflict"),
+            "{err}"
+        );
     }
 
     #[tokio::test]

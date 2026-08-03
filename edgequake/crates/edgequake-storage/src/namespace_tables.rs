@@ -48,7 +48,10 @@ mod tests {
     #[test]
     fn default_namespace_matches_historical_eq_eq_default() {
         assert_eq!(table_prefix_for_namespace("default"), "eq_default");
-        assert_eq!(age_graph_name_for_namespace("default"), "eq_eq_default_graph");
+        assert_eq!(
+            age_graph_name_for_namespace("default"),
+            "eq_eq_default_graph"
+        );
         assert_eq!(bare_kv_table_for_namespace("default"), "eq_eq_default_kv");
         assert_eq!(
             bare_vectors_table_for_namespace("default"),

@@ -96,8 +96,7 @@ fn e2e_105_07_source_defer_142_helpers() {
 
 #[test]
 fn e2e_105_06_fts_era_aware_kv_gate() {
-    let src =
-        include_str!("../../edgequake-storage/src/adapters/postgres/vector/fts.rs");
+    let src = include_str!("../../edgequake-storage/src/adapters/postgres/vector/fts.rs");
     assert!(
         src.contains("chunk_kv_table_exists"),
         "FTS must gate KV join on table existence (era-aware)"
@@ -184,9 +183,7 @@ async fn e2e_105_pg_inv03_dual_when_kv_present() {
 
     // Smoke: inspector runs without panic when KV era still present.
     let _ = Uuid::nil();
-    let inspector = StorageInspector::new(
-        Arc::new(pool),
-        InspectorConfig::for_namespace("default"),
-    );
+    let inspector =
+        StorageInspector::new(Arc::new(pool), InspectorConfig::for_namespace("default"));
     let _ = inspector.inspect().await;
 }

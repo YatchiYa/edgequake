@@ -206,15 +206,13 @@ pub use conversation_types::{ConversationRow, FolderRow, MessageRow};
 pub use cutover_flag_guard::{
     detect_cutover_posture, validate_cutover_flags, CutoverSchemaPosture,
 };
-#[cfg(feature = "postgres")]
-pub use legacy_store_census::{
-    any_legacy_rows, legacy_store_census, LegacyStoreCensus,
-};
 pub use error::StorageError;
 pub use kv_family_cutover::{
     kv_family_mode_from_env, KvFamilyMode, KV_FAMILY_CHUNK, KV_FAMILY_COMPENSATION_QUARANTINE,
     KV_FAMILY_ENV_PREFIX, KV_FAMILY_METADATA, KV_FAMILY_WSDOC,
 };
+#[cfg(feature = "postgres")]
+pub use legacy_store_census::{any_legacy_rows, legacy_store_census, LegacyStoreCensus};
 pub use namespace_tables::{
     age_graph_name_for_namespace, bare_kv_table_for_namespace, bare_vectors_table_for_namespace,
     sanitize_namespace_segment, table_prefix_for_namespace,

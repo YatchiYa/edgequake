@@ -7,15 +7,15 @@
 | postgres tag | `0.22.0` |
 | source API | `edgequake:0.22.0` |
 | compose project | `spec091soak` |
-| started | 2026-08-02T12:24:19Z |
-| finished | 2026-08-02T12:25:00Z |
-| wall seconds | 41 |
+| started | 2026-08-03T12:13:28Z |
+| finished | 2026-08-03T12:15:18Z |
+| wall seconds | 110 |
 | PASS / FAIL | 19 / 0 |
 | Postgres | `18.4 (Debian 18.4-1.pgdg12+1)` |
 | pre migration max | 105 |
-| post migration max | 141 |
+| post migration max | 142 |
 | tenants / workspaces / docs | 3 / 6 / 6 |
-| dump SHA256 | `1ea2baa62e9b…` (427669 bytes) |
+| dump SHA256 | `566e94c8f0f7…` (427680 bytes) |
 | dump path | `/Users/raphaelmansuy/Github/03-working/edgequake/artifacts/spec091-upgrade-soak/pre-upgrade.dump` |
 
 ## Acceptance

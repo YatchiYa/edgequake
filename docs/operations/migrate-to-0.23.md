@@ -1,30 +1,31 @@
 ---
-title: "Migrate to EdgeQuake v0.23.0"
+title: "Migrate to EdgeQuake v0.23.0+"
 ---
 
-# Migrate to EdgeQuake v0.23.0
+# Migrate to EdgeQuake v0.23.0+
 
 > **One rule:** the API server **never** changes the database schema. You run `edgequake migrate` (or a one-shot migrate container/Job) **before** starting new API replicas.
 
-This page is the short, operator-facing guide for **v0.23.0**.  
+This page is the short, operator-facing guide for **v0.23.0** and **v0.24.0** (adds migration **142** SPEC-105 assert).  
 Deep dive / production soak: [Upgrade from v0.22.0 (SPEC-091)](./spec091-upgrade-from-v0.22.0.md) · Boot gate design: [LD-15](../../specs/091-simplify-data-layer/17-boot-migration-gating.md).
 
 ---
 
 ## What changed
 
-| | v0.22.0 | v0.23.0 |
-| --- | --- | --- |
-| Schema | Migrations through **105** (KV-centric) | Migrations **106–141** (typed relational tables) |
-| Who applies schema | Could still auto-migrate at boot in some setups | **Only** `edgequake migrate` |
-| If DB is behind | Server might apply migrations | Server **exits 78** and tells you to migrate |
-| Dangerous steps | — | Drops of old KV/vector tables need `--confirm-drop` |
+| | v0.22.0 | v0.23.0 | v0.24.0 |
+| --- | --- | --- | --- |
+| Schema | Migrations through **105** (KV-centric) | Migrations **106–141** (typed relational tables) | Through **142** (empty legacy assert) |
+| Who applies schema | Could still auto-migrate at boot in some setups | **Only** `edgequake migrate` | same |
+| If DB is behind | Server might apply migrations | Server **exits 78** and tells you to migrate | same |
+| Dangerous steps | — | Drops of old KV/vector tables need `--confirm-drop` | same; **142** aborts if residue remains |
 
 Irreversible drops (restore-from-backup only if you need to undo):
 
 - **125** — drop legacy `eq_*_kv`
 - **126** — drop legacy chunk vector tables
 - **131** — drop remaining fleet `eq_*_vectors`
+- **142** — SPEC-105 assert: DROP empty leftovers / abort if rows; deferred while residue remains
 
 ---
 

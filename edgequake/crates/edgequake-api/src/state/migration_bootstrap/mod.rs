@@ -852,8 +852,7 @@ pub fn pending_only_irreversible_drops(pending: &[i64]) -> bool {
 pub fn pending_ok_to_serve(pending: &[i64], defer_legacy_cutover_assert: bool) -> bool {
     !pending.is_empty()
         && pending.iter().copied().all(|v| {
-            is_irreversible_drop(v)
-                || (defer_legacy_cutover_assert && is_legacy_cutover_assert(v))
+            is_irreversible_drop(v) || (defer_legacy_cutover_assert && is_legacy_cutover_assert(v))
         })
 }
 
@@ -1171,7 +1170,8 @@ async fn run_postgres_migrations_inner(
             .filter(|m| !applied_before.contains(&m.version))
             .map(|m| m.version)
             .collect();
-        if !all_pending.is_empty() && !pending_ok_to_serve(&all_pending, defer_legacy_cutover_assert)
+        if !all_pending.is_empty()
+            && !pending_ok_to_serve(&all_pending, defer_legacy_cutover_assert)
         {
             return Err(sqlx::Error::Protocol(boot_gate_pending_message(
                 &all_pending,
@@ -1920,10 +1920,7 @@ mod tests {
         assert!(!pending_ok_to_serve(&[131, 142], false));
         assert!(pending_ok_to_serve(&[131], false));
 
-        assert_eq!(
-            expandable_apply_versions(&[131, 132, 142], true),
-            vec![132]
-        );
+        assert_eq!(expandable_apply_versions(&[131, 132, 142], true), vec![132]);
         assert_eq!(
             expandable_apply_versions(&[131, 132, 142], false),
             vec![132, 142]

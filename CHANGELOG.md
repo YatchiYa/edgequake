@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.24.0] — 2026-08-03
+
+Minor: production data-layer monitor harden (SPEC-104) and legacy cutover assert (SPEC-105, migration **142**).
+
 ### Fixed
 
 - **SPEC-105 legacy cutover harden** — unknown `EDGEQUAKE_VECTOR_BACKEND` → typed (not legacy); shared `legacy_store_census` SSOT; cutover refuses `legacy_tables` when vectors census is empty / 131 applied; migration **142** asserts empty leftovers (aborts if rows — finish 125–131 `--confirm-drop` first); expandable migrate / boot **defer** 142 while durable legacy rows remain (≤0.22 mid-upgrade soft-exit); workspace embedding counts prefer `chunk_embeddings`. Era-aware INV/FTS dual-read preserved for ≤0.22 mid-upgrade. Spec: [`specs/105-fix-legacy/`](specs/105-fix-legacy/).

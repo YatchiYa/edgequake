@@ -71,7 +71,7 @@ curl -s http://localhost:8080/health | python3 -m json.tool
 
 > Pin a version: `EDGEQUAKE_VERSION=0.24.0 sh quickstart.sh`
 
-### What's new in 0.23.0
+### What's new in 0.24.0
 
 #### Database migration (read this first)
 
@@ -80,22 +80,20 @@ curl -s http://localhost:8080/health | python3 -m json.tool
 | Situation | What to run |
 |-----------|-------------|
 | **Fresh install** | `edgequake migrate` once, then start the API (`make dev` does this for you) |
-| **Upgrade from v0.22.0** | Backup → `migrate dry-run` → `migrate` → `migrate --confirm-drop` → start API |
+| **Upgrade from ≤ v0.22.0** | Backup → `migrate dry-run` → `migrate` → `migrate --confirm-drop` → `migrate` (applies deferred **142**) → start API |
 | **Server exits 78** | Schema behind or newer than the binary — run migrate, then restart |
 
-Irreversible drops (**125** KV, **126**/**131** vectors) need `--confirm-drop` and a backup; rollback after that is restore-only.
+Irreversible drops (**125** KV, **126**/**131** vectors) need `--confirm-drop` and a backup; rollback after that is restore-only. Migration **142** asserts empty leftovers (aborts if rows remain; deferred while residue exists).
 
-Full plain-language guide: **[Migrate to v0.23.0](docs/operations/migrate-to-0.23.md)** · production soak: [SPEC-091 upgrade runbook](docs/operations/spec091-upgrade-from-v0.22.0.md).
+Full plain-language guide: **[Migrate to v0.23.0+](docs/operations/migrate-to-0.23.md)** · production soak: [SPEC-091 upgrade runbook](docs/operations/spec091-upgrade-from-v0.22.0.md).
 
 #### Highlights
 
-- **SPEC-091 relational data-layer cutover** — typed SSOT for chunks/shells/embeddings; migrations **106–141**; `edgequake migrate` / `dry-run` console.
-- **LD-15 boot migration gating** — behind/newer DB → exit **78** with migrate hint; `EDGEQUAKE_ALLOW_BOOT_MIGRATE` removed.
-- **SPEC-094 parse API** — stateless `POST /api/v1/parse` (+ backends + async jobs) for PDF→Markdown without document residue.
-- **SPEC-103 LLM cache** — LightRAG-parity keyword + answer cache (`EDGEQUAKE_LLM_CACHE` default on); Acc pins cache off for fair peers.
-- **Wizard / UX** — SPEC-101 setup wizard; SPEC-099/100 Documents CLS; SPEC-102 custom entity type colors; SPEC-096 multi-language KG extraction.
+- **SPEC-104 production data-layer monitors** — StorageInspector uses `workspace_id` + `PostgresConfig` AGE graph SSOT; no `42703` / `42P01` probes; INV-03 dual-read; tenant create **201/200/409**.
+- **SPEC-105 legacy cutover assert** — census SSOT; unknown `VECTOR_BACKEND` → typed; migration **142**; mid-upgrade deferral so expandables soft-exit while residue remains.
+- **Schema** — migrations through **142** (0.23.0 stopped at **141**).
 
-Also in **0.22.0**: SPEC-090 multi-pool + migrate CLI + M104/M105. **0.21.3**: pool-safe `/health` (#336).
+Also in **0.23.0**: SPEC-091 relational cutover (106–141), LD-15 boot gate, SPEC-094 parse API, SPEC-103 LLM cache, wizard/UX. **0.22.0**: SPEC-090 multi-pool + migrate CLI.
 ### Performance testing
 
 Publish Acc is **medical-mid n=200** (`make bench`) — not smoke n=40. Latest publish pack (`medical-mid-20260802T135513Z`): Acc EQ **0.807** vs LR **0.779** (Δ Acc 95% CI **[-0.005, +0.059]** — statistical tie; L2 incomplete — do **not** claim EQ beats LightRAG / Acc Beat). Fair cold latency ratio **1.02×** (`C1COLD_v1`). Smoke peers remain CI/ablation references only. Required local pre-tag gate: see [Release & CD § SPEC-001](docs/operations/release-and-cd.md#spec-001-lightrag-acc-before-tag).
