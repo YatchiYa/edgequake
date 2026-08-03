@@ -1573,6 +1573,182 @@ embedding_per_1k = 0.0
 image_per_unit = 0.0
 
 # =============================================================================
+# LOCAL APPLE / OPENAI-COMPATIBLE SERVERS (edgequake-llm 0.10.3+)
+# =============================================================================
+# Catalog coverage for omlx / mtplx / llamacpp / vllm-mlx / mlx-lm.
+# Defaults match edgequake-llm host constants; override via *_HOST env vars.
+
+[[providers]]
+name = "omlx"
+display_name = "oMLX"
+type = "openaicompatible"
+api_base = "http://127.0.0.1:9050"
+api_key_env = ""
+enabled = true
+priority = 31
+description = "Local oMLX OpenAI-compatible server (Apple Silicon MLX)"
+
+[[providers.models]]
+name = "default"
+display_name = "oMLX Default"
+model_type = "llm"
+description = "Model loaded in oMLX (dynamic inventory via /v1/models)"
+deprecated = false
+tags = ["local", "mlx", "apple-silicon"]
+
+[providers.models.capabilities]
+context_length = 128000
+max_output_tokens = 16384
+supports_vision = false
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0
+output_per_1k = 0.0
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+[[providers]]
+name = "mtplx"
+display_name = "MTPLX"
+type = "openaicompatible"
+api_base = "http://127.0.0.1:8000"
+api_key_env = ""
+enabled = true
+priority = 32
+description = "Local MTPLX OpenAI-compatible server"
+
+[[providers.models]]
+name = "default"
+display_name = "MTPLX Default"
+model_type = "llm"
+description = "Model loaded in MTPLX (dynamic inventory via /v1/models)"
+deprecated = false
+tags = ["local", "mlx"]
+
+[providers.models.capabilities]
+context_length = 128000
+max_output_tokens = 16384
+supports_vision = false
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0
+output_per_1k = 0.0
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+[[providers]]
+name = "llamacpp"
+display_name = "llama.cpp server"
+type = "openaicompatible"
+api_base = "http://127.0.0.1:8080"
+api_key_env = ""
+enabled = true
+priority = 33
+description = "Local llama-server (llama.cpp) OpenAI-compatible API"
+
+[[providers.models]]
+name = "default"
+display_name = "llama.cpp Default"
+model_type = "llm"
+description = "Model loaded in llama-server (dynamic inventory via /v1/models)"
+deprecated = false
+tags = ["local", "gguf", "llama.cpp"]
+
+[providers.models.capabilities]
+context_length = 128000
+max_output_tokens = 16384
+supports_vision = false
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0
+output_per_1k = 0.0
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+[[providers]]
+name = "vllm-mlx"
+display_name = "vLLM-MLX"
+type = "openaicompatible"
+api_base = "http://127.0.0.1:8000"
+api_key_env = ""
+enabled = true
+priority = 34
+description = "Local vLLM-MLX OpenAI-compatible server"
+
+[[providers.models]]
+name = "default"
+display_name = "vLLM-MLX Default"
+model_type = "llm"
+description = "Model loaded in vLLM-MLX (dynamic inventory via /v1/models)"
+deprecated = false
+tags = ["local", "mlx", "vllm"]
+
+[providers.models.capabilities]
+context_length = 128000
+max_output_tokens = 16384
+supports_vision = false
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0
+output_per_1k = 0.0
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+[[providers]]
+name = "mlx-lm"
+display_name = "MLX-LM"
+type = "openaicompatible"
+api_base = "http://127.0.0.1:8080"
+api_key_env = ""
+enabled = true
+priority = 35
+description = "Local mlx_lm.server (official Apple MLX-LM OpenAI server)"
+
+[[providers.models]]
+name = "default"
+display_name = "MLX-LM Default"
+model_type = "llm"
+description = "Model loaded in mlx_lm.server (dynamic inventory via /v1/models)"
+deprecated = false
+tags = ["local", "mlx", "apple-silicon"]
+
+[providers.models.capabilities]
+context_length = 128000
+max_output_tokens = 16384
+supports_vision = false
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0
+output_per_1k = 0.0
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+# =============================================================================
 # ANTHROPIC PROVIDER
 # =============================================================================
 # Claude models from Anthropic

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
+  formatServerDefaultPdfParserLabel,
   getServerDefaultPdfParserBackend,
+  pdfParserBackendDisplayName,
   resolvePdfParserBackend,
   resolvesToVisionParser,
   type PdfParserResolutionContext,
@@ -46,6 +48,17 @@ describe("resolvePdfParserBackend", () => {
 
   it("getServerDefaultPdfParserBackend defaults to vision", () => {
     expect(getServerDefaultPdfParserBackend()).toBe("vision");
+  });
+
+  it("never-silent server default label includes resolved backend", () => {
+    expect(pdfParserBackendDisplayName("vision")).toBe("Vision");
+    expect(pdfParserBackendDisplayName("edgeparse")).toBe("EdgeParse");
+    const label = formatServerDefaultPdfParserLabel(
+      (_key, defaultValue) => defaultValue,
+      "vision",
+    );
+    expect(label).toBe("Server Default (Vision)");
+    expect(label).not.toBe("Server Default");
   });
 });
 

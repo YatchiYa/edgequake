@@ -138,14 +138,40 @@ async fn delete_staging_shell_sync(
 
     // Cancel any still-queued Insert so the worker cannot recreate final metadata
     // after we wipe the staging shell (delete-during-early-upload race).
+    // SPEC-091 hardening: route through `apply_task_row_cancel` — a process-local
+    // registry cancel alone does not survive a worker restart; persisting
+    // `TaskStatus::Cancelled` on the row makes the delete intent durable (LAW-Q7).
     if let Some(ref track) = ingest_track_id {
-        let cancelled = state.tasks.cancellation_registry.cancel(track).await;
-        tracing::info!(
-            document_id = %document_id,
-            track_id = %track,
-            cancelled,
-            "Cancelled ingest task before sync staging dismiss"
-        );
+        match crate::services::apply_task_row_cancel(
+            &state.tasks.storage,
+            &state.tasks.cancellation_registry,
+            track,
+        )
+        .await
+        {
+            Ok(applied) => {
+                tracing::info!(
+                    document_id = %document_id,
+                    track_id = %track,
+                    was_running = applied.was_running,
+                    row_cancelled = applied.cancelled,
+                    "Cancelled ingest task before sync staging dismiss (durable)"
+                );
+            }
+            Err(e) => {
+                // Fall back to the process-local signal so the delete still
+                // proceeds; the row cancel is retried by the state machine's
+                // terminal guard on the worker side.
+                let cancelled = state.tasks.cancellation_registry.cancel(track).await;
+                tracing::warn!(
+                    document_id = %document_id,
+                    track_id = %track,
+                    error = %e,
+                    cancelled,
+                    "Durable task-row cancel failed; fell back to registry-only cancel"
+                );
+            }
+        }
     }
 
     crate::services::rollback_staging(
@@ -156,6 +182,15 @@ async fn delete_staging_shell_sync(
     )
     .await
     .map_err(ApiError::Internal)?;
+
+    // SPEC-091 W2: typed ingestion_dedup staging rollback.
+    #[cfg(feature = "postgres")]
+    crate::services::ingestion_dedup_store::dual_release_staging(
+        state.pg_pool.as_ref(),
+        &workspace_id,
+        &content_hash,
+    )
+    .await;
 
     // Belt-and-suspenders: drop any leftover staging keys for this id.
     let leftover = [
@@ -435,37 +470,8 @@ pub async fn delete_document(
     // not leave the document stuck in a deleting badge with no worker task.
     state.enqueue_task(task).await?;
 
-    if has_metadata {
-        if let Ok(Some(mut metadata)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
-            if let Some(obj) = metadata.as_object_mut() {
-                obj.insert("status".to_string(), serde_json::json!("deleting"));
-                obj.insert("current_stage".to_string(), serde_json::json!("deleting"));
-                obj.insert(
-                    "stage_message".to_string(),
-                    serde_json::json!("Removing document data…"),
-                );
-                obj.insert("stage_progress".to_string(), serde_json::json!(0.0));
-                for key in [
-                    "entity_count",
-                    "entities_count",
-                    "relationship_count",
-                    "relationships_count",
-                    "total_cost",
-                    "cost_usd",
-                ] {
-                    if obj.contains_key(key) {
-                        obj.insert(key.to_string(), serde_json::json!(0));
-                    }
-                }
-                let _ = crate::services::upsert_metadata_kv_with_index(
-                    state.storage.kv_storage.as_ref(),
-                    &metadata_key,
-                    metadata,
-                )
-                .await;
-            }
-        }
-    }
+    // SPEC-098 LAW-098-9: dual-write KV + SQL `deleting` (list merge honesty).
+    crate::services::admit_document_deleting(&state, &document_id, &actual_key_prefix).await?;
 
     state
         .tasks

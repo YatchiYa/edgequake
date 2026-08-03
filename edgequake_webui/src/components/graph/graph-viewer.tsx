@@ -66,10 +66,12 @@ import { LayoutControl } from './layout-control';
 import { LayoutController } from './layout-controller';
 import { NodeContextMenu, useNodeContextMenu } from './node-context-menu';
 import { NodeDetails } from './node-details';
+import { GraphTourTrigger } from './graph-tour-wrapper';
 import { StreamingIndicator, StreamingProgressBar } from './streaming-indicator';
 import { TimeFilter } from './time-filter';
 import { TruncationBanner, TruncationIndicator } from './truncation-banner';
 import { ZoomControls } from './zoom-controls';
+import { isAutomatedBrowser } from '@/lib/runtime/browser-detection';
 
 export function GraphViewer() {
   const { documentFilterId, setDocumentFilter } = useGraphDocumentFilterUrl();
@@ -152,6 +154,24 @@ export function GraphViewer() {
     openContextMenu,
     closeContextMenu,
   } = useNodeContextMenu();
+
+  // Playwright-only hook: open the node context menu at a known viewport point
+  // without depending on Sigma's pixel-precise right-click hit detection.
+  useEffect(() => {
+    if (!isAutomatedBrowser()) return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ x?: number; y?: number }>).detail;
+      const node = allNodes[0];
+      if (!node) return;
+      openContextMenu(
+        node,
+        detail?.x ?? Math.floor(window.innerWidth / 2),
+        detail?.y ?? Math.floor(window.innerHeight / 2),
+      );
+    };
+    window.addEventListener('eq:e2e-open-node-menu', handler);
+    return () => window.removeEventListener('eq:e2e-open-node-menu', handler);
+  }, [allNodes, openContextMenu]);
 
   // Initialize graph expansion hook (handles expand/prune logic)
   const { expandedNodes } = useGraphExpansion();
@@ -325,25 +345,39 @@ export function GraphViewer() {
   // the previous workspace. Without clearing, those stale nodes remain visible
   // until new data arrives. The transition state ensures the loading overlay
   // stays visible for at least 800ms so users see clear visual feedback.
+  //
+  // IMPORTANT: Do not put `setDocumentFilter` in deps — it is recreated on every
+  // searchParams change and would clear the 800ms timer in cleanup without
+  // restarting it, leaving `isWorkspaceTransitioning` stuck true forever.
   const prevWorkspaceKeyRef = useRef<string>("");
+  const clearGraphRef = useRef(clearGraphForStreaming);
+  clearGraphRef.current = clearGraphForStreaming;
+  const setDocumentFilterId = useGraphStore((s) => s.setDocumentFilterId);
+
   useEffect(() => {
     const currentKey = `${selectedTenantId ?? ""}-${selectedWorkspaceId ?? ""}`;
     if (prevWorkspaceKeyRef.current !== "" && prevWorkspaceKeyRef.current !== currentKey) {
-      clearGraphForStreaming();
-      setDocumentFilter(null);
-      // WHY: Show loading overlay immediately with contextual message.
-      // The 800ms minimum guarantees users see feedback even for fast/empty workspaces.
+      clearGraphRef.current();
+      // Clear document scope in store only — avoid router.replace churn mid-transition.
+      setDocumentFilterId(null);
       setIsWorkspaceTransitioning(true);
       setTransitionPhase("Switching workspace...");
       if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
       transitionTimerRef.current = setTimeout(() => {
+        transitionTimerRef.current = null;
         setIsWorkspaceTransitioning(false);
         setTransitionPhase("");
       }, 800);
     }
     prevWorkspaceKeyRef.current = currentKey;
-    return () => { if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current); };
-  }, [selectedTenantId, selectedWorkspaceId, clearGraphForStreaming, setDocumentFilter]);
+  }, [selectedTenantId, selectedWorkspaceId, setDocumentFilterId]);
+
+  // Unmount-only cleanup for the transition timer.
+  useEffect(() => {
+    return () => {
+      if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    };
+  }, []);
 
   // Start streaming when in streaming mode
   useEffect(() => {
@@ -612,9 +646,15 @@ export function GraphViewer() {
               {isMobile ? 'Graph' : 'Knowledge Graph'}
             </h2>
             {effectiveIsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-            {!isMobile && (headerNodeCount > 0 || headerEdgeCount > 0 || !isDocumentScoped) && (
-              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
-                {headerNodeCount.toLocaleString()} nodes · {headerEdgeCount.toLocaleString()} edges
+            {/* SPEC-100: always reserve count chip so load→data does not shove toolbar */}
+            {!isMobile && (
+              <span
+                className="min-w-[9.5rem] text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md tabular-nums"
+                data-testid="spec100-graph-count-slot"
+              >
+                {headerNodeCount > 0 || headerEdgeCount > 0 || !isDocumentScoped
+                  ? `${headerNodeCount.toLocaleString()} nodes · ${headerEdgeCount.toLocaleString()} edges`
+                  : "— nodes · — edges"}
               </span>
             )}
           </div>
@@ -793,6 +833,7 @@ export function GraphViewer() {
           {/* Graph Controls Overlay - Top Left */}
           <div className="absolute top-4 left-4 flex flex-col gap-2 z-20">
             <GraphControls />
+            <GraphTourTrigger />
           </div>
 
           {/* Minimap Overlay - Below controls on left side */}

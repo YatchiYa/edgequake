@@ -205,9 +205,19 @@ impl PostgresAGEGraphStorage {
                     self.graph_name
                 ),
             ),
+            // SPEC-091 RM3: citation contract — GIN on source_chunk_ids
+            (
+                "idx_node_source_chunk_ids_gin",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_node_source_chunk_ids_gin
+                       ON {}."Node"
+                       USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> 'source_chunk_ids') jsonb_ops)"#,
+                    self.graph_name
+                ),
+            ),
             // ── "EDGE" label indexes ────────────────────────────────────────────────
             // REMOVED: idx_edge_start_end (composite, 0 scans — superseded by text-cast indexes)
-            // REMOVED: idx_edge_props_gin (GIN on edge properties, 0 scans)
+            // SPEC-091 RM3: restore edge props GIN + citation + workspace/tenant
             (
                 "idx_edge_start_id",
                 format!(
@@ -250,6 +260,43 @@ impl PostgresAGEGraphStorage {
                     r#"CREATE INDEX IF NOT EXISTS idx_edge_source_ids_gin 
                        ON {}."EDGE" 
                        USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> 'source_ids') jsonb_ops)"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_edge_source_chunk_ids_gin",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_source_chunk_ids_gin
+                       ON {}."EDGE"
+                       USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> 'source_chunk_ids') jsonb_ops)"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_edge_props_gin",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_props_gin
+                       ON {}."EDGE" USING gin(properties)"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_edge_tenant_id",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_tenant_id
+                       ON {}."EDGE" (
+                         (ag_catalog.agtype_to_json(properties)->>'tenant_id')
+                       )"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_edge_workspace_id",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_workspace_id
+                       ON {}."EDGE" (
+                         (ag_catalog.agtype_to_json(properties)->>'workspace_id')
+                       )"#,
                     self.graph_name
                 ),
             ),
@@ -409,21 +456,24 @@ impl PostgresAGEGraphStorage {
     /// unique index race). After `eq_*` UNIQUEs exist, drop the legacy expression
     /// UNIQUEs so there is a single arbiter.
     ///
-    /// # SPEC-069
+    /// # SPEC-069 / SPEC-098 LAW-098-7
     ///
-    /// Catalog early-exit: when columns + indexes + triggers already exist, return
-    /// immediately. Never `DROP TRIGGER` on the hot path — that was racing workers
-    /// under the 15s query `statement_timeout`.
+    /// Catalog early-exit: when columns + indexes + triggers already exist, skip
+    /// column/index create but **still** run legacy UNIQUE drop + trigger refresh
+    /// (schema-ready graphs previously kept `idx_edge_source_target_unique`).
+    /// Never `DROP TRIGGER` on the hot path — that was racing workers under the
+    /// 15s query `statement_timeout`.
     pub(in crate::adapters::postgres::graph) async fn ensure_eq_id_columns(
         &self,
         conn: &mut sqlx::pool::PoolConnection<sqlx::Postgres>,
     ) -> Result<()> {
-        // O(1) catalog probe — modern graphs skip all DDL.
+        // O(1) catalog probe — modern graphs skip DDL create, not arbiter hygiene.
         if self.eq_id_schema_ready(conn.as_mut()).await? {
             tracing::debug!(
                 graph = %self.graph_name,
-                "SPEC-069: eq_* schema already present — skip DDL"
+                "SPEC-069/098: eq_* schema present — reconcile legacy arbiters only"
             );
+            self.reconcile_legacy_graph_arbiters(conn).await?;
             return Ok(());
         }
 
@@ -550,14 +600,23 @@ impl PostgresAGEGraphStorage {
         .await
         .unwrap_or(false);
 
-        // Always refresh the sync function so eq_rel_type stays aligned (D-30).
+        // Always refresh the sync function so eq_rel_type stays aligned (D-30 / LAW-098-7).
+        // Prefer column values (set by native INSERT), then properties — avoids collapsing
+        // distinct proposed keys when props.relation_type is missing/stale.
         {
             let fn_sql = format!(
                 r#"CREATE OR REPLACE FUNCTION {g}_eq_sync_edge_ids() RETURNS trigger AS $$
                    BEGIN
-                     NEW.eq_source_id := ag_catalog.agtype_to_json(NEW.properties)->>'source_id';
-                     NEW.eq_target_id := ag_catalog.agtype_to_json(NEW.properties)->>'target_id';
+                     NEW.eq_source_id := COALESCE(
+                       NULLIF(TRIM(NEW.eq_source_id), ''),
+                       ag_catalog.agtype_to_json(NEW.properties)->>'source_id'
+                     );
+                     NEW.eq_target_id := COALESCE(
+                       NULLIF(TRIM(NEW.eq_target_id), ''),
+                       ag_catalog.agtype_to_json(NEW.properties)->>'target_id'
+                     );
                      NEW.eq_rel_type := UPPER(COALESCE(
+                       NULLIF(TRIM(NEW.eq_rel_type), ''),
                        NULLIF(TRIM(ag_catalog.agtype_to_json(NEW.properties)->>'relation_type'), ''),
                        'RELATED_TO'
                      ));
@@ -590,7 +649,49 @@ impl PostgresAGEGraphStorage {
             }
         }
 
-        // Drop legacy expression UNIQUEs only when eq_* arbiters exist.
+        self.reconcile_legacy_graph_arbiters(conn).await?;
+
+        Ok(())
+    }
+
+    /// SPEC-098 LAW-098-7: drop legacy EDGE/Node UNIQUEs and refresh edge sync fn.
+    ///
+    /// Safe to call when schema is already "ready" — early-exit previously skipped
+    /// this and left `idx_edge_source_target_unique` / 2-col eq indexes in place.
+    pub(in crate::adapters::postgres::graph) async fn reconcile_legacy_graph_arbiters(
+        &self,
+        conn: &mut sqlx::pool::PoolConnection<sqlx::Postgres>,
+    ) -> Result<()> {
+        let g = &self.graph_name;
+
+        // Prefer column, then properties (same SSOT as migration 140 / ensure path).
+        let fn_sql = format!(
+            r#"CREATE OR REPLACE FUNCTION {g}_eq_sync_edge_ids() RETURNS trigger AS $$
+               BEGIN
+                 NEW.eq_source_id := COALESCE(
+                   NULLIF(TRIM(NEW.eq_source_id), ''),
+                   ag_catalog.agtype_to_json(NEW.properties)->>'source_id'
+                 );
+                 NEW.eq_target_id := COALESCE(
+                   NULLIF(TRIM(NEW.eq_target_id), ''),
+                   ag_catalog.agtype_to_json(NEW.properties)->>'target_id'
+                 );
+                 NEW.eq_rel_type := UPPER(COALESCE(
+                   NULLIF(TRIM(NEW.eq_rel_type), ''),
+                   NULLIF(TRIM(ag_catalog.agtype_to_json(NEW.properties)->>'relation_type'), ''),
+                   'RELATED_TO'
+                 ));
+                 RETURN NEW;
+               END;
+               $$ LANGUAGE plpgsql"#
+        );
+        if let Err(e) = sqlx::query(&fn_sql).execute(&mut **conn).await {
+            let msg = e.to_string();
+            if !msg.contains("does not exist") && !msg.contains("undefined_table") {
+                tracing::debug!(error = %e, "SPEC-098 edge sync fn refresh skipped");
+            }
+        }
+
         let drop_legacy = format!(
             r#"DO $drop$
                BEGIN
@@ -603,7 +704,7 @@ impl PostgresAGEGraphStorage {
                  IF EXISTS (
                    SELECT 1 FROM pg_indexes
                    WHERE schemaname = '{g}'
-                     AND indexname IN ('idx_edge_eq_source_target_rel', 'idx_edge_eq_source_target')
+                     AND indexname = 'idx_edge_eq_source_target_rel'
                  ) THEN
                    EXECUTE 'DROP INDEX IF EXISTS {g}.idx_edge_source_target_unique';
                    EXECUTE 'DROP INDEX IF EXISTS {g}.idx_edge_eq_source_target';
@@ -612,7 +713,7 @@ impl PostgresAGEGraphStorage {
                $drop$"#
         );
         if let Err(e) = sqlx::query(&drop_legacy).execute(&mut **conn).await {
-            tracing::debug!(error = %e, "SPEC-062 legacy UNIQUE drop skipped");
+            tracing::debug!(error = %e, "SPEC-098 legacy UNIQUE drop skipped");
         }
 
         Ok(())
@@ -716,14 +817,12 @@ impl PostgresAGEGraphStorage {
         // Do NOT keep Migration 074/083 expression UNIQUEs alongside eq_* —
         // dual unique indexes break ON CONFLICT under concurrency.
         let node_eq_ok = self.index_validity(&pool, "idx_node_eq_node_id").await == Some(true);
+        // SPEC-098 LAW-098-7 / D-30: only the 3-col multigraph arbiter counts.
+        // Legacy 2-col `idx_edge_eq_source_target` must not short-circuit.
         let edge_eq_ok = self
             .index_validity(&pool, "idx_edge_eq_source_target_rel")
             .await
-            == Some(true)
-            || self
-                .index_validity(&pool, "idx_edge_eq_source_target")
-                .await
-                == Some(true);
+            == Some(true);
 
         if node_eq_ok {
             let drop_sql = format!(

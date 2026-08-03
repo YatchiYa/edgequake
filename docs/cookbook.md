@@ -2,7 +2,7 @@
 title: 'EdgeQuake Cookbook'
 ---
 
-> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
 
 # EdgeQuake Cookbook
 
@@ -348,12 +348,10 @@ curl -X POST http://localhost:8080/api/v1/workspaces \
   -d '{
     "name": "Research Project",
     "description": "Documents for Q3 research",
-    "settings": {
-      "default_query_mode": "hybrid",
-      "enable_gleaning": true,
-      "gleaning_iterations": 2,
-      "chunk_size": 1000
-    }
+    "llm_model": "gemma3:12b",
+    "llm_provider": "ollama",
+    "entity_types": ["PERSON", "ORGANIZATION", "CONCEPT", "METHOD"],
+    "extraction_language": "English"
   }'
 ```
 
@@ -538,7 +536,7 @@ services:
       - ./data:/app/data
 
   postgres:
-    image: ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0
+    image: ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0
     environment:
       POSTGRES_USER: edgequake
       POSTGRES_PASSWORD: edgequake

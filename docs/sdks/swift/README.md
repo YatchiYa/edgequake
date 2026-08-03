@@ -4,7 +4,7 @@ title: "Swift SDK"
 
 # Swift SDK
 
-> **Product: v0.19.0** · SDK package **~0.4.0** (decoupled from server)
+> **Product: v0.23.0** · SDK package **~0.4.0** (decoupled from server)
 
 **Location:** `sdks/swift`
 
@@ -44,4 +44,10 @@ cd sdks/swift && swift test
 
 `ConversationService.bulkDelete` sends **`conversation_ids`** in the JSON body.
 
-For v0.19 task cancel and progress WebSocket, spot-check OpenAPI — Tier 1 SDKs lead on typed helpers. See [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md).
+For v0.23 task cancel and progress WebSocket, spot-check OpenAPI — Tier 1 SDKs lead on typed helpers. See [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md).
+
+## v0.23 notes
+
+- Document responses include `display_status` / `ui_phase` (SPEC-057 P4) — prefer them over raw `status`/`stage` for progress UI.
+- **Stateless parse (SPEC-094):** no typed wrapper yet — raw HTTP `POST /api/v1/parse` (multipart `file` + `options`; sync ≤ 15 pages / 20 MiB, async ≤ 1000 pages) + `GET /api/v1/parse/backends` + `GET /api/v1/parse/jobs/{id}`. Async responses return `{job_id, status, request_id}`.
+- **LLM cache (server-side):** `EDGEQUAKE_LLM_CACHE=1` default caches keywords + answers; `EDGEQUAKE_KEYWORD_CACHE` / `EDGEQUAKE_QUERY_ANSWER_CACHE` override — no client change.

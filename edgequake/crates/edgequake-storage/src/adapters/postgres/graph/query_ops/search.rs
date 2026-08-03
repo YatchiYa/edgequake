@@ -154,7 +154,7 @@ impl PostgresAGEGraphStorage {
         let fts_rows = sqlx::query(&fts_sql).fetch_all(&mut **timed.as_mut()).await;
 
         // If full-text search finds results, return them
-        if let Ok(rows) = fts_rows {
+        if let Ok(rows) = &fts_rows {
             if !rows.is_empty() {
                 let labels: Vec<String> = rows
                     .iter()
@@ -166,6 +166,10 @@ impl PostgresAGEGraphStorage {
                     return Ok(labels);
                 }
             }
+        } else {
+            // FTS error aborts the local txn — reopen before falling back.
+            let _ = timed.rollback().await;
+            timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
         }
 
         // WHY: Fallback to trigram similarity for fuzzy matching (typos, partial matches)
@@ -192,7 +196,7 @@ impl PostgresAGEGraphStorage {
         tracing::debug!(sql = %trgm_sql, result = ?trgm_rows.as_ref().map(|r| r.len()).unwrap_or(0), "trigram search");
 
         // If trigram search finds results, return them
-        if let Ok(rows) = trgm_rows {
+        if let Ok(rows) = &trgm_rows {
             if !rows.is_empty() {
                 let labels: Vec<String> = rows
                     .iter()
@@ -205,6 +209,9 @@ impl PostgresAGEGraphStorage {
                     return Ok(labels);
                 }
             }
+        } else {
+            let _ = timed.rollback().await;
+            timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
         }
 
         // Final fallback to simple ILIKE prefix matching (always works)

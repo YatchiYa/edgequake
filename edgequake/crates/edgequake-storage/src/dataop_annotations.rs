@@ -1477,7 +1477,7 @@ const ANNOTATIONS: &[(&str, &str)] = &[
         r###"/**
  * @dataop      DATA-PG-KV-DDL-CREATE-TABLE-092
  * @engine      postgres
- * @intent      DDL-CREATE-TABLE via PostgresKVStorage::create_table
+ * @intent      RETIRED by SPEC-091 Wave D — runtime KV DDL deleted; relations dropped by migrations/125_spec091_kv_drop.sql
  * @tables      domain KV — see indexes.md / migrations
  * @indexes     see specs/088-data-layer/indexes.md
  * @complexity  see complexity-matrix.md / benchmarks/092.md

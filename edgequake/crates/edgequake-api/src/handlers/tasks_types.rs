@@ -99,6 +99,19 @@ pub struct TaskResponse {
 
     /// Task metadata.
     pub metadata: Option<serde_json::Value>,
+
+    /// Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position.
+    /// Only populated for `pending` tasks on single-task reads.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_position: Option<u64>,
+
+    /// Estimated seconds until claim (measured drain; clamped when unknown).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_seconds: Option<u64>,
+
+    /// ETA basis: `measured` or `no_history` (honest uncertainty, R-15).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_basis: Option<String>,
 }
 
 /// Detailed error response for failed tasks.
@@ -197,6 +210,9 @@ impl From<edgequake_tasks::Task> for TaskResponse {
             progress: task.progress.and_then(|p| serde_json::to_value(p).ok()),
             result: task.result,
             metadata: task.metadata,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
         }
     }
 }
@@ -262,6 +278,9 @@ mod tests {
             progress: None,
             result: None,
             metadata: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["track_id"], "task_123");
@@ -364,6 +383,9 @@ mod tests {
             progress: None,
             result: None,
             metadata: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["status"], "failed");

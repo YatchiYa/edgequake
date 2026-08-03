@@ -10,7 +10,10 @@ use crate::{
 };
 
 #[cfg(feature = "postgres")]
-use super::helpers::{apply_entity_types_metadata, apply_entity_types_strict_metadata};
+use super::helpers::{
+    apply_entity_types_metadata, apply_entity_types_strict_metadata,
+    apply_extraction_language_metadata,
+};
 #[cfg(feature = "postgres")]
 use super::rows::WorkspaceRow;
 #[cfg(feature = "postgres")]
@@ -153,6 +156,15 @@ impl WorkspaceServiceImpl {
         // Normalize: uppercase, underscored, deduplicated, max 50 types
         apply_entity_types_metadata(&mut workspace.metadata, request.entity_types);
         apply_entity_types_strict_metadata(&mut workspace.metadata, request.entity_types_strict);
+        // SPEC-096: Workspace extraction language (future ingestions only)
+        apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
+            .map_err(Error::validation)?;
+        // SPEC-102: entity type color overrides for graph visualization
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
 
         sqlx::query(
             r#"
@@ -367,6 +379,13 @@ impl WorkspaceServiceImpl {
         }
         apply_entity_types_metadata(&mut workspace.metadata, request.entity_types);
         apply_entity_types_strict_metadata(&mut workspace.metadata, request.entity_types_strict);
+        apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
+            .map_err(Error::validation)?;
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
         workspace.updated_at = chrono::Utc::now();
 
         // Store all config in metadata JSONB column (database schema uses metadata, not separate columns)
@@ -428,28 +447,28 @@ impl WorkspaceServiceImpl {
             .await?
             .ok_or_else(|| Error::not_found(format!("Workspace {} not found", workspace_id)))?;
 
-        // WHY scalar subqueries: Single round-trip to database, efficient counting.
-        // Each subquery uses indexed workspace_id for O(log n) performance.
-        // OODA-13: Implements real-time metrics per mission requirement.
+        // SPEC-091 F-091-11 / Pre-W1: do NOT read the unpopulated `chunks` spine.
+        // LAW-D4 interim projections (distinct facts, labeled as such):
+        //   chunk_count     ← SUM(documents.chunk_count)  (writer-maintained denorm)
+        //   embedding_count ← COUNT on shared vector table by workspace_id
+        // After Wave 1 these re-point to `chunks` / `chunk_serving_state`.
         #[derive(sqlx::FromRow)]
         struct StatsRow {
             document_count: i64,
             chunk_count: i64,
             entity_count: i64,
             relationship_count: i64,
-            embedding_count: i64,
             storage_bytes: i64,
         }
 
         let stats: StatsRow = sqlx::query_as(
             r#"
-            SELECT 
-                (SELECT COUNT(*) FROM documents WHERE workspace_id = $1) as document_count,
-                (SELECT COUNT(*) FROM chunks WHERE workspace_id = $1) as chunk_count,
-                (SELECT COUNT(*) FROM entities WHERE workspace_id = $1) as entity_count,
-                (SELECT COUNT(*) FROM relationships WHERE workspace_id = $1) as relationship_count,
-                (SELECT COUNT(*) FROM chunks WHERE workspace_id = $1) as embedding_count,
-                (SELECT COALESCE(SUM(file_size_bytes), 0)::BIGINT FROM documents WHERE workspace_id = $1) as storage_bytes
+            SELECT
+                (SELECT COUNT(*) FROM public.documents WHERE workspace_id = $1) AS document_count,
+                (SELECT COALESCE(SUM(chunk_count), 0)::BIGINT FROM public.documents WHERE workspace_id = $1) AS chunk_count,
+                (SELECT COUNT(*) FROM entities WHERE workspace_id = $1) AS entity_count,
+                (SELECT COUNT(*) FROM relationships WHERE workspace_id = $1) AS relationship_count,
+                (SELECT COALESCE(SUM(file_size_bytes), 0)::BIGINT FROM public.documents WHERE workspace_id = $1) AS storage_bytes
             "#,
         )
         .bind(workspace_id)
@@ -457,13 +476,38 @@ impl WorkspaceServiceImpl {
         .await
         .map_err(|e| Error::internal(format!("Failed to get workspace stats: {}", e)))?;
 
+        // Shared default-namespace vector table (product pin). Missing table → 0
+        // (boot may not have created it yet). Dedicated per-workspace tables are
+        // counted via workspace_id column when present on the shared table.
+        let embedding_count = match sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)::BIGINT
+            FROM eq_eq_default_vectors
+            WHERE workspace_id = $1
+            "#,
+        )
+        .bind(workspace_id.to_string())
+        .fetch_one(&self.pool)
+        .await
+        {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::debug!(
+                    workspace_id = %workspace_id,
+                    error = %e,
+                    "SPEC-091: embedding_count projection unavailable (vector table missing?); reporting 0"
+                );
+                0
+            }
+        };
+
         Ok(WorkspaceStats {
             workspace_id,
             document_count: stats.document_count as usize,
             entity_count: stats.entity_count as usize,
             relationship_count: stats.relationship_count as usize,
             chunk_count: stats.chunk_count as usize,
-            embedding_count: stats.embedding_count as usize,
+            embedding_count: embedding_count as usize,
             storage_bytes: stats.storage_bytes as usize,
         })
     }

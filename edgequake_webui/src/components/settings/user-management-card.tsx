@@ -40,6 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import {
   Table,
@@ -72,6 +73,7 @@ const EMPTY_FORM: CreateUserRequest = { username: '', email: '', password: '', r
 
 export function UserManagementCard() {
   const currentUser = useAuthStore((s) => s.user);
+  const hasHydrated = useAuthStore((s) => s._hasHydrated);
   const isAdmin = currentUser?.role === 'admin' || currentUser?.roles?.includes('admin') || false;
 
   const {
@@ -92,6 +94,23 @@ export function UserManagementCard() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<CreateUserRequest>(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // SPEC-100: skeleton while auth hydrates (never null→tall admin card CLS)
+  if (!hasHydrated) {
+    return (
+      <Card data-testid="spec100-user-management-skeleton">
+        <CardHeader>
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-3 w-64" />
+        </CardHeader>
+        <CardContent className="min-h-[12rem] space-y-3">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!isAdmin) return null;
 

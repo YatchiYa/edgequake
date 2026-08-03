@@ -63,4 +63,19 @@ test.describe("Graph document filter (SPEC-045)", () => {
       timeout: 20000,
     });
   });
+
+  test("cold deep-link shows document name not GUID in filter pill", async ({
+    page,
+  }) => {
+    await page.goto(
+      `/graph?document=${GRAPH_FILTER_DOC_A}&stream=0`,
+      GOTO_OPTS,
+    );
+
+    const pill = page.getByTestId("graph-document-filter-pill");
+    await expect(pill).toBeVisible({ timeout: 20000 });
+    await expect(pill).toContainText("manifold_2605.13438v3.pdf");
+    await expect(pill).not.toContainText(GRAPH_FILTER_DOC_A.slice(0, 8));
+    await expect(pill).not.toContainText(GRAPH_FILTER_DOC_A.slice(0, 20));
+  });
 });

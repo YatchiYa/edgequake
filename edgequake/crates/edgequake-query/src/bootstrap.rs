@@ -125,6 +125,8 @@ pub fn build_production_query_engine(
     .with_reranker(reranker)
     .with_embedding_cache()
     .with_result_cache()
+    // SPEC-103: master EDGEQUAKE_LLM_CACHE default ON → answer cache wired;
+    // with_kv_storage upgrades to Tiered L1+L2 on public.llm_cache.
     .with_answer_cache_from_env();
 
     if let Some(kv) = kv_storage {

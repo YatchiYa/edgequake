@@ -3,7 +3,7 @@ title: Architecture
 description: Modular crate architecture and storage backends in EdgeQuake.
 ---
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 Explore EdgeQuake's modular Rust architecture — **11 workspace crates** under `edgequake/crates/` (no separate `edgequake-llm` crate; LLM providers are composed at runtime via `edgequake-core`).
 

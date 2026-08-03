@@ -72,6 +72,8 @@ pub(crate) async fn run_recover_stuck(
         std::sync::Arc::clone(&state.storage.kv_storage),
         std::sync::Arc::clone(&state.tasks.storage),
         Some(staging_age),
+        #[cfg(feature = "postgres")]
+        state.pg_pool.as_ref(),
     )
     .await
     {
@@ -161,7 +163,8 @@ pub(crate) async fn run_recover_stuck(
 
     // Requeue stuck documents via SPEC-054/#298 SSOT (DRY with startup reconcile).
     use crate::services::pending_doc_task_reconcile::{
-        ensure_task_for_pending_document, EnsureTaskOutcome,
+        ensure_task_for_pending_document, try_heal_cancelled_orphan, CancelHealOutcome,
+        EnsureTaskOutcome,
     };
 
     let vector = crate::services::get_workspace_vector_storage_for_delete(
@@ -171,6 +174,41 @@ pub(crate) async fn run_recover_stuck(
     .await;
 
     for (doc_id, doc_title) in &stuck_docs {
+        let metadata_key =
+            crate::services::document_metadata_scan::metadata_key_for_document(doc_id);
+        let mut metadata = state
+            .storage
+            .kv_storage
+            .get_by_id(&metadata_key)
+            .await?
+            .unwrap_or_else(|| serde_json::json!({ "id": doc_id, "title": doc_title }));
+
+        // Ensure tenant/workspace ids are present for cancel-heal + task construction.
+        if let Some(obj) = metadata.as_object_mut() {
+            if obj.get("tenant_id").and_then(|v| v.as_str()).is_none() {
+                if let Some(ref tid) = tenant_ctx.tenant_id {
+                    obj.insert("tenant_id".to_string(), serde_json::json!(tid));
+                }
+            }
+            if obj.get("workspace_id").and_then(|v| v.as_str()).is_none() {
+                if let Some(ref wid) = tenant_ctx.workspace_id {
+                    obj.insert("workspace_id".to_string(), serde_json::json!(wid));
+                }
+            }
+        }
+
+        // P0: never requeue when the linked task is already Cancelled.
+        match try_heal_cancelled_orphan(&state, doc_id, &metadata).await? {
+            CancelHealOutcome::Healed => {
+                tracing::info!(
+                    document_id = %doc_id,
+                    "recover_stuck: healed cancelled orphan — skipped requeue"
+                );
+                continue;
+            }
+            CancelHealOutcome::NotCancelled => {}
+        }
+
         // OODA-08 / SPEC-059: retract vectors + prune graph sources BEFORE requeueing
         let stats = crate::services::retract_document_indexes(
             &state.storage.graph_storage,
@@ -191,27 +229,7 @@ pub(crate) async fn run_recover_stuck(
         let _ =
             cleanup_document_graph_data(doc_id, &state.storage.graph_storage, Some(&vector)).await;
 
-        let metadata_key =
-            crate::services::document_metadata_scan::metadata_key_for_document(doc_id);
-        let mut metadata = state
-            .storage
-            .kv_storage
-            .get_by_id(&metadata_key)
-            .await?
-            .unwrap_or_else(|| serde_json::json!({ "id": doc_id, "title": doc_title }));
-
-        // Ensure tenant/workspace ids are present for task construction.
         if let Some(obj) = metadata.as_object_mut() {
-            if obj.get("tenant_id").and_then(|v| v.as_str()).is_none() {
-                if let Some(ref tid) = tenant_ctx.tenant_id {
-                    obj.insert("tenant_id".to_string(), serde_json::json!(tid));
-                }
-            }
-            if obj.get("workspace_id").and_then(|v| v.as_str()).is_none() {
-                if let Some(ref wid) = tenant_ctx.workspace_id {
-                    obj.insert("workspace_id".to_string(), serde_json::json!(wid));
-                }
-            }
             obj.insert("status".to_string(), serde_json::json!("pending"));
             obj.insert(
                 "recovery_reason".to_string(),

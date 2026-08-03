@@ -24,8 +24,11 @@ pub struct HnswRuntimePolicy {
 
 impl Default for HnswRuntimePolicy {
     fn default() -> Self {
+        // SPEC-091 F-091-06: Default must agree with VectorStorageMode::from_env()
+        // (Half when EDGEQUAKE_VECTOR_STORAGE is unset). Constructing the policy
+        // directly must not silently opt into full-precision.
         Self {
-            storage_mode: VectorStorageMode::Full,
+            storage_mode: VectorStorageMode::Half,
             iterative_scan_mode: "relaxed_order",
             ef_search_override: None,
             max_scan_tuples: 20_000,
@@ -140,6 +143,31 @@ pub fn filtered_ann_gucs_satisfy_contract(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static ENV_LOCK: Mutex<()> = Mutex::new(());
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn contract_spec091_hnsw_policy_default_half() {
+        // SPEC-091 F-091-06: Default and from_env() agree on Half when env unset.
+        let _guard = env_lock();
+        std::env::remove_var("EDGEQUAKE_VECTOR_STORAGE");
+        assert_eq!(
+            HnswRuntimePolicy::default().storage_mode,
+            VectorStorageMode::Half
+        );
+        assert_eq!(
+            HnswRuntimePolicy::from_env().storage_mode,
+            VectorStorageMode::Half
+        );
+        assert_eq!(
+            HnswRuntimePolicy::default().storage_mode,
+            VectorStorageMode::from_env()
+        );
+    }
 
     #[test]
     fn parse_iterative_scan_modes() {

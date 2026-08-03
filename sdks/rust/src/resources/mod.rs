@@ -15,6 +15,7 @@ pub mod graph;
 pub mod health;
 pub mod lineage;
 pub mod models;
+pub mod parse;
 pub mod pdf;
 pub mod pipeline;
 pub mod provenance;

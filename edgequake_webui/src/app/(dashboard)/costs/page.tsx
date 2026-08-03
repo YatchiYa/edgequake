@@ -142,7 +142,7 @@ export default function CostDashboardPage() {
             <div className="lg:col-span-2">
               <CostSummaryCard
                 summary={summary ?? null}
-                isLoading={isSummaryLoading}
+                isLoading={isSummaryLoading && !summary}
               />
             </div>
             <div>
@@ -150,7 +150,7 @@ export default function CostDashboardPage() {
                 budget={budget ?? null}
                 status={null}
                 alerts={[]}
-                isLoading={isBudgetLoading}
+                isLoading={isBudgetLoading && !budget}
               />
             </div>
           </div>
@@ -175,19 +175,19 @@ export default function CostDashboardPage() {
                 tokens: { input: 0, output: 0, total: summary.total_tokens },
               } : null}
               type="bar"
-              isLoading={isSummaryLoading}
+              isLoading={isSummaryLoading && !summary}
             />
 
-            {/* Cost trend chart */}
-            <Card>
+            {/* Cost trend chart — SPEC-100: fixed h-48 for skeleton/empty/live */}
+            <Card data-testid="spec100-costs-trend">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <TrendingUp className="h-4 w-4" />
                   Cost Trend
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                {isHistoryLoading ? (
+              <CardContent className="min-h-48">
+                {isHistoryLoading && !history ? (
                   <Skeleton className="h-48 w-full" />
                 ) : history && history.length > 0 ? (
                   <CostTrendChart data={history} />
@@ -213,7 +213,7 @@ export default function CostDashboardPage() {
               call_count: op.call_count ?? 0,
               cached_calls: 0,
             })) ?? null}
-            isLoading={isSummaryLoading}
+            isLoading={isSummaryLoading && !summary}
           />
         </div>
       </div>

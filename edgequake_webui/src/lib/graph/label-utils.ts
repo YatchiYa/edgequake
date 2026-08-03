@@ -7,34 +7,19 @@
  * @implements 066 — Drawing/table/equation display_name (identity ≠ presentation)
  */
 
-// ─── Canonical entity type color palette ────────────────────────────────────
-// Single source of truth used by graph-renderer, graph-legend, and entity-browser.
-// WHY: Multiple components had diverged copies causing visual inconsistency.
-export const ENTITY_TYPE_COLORS: Record<string, string> = {
-  PERSON: '#3b82f6',          // blue-500
-  ORGANIZATION: '#10b981',    // emerald-500
-  TECHNOLOGY: '#06b6d4',      // cyan-500
-  LOCATION: '#f59e0b',        // amber-500
-  EVENT: '#ef4444',           // red-500
-  CONCEPT: '#8b5cf6',         // violet-500
-  DOCUMENT: '#6366f1',        // indigo-500
-  PRODUCT: '#f97316',         // orange-500
-  DRAWING: '#475569',         // slate-600 — multimodal figure/chart crop
-  TABLE: '#0d9488',           // teal-600
-  EQUATION: '#7c3aed',        // violet-600
-  LAW: '#64748b',             // slate-500
-  REGULATION: '#64748b',      // slate-500
-  DEFAULT: '#94a3b8',         // slate-400
-};
-
-/**
- * Get the display color for an entity type.
- * Falls back to DEFAULT for unknown types.
- */
-export function getEntityTypeColor(entityType: string | undefined): string {
-  if (!entityType) return ENTITY_TYPE_COLORS.DEFAULT;
-  return ENTITY_TYPE_COLORS[entityType.toUpperCase()] ?? ENTITY_TYPE_COLORS.DEFAULT;
-}
+// ─── Entity type colors (SPEC-102) ───────────────────────────────────────────
+// SSOT lives in entity-type-colors.ts; re-exported here for back-compat imports.
+export {
+  ENTITY_TYPE_COLORS,
+  MAX_ENTITY_TYPE_COLORS,
+  canonicalizeEntityTypeHex,
+  getEntityTypeColor,
+  isValidEntityTypeHex,
+  mergeEntityTypeColorMap,
+  normalizeEntityTypeKey,
+  resolveEntityTypeColor,
+  stripDefaultOverrides,
+} from './entity-type-colors';
 
 /** Strip workspace scope prefix `{uuid}::NAME` → `NAME`. */
 export function bareGraphId(raw: string): string {

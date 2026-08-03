@@ -177,6 +177,19 @@ pub struct FileUploadResponse {
 
     /// Whether this was a duplicate (already processed).
     pub is_duplicate: bool,
+
+    /// Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position
+    /// at admission time. Only set for async uploads.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_position: Option<u64>,
+
+    /// Estimated seconds until claim (measured drain; clamped when unknown).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_seconds: Option<u64>,
+
+    /// ETA basis: `measured` or `no_history` (honest uncertainty, R-15).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_basis: Option<String>,
 }
 
 // ============================================================================

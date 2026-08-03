@@ -2,22 +2,24 @@
  * @module DocumentHeader
  * @description Header section for document management page.
  * Extracted from DocumentManager for SRP compliance (OODA-23).
- * 
- * WHY: Header JSX was inline in DocumentManager causing bloat.
- * This component displays:
- * - Page title with document count badge
- * - WebSocket connection status
- * - Pipeline status button and dialog
- * - Reprocess failed button
- * - Refresh and clear buttons
- * 
+ *
+ * SPEC-099 LAW-099-5: Clear All is demoted to overflow (not peer of Refresh).
+ *
  * @implements FEAT0001 - Document management header
  */
 'use client';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Clock, Loader2, RefreshCw } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { AlertTriangle, Clock, Loader2, MoreHorizontal, RefreshCw, Trash2 } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Document } from '@/types';
 import { ClearDocumentsDialog } from './clear-documents-dialog';
@@ -32,14 +34,23 @@ import { ReprocessFailedButton } from './reprocess-failed-button';
 export interface DocumentHeaderProps {
   /** Total document count */
   totalCount: number;
+  /** Optional overflow honesty label (e.g. "17 of 240") */
+  countLabel?: string;
   /** Number of failed documents */
   failedCount: number;
   /** Show pipeline status shortcut in header */
   showPipelineIndicator: boolean;
+  /**
+   * SPEC-099 CLS: keep Working pill geometry reserved while feedback zone is
+   * expected (skeleton) so the header does not grow when live work paints.
+   */
+  reservePipelineSlot?: boolean;
   /** Ingestion alert mode for header shortcut styling */
   pipelineAlertMode?: 'working' | 'queued' | 'stuck' | 'mixed';
   /** Active working document count (for Working · N pill) */
   activeDocCount?: number;
+  /** Queued / waiting document count (Working · W · Queued · Q) */
+  waitingDocCount?: number;
   /** @deprecated Use pipelineAlertMode */
   pipelineWaitingOnly: boolean;
   /** Whether pipeline dialog is open */
@@ -54,6 +65,8 @@ export interface DocumentHeaderProps {
   workspaceId?: string;
   /** Documents for pipeline waiting-state details */
   documents?: Document[];
+  /** Optional columns control slot (e.g. show Cost) */
+  columnsMenu?: ReactNode;
 }
 
 /**
@@ -61,10 +74,13 @@ export interface DocumentHeaderProps {
  */
 export function DocumentHeader({
   totalCount,
+  countLabel,
   failedCount,
   showPipelineIndicator,
+  reservePipelineSlot = false,
   pipelineAlertMode,
   activeDocCount,
+  waitingDocCount,
   pipelineWaitingOnly,
   pipelineDialogOpen,
   onPipelineDialogChange,
@@ -72,45 +88,56 @@ export function DocumentHeader({
   tenantId,
   workspaceId,
   documents,
+  columnsMenu,
 }: DocumentHeaderProps) {
   const { t } = useTranslation();
+  const [clearAllOpen, setClearAllOpen] = useState(false);
   const alertMode = pipelineAlertMode ?? (pipelineWaitingOnly ? 'queued' : 'working');
+  const working = activeDocCount ?? 0;
+  const queued = waitingDocCount ?? 0;
 
   const pipelineButtonClass =
     alertMode === 'stuck'
       ? 'gap-1 text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-      : alertMode === 'queued'
+      : alertMode === 'queued' || (working === 0 && queued > 0)
         ? 'gap-1 text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40'
         : 'gap-1 text-sky-700 border-sky-300 hover:bg-sky-50 dark:text-sky-300 dark:border-sky-800 dark:hover:bg-sky-950/40';
 
   const pipelineButtonLabel =
     alertMode === 'stuck'
       ? t('pipeline.stuckBadge', 'Needs attention')
-      : alertMode === 'queued'
-        ? t('pipeline.queuedBadge', 'Queued')
-        : activeDocCount && activeDocCount > 0
+      : working > 0 && queued > 0
+        ? t('pipeline.workingAndQueued', 'Working · {{working}} · Queued · {{queued}}', {
+            working,
+            queued,
+          })
+        : working > 0
           ? t('pipeline.workingCount', 'Working · {{count}}', {
-              count: activeDocCount,
+              count: working,
             })
-          : t('pipeline.busy', 'Working');
+          : queued > 0
+            ? t('pipeline.queuedCount', 'Queued · {{count}}', { count: queued })
+            : t('pipeline.busy', 'Working');
+
+  const badgeText = countLabel ?? (totalCount > 0 ? String(totalCount) : null);
 
   return (
     <>
-      {/* OODA-02: Connection status banner when disconnected */}
       <ConnectionBanner />
       
-      {/* Header - Compact */}
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <div className="space-y-0.5">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold tracking-tight">{t('documents.title')}</h1>
-            {/* OODA-39: Document count badge */}
-            {totalCount > 0 && (
-              <Badge variant="secondary" className="text-xs font-normal">
-                {totalCount}
+            {badgeText && (
+              <Badge
+                variant="secondary"
+                className="min-w-[2.25rem] justify-center text-xs font-normal tabular-nums"
+                data-testid="spec099-documents-count"
+              >
+                {badgeText}
               </Badge>
             )}
-            {/* OODA-30: WebSocket connection status indicator */}
             <ConnectionStatus compact={true} />
           </div>
           <p className="text-sm text-muted-foreground">
@@ -118,13 +145,18 @@ export function DocumentHeader({
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Pipeline Status */}
-          {showPipelineIndicator && (
+          {(showPipelineIndicator || reservePipelineSlot) && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => onPipelineDialogChange(true)}
-              className={pipelineButtonClass}
+              className={`${pipelineButtonClass} min-w-[7.5rem] ${
+                showPipelineIndicator
+                  ? ''
+                  : 'invisible pointer-events-none'
+              }`}
+              tabIndex={showPipelineIndicator ? 0 : -1}
+              aria-hidden={!showPipelineIndicator}
               data-testid="pipeline-header-button"
             >
               {alertMode === 'stuck' ? (
@@ -145,7 +177,6 @@ export function DocumentHeader({
             documents={documents}
           />
           
-          {/* Reprocess Failed Button (GAP-UI-002) */}
           <ReprocessFailedButton
             failedCount={failedCount}
             onReprocessStarted={() => {
@@ -153,15 +184,52 @@ export function DocumentHeader({
             }}
           />
         
-          <Button variant="outline" size="sm" onClick={onRefresh}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRefresh}
+            data-testid="documents-refresh-button"
+          >
             <RefreshCw className="h-4 w-4 mr-1" />
             {t('documents.refresh')}
           </Button>
-          
-          {/* Clear Documents Dialog (GAP-UI-009) */}
+
+          {/* SPEC-099: Clear All demoted to overflow — not peer of Refresh */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={t('documents.moreActions', 'More actions')}
+                data-testid="spec099-documents-overflow"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {columnsMenu}
+              {columnsMenu ? <DropdownMenuSeparator /> : null}
+              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                {t('documents.dangerZone', 'Danger zone')}
+              </DropdownMenuLabel>
+              <button
+                type="button"
+                className="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none text-destructive focus:bg-destructive/10"
+                data-testid="spec099-clear-all-menu-item"
+                aria-label={t('documents.clearAll.button', 'Clear All')}
+                onClick={() => setClearAllOpen(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {t('documents.clearAll.button', 'Clear All')}
+              </button>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <ClearDocumentsDialog
             documentCount={totalCount}
             onCleared={onRefresh}
+            showTrigger={false}
+            open={clearAllOpen}
+            onOpenChange={setClearAllOpen}
           />
         </div>
       </header>

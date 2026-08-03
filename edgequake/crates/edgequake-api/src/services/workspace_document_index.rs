@@ -2,10 +2,72 @@
 //!
 //! Maintains `wsdoc:{workspace_id}:{document_id}` pointer keys so workspace
 //! operations use prefix scans instead of global `-metadata` suffix scans.
+//!
+//! SPEC-091 Wave B3: reads are flag-gated (`EDGEQUAKE_KV_FAMILY_WSDOC=
+//! relational`) onto `public.documents.workspace_id` — the membership SSOT.
+//! The relational branch needs the startup-registered pool and a UUID
+//! workspace id; any gap falls back to the legacy KV index (never an error).
 
 use edgequake_storage::error::StorageError;
+use edgequake_storage::kv_family_cutover::{
+    kv_family_mode_from_env, KvFamilyMode, KV_FAMILY_WSDOC,
+};
 use edgequake_storage::kv_keys;
 use edgequake_storage::traits::KVStorage;
+
+/// Register the Postgres pool for relational membership reads. Delegates to
+/// the shared sidecar registry (SPEC-091 Wave B4/B5) so one pool serves every
+/// relational KV-family cutover (DRY).
+#[cfg(feature = "postgres")]
+pub fn register_membership_pool(pool: sqlx::PgPool) {
+    crate::services::relational_sidecar_store::register_sidecar_pool(pool);
+}
+
+/// Relational membership: `documents.id` for a workspace, when cut over.
+/// Returns `None` (→ KV fallback) when the flag is off, no pool is registered,
+/// the workspace id is not a UUID, or the query fails (warn-logged).
+async fn relational_workspace_doc_ids(workspace_id: &str) -> Option<Vec<String>> {
+    #[cfg(feature = "postgres")]
+    {
+        // SPEC-091 RM1: relational is SSOT. Explicit `EDGEQUAKE_KV_FAMILY_WSDOC=kv`
+        // remains soak rollback only — otherwise never fall back to KV.
+        let force_kv = kv_family_mode_from_env(KV_FAMILY_WSDOC) == KvFamilyMode::Kv;
+        if force_kv {
+            return None;
+        }
+        let pool = crate::services::relational_sidecar_store::sidecar_pool()?;
+        let ws = uuid::Uuid::parse_str(workspace_id).ok()?;
+        // Wave B3/C: shell-written documents may carry the workspace in the
+        // metadata JSONB while the FK-guarded `workspace_id` column stays NULL
+        // (e.g. workspaces not present as DB rows). Match either source so
+        // membership is correct regardless of which representation is set.
+        match sqlx::query_scalar::<_, uuid::Uuid>(
+            "SELECT id FROM public.documents \
+             WHERE workspace_id = $1 \
+                OR metadata->>'workspace_id' = $2",
+        )
+        .bind(ws)
+        .bind(workspace_id)
+        .fetch_all(pool)
+        .await
+        {
+            Ok(rows) => Some(rows.iter().map(uuid::Uuid::to_string).collect()),
+            Err(e) => {
+                tracing::warn!(
+                    workspace_id = %workspace_id,
+                    error = %e,
+                    "relational wsdoc membership read failed; returning empty (no KV fallback)"
+                );
+                Some(Vec::new())
+            }
+        }
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = workspace_id;
+        None
+    }
+}
 
 /// Sync workspace index entry from a document metadata KV write.
 pub async fn sync_workspace_document_index(
@@ -83,6 +145,12 @@ pub async fn list_workspace_metadata_keys(
     kv: &dyn KVStorage,
     workspace_id: &str,
 ) -> Result<Vec<String>, StorageError> {
+    if let Some(doc_ids) = relational_workspace_doc_ids(workspace_id).await {
+        return Ok(doc_ids
+            .iter()
+            .map(|doc_id| kv_keys::doc_metadata(doc_id))
+            .collect());
+    }
     let prefix = kv_keys::workspace_doc_index_prefix(workspace_id);
     let index_keys = kv.keys_with_prefix(&prefix).await?;
     let mut metadata_keys = Vec::with_capacity(index_keys.len());
@@ -111,6 +179,18 @@ pub async fn list_workspace_metadata_keys_limited(
     max_entries: usize,
 ) -> Result<(Vec<String>, bool), StorageError> {
     let max_entries = max_entries.clamp(1, 1_000_000);
+    if let Some(doc_ids) = relational_workspace_doc_ids(workspace_id).await {
+        // Relational branch: bounded in-memory — the relational read path
+        // scales via `idx_documents_tenant_workspace`, and Wave C replaces
+        // metadata keys wholesale, so a SQL LIMIT here would be throwaway.
+        let truncated = doc_ids.len() > max_entries;
+        let keys: Vec<String> = doc_ids
+            .iter()
+            .take(max_entries)
+            .map(|doc_id| kv_keys::doc_metadata(doc_id))
+            .collect();
+        return Ok((keys, truncated));
+    }
     let prefix = kv_keys::workspace_doc_index_prefix(workspace_id);
     // Fetch one extra index key so truncation is known without a COUNT.
     let (index_keys, _) = kv
@@ -136,6 +216,9 @@ pub async fn list_workspace_document_ids(
     kv: &dyn KVStorage,
     workspace_id: &str,
 ) -> Result<Vec<String>, StorageError> {
+    if let Some(doc_ids) = relational_workspace_doc_ids(workspace_id).await {
+        return Ok(doc_ids);
+    }
     let prefix = kv_keys::workspace_doc_index_prefix(workspace_id);
     let index_keys = kv.keys_with_prefix(&prefix).await?;
     Ok(index_keys
@@ -157,6 +240,25 @@ mod tests {
     use super::*;
     use edgequake_storage::MemoryKVStorage;
     use std::sync::Arc;
+
+    /// SPEC-091 Wave B3: flag=relational without a registered pool (or with a
+    /// non-UUID workspace) must fall back to the KV index, never error.
+    #[tokio::test]
+    async fn relational_flag_without_pool_falls_back_to_kv() {
+        std::env::set_var("EDGEQUAKE_KV_FAMILY_WSDOC", "relational");
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("ws-fallback"));
+        kv.initialize().await.unwrap();
+        let ws = uuid::Uuid::new_v4().to_string();
+        let meta = serde_json::json!({ "id": "doc-x", "workspace_id": ws });
+        upsert_metadata_kv_with_index(kv.as_ref(), "doc-x-metadata", meta)
+            .await
+            .unwrap();
+        let keys = list_workspace_metadata_keys(kv.as_ref(), &ws)
+            .await
+            .unwrap();
+        assert_eq!(keys, vec!["doc-x-metadata".to_string()]);
+        std::env::remove_var("EDGEQUAKE_KV_FAMILY_WSDOC");
+    }
 
     #[tokio::test]
     async fn upsert_metadata_kv_with_index_lists_workspace() {

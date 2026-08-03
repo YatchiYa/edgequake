@@ -18,6 +18,7 @@
 import { Checkbox } from '@/components/ui/checkbox';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { getDocumentDisplayStatus } from '@/lib/documents/status-domain';
 import {
   buildIngestionRunView,
   formatRunHeadline,
@@ -137,6 +138,8 @@ export interface DocumentTableRowProps {
   isActive: boolean;
   /** Dim completed/idle rows while another document is actively ingesting */
   isBackground?: boolean;
+  /** LAW-IS3: when ActiveRuns owns this doc, hide row stage subtitle */
+  isLiveRun?: boolean;
   /** Current search query for highlighting */
   searchQuery: string;
   /** Called when selection checkbox changes */
@@ -168,6 +171,8 @@ export interface DocumentTableRowProps {
    * SPEC-050: Dims the row and shows "Deleting" badge.
    */
   isDeleting?: boolean;
+  /** SPEC-099: Cost column opt-in */
+  showCostColumn?: boolean;
 }
 
 /**
@@ -180,6 +185,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
   isSelected,
   isActive,
   isBackground = false,
+  isLiveRun = false,
   searchQuery,
   onSelect,
   onClick,
@@ -194,8 +200,10 @@ export const DocumentTableRow = memo(function DocumentTableRow({
   isRetrying,
   isCancelling,
   isDeleting = false,
+  showCostColumn = false,
 }: DocumentTableRowProps) {
   const { t } = useTranslation();
+  const displayStatus = getDocumentDisplayStatus(doc);
 
   // WHY: Visual distinction for document status
   const rowClassName = cn(
@@ -207,23 +215,20 @@ export const DocumentTableRow = memo(function DocumentTableRow({
     isBackground && 'opacity-80',
     // SPEC-050: Dim row while deletion is in progress
     isDeleting && 'opacity-50 pointer-events-none',
-    // OODA-25: Failed/cancelled documents highlight
-    doc.status === 'failed' &&
+    // SPEC-099 F-099-15: highlight via domain display status (covers delete_failed)
+    displayStatus === 'failed' &&
       'bg-red-50/50 dark:bg-red-950/20 border-l-4 border-l-red-500',
-    doc.status === 'partial_failure' &&
+    displayStatus === 'delete_failed' &&
+      'bg-rose-50/50 dark:bg-rose-950/20 border-l-4 border-l-rose-500',
+    displayStatus === 'partial_failure' &&
       'bg-orange-50/50 dark:bg-orange-950/20 border-l-4 border-l-orange-500',
-    doc.status === 'cancelled' &&
+    displayStatus === 'cancelled' &&
       'bg-gray-50/50 dark:bg-gray-950/20 border-l-4 border-l-gray-400'
   );
 
   const { icon: FileIcon, color } = getFileTypeIcon(doc.file_name);
   const displayTitle =
     doc.title || doc.file_name || `Document ${doc.id.slice(0, 8)}`;
-
-  // OODA-34: "New" indicator for documents created within 1 hour
-  const isNew =
-    doc.created_at &&
-    new Date().getTime() - new Date(doc.created_at).getTime() < 3600000;
 
   return (
     <TableRow
@@ -274,6 +279,8 @@ export const DocumentTableRow = memo(function DocumentTableRow({
         <div className="flex flex-col gap-1">
           <EnhancedStatusBadge document={doc} />
           {(() => {
+            // LAW-IS3: Active View owns live narrative — table is inventory only.
+            if (isLiveRun) return null;
             const run = buildIngestionRunView(doc);
             if (!run || run.stageStatus === 'complete') return null;
             if (!LIVE_STAGE_MESSAGE_STAGES.has(String(run.stage))) return null;
@@ -295,20 +302,17 @@ export const DocumentTableRow = memo(function DocumentTableRow({
         {doc.entity_count ?? doc.chunk_count ?? '-'}
       </TableCell>
 
-      {/* Cost */}
-      <TableCell className="text-center">
-        <CostCell document={doc} size="sm" />
-      </TableCell>
+      {/* Cost — SPEC-099: only when showCostColumn */}
+      {showCostColumn ? (
+        <TableCell className="text-center">
+          <CostCell document={doc} size="sm" />
+        </TableCell>
+      ) : null}
 
       {/* Created Date */}
       <TableCell className="text-muted-foreground max-w-0 overflow-hidden">
         {doc.created_at ? (
           <div className="flex items-center gap-1 whitespace-nowrap truncate">
-            {isNew && (
-              <span className="text-xs font-medium text-green-600 dark:text-green-400 animate-pulse">
-                NEW
-              </span>
-            )}
             <span>
               {formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}
             </span>

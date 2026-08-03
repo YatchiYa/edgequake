@@ -1476,6 +1476,7 @@ test.describe("086 format-agnostic ingestion UX", () => {
                 file_name: "stop.md",
                 status: cancelled ? "cancelled" : "pending",
                 current_stage: cancelled ? "cancelled" : "extracting",
+                cancelled_from_stage: "extracting",
                 stage_message: cancelled
                   ? "Cancelled by user"
                   : "Extracting entities…",
@@ -1484,6 +1485,12 @@ test.describe("086 format-agnostic ingestion UX", () => {
                 source_type: "markdown",
                 admission_staging: !cancelled,
                 ui_phase: stopping ? "stopping" : cancelled ? null : "running",
+                display_status: cancelled
+                  ? "cancelled"
+                  : stopping
+                    ? "stopping"
+                    : "extracting",
+                updated_at: new Date().toISOString(),
               },
             ],
             total: 1,
@@ -1540,6 +1547,122 @@ test.describe("086 format-agnostic ingestion UX", () => {
       { timeout: 15_000 },
     );
     await expect(page.getByText(/^Completed$/i)).toHaveCount(0);
+
+    // INV-05: Cancelled ≠ Failed on the Active Run card / stepper.
+    const cancelCard = page.getByTestId("spec048-active-run-card").first();
+    await expect(cancelCard).toHaveAttribute("data-stage", "cancelled");
+    await expect(cancelCard).toHaveAttribute("data-stage-status", "cancelled");
+    await expect(cancelCard.getByText(/^Failed$/i)).toHaveCount(0);
+    await expect(cancelCard.getByTestId("spec048-stage-completed")).toHaveAttribute(
+      "data-state",
+      "cancelled",
+    );
+    // SPEC-057 compact frozen meter intentionally leaves the completed-stage
+    // label empty; the card headline and state attribute carry the ack.
+    await expect(
+      cancelCard.getByTestId("spec086-cancel-progress-frozen"),
+    ).toBeVisible();
+    await expect(cancelCard.getByTestId("spec086-run-cancel")).toHaveCount(0);
+
+    // Dismiss removes card from Active Runs; Documents filter still shows Cancelled.
+    await cancelCard.getByTestId("spec086-run-dismiss").click();
+    await expect(page.getByTestId("spec048-active-runs-panel")).toHaveCount(0, {
+      timeout: 5_000,
+    });
+    await expect(page.getByText(/Cancelled/i).first()).toBeVisible();
+
+    // Durable dismiss: refresh must not resurrect the Cancelled Active Run card.
+    await page.reload(GOTO_OPTS);
+    await page.getByRole("heading", { name: "Documents" }).waitFor({
+      state: "visible",
+      timeout: 20_000,
+    });
+    await expect(page.getByTestId("spec048-active-runs-panel")).toHaveCount(0, {
+      timeout: 10_000,
+    });
+    await expect(
+      page.getByTestId("spec048-active-run-card"),
+    ).toHaveCount(0);
+    // Document row still Cancelled in the corpus list.
+    await expect(page.getByText(/Cancelled/i).first()).toBeVisible();
+  });
+
+  test("ux086_e_cancel_queued_md: cancel while queued → Cancelled, no Failed", async ({
+    page,
+  }) => {
+    await mockSpec038AdmissionRoutes(page);
+    await seedSpec038TenantContext(page);
+
+    let phase: "queued" | "cancelled" = "queued";
+
+    await page.route("**/api/v1/tasks/**/cancel", async (route) => {
+      phase = "cancelled";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "cancelled" }),
+      });
+    });
+
+    await page.route("**/api/v1/documents**", async (route) => {
+      const method = route.request().method();
+      const url = route.request().url();
+      if (method === "GET" && !url.includes("/track/") && !url.includes("/pdf")) {
+        const cancelled = phase === "cancelled";
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            documents: [
+              {
+                id: "doc-086-queued-cancel",
+                title: "queued.md",
+                file_name: "queued.md",
+                status: cancelled ? "cancelled" : "pending",
+                current_stage: cancelled ? "cancelled" : "queued",
+                stage_message: cancelled
+                  ? "Cancelled by user"
+                  : "Queued for processing…",
+                stage_progress: 0,
+                track_id: "insert-086-queued-cancel",
+                source_type: "markdown",
+                admission_staging: !cancelled,
+                ui_phase: cancelled ? null : "queued",
+                display_status: cancelled ? "cancelled" : "pending",
+              },
+            ],
+            total: 1,
+            status_counts: cancelled ? { cancelled: 1 } : { pending: 1 },
+          }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.goto("/documents", GOTO_OPTS);
+    await page.getByRole("heading", { name: "Documents" }).waitFor({
+      state: "visible",
+      timeout: 20_000,
+    });
+
+    // Queued runs may not expose Cancel on admission chrome — force cancel via API
+    // by clicking Cancel if present, else trigger list refresh after route flip.
+    const cancelBtn = page.getByTestId("spec086-run-cancel").first();
+    if (await cancelBtn.count()) {
+      await cancelBtn.click();
+    } else {
+      phase = "cancelled";
+      await page.getByRole("button", { name: /^Refresh$/i }).click();
+    }
+
+    await expect(page.getByTestId("spec048-run-headline").first()).toHaveText(
+      /Cancelled/i,
+      { timeout: 15_000 },
+    );
+    const card = page.getByTestId("spec048-active-run-card").first();
+    await expect(card.getByText(/^Failed$/i)).toHaveCount(0);
+    await expect(card).toHaveAttribute("data-stage-status", "cancelled");
   });
 
   test("ux086_e_md_no_converting_pdf: MD ActiveRun never shows Converting PDF", async ({

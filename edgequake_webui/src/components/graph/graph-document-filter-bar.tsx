@@ -20,15 +20,17 @@ function DocumentScopePill({
   onClear: () => void;
 }) {
   const { t } = useTranslation();
-  const label = useScopeDocumentLabel(documentId);
-  const display =
-    label ??
-    (documentId.length > 22 ? `${documentId.slice(0, 20)}…` : documentId);
+  const { label, isLoading } = useScopeDocumentLabel(documentId);
+  // Never show a raw GUID — loading placeholder until the name resolves.
+  const display = label ?? (isLoading ? "…" : t("graph.documentFilter.unknown", "Unknown document"));
 
   return (
-    <span className="inline-flex items-center gap-1 max-w-[220px] rounded-md bg-secondary/80 px-2 py-0.5 text-xs font-medium ring-1 ring-border/60">
+    <span
+      data-testid="graph-document-filter-pill"
+      className="inline-flex items-center gap-1 max-w-[220px] rounded-md bg-secondary/80 px-2 py-0.5 text-xs font-medium ring-1 ring-border/60"
+    >
       <FileText className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
-      <span className="truncate" title={label ?? documentId}>
+      <span className="truncate" title={label ?? undefined}>
         {display}
       </span>
       <button

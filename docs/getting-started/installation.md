@@ -2,7 +2,7 @@
 title: "Installation Guide"
 ---
 
-> **Product: v0.19.0** · Contract: [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Installation Guide
 
@@ -125,16 +125,16 @@ open http://localhost:3000
 git clone https://github.com/raphaelmansuy/edgequake.git
 cd edgequake
 
-EDGEQUAKE_VERSION=0.19.0 docker compose -f docker-compose.quickstart.yml up -d
+EDGEQUAKE_VERSION=0.23.0 docker compose -f docker-compose.quickstart.yml up -d
 ```
 
 | Service    | Image                                              | Port |
 | ---------- | -------------------------------------------------- | ---- |
-| API        | `ghcr.io/raphaelmansuy/edgequake:0.19.0`           | 8080 |
-| WebUI      | `ghcr.io/raphaelmansuy/edgequake-frontend:0.19.0`  | 3000 |
-| PostgreSQL | `ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg18` | 5432 |
+| API        | `ghcr.io/raphaelmansuy/edgequake:0.23.0`           | 8080 |
+| WebUI      | `ghcr.io/raphaelmansuy/edgequake-frontend:0.23.0`  | 3000 |
+| PostgreSQL | `ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0-pg18` | 5432 |
 
-Pin PostgreSQL major: `EDGEQUAKE_POSTGRES_TAG=0.19.0-pg16` (or `-pg17`, `-pg18`).
+Pin PostgreSQL major: `EDGEQUAKE_POSTGRES_TAG=0.23.0-pg16` (or `-pg17`, `-pg18`).
 
 ---
 
@@ -254,7 +254,7 @@ docker run -d \
   -e POSTGRES_PASSWORD=edgequake_secret \
   -e POSTGRES_DB=edgequake \
   -p 5432:5432 \
-  ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg18
+  ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0-pg18
 
 export DATABASE_URL="postgresql://edgequake:edgequake_secret@localhost:5432/edgequake?options=-c%20search_path%3Dpublic"
 

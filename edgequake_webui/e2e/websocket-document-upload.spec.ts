@@ -17,10 +17,16 @@ import { skipUnlessLiveStack } from "./helpers/live-stack";
 import { expect, test } from "@playwright/test";
 import path from "path";
 import { API_V1_URL, BACKEND_URL } from "./helpers/backend-url";
-import { waitForAppReady, GOTO_OPTS, clearAppStorage, waitForBackendHealthy } from "./helpers/app-ready";
+import {
+  clearAppStorage,
+  GOTO_OPTS,
+  waitForAppReady,
+  waitForBackendHealthy,
+} from "./helpers/app-ready";
 
 // OpenAI Tenant Configuration
-const ACTIVE_UPLOAD_STATUSES = /Pending|Processing|Converting PDF|Chunking|Extracting/;
+const ACTIVE_UPLOAD_STATUSES =
+  /Pending|Processing|Converting PDF|Chunking|Extracting/;
 const OPENAI_TENANT_ID = "00000000-0000-0000-0000-000000000002";
 const OPENAI_WORKSPACE_ID = "00000000-0000-0000-0000-000000000003";
 
@@ -29,7 +35,6 @@ const TEST_PDF = path.join(
   __dirname,
   "../../zz_test_docs/academic_papers/lighrag_2410.05779v3.pdf",
 );
-
 
 test.beforeEach(() => {
   skipUnlessLiveStack();
@@ -71,10 +76,14 @@ test.describe("@load WebSocket Document Upload (OpenAI Tenant)", () => {
     console.log(
       "[Test] Step 3: Verifying optimistic update (immediate appearance)",
     );
-    await expect(page.getByText(/Processing Files|Upload Complete/i)).toBeVisible({
+    await expect(
+      page.getByText(/Processing Files|Upload Complete/i),
+    ).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByText(/lighrag_2410\.05779v3\.pdf/i).first()).toBeVisible({
+    await expect(
+      page.getByText(/lighrag_2410\.05779v3\.pdf/i).first(),
+    ).toBeVisible({
       timeout: 10000,
     });
 
@@ -105,18 +114,23 @@ test.describe("@load WebSocket Document Upload (OpenAI Tenant)", () => {
     console.log("[Test] Step 5: Watching for status progression");
     const readStatus = async () => {
       const badge = documentRow.locator('[data-testid="status-badge"]');
-      return (await badge.textContent({ timeout: 1000 }).catch(() => null)) || "";
+      return (
+        (await badge.textContent({ timeout: 1000 }).catch(() => null)) || ""
+      );
     };
-    const progressHeader = page.getByText(/Processing Files|Upload Complete/i).first();
+    const progressHeader = page
+      .getByText(/Processing Files|Upload Complete/i)
+      .first();
 
     // Track observed statuses/progress snapshots.
     const observedStatuses: string[] = [];
 
     // Wait for a live progress indicator to remain visible.
-    console.log('[Test] Waiting for live upload progress...');
+    console.log("[Test] Waiting for live upload progress...");
     await expect(progressHeader).toBeVisible({ timeout: 10000 });
 
-    const initialStatus = (await readStatus()) || (await progressHeader.textContent()) || "";
+    const initialStatus =
+      (await readStatus()) || (await progressHeader.textContent()) || "";
     observedStatuses.push(initialStatus);
     console.log(`[Test] ✓ First live progress signal: ${initialStatus}`);
 
@@ -132,7 +146,9 @@ test.describe("@load WebSocket Document Upload (OpenAI Tenant)", () => {
 
       const currentStatus =
         (await readStatus()) ||
-        (await progressHeader.textContent({ timeout: 1000 }).catch(() => null)) ||
+        (await progressHeader
+          .textContent({ timeout: 1000 })
+          .catch(() => null)) ||
         "";
 
       if (currentStatus !== lastStatus) {
@@ -144,7 +160,10 @@ test.describe("@load WebSocket Document Upload (OpenAI Tenant)", () => {
         lastStatus = currentStatus;
       }
 
-      if (currentStatus?.includes("Completed") || currentStatus?.includes("Failed")) {
+      if (
+        currentStatus?.includes("Completed") ||
+        currentStatus?.includes("Failed")
+      ) {
         break;
       }
     }
@@ -162,7 +181,9 @@ test.describe("@load WebSocket Document Upload (OpenAI Tenant)", () => {
     // Backend processing may succeed or fail depending on external model availability;
     // the key E2E contract here is that the UI surfaces live state changes.
     expect(observedStatuses.length).toBeGreaterThan(0);
-    expect(observedStatuses.some((value) => value.trim().length > 0)).toBe(true);
+    expect(observedStatuses.some((value) => value.trim().length > 0)).toBe(
+      true,
+    );
 
     // Step 8: If processing completed in time, also verify the downstream viewer data.
     if (finalStatus?.includes("Completed")) {
@@ -208,25 +229,87 @@ test.describe("@load WebSocket Document Upload (OpenAI Tenant)", () => {
   }) => {
     console.log("[Test] Starting concurrent upload test");
 
-    // Upload 2 PDFs simultaneously
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles([TEST_PDF, TEST_PDF]);
+    const suffix = Date.now();
+    const filenames = [`queue-${suffix}-a.md`, `queue-${suffix}-b.md`];
+    const headers = {
+      "X-Tenant-ID": OPENAI_TENANT_ID,
+      "X-Workspace-ID": OPENAI_WORKSPACE_ID,
+    };
 
-    // Both uploads should be reflected immediately in the upload progress area.
-    await expect(page.getByText(/Processing Files|Upload Complete/i)).toBeVisible({
+    // Distinct payloads prove independent admission; uploading the same PDF
+    // twice only exercises duplicate detection.
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles(
+      filenames.map((name, index) => ({
+        name,
+        mimeType: "text/markdown",
+        buffer: Buffer.from(
+          `# Queue test ${suffix}-${index}\n\nDistinct body ${index}.`,
+        ),
+      })),
+    );
+
+    // Both client intents are visible independently.
+    await expect(
+      page.getByText(/Processing Files|Upload Complete/i),
+    ).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByText(/\/2\s+files complete/i)).toBeVisible({
-      timeout: 10000,
-    });
+    await expect(page.getByText(filenames[0]).first()).toBeVisible();
+    await expect(page.getByText(filenames[1]).first()).toBeVisible();
     console.log("[Test] ✓ Both documents appeared immediately");
 
-    // The shared progress section should continue tracking the batch live.
-    await expect(page.getByText(/Processing Files|Upload Complete/i)).toBeVisible();
-    console.log("[Test] ✓ Concurrent uploads are being tracked live");
+    let admittedDocuments: Array<{ id: string; track_id?: string }> = [];
+    try {
+      await expect
+        .poll(
+          async () => {
+            const response = await page.request.get(
+              `${API_V1_URL}/documents?page=1&page_size=100`,
+              { headers },
+            );
+            if (!response.ok()) return 0;
+            const body = await response.json();
+            admittedDocuments = body.documents.filter(
+              (document: { title?: string }) =>
+                filenames.includes(document.title ?? ""),
+            );
+            return admittedDocuments.length;
+          },
+          {
+            timeout: 30000,
+            message: "both relational document shells should be visible",
+          },
+        )
+        .toBe(2);
 
-    console.log(
-      "[Test] ✓ Concurrent uploads tracked independently via WebSocket",
-    );
+      const trackIds = admittedDocuments
+        .map((document) => document.track_id)
+        .filter((trackId): trackId is string => Boolean(trackId));
+      expect(new Set(trackIds).size).toBe(2);
+
+      await expect
+        .poll(async () => {
+          const response = await page.request.get(
+            `${API_V1_URL}/tasks?page=1&page_size=100`,
+            { headers },
+          );
+          if (!response.ok()) return 0;
+          const body = await response.json();
+          return body.tasks.filter((task: { track_id: string }) =>
+            trackIds.includes(task.track_id),
+          ).length;
+        })
+        .toBe(2);
+      console.log("[Test] ✓ Distinct durable documents and tasks are visible");
+    } finally {
+      await Promise.all(
+        admittedDocuments.map((document) =>
+          page.request.delete(`${API_V1_URL}/documents/${document.id}`, {
+            headers,
+          }),
+        ),
+      );
+    }
   });
 });

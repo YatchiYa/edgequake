@@ -2,7 +2,7 @@
 title: "Tutorial: Building Your First RAG App"
 ---
 
-> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Tutorial: Building Your First RAG App
 
@@ -63,7 +63,7 @@ curl http://localhost:8080/health
 Expected response:
 
 ```json
-{ "status": "healthy", "version": "0.19.0", "storage_mode": "postgresql" }
+{ "status": "healthy", "version": "0.23.0", "storage_mode": "postgresql" }
 ```
 
 ---

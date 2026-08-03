@@ -19,6 +19,24 @@ impl VectorStorage for PgVectorStorage {
 
     async fn initialize(&self) -> Result<()> {
         self.pool.initialize().await?;
+        // SPEC-091: typed backend is write authority — do not CREATE legacy
+        // `eq_*_vectors` (LD-03 / write-stop). Legacy rollback still creates.
+        if crate::legacy_vector_writes_stopped() {
+            tracing::debug!(
+                table = %self.table_name,
+                "SPEC-091: typed vector backend — skipping runtime create_table (write-stop)"
+            );
+            return Ok(());
+        }
+        // SPEC-091 W4 (LD-03): once the chunk fleet is retired under legacy
+        // rollback edge cases, do not recreate chunk-dedicated tables.
+        if self.legacy_chunk_ddl_retired().await {
+            tracing::debug!(
+                table = %self.table_name,
+                "SPEC-091 W4/IW2: legacy vector table retired — skipping runtime create_table (LD-03)"
+            );
+            return Ok(());
+        }
         self.create_table().await?;
         Ok(())
     }
@@ -125,7 +143,7 @@ impl VectorStorage for PgVectorStorage {
             .await
             .map_err(|e| StorageError::Database(format!("Failed to commit query tx: {}", e)))?;
 
-        let results = rows
+        let results: Vec<VectorSearchResult> = rows
             .iter()
             .map(|row| {
                 let id: String = row.get("id");
@@ -138,6 +156,10 @@ impl VectorStorage for PgVectorStorage {
                 }
             })
             .collect();
+
+        // SPEC-091 IP2: serving fence (default on; explicit off disables).
+        let results =
+            super::super::serving_fence_query::apply_serving_fence(&pool, results).await?;
 
         Ok(results)
     }
@@ -166,6 +188,18 @@ impl VectorStorage for PgVectorStorage {
         let _timer =
             crate::TimedStorageOp::start_dataop(crate::dataop::DATA_PGVEC_VECTORS_UPSERT_BATCH_004);
         if data.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // SPEC-091: typed backend write-stop — do not INSERT into legacy
+        // `eq_*_vectors`. Typed `chunk_embeddings` / fleet tables are SSOT;
+        // callers dual-write those paths separately (fail-closed).
+        if crate::legacy_vector_writes_stopped() {
+            tracing::debug!(
+                table = %self.table_name,
+                rows = data.len(),
+                "SPEC-091: typed vector backend — legacy upsert write-stop (no-op)"
+            );
             return Ok(Vec::new());
         }
 
@@ -345,20 +379,26 @@ impl VectorStorage for PgVectorStorage {
             return Ok(());
         }
 
+        // SPEC-091: typed write-stop — legacy table may be absent; compensate
+        // must not 42P01 after a typed-only ingest.
+        if crate::legacy_vector_writes_stopped() {
+            return Ok(());
+        }
+
         let pool = self.pool.get().await?;
 
         let sql = format!("DELETE FROM {} WHERE id = ANY($1)", self.table_name);
 
-        sqlx::query(&sql)
-            .bind(ids)
-            .execute(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("Delete failed: {}", e)))?;
-
-        Ok(())
+        match sqlx::query(&sql).bind(ids).execute(&pool).await {
+            Ok(_) => Ok(()),
+            Err(e) => Self::map_legacy_mutate_err(e, "Delete", &self.table_name),
+        }
     }
 
     async fn delete_entity(&self, entity_name: &str) -> Result<()> {
+        if crate::legacy_vector_writes_stopped() {
+            return Ok(());
+        }
         let pool = self.pool.get().await?;
 
         let sql = format!(
@@ -366,17 +406,17 @@ impl VectorStorage for PgVectorStorage {
             self.table_name
         );
 
-        sqlx::query(&sql)
-            .bind(entity_name)
-            .execute(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("Delete entity failed: {}", e)))?;
-
-        Ok(())
+        match sqlx::query(&sql).bind(entity_name).execute(&pool).await {
+            Ok(_) => Ok(()),
+            Err(e) => Self::map_legacy_mutate_err(e, "Delete entity", &self.table_name),
+        }
     }
 
     async fn delete_entities_batch(&self, entity_names: &[String]) -> Result<usize> {
         if entity_names.is_empty() {
+            return Ok(0);
+        }
+        if crate::legacy_vector_writes_stopped() {
             return Ok(0);
         }
         let mut unique = entity_names.to_vec();
@@ -387,15 +427,19 @@ impl VectorStorage for PgVectorStorage {
             "DELETE FROM {} WHERE metadata->>'entity_name' = ANY($1::text[])",
             self.table_name
         );
-        sqlx::query(&sql)
-            .bind(&unique)
-            .execute(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("Batch delete entities failed: {e}")))?;
-        Ok(unique.len())
+        match sqlx::query(&sql).bind(&unique).execute(&pool).await {
+            Ok(_) => Ok(unique.len()),
+            Err(e) => {
+                Self::map_legacy_mutate_err(e, "Batch delete entities", &self.table_name)?;
+                Ok(0)
+            }
+        }
     }
 
     async fn delete_entity_relations(&self, entity_name: &str) -> Result<()> {
+        if crate::legacy_vector_writes_stopped() {
+            return Ok(());
+        }
         let pool = self.pool.get().await?;
         // SPEC-090 F-090-09b: UNION ctid arms — avoid non-sargable OR across JSONB keys.
         let sql = format!(
@@ -410,15 +454,10 @@ impl VectorStorage for PgVectorStorage {
             table = self.table_name
         );
 
-        sqlx::query(&sql)
-            .bind(entity_name)
-            .execute(&pool)
-            .await
-            .map_err(|e| {
-                StorageError::Database(format!("Delete entity relations failed: {}", e))
-            })?;
-
-        Ok(())
+        match sqlx::query(&sql).bind(entity_name).execute(&pool).await {
+            Ok(_) => Ok(()),
+            Err(e) => Self::map_legacy_mutate_err(e, "Delete entity relations", &self.table_name),
+        }
     }
 
     async fn get_by_id(&self, id: &str) -> Result<Option<Vec<f32>>> {
@@ -519,7 +558,14 @@ impl VectorStorage for PgVectorStorage {
     async fn ping(&self) -> Result<()> {
         let pool = self.pool.get().await?;
 
-        let sql = format!("SELECT 1 FROM {} LIMIT 1", self.table_name);
+        // SPEC-091: typed backend is SSOT — legacy `eq_*_vectors` may already be
+        // dropped (migration 131) or never created for the default namespace.
+        // Health must probe the typed table, not a retired fleet relation.
+        let sql = if crate::legacy_vector_writes_stopped() {
+            "SELECT 1 FROM chunk_embeddings LIMIT 1".to_string()
+        } else {
+            format!("SELECT 1 FROM {} LIMIT 1", self.table_name)
+        };
 
         sqlx::query(&sql)
             .fetch_optional(&pool)
@@ -530,16 +576,17 @@ impl VectorStorage for PgVectorStorage {
     }
 
     async fn clear(&self) -> Result<()> {
+        if crate::legacy_vector_writes_stopped() {
+            return Ok(());
+        }
         let pool = self.pool.get().await?;
 
         let sql = format!("DELETE FROM {}", self.table_name);
 
-        sqlx::query(&sql)
-            .execute(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("Clear failed: {}", e)))?;
-
-        Ok(())
+        match sqlx::query(&sql).execute(&pool).await {
+            Ok(_) => Ok(()),
+            Err(e) => Self::map_legacy_mutate_err(e, "Clear", &self.table_name),
+        }
     }
 
     /// Clear vectors for a specific workspace.
@@ -547,6 +594,9 @@ impl VectorStorage for PgVectorStorage {
     /// QW6 / SPEC-090 F-090-09: sargable delete arms — indexed `workspace_id`
     /// column first, then JSONB-only legacy rows via UNION ctid (no bare OR).
     async fn clear_workspace(&self, workspace_id: &uuid::Uuid) -> Result<usize> {
+        if crate::legacy_vector_writes_stopped() {
+            return Ok(0);
+        }
         let pool = self.pool.get().await?;
         let ws = workspace_id.to_string();
 
@@ -564,13 +614,13 @@ impl VectorStorage for PgVectorStorage {
             table = self.table_name
         );
 
-        let result = sqlx::query(&sql)
-            .bind(&ws)
-            .execute(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("Clear workspace failed: {}", e)))?;
-
-        Ok(result.rows_affected() as usize)
+        match sqlx::query(&sql).bind(&ws).execute(&pool).await {
+            Ok(result) => Ok(result.rows_affected() as usize),
+            Err(e) => {
+                Self::map_legacy_mutate_err(e, "Clear workspace", &self.table_name)?;
+                Ok(0)
+            }
+        }
     }
 
     /// SPEC-047 P1a: wipe all vectors for a document on force_reindex / re-ingest.
@@ -578,6 +628,9 @@ impl VectorStorage for PgVectorStorage {
     /// SPEC-090 F-090-09: four sargable delete arms via UNION ctid (no bare OR).
     async fn delete_by_document(&self, document_id: &str) -> Result<usize> {
         if document_id.is_empty() {
+            return Ok(0);
+        }
+        if crate::legacy_vector_writes_stopped() {
             return Ok(0);
         }
         let pool = self.pool.get().await?;
@@ -606,13 +659,18 @@ impl VectorStorage for PgVectorStorage {
             "#,
             table = self.table_name
         );
-        let result = sqlx::query(&sql)
+        match sqlx::query(&sql)
             .bind(document_id)
             .bind(&chunk_prefix)
             .execute(&pool)
             .await
-            .map_err(|e| StorageError::Database(format!("Delete by document failed: {}", e)))?;
-        Ok(result.rows_affected() as usize)
+        {
+            Ok(result) => Ok(result.rows_affected() as usize),
+            Err(e) => {
+                Self::map_legacy_mutate_err(e, "Delete by document", &self.table_name)?;
+                Ok(0)
+            }
+        }
     }
 
     /// Query with metadata pre-filter (SPEC-007 Tier 2/3).
@@ -658,6 +716,133 @@ impl VectorStorage for PgVectorStorage {
             _ => return self.query(query_embedding, top_k, filter_ids).await,
         };
 
+        // SPEC-091: typed authority — chunk queries from `chunk_embeddings`;
+        // entity/rel from fleet tables. Never fall through to missing legacy
+        // `eq_*_vectors` (42P01) when typed is on.
+        if crate::vector_backend::vector_backend_reads_typed(crate::vector_backend_from_env()) {
+            let vtype = mf
+                .vector_type
+                .as_deref()
+                .unwrap_or("chunk")
+                .to_ascii_lowercase();
+            if let Some(ws) = mf.workspace_id.as_deref() {
+                let pool = self.pool.get().await?;
+                let model = std::env::var("EDGEQUAKE_EMBEDDING_MODEL")
+                    .unwrap_or_else(|_| "text-embedding-3-small".to_string());
+
+                if vtype == "chunk" || vtype.is_empty() {
+                    // Only short-circuit when filter is chunk (or unspecified
+                    // workspace chunk search). Explicit entity/rel skip this.
+                    if mf.vector_type.is_none()
+                        || mf
+                            .vector_type
+                            .as_deref()
+                            .is_some_and(|t| t.eq_ignore_ascii_case("chunk"))
+                    {
+                        let index = super::super::chunk_embedding_index::PgChunkEmbeddingIndex::new(
+                            pool.clone(),
+                            model.clone(),
+                        );
+                        match super::typed_read::try_typed_chunk_query(
+                            &pool,
+                            &index,
+                            query_embedding,
+                            top_k,
+                            ws,
+                        )
+                        .await
+                        {
+                            Ok(Some(results)) => return Ok(results),
+                            Ok(None) => {
+                                // Workspace unresolvable — empty under typed (no legacy).
+                                return Ok(Vec::new());
+                            }
+                            Err(e) => {
+                                super::typed_read::record_fallback();
+                                tracing::warn!(
+                                    error = %e,
+                                    workspace = %ws,
+                                    "SPEC-091: typed chunk query failed; returning empty (no legacy 42P01)"
+                                );
+                                return Ok(Vec::new());
+                            }
+                        }
+                    }
+                }
+
+                if matches!(vtype.as_str(), "entity" | "relationship" | "relation") {
+                    use crate::embedding_family::EmbeddingFamily;
+                    use crate::traits::domain::{
+                        FleetEmbeddingIndex, ModelId, VectorQuery, WorkspaceId,
+                    };
+                    let family = if vtype.starts_with("rel") {
+                        EmbeddingFamily::Relationship
+                    } else {
+                        EmbeddingFamily::Entity
+                    };
+                    let fleet = super::super::fleet_embedding_index::PgFleetEmbeddingIndex::new(
+                        pool.clone(),
+                        model,
+                    );
+                    let ws_uuid = match uuid::Uuid::parse_str(ws) {
+                        Ok(u) => u,
+                        Err(_) => {
+                            // Resolve by name like typed_read.
+                            match sqlx::query_scalar::<_, uuid::Uuid>(
+                                "SELECT workspace_id FROM workspaces WHERE name = $1 OR workspace_id::text = $1 LIMIT 1",
+                            )
+                            .bind(ws)
+                            .fetch_optional(&pool)
+                            .await
+                            {
+                                Ok(Some(u)) => u,
+                                Ok(None) => return Ok(Vec::new()),
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "fleet workspace resolve failed");
+                                    return Ok(Vec::new());
+                                }
+                            }
+                        }
+                    };
+                    let req = VectorQuery {
+                        model_id: ModelId(uuid::Uuid::nil()),
+                        workspace_id: Some(WorkspaceId(ws_uuid)),
+                        embedding: query_embedding.to_vec(),
+                        limit: top_k as u32,
+                    };
+                    match fleet.search(family, &req).await {
+                        Ok(scored) => {
+                            let results = scored
+                                .into_iter()
+                                .map(|s| VectorSearchResult {
+                                    id: s.legacy_id,
+                                    score: s.score,
+                                    metadata: serde_json::json!({
+                                        "vector_type": vtype,
+                                        "workspace_id": ws,
+                                    }),
+                                })
+                                .collect();
+                            return Ok(results);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                workspace = %ws,
+                                family = ?family,
+                                "SPEC-091: typed fleet query failed; returning empty (no legacy 42P01)"
+                            );
+                            return Ok(Vec::new());
+                        }
+                    }
+                }
+            }
+            // Typed authority + no workspace / unsupported type: do not hit legacy.
+            if mf.workspace_id.is_some() {
+                return Ok(Vec::new());
+            }
+        }
+
         // SPEC-090 F-090-05 / LAW-P1: never CREATE INDEX on the query path.
         // Probes are TTL-cached; ANN DDL is warmup / ingest only.
         let mut wave2_partial_ready = false;
@@ -667,9 +852,20 @@ impl VectorStorage for PgVectorStorage {
                 workspace_row_count = Some(cached.row_count);
                 wave2_partial_ready = cached.partial_ann_ready;
             } else {
-                let row_count = self.count_workspace_rows(ws).await?;
+                let row_count = match self.count_workspace_rows(ws).await {
+                    Ok(n) => n,
+                    Err(e) => {
+                        // Missing legacy table after write-stop / drop — empty.
+                        tracing::debug!(
+                            error = %e,
+                            workspace = %ws,
+                            "legacy workspace row count failed; treating as empty"
+                        );
+                        return Ok(Vec::new());
+                    }
+                };
                 let partial_ready = if crate::hnsw_partial_by_workspace_enabled() {
-                    self.partial_ann_index_exists(ws).await?
+                    self.partial_ann_index_exists(ws).await.unwrap_or(false)
                 } else {
                     false
                 };
@@ -820,7 +1016,7 @@ impl VectorStorage for PgVectorStorage {
             StorageError::Database(format!("Failed to commit filtered query tx: {}", e))
         })?;
 
-        let results = rows
+        let results: Vec<VectorSearchResult> = rows
             .iter()
             .map(|row| {
                 let id: String = row.get("id");
@@ -833,6 +1029,10 @@ impl VectorStorage for PgVectorStorage {
                 }
             })
             .collect();
+
+        // SPEC-091 IP2: serving fence (default on; explicit off disables).
+        let results =
+            super::super::serving_fence_query::apply_serving_fence(&pool, results).await?;
 
         Ok(results)
     }
@@ -850,8 +1050,12 @@ impl VectorStorage for PgVectorStorage {
     ) -> Result<Vec<VectorSearchResult>> {
         // SPEC-060: storage op histogram (op label only)
         let _timed = crate::TimedStorageOp::start("text_search_filtered");
-        self.postgres_text_search_filtered(query_text, top_k, filter_ids, metadata_filter)
-            .await
+        let results = self
+            .postgres_text_search_filtered(query_text, top_k, filter_ids, metadata_filter)
+            .await?;
+        // SPEC-091 IP2: serving fence (default on; explicit off disables).
+        let pool = self.pool.get().await?;
+        super::super::serving_fence_query::apply_serving_fence(&pool, results).await
     }
 
     async fn warmup_workspace_ann(&self, workspace_id: &str) -> Result<bool> {

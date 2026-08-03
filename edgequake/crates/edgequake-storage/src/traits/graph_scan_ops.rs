@@ -144,24 +144,87 @@ pub fn edge_matches_list_filter(edge: &GraphEdge, filter: &EdgeListFilter) -> bo
     true
 }
 
-/// Collect source reference strings from node/edge properties.
+/// True when a string looks like a graph endpoint / entity id (`workspace::NAME`),
+/// not document provenance. SPEC-098 Symptom F: edge property `source_id` is the
+/// start-node id and must never enter cascade remaining-sources.
+pub fn is_topology_entity_ref(value: &str) -> bool {
+    value.contains("::")
+}
+
+/// Loose UUID shape (`8-4-4-4-12` hex) used for bare `source_document_id` values.
+fn looks_like_document_uuid(value: &str) -> bool {
+    let b = value.as_bytes();
+    if b.len() != 36 {
+        return false;
+    }
+    let is_hex = |c: u8| c.is_ascii_hexdigit();
+    let dash = |i: usize| b[i] == b'-';
+    b.iter().enumerate().all(|(i, &c)| match i {
+        8 | 13 | 18 | 23 => dash(i),
+        _ => is_hex(c),
+    })
+}
+
+fn push_provenance_ref(refs: &mut Vec<String>, value: &str) {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || is_topology_entity_ref(trimmed) {
+        return;
+    }
+    refs.push(trimmed.to_string());
+}
+
+/// Collect **document provenance** refs from node/edge properties (SPEC-045 / SPEC-098).
 ///
-/// SSOT for prefix scans and analytics reconcile (SPEC-045): includes legacy
-/// `source_id`, modern `source_ids`, and pipeline `source_chunk_ids`.
+/// SSOT for cascade delete, post-proof, and analytics reconcile.
+///
+/// Includes: `source_ids`, `source_chunk_ids`, singular `source_chunk_id`,
+/// singular `source_document_id`, and legacy **node** pipe-joined `source_id`
+/// when provenance-shaped.
+///
+/// Does **not** fold `source_document_ids[]` into the chunk-slot list — that
+/// array is maintained separately in rebuild (avoids writing bare doc UUIDs
+/// into `source_ids`). Singular `source_document_id` is still collected so
+/// orphan citation rows remain cascade-visible.
+///
+/// Never treats edge topology `source_id` / `target_id` (`workspace::ENTITY`) as
+/// provenance — that bug poisoned arrays and blocked exclusive edge delete.
 pub fn collect_source_references(properties: &HashMap<String, serde_json::Value>) -> Vec<String> {
     let mut refs = Vec::new();
+
+    // Legacy node field only — edge topology `source_id` is `ws::ENTITY` and skipped.
     if let Some(source_id) = properties.get("source_id").and_then(|v| v.as_str()) {
-        refs.extend(source_id.split('|').map(|s| s.to_string()));
+        let pipe_joined = source_id.contains('|');
+        for part in source_id.split('|') {
+            let part = part.trim();
+            if part.is_empty() || is_topology_entity_ref(part) {
+                continue;
+            }
+            if pipe_joined || part.contains("-chunk-") || looks_like_document_uuid(part) {
+                refs.push(part.to_string());
+            }
+        }
     }
+
     for key in ["source_ids", "source_chunk_ids"] {
         if let Some(arr) = properties.get(key).and_then(|v| v.as_array()) {
             for item in arr {
                 if let Some(s) = item.as_str() {
-                    refs.push(s.to_string());
+                    push_provenance_ref(&mut refs, s);
                 }
             }
         }
     }
+
+    if let Some(chunk) = properties.get("source_chunk_id").and_then(|v| v.as_str()) {
+        push_provenance_ref(&mut refs, chunk);
+    }
+    if let Some(doc) = properties
+        .get("source_document_id")
+        .and_then(|v| v.as_str())
+    {
+        push_provenance_ref(&mut refs, doc);
+    }
+
     refs
 }
 

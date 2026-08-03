@@ -4,7 +4,7 @@ title: 'PDF Ingestion Tutorial'
 
 # PDF Ingestion Tutorial
 
-> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 EdgeQuake converts PDFs to Markdown (vision LLM or EdgeParse), then ingests the result into the knowledge graph. This tutorial covers upload, progress, cancel, and query using the **lawful API** (OpenAPI snapshot is SSOT).
 
@@ -240,7 +240,7 @@ Prefer the official SDK: `pip install edgequake-sdk` — see [Python SDK](/docs/
 | `force_reindex` | bool | Re-process duplicate checksum |
 | `track_id` | string | Client batch correlation only |
 
-Legacy `config={"mode":"Vision",…}` on `/documents/upload` may still appear in older examples; v0.19.0 PDF path uses **`pdf_parser_backend`** + vision env/per-request fields as SSOT.
+Legacy `config={"mode":"Vision",…}` on `/documents/upload` may still appear in older examples; v0.23.0 PDF path uses **`pdf_parser_backend`** + vision env/per-request fields as SSOT.
 
 ---
 

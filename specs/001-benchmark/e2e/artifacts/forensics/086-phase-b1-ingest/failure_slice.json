@@ -1,0 +1,271 @@
+{
+  "archive": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/history/medical-mid-20260802T143215Z",
+  "n_eq_preds": 200,
+  "n_lr_preds": 200,
+  "n_paired_eval": 200,
+  "scorecard": {
+    "eq_acc": 0.7920196670800517,
+    "lr_acc": 0.7834308761087777,
+    "eq_ctx": 0.42500000000000004,
+    "lr_ctx": 0.49624999999999997,
+    "eq_er": 0.9169011017577193,
+    "lr_er": 0.9560115448277213,
+    "eq_fact_er": 0.88,
+    "lr_fact_er": 0.95,
+    "eq_empty_answer_rate": 0.0,
+    "lr_empty_answer_rate": 0.0
+  },
+  "by_type_acc": {
+    "Complex Reasoning": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": 0.0166,
+      "eq_ahead": 22,
+      "lr_ahead": 16,
+      "near_tie": 12
+    },
+    "Contextual Summarize": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": -0.0235,
+      "eq_ahead": 17,
+      "lr_ahead": 23,
+      "near_tie": 10
+    },
+    "Creative Generation": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": 0.0219,
+      "eq_ahead": 28,
+      "lr_ahead": 16,
+      "near_tie": 6
+    },
+    "Fact Retrieval": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": 0.0193,
+      "eq_ahead": 10,
+      "lr_ahead": 21,
+      "near_tie": 19
+    }
+  },
+  "empty_answers": {
+    "eq_count": 0,
+    "lr_count": 0,
+    "eq_ids_sample": []
+  },
+  "snr_proxy": {
+    "eq_mean_jaccard_gold_vs_context": 0.0124,
+    "lr_mean_jaccard_gold_vs_context": 0.0154,
+    "eq_lt_lr_count": 190
+  },
+  "fact_lr_wins_top": [
+    {
+      "id": "Medical-3c025533",
+      "eq_acc": 0.2328,
+      "lr_acc": 0.7352,
+      "delta": -0.5025,
+      "eq_snr": 0.0039,
+      "lr_snr": 0.0056,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which diagnostic methods are listed for liver cancer in the ontology?"
+    },
+    {
+      "id": "Medical-e05d0922",
+      "eq_acc": 0.5349,
+      "lr_acc": 0.9896,
+      "delta": -0.4547,
+      "eq_snr": 0.004,
+      "lr_snr": 0.0065,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which procedure is performed if cancer cells are found in the cerebrospinal fluid?"
+    },
+    {
+      "id": "Medical-198aa7f0",
+      "eq_acc": 0.6158,
+      "lr_acc": 0.9948,
+      "delta": -0.379,
+      "eq_snr": 0.003,
+      "lr_snr": 0.0046,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is the purpose of follow-up MRI in glioma patients?"
+    },
+    {
+      "id": "Medical-7a495600",
+      "eq_acc": 0.2372,
+      "lr_acc": 0.6146,
+      "delta": -0.3774,
+      "eq_snr": 0.005,
+      "lr_snr": 0.0052,
+      "gold_token_coverage": 0.9,
+      "miss_class": "generation",
+      "question": "What are the main risk factors for bone cancer?"
+    },
+    {
+      "id": "Medical-20454e30",
+      "eq_acc": 0.6075,
+      "lr_acc": 0.8806,
+      "delta": -0.2731,
+      "eq_snr": 0.0038,
+      "lr_snr": 0.0066,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which factors are considered risk factors for head and neck cancers?"
+    },
+    {
+      "id": "Medical-3785154c",
+      "eq_acc": 0.728,
+      "lr_acc": 0.9981,
+      "delta": -0.2701,
+      "eq_snr": 0.0039,
+      "lr_snr": 0.0058,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What treatment is an option for some patients with stage I, II, or III pancreatic cancer?"
+    },
+    {
+      "id": "Medical-a2555661",
+      "eq_acc": 0.7291,
+      "lr_acc": 0.9954,
+      "delta": -0.2663,
+      "eq_snr": 0.0029,
+      "lr_snr": 0.0049,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which genetic syndromes increase the risk for CSCC?"
+    },
+    {
+      "id": "Medical-788a228f",
+      "eq_acc": 0.7367,
+      "lr_acc": 0.9056,
+      "delta": -0.1689,
+      "eq_snr": 0.0024,
+      "lr_snr": 0.0029,
+      "gold_token_coverage": 0.8333,
+      "miss_class": "generation",
+      "question": "How does immunosuppression, such as HIV infection, affect cervical cancer risk?"
+    },
+    {
+      "id": "Medical-adb77b8f",
+      "eq_acc": 0.7345,
+      "lr_acc": 0.8801,
+      "delta": -0.1457,
+      "eq_snr": 0.0031,
+      "lr_snr": 0.0036,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is the role of imaging in NPC management?"
+    },
+    {
+      "id": "Medical-fca41ac7",
+      "eq_acc": 0.8427,
+      "lr_acc": 0.9851,
+      "delta": -0.1424,
+      "eq_snr": 0.0028,
+      "lr_snr": 0.0039,
+      "gold_token_coverage": 0.7778,
+      "miss_class": "generation",
+      "question": "What are the tumor characteristics of Tis stage in intrahepatic bile duct cancer?"
+    },
+    {
+      "id": "Medical-d587c0c2",
+      "eq_acc": 0.4239,
+      "lr_acc": 0.5424,
+      "delta": -0.1185,
+      "eq_snr": 0.0026,
+      "lr_snr": 0.0038,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which chemotherapy regimens are used for bladder cancer?"
+    },
+    {
+      "id": "Medical-9797af69",
+      "eq_acc": 0.7445,
+      "lr_acc": 0.8431,
+      "delta": -0.0987,
+      "eq_snr": 0.0051,
+      "lr_snr": 0.0082,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is recurrence in the context of BCC?"
+    },
+    {
+      "id": "Medical-0ce3e959",
+      "eq_acc": 0.6953,
+      "lr_acc": 0.7922,
+      "delta": -0.0969,
+      "eq_snr": 0.0114,
+      "lr_snr": 0.0134,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What are the treatment options for platinum-resistant ovarian cancer?"
+    },
+    {
+      "id": "Medical-d8a3772b",
+      "eq_acc": 0.7459,
+      "lr_acc": 0.8417,
+      "delta": -0.0958,
+      "eq_snr": 0.0032,
+      "lr_snr": 0.0064,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which immunotherapy agents are used for metastatic CSCC?"
+    },
+    {
+      "id": "Medical-c6d69844",
+      "eq_acc": 0.4933,
+      "lr_acc": 0.5609,
+      "delta": -0.0676,
+      "eq_snr": 0.0053,
+      "lr_snr": 0.0098,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "For which patients is germline genetic testing recommended in prostate cancer?"
+    },
+    {
+      "id": "Medical-14c841bc",
+      "eq_acc": 0.7442,
+      "lr_acc": 0.8073,
+      "delta": -0.0631,
+      "eq_snr": 0.0045,
+      "lr_snr": 0.0053,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "On what basis is bile duct cancer staging determined?"
+    },
+    {
+      "id": "Medical-181dd442",
+      "eq_acc": 0.931,
+      "lr_acc": 0.9931,
+      "delta": -0.0621,
+      "eq_snr": 0.0083,
+      "lr_snr": 0.0123,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What genetic alterations are tested for in ovarian cancer?"
+    }
+  ],
+  "fact_miss_split": {
+    "fact_lr_wins_n": 17,
+    "membership_n": 0,
+    "generation_n": 17,
+    "membership_share": 0.0,
+    "generation_share": 1.0,
+    "note": "081 F1: membership = gold token coverage <0.15 in EQ Acc context; generation = coverage \u22650.15 but Acc still lags LR"
+  },
+  "ranked_failure_modes": [
+    {
+      "mode": "Fact_Acc_LR_ahead",
+      "count": 21,
+      "mean_delta": 0.0193,
+      "note": "Primary Acc type gap \u2014 often R6 list split / evidence miss"
+    },
+    {
+      "mode": "Fact_ER_gap",
+      "eq_fact_er": 0.88,
+      "lr_fact_er": 0.95,
+      "note": "Supports D1 R6 Acc/L2 unify before packing retries"
+    }
+  ],
+  "recommended_next_phase": "F4_generation_after_F3",
+  "honesty": "Labeled forensics only \u2014 not Acc Beat; Acc publish/latest stays P0 mid"
+}

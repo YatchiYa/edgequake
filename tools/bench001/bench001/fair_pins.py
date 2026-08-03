@@ -118,8 +118,12 @@ def lr_query_param_overrides() -> dict[str, Any]:
 
 
 def eq_enable_rerank() -> bool:
-    """Whether EQ query requests post-fuse rerank (default on; LR-identity sets 0)."""
-    raw = (os.environ.get("BENCH001_EQ_ENABLE_RERANK") or "1").strip().lower()
+    """Whether EQ query requests post-fuse rerank.
+
+    SPEC-086 Acc law default OFF (E2-occ). Set BENCH001_EQ_ENABLE_RERANK=1 for
+    labeled CE / prior-P0 peers.
+    """
+    raw = (os.environ.get("BENCH001_EQ_ENABLE_RERANK") or "0").strip().lower()
     return raw not in {"0", "false", "off", "no"}
 
 
@@ -340,6 +344,12 @@ def publish_pin_fields() -> dict[str, Any]:
         "keyword_llm_model": (
             (os.environ.get("EDGEQUAKE_KEYWORD_LLM_MODEL") or "").strip() or None
         ),
+        "extract_llm_provider": (
+            (os.environ.get("EDGEQUAKE_EXTRACT_LLM_PROVIDER") or "").strip() or None
+        ),
+        "extract_llm_model": (
+            (os.environ.get("EDGEQUAKE_EXTRACT_LLM_MODEL") or "").strip() or None
+        ),
         "fact_protect_bm25": (
             os.environ.get("EDGEQUAKE_FACT_PROTECT_BM25") or ""
         )
@@ -396,21 +406,22 @@ def publish_pin_fields() -> dict[str, Any]:
         .strip()
         .lower()
         in {"1", "true", "yes", "on"},
+        # Mirror Rust product defaults (SPEC-086 E2-occ): on unless explicitly off.
         "l2_bm25_union": (
-            os.environ.get("EDGEQUAKE_L2_BM25_UNION") or ""
+            os.environ.get("EDGEQUAKE_L2_BM25_UNION") or "1"
         )
         .strip()
         .lower()
-        in {"1", "true", "yes", "on"},
+        not in {"0", "false", "no", "off"},
         "l2_bm25_mix_top_k": int(
             os.environ.get("EDGEQUAKE_L2_BM25_MIX_TOP_K") or "30"
         ),
         "l2_bm25_mode": (
-            os.environ.get("EDGEQUAKE_L2_BM25_MODE") or "union"
+            os.environ.get("EDGEQUAKE_L2_BM25_MODE") or "fact_replace"
         )
         .strip()
         .lower()
-        or "union",
+        or "fact_replace",
         "mix_intent_weights": (
             os.environ.get("EDGEQUAKE_MIX_INTENT_WEIGHTS") or ""
         )
@@ -467,7 +478,7 @@ def publish_pin_fields() -> dict[str, Any]:
             "L2 Evidence Recall + Context Relevancy required for valid smoke+; "
             "EQ Mix arm gate off (LR-like always-on local+global+naive) unless "
             "EDGEQUAKE_MIX_ARM_GATE=true on the server; "
-            "optional EDGEQUAKE_MIX_FUSION=round_robin ablation (default rrf); "
+            "Mix fusion default round_robin (SPEC-086 E2-occ; rrf is labeled ablation); "
             "Acc PATH_PRUNE=0 (022 P0; soft path only with CE+protect); "
             "Phase-1 EDGEQUAKE_MIX_RELEVANCY_PRUNE Acc default off; "
             "fair Acc ingest: adaptive_chunking off + chunk_token_size=1200 "

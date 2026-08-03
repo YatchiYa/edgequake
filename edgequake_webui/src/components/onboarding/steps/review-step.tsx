@@ -1,0 +1,341 @@
+'use client';
+
+import { Button } from '@/components/ui/button';
+import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
+import type { LLMSelection } from '@/components/workspace/llm-model-selector';
+import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
+import type { WorkspaceConfigDiff } from '@/lib/onboarding/workspace-config-diff';
+import type { WizardDraft, WizardStepId } from '@/lib/onboarding/wizard-state';
+import { formatServerDefaultExtractionLanguageLabel } from '@/constants/extraction-languages';
+import { formatServerDefaultPdfParserLabel } from '@/lib/pdf/resolve-pdf-parser-backend';
+import { AlertTriangle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+
+export interface ReviewStepProps {
+  draft: WizardDraft;
+  includeAdmin?: boolean;
+  includeTenant?: boolean;
+  /** When set (Create Workspace), show tenant → server inherited IDs. */
+  tenantId?: string | null;
+  llm?: LLMSelection;
+  embedding?: EmbeddingSelection;
+  vision?: LLMSelection;
+  /** Jump to a prior step from review (LAW Wave 6). */
+  onEditStep?: (step: WizardStepId) => void;
+  /** When false, omit the duplicate review hint (shell step description already shows it). */
+  showHint?: boolean;
+  /** Reconfigure: hide identity group (name/slug not editable). */
+  hideWorkspaceIdentity?: boolean;
+  /** Reconfigure: show PDF parser row. */
+  showDocumentParsing?: boolean;
+  /** Reconfigure: Impact block (LAW-101-12). */
+  impact?: WorkspaceConfigDiff | null;
+  /** Document count for soft messaging when zero. */
+  documentCount?: number;
+}
+
+function Group({
+  title,
+  onEdit,
+  editLabel,
+  children,
+  testId,
+}: {
+  title: string;
+  onEdit?: () => void;
+  editLabel: string;
+  children: React.ReactNode;
+  testId: string;
+}) {
+  return (
+    <div className="rounded-md border p-2.5 space-y-1.5" data-testid={testId}>
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </h4>
+        {onEdit ? (
+          <Button
+            type="button"
+            variant="link"
+            className="h-auto p-0 text-xs"
+            onClick={onEdit}
+            data-testid={`${testId}-edit`}
+          >
+            {editLabel}
+          </Button>
+        ) : null}
+      </div>
+      <dl className="space-y-1">{children}</dl>
+    </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex gap-2 text-sm items-start">
+      <dt className="w-24 shrink-0 text-muted-foreground">{label}</dt>
+      <dd className={`font-medium break-all flex-1 ${mono ? 'font-mono text-xs' : ''}`}>
+        {value || '—'}
+      </dd>
+    </div>
+  );
+}
+
+function pdfLabel(
+  value: WizardDraft['pdfParserBackend'],
+  t: (key: string, fallback: string, options?: { value: string }) => string,
+): string {
+  switch (value) {
+    case 'edgeparse':
+      return t('settings.pdfParser.edgeparse', 'EdgeParse');
+    case 'vision':
+      return t('settings.pdfParser.vision', 'Vision');
+    default:
+      return formatServerDefaultPdfParserLabel(t);
+  }
+}
+
+const CHANGE_LABEL_KEYS: Record<
+  string,
+  { key: string; fallback: string }
+> = {
+  llm: { key: 'onboarding.impactLlm', fallback: 'LLM model' },
+  embedding: { key: 'onboarding.impactEmbedding', fallback: 'Embedding model' },
+  vision: { key: 'onboarding.impactVision', fallback: 'Vision LLM' },
+  pdfParser: { key: 'onboarding.impactPdfParser', fallback: 'PDF parser' },
+  extractionLanguage: {
+    key: 'onboarding.impactLanguage',
+    fallback: 'Extraction language',
+  },
+  entityTypes: { key: 'onboarding.impactEntityTypes', fallback: 'Entity types' },
+  entityTypesStrict: {
+    key: 'onboarding.impactStrict',
+    fallback: 'Strict entity types',
+  },
+};
+
+export function ReviewStep({
+  draft,
+  includeAdmin = false,
+  includeTenant = true,
+  tenantId,
+  llm,
+  embedding,
+  vision,
+  onEditStep,
+  showHint = false,
+  hideWorkspaceIdentity = false,
+  showDocumentParsing = false,
+  impact = null,
+  documentCount = 0,
+}: ReviewStepProps) {
+  const { t } = useTranslation();
+  const defaults = useInheritedModelDefaults(tenantId ?? null);
+  const editLabel = t('onboarding.editStep', 'Edit');
+
+  const inheritLabel =
+    defaults.source === 'tenant'
+      ? t('onboarding.usingTenantDefaults', 'Using tenant defaults')
+      : t('onboarding.usingServerDefaults', 'Using server defaults');
+
+  const llmId = draft.useServerDefaults
+    ? `${defaults.defaultLlmProvider}/${defaults.defaultLlmModel}`
+    : llm?.fullId ?? '—';
+  const embId = draft.useServerDefaults
+    ? `${defaults.defaultEmbeddingProvider}/${defaults.defaultEmbeddingModel}`
+    : embedding
+      ? `${embedding.provider}/${embedding.model}`
+      : '—';
+  const visionId = draft.useServerDefaults
+    ? `${defaults.defaultVisionProvider}/${defaults.defaultVisionModel}`
+    : vision?.fullId ?? '—';
+
+  const entitySample =
+    draft.entityTypes.length === 0
+      ? '—'
+      : draft.entityTypes.length <= 3
+        ? draft.entityTypes.join(', ')
+        : `${draft.entityTypes.slice(0, 3).join(', ')} +${draft.entityTypes.length - 3}`;
+
+  const showImpact = impact != null && impact.hasChanges;
+
+  return (
+    <div className="space-y-3" data-testid="wizard-step-review">
+      {showHint ? (
+        <p className="text-sm text-muted-foreground">
+          {t('onboarding.reviewHint', 'Nothing is saved until you confirm.')}
+        </p>
+      ) : null}
+
+      {showImpact ? (
+        <div
+          className="rounded-md border border-amber-200/80 bg-amber-50/60 dark:bg-amber-950/20 dark:border-amber-900 p-2.5 space-y-2"
+          data-testid="wizard-reconfigure-impact"
+        >
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+            {t('onboarding.impactTitle', 'Impact of these changes')}
+          </div>
+          <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-5">
+            {impact.changedKeys.map((key) => {
+              const meta = CHANGE_LABEL_KEYS[key] ?? {
+                key: key,
+                fallback: key,
+              };
+              return <li key={key}>{t(meta.key, meta.fallback)}</li>;
+            })}
+          </ul>
+          {impact.rebuildHints.embeddings ||
+          impact.rebuildHints.extraction ||
+          impact.rebuildHints.vision ? (
+            <p className="text-xs text-foreground/90" data-testid="wizard-reconfigure-rebuild-hint">
+              {t(
+                'onboarding.impactRebuildRequired',
+                'Existing documents may need a rebuild after you apply.',
+              )}
+              {impact.rebuildHints.embeddings
+                ? ` ${t('onboarding.impactRebuildEmbeddings', 'Rebuild Embeddings for the new embedding model.')}`
+                : ''}
+              {impact.rebuildHints.extraction
+                ? ` ${t('onboarding.impactRebuildKg', 'Rebuild Knowledge Graph for the new LLM.')}`
+                : ''}
+              {impact.rebuildHints.vision
+                ? ` ${t('onboarding.impactRebuildVision', 'Rebuild Knowledge Graph for vision/PDF changes.')}`
+                : ''}
+            </p>
+          ) : documentCount === 0 ? (
+            <p className="text-xs text-muted-foreground" data-testid="wizard-reconfigure-zero-docs">
+              {t(
+                'onboarding.impactZeroDocs',
+                'No documents yet — changes apply to future ingestions.',
+              )}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'onboarding.impactFutureOnly',
+                'Extraction language and entity types apply to future ingestions.',
+              )}
+            </p>
+          )}
+        </div>
+      ) : null}
+
+      {includeAdmin ? (
+        <Group
+          title={t('onboarding.adminSection', 'Admin')}
+          onEdit={onEditStep ? () => onEditStep('admin') : undefined}
+          editLabel={editLabel}
+          testId="wizard-review-admin"
+        >
+          <Row label={t('onboarding.adminUsername', 'Username')} value={draft.adminUsername} />
+          <Row
+            label={t('onboarding.adminEmail', 'Email')}
+            value={draft.adminEmail || 'admin@localhost'}
+          />
+        </Group>
+      ) : null}
+
+      {includeTenant ? (
+        <Group
+          title={t('tenant.tenant', 'Organization')}
+          onEdit={onEditStep ? () => onEditStep('tenant-basics') : undefined}
+          editLabel={editLabel}
+          testId="wizard-review-tenant"
+        >
+          <Row label={t('tenant.name', 'Name')} value={draft.tenantName} />
+          {draft.tenantDescription ? (
+            <Row label={t('tenant.description', 'Description')} value={draft.tenantDescription} />
+          ) : null}
+        </Group>
+      ) : null}
+
+      {!hideWorkspaceIdentity ? (
+        <Group
+          title={t('workspace.workspace', 'Workspace')}
+          onEdit={onEditStep ? () => onEditStep('workspace-basics') : undefined}
+          editLabel={editLabel}
+          testId="wizard-review-workspace"
+        >
+          <Row label={t('workspace.name', 'Name')} value={draft.workspaceName} />
+          <Row label={t('workspace.slug', 'Slug')} value={draft.workspaceSlug || '(auto)'} />
+        </Group>
+      ) : draft.workspaceName ? (
+        <Group
+          title={t('workspace.workspace', 'Workspace')}
+          editLabel={editLabel}
+          testId="wizard-review-workspace"
+        >
+          <Row label={t('workspace.name', 'Name')} value={draft.workspaceName} />
+        </Group>
+      ) : null}
+
+      <Group
+        title={t('onboarding.modelsSection', 'Models')}
+        onEdit={onEditStep ? () => onEditStep('models') : undefined}
+        editLabel={editLabel}
+        testId="wizard-review-models"
+      >
+        <Row
+          label={t('onboarding.modelsMode', 'Mode')}
+          value={
+            draft.useServerDefaults
+              ? inheritLabel
+              : t('onboarding.customModels', 'Custom model selection')
+          }
+        />
+        <Row label="LLM" value={llmId} mono />
+        <Row label="Embedding" value={embId} mono />
+        <Row label="Vision" value={visionId} mono />
+      </Group>
+
+      {showDocumentParsing ? (
+        <Group
+          title={t('onboarding.documentParsingSection', 'Document parsing')}
+          onEdit={onEditStep ? () => onEditStep('document-parsing') : undefined}
+          editLabel={editLabel}
+          testId="wizard-review-document-parsing"
+        >
+          <Row
+            label={t('onboarding.pdfParserHeading', 'PDF parser')}
+            value={pdfLabel(draft.pdfParserBackend, t)}
+          />
+        </Group>
+      ) : null}
+
+      <Group
+        title={t('onboarding.extractionSection', 'Extraction')}
+        onEdit={onEditStep ? () => onEditStep('extraction') : undefined}
+        editLabel={editLabel}
+        testId="wizard-review-extraction"
+      >
+        <Row
+          label={t('workspace.extractionLanguage', 'Language')}
+          value={
+            draft.extractionLanguage ||
+            formatServerDefaultExtractionLanguageLabel(t)
+          }
+        />
+        <Row label={t('workspace.entityTypes', 'Entity types')} value={entitySample} />
+        {hideWorkspaceIdentity ? (
+          <Row
+            label={t('onboarding.strictMode', 'Strict')}
+            value={
+              draft.entityTypesStrict
+                ? t('common.enabled', 'Enabled')
+                : t('common.disabled', 'Disabled')
+            }
+          />
+        ) : null}
+      </Group>
+    </div>
+  );
+}

@@ -262,6 +262,18 @@ impl EdgeQuake {
             if let Some(emb) = self.embedding_provider.clone() {
                 p = p.with_text_embedder(edgequake_pipeline::LlmTextEmbedder::arc(emb));
             }
+            // SPEC-091 W1: relational chunk authority cutover (dual/relational).
+            if self.relational_chunks.is_some() {
+                p = p.with_relational_chunks(self.relational_chunks.clone());
+            }
+            // SPEC-091 W3: typed chunk-embedding cutover (dual-write shadow).
+            if self.typed_embedding_index.is_some() {
+                p = p.with_typed_embedding_index(self.typed_embedding_index.clone());
+            }
+            // SPEC-091 IW2: typed fleet embedding dual-write.
+            if self.fleet_embedding_index.is_some() {
+                p = p.with_fleet_embedding_index(self.fleet_embedding_index.clone());
+            }
             p
         };
 

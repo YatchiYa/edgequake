@@ -3,11 +3,11 @@ title: Deep Dives
 description: In-depth technical explorations of EdgeQuake internals.
 ---
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 Detailed technical deep dives into EdgeQuake's implementation.
 
-**Recently rewritten for v0.19.0:** [Pipeline Progress](/docs/deep-dives/pipeline-progress/) and [PDF Processing](/docs/deep-dives/pdf-processing/) reflect SPEC-047 vision ingest, mm-assets, convert→ingest split, and SPEC-057 cancel/status SSOT.
+**Recently rewritten for v0.23.0:** [Pipeline Progress](/docs/deep-dives/pipeline-progress/) and [PDF Processing](/docs/deep-dives/pdf-processing/) reflect SPEC-047 vision ingest, mm-assets, convert→ingest split, and SPEC-057 cancel/status SSOT.
 
 - **[Data Layer](/docs/deep-dives/data-layer/)** — PostgreSQL ER, KV SSOT, AGE, pgvector, FTS, and query×store matrix (code is law).
 - **[LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/)** — The algorithm behind entity extraction and graph construction.

@@ -76,6 +76,9 @@ impl PdfReprocessIntent {
 pub(super) struct PdfProcessingEnqueueResult {
     pub track_id: String,
     pub document_id: String,
+    /// SPEC-091 QW2 (LAW-Q4): queue projection for a fresh enqueue; None for
+    /// dedup joins (task already queued earlier).
+    pub queue: Option<edgequake_tasks::QueueEstimate>,
 }
 
 /// Create PDF processing background task.
@@ -122,6 +125,7 @@ pub(super) async fn create_pdf_processing_task(
         return Ok(PdfProcessingEnqueueResult {
             track_id: existing_track_id,
             document_id,
+            queue: None,
         });
     }
 
@@ -176,6 +180,7 @@ pub(super) async fn create_pdf_processing_task(
         return Ok(PdfProcessingEnqueueResult {
             track_id: existing_track_id,
             document_id,
+            queue: None,
         });
     }
 
@@ -220,6 +225,7 @@ pub(super) async fn create_pdf_processing_task(
         lease_owner: None,
         lease_token: None,
         lease_expires_at: None,
+        fairness_hold_until: None,
     };
 
     if let Err(e) = state.enqueue_task(task).await {
@@ -232,9 +238,15 @@ pub(super) async fn create_pdf_processing_task(
         track_id, pdf_id, document_id
     );
 
+    // SPEC-091 QW2 (LAW-Q4): queue projection at admission (best-effort).
+    let queue = edgequake_tasks::estimate_queue(state.tasks.storage.as_ref(), Utc::now())
+        .await
+        .ok();
+
     Ok(PdfProcessingEnqueueResult {
         track_id,
         document_id,
+        queue,
     })
 }
 

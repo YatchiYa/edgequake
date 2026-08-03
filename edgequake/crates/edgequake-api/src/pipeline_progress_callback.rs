@@ -221,6 +221,8 @@ impl PipelineProgressCallback {
             handle.spawn(async move {
                 // Staging-aware + terminal-status guard (DRY with text_insert_content).
                 if let Err(e) = crate::services::patch_document_metadata(&kv, &doc_id, |obj| {
+                    // LAW-IS1: persist structured counts at write time (list/ActiveRuns SSOT).
+                    crate::services::sync_progress_counts_from_message(obj, &stage_message);
                     obj.insert(
                         "stage_message".to_string(),
                         serde_json::json!(stage_message),

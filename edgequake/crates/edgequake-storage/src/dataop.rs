@@ -342,7 +342,8 @@ pub const DATA_PG_KV_CLEAR_090: &str = "DATA-PG-KV-CLEAR-090";
 /// TRANSITION-IF-STATUS — KVStorage::transition_if_status
 pub const DATA_PG_KV_TRANSITION_IF_STATUS_091: &str = "DATA-PG-KV-TRANSITION-IF-STATUS-091";
 
-/// DDL-CREATE-TABLE — PostgresKVStorage::create_table
+/// DDL-CREATE-TABLE — PostgresKVStorage::create_table — RETIRED by SPEC-091
+/// Wave D: runtime KV DDL deleted; the guarded drop ships as migration 125.
 pub const DATA_PG_KV_DDL_CREATE_TABLE_092: &str = "DATA-PG-KV-DDL-CREATE-TABLE-092";
 
 /// STORE — PdfStorage::store_pdf

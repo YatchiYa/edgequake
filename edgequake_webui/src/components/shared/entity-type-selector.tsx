@@ -13,6 +13,7 @@
  * @implements SPEC-085: Custom entity configuration from UI
  */
 
+import { EntityTypeColorSwatch } from '@/components/graph/entity-type-color-swatch';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -24,9 +25,16 @@ import {
     MAX_ENTITY_TYPES,
     type PresetKey,
     deduplicateTypes,
-    detectPreset,
     normalizeEntityType,
 } from '@/constants/entity-presets';
+import {
+    detectCanonicalPreset,
+    getPresetTypes,
+} from '@/constants/entity-type-catalog';
+import {
+    resolveEntityTypeColor,
+    stripDefaultOverrides,
+} from '@/lib/graph/entity-type-colors';
 import {
     Factory,
     FlaskConical,
@@ -64,6 +72,23 @@ export interface EntityTypeSelectorProps {
   strictLimit?: boolean;
   /** Called when strict-limit checkbox changes (omit to hide checkbox). */
   onStrictLimitChange?: (strict: boolean) => void;
+  /**
+   * Workspace extraction language (SPEC-096 LAW-L6).
+   * Preset buttons insert localized tokens for this language.
+   */
+  extractionLanguage?: string | null;
+  /**
+   * When true, collapse domain preset chips behind a "Change domain" control
+   * (SPEC-101 wizard density).
+   */
+  compactPresets?: boolean;
+  /**
+   * SPEC-102 — optional entity-type color overrides (controlled).
+   * When omitted, chips show default colors without edit.
+   */
+  colors?: Record<string, string>;
+  /** Called when a type color changes / resets (omit = read-only swatches). */
+  onColorsChange?: (colors: Record<string, string>) => void;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -85,21 +110,32 @@ export function EntityTypeSelector({
   readOnly = false,
   strictLimit = true,
   onStrictLimitChange,
+  extractionLanguage = null,
+  compactPresets = false,
+  colors,
+  onColorsChange,
 }: EntityTypeSelectorProps) {
   const { t } = useTranslation();
   const [customInput, setCustomInput] = useState('');
   const [advancedBulkInput, setAdvancedBulkInput] = useState('');
+  const [presetsOpen, setPresetsOpen] = useState(!compactPresets);
+  const colorMap = colors ?? {};
+  const colorsEditable = Boolean(onColorsChange) && !readOnly;
 
-  const activePreset: PresetKey = useMemo(() => detectPreset(value), [value]);
+  const activePreset: PresetKey = useMemo(
+    () => detectCanonicalPreset(value),
+    [value],
+  );
   const atMax = value.length >= MAX_ENTITY_TYPES;
+  const isCustomList = activePreset === 'custom';
 
   // ── Preset selection ────────────────────────────────────────────────────
   const handlePresetClick = useCallback(
     (key: PresetKey) => {
       if (readOnly || key === 'custom') return;
-      onChange([...ENTITY_PRESETS[key].types]);
+      onChange(getPresetTypes(key, extractionLanguage));
     },
-    [onChange, readOnly]
+    [extractionLanguage, onChange, readOnly]
   );
 
   // ── Remove individual type ───────────────────────────────────────────────
@@ -143,8 +179,8 @@ export function EntityTypeSelector({
 
   const handleResetGeneral = useCallback(() => {
     if (readOnly) return;
-    onChange([...ENTITY_PRESETS.general.types]);
-  }, [onChange, readOnly]);
+    onChange(getPresetTypes('general', extractionLanguage));
+  }, [extractionLanguage, onChange, readOnly]);
 
   const handleSortAZ = useCallback(() => {
     if (readOnly) return;
@@ -166,22 +202,56 @@ export function EntityTypeSelector({
       <Tabs defaultValue="basic" className="space-y-3">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="basic" data-testid="entity-tab-basic">
-            {t('entityTypes.tabBasic', 'Basic')}
+            {t('entityTypes.tabPresets', 'Presets')}
           </TabsTrigger>
           <TabsTrigger value="advanced" data-testid="entity-tab-advanced">
-            {t('entityTypes.tabAdvanced', 'Advanced')}
+            {t('entityTypes.tabBulkEdit', 'Bulk edit')}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="basic" className="space-y-3 m-0">
-          {/* Preset buttons */}
+          {/* Preset buttons — compact: summary + disclosure */}
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              {t('entityTypes.presetLabel', 'Domain Preset')}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {(Object.entries(ENTITY_PRESETS) as [Exclude<PresetKey, 'custom'>, typeof ENTITY_PRESETS[keyof typeof ENTITY_PRESETS]][]).map(
-                ([key, preset]) => {
+            {compactPresets ? (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground" data-testid="entity-preset-summary">
+                  {activePreset === 'custom'
+                    ? t('entityTypes.presets.custom', 'Custom')
+                    : t(
+                        ENTITY_PRESETS[activePreset as Exclude<PresetKey, 'custom'>]?.labelKey ??
+                          'entityTypes.presets.general',
+                        ENTITY_PRESETS[activePreset as Exclude<PresetKey, 'custom'>]?.labelFallback ??
+                          'General',
+                      )}
+                  {' · '}
+                  {value.length} {t('entityTypes.typesShort', 'types')}
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setPresetsOpen((o) => !o)}
+                  data-testid="entity-change-domain"
+                >
+                  {presetsOpen
+                    ? t('common.hide', 'Hide')
+                    : t('onboarding.changeDomain', 'Change domain')}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs font-medium text-muted-foreground">
+                {t('entityTypes.presetLabel', 'Domain Preset')}
+              </p>
+            )}
+            {presetsOpen ? (
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  Object.entries(ENTITY_PRESETS) as [
+                    Exclude<PresetKey, 'custom'>,
+                    (typeof ENTITY_PRESETS)[keyof typeof ENTITY_PRESETS],
+                  ][]
+                ).map(([key, preset]) => {
                   const isActive = activePreset === key;
                   return (
                     <Button
@@ -199,22 +269,22 @@ export function EntityTypeSelector({
                       {t(preset.labelKey, preset.labelFallback)}
                     </Button>
                   );
-                }
-              )}
-              {activePreset === 'custom' && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="default"
-                  className="h-7 gap-1.5 px-2.5 text-xs"
-                  disabled
-                  data-testid="preset-btn-custom"
-                  aria-pressed
-                >
-                  {t('entityTypes.presets.custom', 'Custom')}
-                </Button>
-              )}
-            </div>
+                })}
+                {activePreset === 'custom' && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    className="h-7 gap-1.5 px-2.5 text-xs"
+                    disabled
+                    data-testid="preset-btn-custom"
+                    aria-pressed
+                  >
+                    {t('entityTypes.presets.custom', 'Custom')}
+                  </Button>
+                )}
+              </div>
+            ) : null}
           </div>
 
           {/* Active type chips */}
@@ -232,7 +302,7 @@ export function EntityTypeSelector({
             </div>
 
             <div
-              className="min-h-10 flex flex-wrap gap-1.5 p-2 rounded-md border bg-background"
+              className="min-h-10 max-h-24 overflow-y-auto flex flex-wrap gap-1.5 p-2 rounded-md border bg-background"
               data-testid="entity-types-chips"
             >
               {value.length === 0 && (
@@ -244,9 +314,28 @@ export function EntityTypeSelector({
                 <Badge
                   key={type}
                   variant="secondary"
-                  className="gap-1 pr-1 text-xs font-mono"
+                  className="gap-1.5 pr-1 text-xs font-mono"
                   data-testid={`entity-type-chip-${type}`}
                 >
+                  <EntityTypeColorSwatch
+                    entityType={type}
+                    color={resolveEntityTypeColor(type, colorMap)}
+                    overrides={colorMap}
+                    disabled={!colorsEditable}
+                    stopPropagation
+                    onChange={(hex) => {
+                      if (!onColorsChange) return;
+                      onColorsChange(
+                        stripDefaultOverrides({ ...colorMap, [type]: hex }),
+                      );
+                    }}
+                    onReset={() => {
+                      if (!onColorsChange) return;
+                      const next = { ...colorMap };
+                      delete next[type.toUpperCase()];
+                      onColorsChange(stripDefaultOverrides(next));
+                    }}
+                  />
                   {type}
                   {!readOnly && (
                     <button
@@ -262,6 +351,17 @@ export function EntityTypeSelector({
                 </Badge>
               ))}
             </div>
+            {isCustomList && (
+              <p
+                className="text-xs text-muted-foreground"
+                data-testid="entity-types-custom-language-hint"
+              >
+                {t(
+                  'entityTypes.customLanguageHint',
+                  'Custom types stay as-is when Extraction Language changes.',
+                )}
+              </p>
+            )}
           </div>
 
           {onStrictLimitChange && (

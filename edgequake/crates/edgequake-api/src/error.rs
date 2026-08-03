@@ -203,6 +203,14 @@ pub enum ApiError {
     /// Pipeline error.
     #[error("Pipeline error: {0}")]
     Pipeline(#[from] edgequake_pipeline::error::PipelineError),
+
+    /// Stateless parse API error (SPEC-094). Carries dotted `parse.*` code + HTTP status.
+    #[error("{message}")]
+    Parse {
+        code: &'static str,
+        message: String,
+        status: StatusCode,
+    },
 }
 
 impl ApiError {
@@ -228,6 +236,7 @@ impl ApiError {
             Self::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Llm(_) => StatusCode::BAD_GATEWAY,
             Self::Pipeline(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Parse { status, .. } => *status,
         }
     }
 
@@ -238,6 +247,9 @@ impl ApiError {
             | Self::Timeout(_)
             | Self::ServiceUnavailable { .. }
             | Self::ReadPathBusy { .. } => true,
+            Self::Parse { code, .. } => {
+                matches!(*code, "parse.timeout" | "parse.backend_unavailable")
+            }
             Self::Storage(e) => storage_error_retryable(e),
             Self::Llm(e) => llm_error_retryable(e),
             Self::Pipeline(e) => pipeline_error_retryable(e),
@@ -251,6 +263,7 @@ impl ApiError {
             Self::Storage(_) => "storage",
             Self::Llm(_) => "llm",
             Self::Pipeline(_) => "pipeline",
+            Self::Parse { .. } => "parse",
             Self::Unauthorized(Some(_)) | Self::Forbidden(Some(_)) | Self::AccountLocked => "auth",
             _ => "api",
         }
@@ -337,6 +350,16 @@ impl ApiError {
                 diag
             }
             Self::Pipeline(e) => pipeline_error_diagnostic(e),
+            Self::Parse {
+                code,
+                message,
+                status,
+            } => json!({
+                "kind": "parse",
+                "code": code,
+                "message": message,
+                "status": status.as_u16(),
+            }),
         }
     }
 
@@ -374,6 +397,7 @@ impl ApiError {
             Self::Storage(_) => "STORAGE_ERROR",
             Self::Llm(_) => "LLM_ERROR",
             Self::Pipeline(_) => "PIPELINE_ERROR",
+            Self::Parse { code, .. } => code,
         }
     }
 }
@@ -1120,6 +1144,11 @@ mod tests {
                 feature: "test".into(),
             },
             ApiError::Internal("test".into()),
+            ApiError::Parse {
+                code: "parse.too_large",
+                message: "too big".into(),
+                status: StatusCode::PAYLOAD_TOO_LARGE,
+            },
         ];
 
         for error in errors {

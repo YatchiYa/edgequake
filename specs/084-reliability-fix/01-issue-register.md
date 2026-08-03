@@ -31,7 +31,7 @@
 
 ### GH-318 — FIXED
 
-Track `expected_count` / `registered_count`; `is_complete` waits for expected registration; Query soft-gate + “Query anyway”.
+Track `expected_count` / `registered_count`; `is_complete` waits for expected registration; Query stays available mid-ingest (FE soft-gate superseded).
 
 ### GH-317 — FIXED
 

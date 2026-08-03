@@ -19,12 +19,13 @@
 //! - [`BR0241`]: Atomic batch operations
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use super::config::{qualified_kv_table_name, PostgresConfig};
 use super::connection::PostgresPool;
-use super::row_count_stats::{self, RowCountStatsConfig};
+use super::kv_relation_state::{KvRelationPresence, KvRelationState};
 use crate::error::{Result, StorageError};
 use crate::kv_keys;
 use crate::traits::KVStorage;
@@ -73,7 +74,23 @@ pub struct PostgresKVStorage {
     table_name: String,
     stats_table_name: String,
     namespace: String,
-    prefix: String,
+    /// SPEC-091 Doc 23: Absent → zero SQL to missing `eq_*_kv`.
+    relation_state: Arc<KvRelationState>,
+}
+
+/// Key classification for the KV family router (SSOT — one matcher chain
+/// shared by mode resolution AND the unclassified-key hazard gate; DRY).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KvKeyClass {
+    /// `{doc}-chunk-{N}` — governed by the chunk-text authority flag.
+    Chunk,
+    /// A named cutover family (env-governed mode).
+    Family(&'static str),
+    /// No known family matched. Pre-drop these keys keep writing KV
+    /// (fail-safe: the guarded drop refuses to run while KV rows remain).
+    /// Post-drop they have NO typed home and must fail loudly rather than
+    /// silently vanish (GAP-091-07).
+    Unclassified,
 }
 
 impl PostgresKVStorage {
@@ -94,7 +111,40 @@ impl PostgresKVStorage {
             table_name,
             stats_table_name,
             namespace,
-            prefix,
+            relation_state: Arc::new(KvRelationState::new()),
+        }
+    }
+
+    /// SPEC-091 Doc 23: seed relation posture from boot cutover census.
+    pub fn seed_relation_from_dropped(&self, kv_store_dropped: bool) {
+        self.relation_state.seed_from_dropped(kv_store_dropped);
+    }
+
+    /// Raw SQL attempts against the KV base/stats table (tests / soak).
+    pub fn kv_raw_sql_attempts(&self) -> u64 {
+        self.relation_state.sql_attempts()
+    }
+
+    pub fn reset_kv_raw_sql_attempts(&self) {
+        self.relation_state.reset_sql_attempts();
+    }
+
+    /// True when the KV relation is known Absent (cached; no I/O).
+    pub fn kv_relation_absent_cached(&self) -> bool {
+        self.relation_state.cached() == Some(KvRelationPresence::Absent)
+    }
+
+    async fn kv_relation_is_absent(&self, pool: &sqlx::PgPool) -> Result<bool> {
+        Ok(self
+            .relation_state
+            .get_or_probe(pool, &self.table_name)
+            .await?
+            == KvRelationPresence::Absent)
+    }
+
+    fn note_kv_undefined(&self, e: &sqlx::Error) {
+        if Self::is_undefined_table(e) {
+            self.relation_state.note_undefined_table();
         }
     }
 
@@ -103,82 +153,157 @@ impl PostgresKVStorage {
         &self.pool
     }
 
-    /// Create the KV table.
-    async fn create_table(&self) -> Result<()> {
-        let pool = self.pool.get().await?;
-
-        let sql = format!(
-            r#"
-            CREATE TABLE IF NOT EXISTS {} (
-                key TEXT PRIMARY KEY,
-                value JSONB NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            "#,
-            self.table_name
-        );
-
-        sqlx::query(&sql)
-            .execute(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("Failed to create KV table: {}", e)))?;
-
-        // SPEC-034 IMP-03: KV GIN index on `value` (GIN over 61 KB chunks) removed.
-        // WHY: The index was 112 MB (155× the 760 KB heap) with 0 query scans.
-        // All KV lookups use the primary key (key column, btree). No code path
-        // queries KV by value content. The btree PK remains.
-
-        // SPEC-011 iter 02 Fix C: B-tree index on reverse(key) for O(log N) suffix scans.
-        // Used by `keys_with_suffix`, which the workspace stats endpoint calls every 30 s
-        // with `"-metadata"`. Without this index the equivalent `LIKE '%-metadata'` does
-        // a full table scan.
-        let reverse_idx_sql = format!(
-            "CREATE INDEX IF NOT EXISTS eq_{}_kv_reverse_key_idx ON {} (reverse(key) text_pattern_ops)",
-            self.prefix, self.table_name
-        );
-        sqlx::query(&reverse_idx_sql).execute(&pool).await.ok();
-
-        // Local-ingest hardening: PK btree (default collation) cannot serve
-        // `LIKE 'prefix%'` under non-C locales (en_US.utf8 → Seq Scan over full KV).
-        // `text_pattern_ops` enables Index Only Scan + LIMIT short-circuit for
-        // `wsdoc:` workspace index enumeration (O(limit) not O(table)).
-        let key_pattern_idx_sql = format!(
-            "CREATE INDEX IF NOT EXISTS eq_{}_kv_key_pattern_idx ON {} (key text_pattern_ops)",
-            self.prefix, self.table_name
-        );
-        sqlx::query(&key_pattern_idx_sql).execute(&pool).await.ok();
-
-        self.ensure_row_count_stats(&pool).await?;
-
-        Ok(())
+    /// SPEC-091 Wave C: whether the metadata/content/staging shell families
+    /// read typed-first (`EDGEQUAKE_KV_FAMILY_METADATA=relational`).
+    fn shell_family_reads_relational() -> bool {
+        crate::kv_family_cutover::kv_family_mode_from_env(
+            crate::kv_family_cutover::KV_FAMILY_METADATA,
+        ) == crate::kv_family_cutover::KvFamilyMode::Relational
     }
 
-    /// O(1) row counter for `count()` — avoids `SELECT COUNT(*) FROM kv` full-table scans.
-    ///
-    /// SPEC-011: Production incident — 13s `COUNT(*)` on `eq_eq_default_kv` during health
-    /// probes. Maintained counter + triggers keep exact counts at O(1) when `count()` is
-    /// called from tests or admin tools.
-    async fn ensure_row_count_stats(&self, pool: &sqlx::PgPool) -> Result<()> {
-        row_count_stats::ensure_row_count_stats(
-            pool,
-            &RowCountStatsConfig {
-                prefix: &self.prefix,
-                table_name: &self.table_name,
-                stats_table_name: &self.stats_table_name,
-                kind: "kv",
-            },
-        )
-        .await
+    /// SPEC-091 Wave D: a dropped KV relation is empty by definition — the
+    /// guarded drop migration only runs after every family is drained, so a
+    /// missing table means "no rows", not "error". Map PostgreSQL 42P01
+    /// (undefined_table) so legacy KV fallbacks degrade to empty instead of
+    /// 500s after the drop wave lands.
+    fn is_undefined_table(e: &sqlx::Error) -> bool {
+        matches!(e, sqlx::Error::Database(db) if db.code().as_deref() == Some("42P01"))
     }
 
-    async fn reset_row_count_stats(&self, pool: &sqlx::PgPool) -> Result<()> {
-        let sql = format!(
-            "UPDATE {} SET row_count = 0 WHERE id = 1",
-            self.stats_table_name
+    /// SPEC-091 Wave D write-stop: whether this key's family still writes KV.
+    /// Families whose flag flipped to relational write typed-only — the typed
+    /// writer (shell/cache upsert here, upstream persister for chunks,
+    /// API-side stores for dedup/sidecars) is the single authority.
+    fn key_family_writes_kv(key: &str) -> bool {
+        Self::family_mode_for_key(key) == crate::kv_family_cutover::KvFamilyMode::Kv
+    }
+
+    /// Single matcher chain for every family (see [`KvKeyClass`]).
+    fn classify_key(key: &str) -> KvKeyClass {
+        use crate::kv_family_cutover::{
+            KV_FAMILY_ARTIFACT, KV_FAMILY_CACHE, KV_FAMILY_CHECKPOINT,
+            KV_FAMILY_COMPENSATION_QUARANTINE, KV_FAMILY_DOC_HASH, KV_FAMILY_INJECTION,
+            KV_FAMILY_METADATA, KV_FAMILY_WSDOC,
+        };
+        if kv_keys::parse_doc_chunk(key).is_some() {
+            return KvKeyClass::Chunk;
+        }
+        if key.starts_with("doc:hash:") || key.starts_with("staging:hash:") {
+            return KvKeyClass::Family(KV_FAMILY_DOC_HASH);
+        }
+        if key.starts_with("wsdoc:") {
+            return KvKeyClass::Family(KV_FAMILY_WSDOC);
+        }
+        if key.starts_with("compensation_quarantine:") {
+            return KvKeyClass::Family(KV_FAMILY_COMPENSATION_QUARANTINE);
+        }
+        if key.starts_with("injection::") {
+            return KvKeyClass::Family(KV_FAMILY_INJECTION);
+        }
+        if key.ends_with("-pipeline-checkpoint") || key.ends_with("-extraction-snapshot") {
+            return KvKeyClass::Family(KV_FAMILY_CHECKPOINT);
+        }
+        if key.ends_with("-lineage")
+            || key.ends_with("-multimodal-manifest")
+            || key.ends_with("-multimodal-chunks")
+        {
+            return KvKeyClass::Family(KV_FAMILY_ARTIFACT);
+        }
+        if super::llm_cache::is_cache_key(key) {
+            return KvKeyClass::Family(KV_FAMILY_CACHE);
+        }
+        // Shell families (metadata / content / staging shells) — checked last
+        // because their suffixes (`-metadata`, `-content`) overlap with the
+        // more specific families above (e.g. `injection::…-metadata`).
+        if super::document_shell::parse_shell_key(key).is_some() {
+            return KvKeyClass::Family(KV_FAMILY_METADATA);
+        }
+        KvKeyClass::Unclassified
+    }
+
+    /// Resolve the governing cutover mode for a key (SSOT — one classifier
+    /// shared by read dispatch, write-stop and DDL gating; DRY).
+    fn family_mode_for_key(key: &str) -> crate::kv_family_cutover::KvFamilyMode {
+        use crate::kv_family_cutover::{kv_family_mode_from_env, KvFamilyMode};
+        match Self::classify_key(key) {
+            KvKeyClass::Chunk => {
+                if crate::chunk_text_authority::chunk_text_authority_writes_kv(
+                    crate::chunk_text_authority::chunk_text_authority_from_env(),
+                ) {
+                    KvFamilyMode::Kv
+                } else {
+                    KvFamilyMode::Relational
+                }
+            }
+            KvKeyClass::Family(family) => kv_family_mode_from_env(family),
+            // Unknown families keep writing KV until classified (fail-safe
+            // pre-drop; post-drop the upsert path errors loudly — GAP-091-07).
+            KvKeyClass::Unclassified => KvFamilyMode::Kv,
+        }
+    }
+
+    /// Single-key KV fetch (extracted for SPEC-091 authority switching).
+    async fn kv_value_by_id(
+        &self,
+        pool: &sqlx::PgPool,
+        id: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        if self.kv_relation_is_absent(pool).await? {
+            return Ok(None);
+        }
+        self.relation_state.record_sql_attempt();
+        let sql = crate::dataop::sql_comment(
+            crate::dataop::DATA_PG_KV_GET_BY_ID_075,
+            &format!("SELECT value FROM {} WHERE key = $1", self.table_name),
         );
-        sqlx::query(&sql).execute(pool).await.ok();
-        Ok(())
+
+        let row: Option<(serde_json::Value,)> =
+            match sqlx::query_as(&sql).bind(id).fetch_optional(pool).await {
+                Ok(row) => row,
+                Err(e) if Self::is_undefined_table(&e) => {
+                    self.note_kv_undefined(&e);
+                    None
+                }
+                Err(e) => return Err(StorageError::Database(format!("KV get failed: {}", e))),
+            };
+
+        Ok(row.map(|(v,)| v))
+    }
+
+    /// Ordered KV fetch (extracted for SPEC-091 authority switching).
+    async fn kv_values_ordered(
+        &self,
+        pool: &sqlx::PgPool,
+        ids: &[String],
+    ) -> Result<Vec<Option<serde_json::Value>>> {
+        if self.kv_relation_is_absent(pool).await? {
+            return Ok(ids.iter().map(|_| None).collect());
+        }
+        self.relation_state.record_sql_attempt();
+        let sql = format!(
+            "SELECT kv.value \
+             FROM unnest($1::text[]) WITH ORDINALITY AS u(key, ord) \
+             LEFT JOIN {table} kv ON kv.key = u.key \
+             ORDER BY u.ord",
+            table = self.table_name
+        );
+
+        let rows: Vec<(Option<serde_json::Value>,)> =
+            match sqlx::query_as(&sql).bind(ids).fetch_all(pool).await {
+                Ok(rows) => rows,
+                Err(e) if Self::is_undefined_table(&e) => {
+                    self.note_kv_undefined(&e);
+                    return Ok(ids.iter().map(|_| None).collect());
+                }
+                Err(e) => {
+                    return Err(StorageError::Database(format!(
+                        "KV get_by_ids_ordered failed: {}",
+                        e
+                    )))
+                }
+            };
+
+        Ok(rows.into_iter().map(|(v,)| v).collect())
     }
 }
 
@@ -190,7 +315,24 @@ impl KVStorage for PostgresKVStorage {
 
     async fn initialize(&self) -> Result<()> {
         self.pool.initialize().await?;
-        self.create_table().await?;
+        // SPEC-091 Wave D (complete): the generic KV relation is never created
+        // at runtime. Every family defaults to relational authority; this
+        // adapter is a typed-routing facade whose legacy KV reads tolerate
+        // 42P01 (dropped relation == empty). Schema changes ship only via
+        // sqlx migrations (Code is Law).
+        // SPEC-091 Doc 23: seed Absent/Present once at boot (LAW-KVH2).
+        if self.relation_state.cached().is_none() {
+            let pool = self.pool.get().await?;
+            let _ = self
+                .relation_state
+                .get_or_probe(&pool, &self.table_name)
+                .await?;
+        }
+        tracing::debug!(
+            table = %self.table_name,
+            presence = ?self.relation_state.cached(),
+            "SPEC-091: KV runtime DDL removed — adapter runs in typed-routing mode"
+        );
         Ok(())
     }
 
@@ -215,18 +357,48 @@ impl KVStorage for PostgresKVStorage {
         let _timer = crate::TimedStorageOp::start_dataop(crate::dataop::DATA_PG_KV_GET_BY_ID_075);
         let pool = self.pool.get().await?;
 
-        let sql = crate::dataop::sql_comment(
-            crate::dataop::DATA_PG_KV_GET_BY_ID_075,
-            &format!("SELECT value FROM {} WHERE key = $1", self.table_name),
-        );
+        // SPEC-091 W1 cutover: chunk keys dispatch on the authority flag
+        // (single dispatch SSOT — all single-key readers inherit the cutover).
+        let authority = crate::chunk_text_authority::chunk_text_authority_from_env();
+        let is_chunk_key = kv_keys::parse_doc_chunk(id).is_some();
+        match authority {
+            crate::chunk_text_authority::ChunkTextAuthority::Relational if is_chunk_key => {
+                return crate::chunk_text_dual_read::relational_value_by_key(&pool, id).await;
+            }
+            crate::chunk_text_authority::ChunkTextAuthority::Dual if is_chunk_key => {
+                let value = self.kv_value_by_id(&pool, id).await?;
+                crate::chunk_text_dual_read::shadow_compare(
+                    &pool,
+                    &[id.to_string()],
+                    std::slice::from_ref(&value),
+                )
+                .await;
+                return Ok(value);
+            }
+            _ => {}
+        }
 
-        let row: Option<(serde_json::Value,)> = sqlx::query_as(&sql)
-            .bind(id)
-            .fetch_optional(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV get failed: {}", e)))?;
+        // SPEC-091 Wave C cutover: metadata/content/staging shell keys read
+        // typed-first (`EDGEQUAKE_KV_FAMILY_METADATA=relational`), KV fallback
+        // on any gap (no row / empty shell during dual-write transition).
+        if Self::shell_family_reads_relational()
+            && super::document_shell::parse_shell_key(id).is_some()
+        {
+            if let Some(value) = super::document_shell::shell_value_by_key(&pool, id).await? {
+                return Ok(Some(value));
+            }
+        }
 
-        Ok(row.map(|(v,)| v))
+        // SPEC-091 Wave D cutover: cache keys read typed-first
+        // (`EDGEQUAKE_KV_FAMILY_CACHE=relational`), KV fallback for entries
+        // written before the cutover (miss costs one recomputation only).
+        if super::llm_cache::is_cache_key(id) && !Self::key_family_writes_kv(id) {
+            if let Some(value) = super::llm_cache::cache_get(&pool, &self.namespace, id).await? {
+                return Ok(Some(value));
+            }
+        }
+
+        self.kv_value_by_id(&pool, id).await
     }
 
     /**
@@ -248,27 +420,18 @@ impl KVStorage for PostgresKVStorage {
             return Ok(Vec::new());
         }
 
-        let pool = self.pool.get().await?;
-
-        // Preserve input order (SPEC-045) — never rely on unordered ANY() scans.
-        let sql = crate::dataop::sql_comment(
-            crate::dataop::DATA_PG_KV_GET_BY_IDS_076,
-            &format!(
-                "SELECT kv.value \
-             FROM unnest($1::text[]) WITH ORDINALITY AS u(key, ord) \
-             INNER JOIN {table} kv ON kv.key = u.key \
-             ORDER BY u.ord",
-                table = self.table_name
-            ),
-        );
-
-        let rows: Vec<(serde_json::Value,)> = sqlx::query_as(&sql)
-            .bind(ids)
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV get_by_ids failed: {}", e)))?;
-
-        Ok(rows.into_iter().map(|(v,)| v).collect())
+        // SPEC-091 IW0 (GAP-091-04, DRY): route through the same typed-first
+        // merge pipeline as `get_by_ids_ordered` (cache → shell → chunk → KV
+        // fallback). The legacy KV-only INNER JOIN read 404'd document
+        // downloads on post-125 databases where shell/cache/chunk homes are
+        // typed tables and `eq_*_kv` is dropped. The `flatten` preserves the
+        // historical "present values in input order" compaction contract.
+        Ok(self
+            .get_by_ids_ordered(ids)
+            .await?
+            .into_iter()
+            .flatten()
+            .collect())
     }
 
     async fn get_by_ids_ordered(&self, ids: &[String]) -> Result<Vec<Option<serde_json::Value>>> {
@@ -276,23 +439,83 @@ impl KVStorage for PostgresKVStorage {
             return Ok(Vec::new());
         }
 
+        let authority = crate::chunk_text_authority::chunk_text_authority_from_env();
         let pool = self.pool.get().await?;
 
-        let sql = format!(
-            "SELECT kv.value \
-             FROM unnest($1::text[]) WITH ORDINALITY AS u(key, ord) \
-             LEFT JOIN {table} kv ON kv.key = u.key \
-             ORDER BY u.ord",
-            table = self.table_name
-        );
+        // SPEC-091 Wave C/D unified typed-first merge pipeline (DRY — every
+        // family reader shares the "None = not mine / miss" contract):
+        //   1. cache keys   → public.llm_cache        (family flag relational)
+        //   2. shell keys   → public.documents        (family flag relational)
+        //   3. chunk keys   → public.chunks           (authority relational)
+        //   4. everything left → legacy KV fallback (covers pre-cutover rows)
+        //   5. dual-mode chunk shadow compare on the merged result
+        let mut out: Vec<Option<serde_json::Value>> = vec![None; ids.len()];
 
-        let rows: Vec<(Option<serde_json::Value>,)> = sqlx::query_as(&sql)
-            .bind(ids)
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV get_by_ids_ordered failed: {}", e)))?;
+        // 1. Cache family.
+        let cache_idx: Vec<usize> = ids
+            .iter()
+            .enumerate()
+            .filter(|(_, id)| super::llm_cache::is_cache_key(id) && !Self::key_family_writes_kv(id))
+            .map(|(i, _)| i)
+            .collect();
+        if !cache_idx.is_empty() {
+            let cache_ids: Vec<String> = cache_idx.iter().map(|&i| ids[i].clone()).collect();
+            let cache_rows =
+                super::llm_cache::cache_values_ordered(&pool, &self.namespace, &cache_ids).await?;
+            for (pos, value) in cache_idx.into_iter().zip(cache_rows) {
+                out[pos] = value;
+            }
+        }
 
-        Ok(rows.into_iter().map(|(v,)| v).collect())
+        // 2. Shell families (metadata/content/staging).
+        if Self::shell_family_reads_relational() {
+            let shell_rows = super::document_shell::shell_values_ordered(&pool, ids).await?;
+            for (pos, value) in shell_rows.into_iter().enumerate() {
+                if out[pos].is_none() {
+                    out[pos] = value;
+                }
+            }
+        }
+
+        // 3. Chunk family (relational authority only).
+        if matches!(
+            authority,
+            crate::chunk_text_authority::ChunkTextAuthority::Relational
+        ) {
+            let chunk_rows =
+                crate::chunk_text_dual_read::relational_values_ordered(&pool, ids).await?;
+            for (pos, value) in chunk_rows.into_iter().enumerate() {
+                if out[pos].is_none() {
+                    out[pos] = value;
+                }
+            }
+        }
+
+        // 4. KV fallback for anything still unresolved (also the entire read
+        //    path while every family flag is `kv`).
+        let kv_idx: Vec<usize> = out
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| v.is_none())
+            .map(|(i, _)| i)
+            .collect();
+        if !kv_idx.is_empty() {
+            let kv_ids: Vec<String> = kv_idx.iter().map(|&i| ids[i].clone()).collect();
+            let kv_rows = self.kv_values_ordered(&pool, &kv_ids).await?;
+            for (pos, value) in kv_idx.into_iter().zip(kv_rows) {
+                out[pos] = value;
+            }
+        }
+
+        // 5. Dual-mode chunk shadow compare (KV still authoritative for chunks).
+        if matches!(
+            authority,
+            crate::chunk_text_authority::ChunkTextAuthority::Dual
+        ) {
+            crate::chunk_text_dual_read::shadow_compare(&pool, ids, &out).await;
+        }
+
+        Ok(out)
     }
 
     async fn filter_keys(&self, keys: HashSet<String>) -> Result<HashSet<String>> {
@@ -300,16 +523,35 @@ impl KVStorage for PostgresKVStorage {
             return Ok(HashSet::new());
         }
 
+        if self.kv_relation_absent_cached() {
+            return Ok(keys);
+        }
+
         let pool = self.pool.get().await?;
+        if self.kv_relation_is_absent(&pool).await? {
+            return Ok(keys);
+        }
         let keys_vec: Vec<String> = keys.iter().cloned().collect();
 
+        self.relation_state.record_sql_attempt();
         let sql = format!("SELECT key FROM {} WHERE key = ANY($1)", self.table_name);
 
-        let rows: Vec<(String,)> = sqlx::query_as(&sql)
-            .bind(&keys_vec)
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV filter_keys failed: {}", e)))?;
+        let rows: Vec<(String,)> = match sqlx::query_as(&sql).bind(&keys_vec).fetch_all(&pool).await
+        {
+            Ok(rows) => rows,
+            // SPEC-091 (EC-30): a dropped generic-KV relation means nothing is persisted
+            // there, so every candidate key is "missing" — not an error.
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                return Ok(keys);
+            }
+            Err(e) => {
+                return Err(StorageError::Database(format!(
+                    "KV filter_keys failed: {}",
+                    e
+                )))
+            }
+        };
 
         let existing: HashSet<String> = rows.into_iter().map(|(k,)| k).collect();
 
@@ -341,45 +583,131 @@ impl KVStorage for PostgresKVStorage {
         // mixes multiple embedded workspace ids, fail closed (cross-tenant write).
         enforce_workspace_scoped_keys(data.iter().map(|(k, _)| k.as_str()))?;
 
+        // SPEC-091 Wave D write-stop: partition out keys whose family flipped
+        // to relational — those write typed-only (shell upsert below, upstream
+        // persister for chunks, API-side stores for dedup).
+        let kv_data: Vec<&(String, serde_json::Value)> = data
+            .iter()
+            .filter(|(k, _)| Self::key_family_writes_kv(k))
+            .collect();
+        let metadata_relational = !data.is_empty()
+            && data.iter().any(|(k, _)| {
+                super::document_shell::parse_shell_key(k).is_some()
+                    && !Self::key_family_writes_kv(k)
+            });
+
         let pool = self.pool.get().await?;
-        // C-22: all batches commit atomically — mid-batch failure must not leave
-        // a partial KV write set.
-        let mut tx = pool
-            .begin()
-            .await
-            .map_err(|e| StorageError::Database(format!("KV upsert begin failed: {}", e)))?;
-        const BATCH_SIZE: usize = 1000;
 
-        for chunk in data.chunks(BATCH_SIZE) {
-            let keys: Vec<String> = chunk.iter().map(|(k, _)| k.clone()).collect();
-            let values: Vec<serde_json::Value> = chunk.iter().map(|(_, v)| v.clone()).collect();
+        if !kv_data.is_empty() {
+            // SPEC-091 Doc 23: short-circuit before begin/SQL when Absent.
+            let mut kv_table_dropped = self.kv_relation_is_absent(&pool).await?;
+            if !kv_table_dropped {
+                // C-22: all batches commit atomically — mid-batch failure must not
+                // leave a partial KV write set.
+                let mut tx = pool.begin().await.map_err(|e| {
+                    StorageError::Database(format!("KV upsert begin failed: {}", e))
+                })?;
+                const BATCH_SIZE: usize = 1000;
 
-            let sql = crate::dataop::sql_comment(
-                crate::dataop::DATA_PG_KV_UPSERT_079,
-                &format!(
-                    r#"
-                INSERT INTO {} (key, value, updated_at)
-                SELECT k, v, NOW()
-                FROM unnest($1::text[], $2::jsonb[]) AS batch(k, v)
-                ON CONFLICT (key) DO UPDATE SET
-                    value = EXCLUDED.value,
-                    updated_at = NOW()
-                "#,
-                    self.table_name
-                ),
-            );
+                // SPEC-091 Wave D (EC-30): the generic KV relation may have been
+                // dropped. A stale `dual`/`kv` rollback flag pointing at the
+                // dropped table must degrade to a typed-only no-op (42P01), never
+                // abort the upsert — reads already tolerate the missing table.
+                for chunk in kv_data.chunks(BATCH_SIZE) {
+                    let keys: Vec<String> = chunk.iter().map(|(k, _)| k.clone()).collect();
+                    let values: Vec<serde_json::Value> =
+                        chunk.iter().map(|(_, v)| (*v).clone()).collect();
 
-            sqlx::query(&sql)
-                .bind(&keys)
-                .bind(&values)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| StorageError::Database(format!("KV upsert failed: {}", e)))?;
+                    let sql = crate::dataop::sql_comment(
+                        crate::dataop::DATA_PG_KV_UPSERT_079,
+                        &format!(
+                            r#"
+                    INSERT INTO {} (key, value, updated_at)
+                    SELECT k, v, NOW()
+                    FROM unnest($1::text[], $2::jsonb[]) AS batch(k, v)
+                    ON CONFLICT (key) DO UPDATE SET
+                        value = EXCLUDED.value,
+                        updated_at = NOW()
+                    "#,
+                            self.table_name
+                        ),
+                    );
+
+                    self.relation_state.record_sql_attempt();
+                    match sqlx::query(&sql)
+                        .bind(&keys)
+                        .bind(&values)
+                        .execute(&mut *tx)
+                        .await
+                    {
+                        Ok(_) => {}
+                        Err(e) if Self::is_undefined_table(&e) => {
+                            self.note_kv_undefined(&e);
+                            kv_table_dropped = true;
+                            break;
+                        }
+                        Err(e) => {
+                            return Err(StorageError::Database(format!("KV upsert failed: {}", e)))
+                        }
+                    }
+                }
+
+                if kv_table_dropped {
+                    // The tx is aborted (42P01); roll it back and skip the raw KV
+                    // write. Typed authority (chunks/documents/llm_cache) below is
+                    // unaffected, so processing still completes.
+                    let _ = tx.rollback().await;
+                } else {
+                    tx.commit().await.map_err(|e| {
+                        StorageError::Database(format!("KV upsert commit failed: {}", e))
+                    })?;
+                }
+            } // !kv_table_dropped (short-circuit / probe Absent)
+
+            if kv_table_dropped {
+                // GAP-091-07 (SPEC-091 IW0, fail-closed): keys whose family is
+                // UNCLASSIFIED have no typed home — skipping them post-drop
+                // would silently discard caller data. Error loudly and name
+                // every offending key. Classified families behind a stale
+                // `dual`/`kv` rollback flag keep the EC-30 degrade (typed-only
+                // no-op + warn).
+                let unclassified: Vec<&str> = kv_data
+                    .iter()
+                    .map(|(k, _)| k.as_str())
+                    .filter(|k| Self::classify_key(k) == KvKeyClass::Unclassified)
+                    .collect();
+                if !unclassified.is_empty() {
+                    return Err(StorageError::Database(format!(
+                        "KV relation {} was dropped (migration 125) but the batch contains                          {} unclassified key(s) with no typed home: [{}]. Classify them in                          kv.rs::classify_key (typed home) or restore the KV relation —                          refusing to silently discard writes (GAP-091-07).",
+                        self.table_name,
+                        unclassified.len(),
+                        unclassified.join(", ")
+                    )));
+                }
+
+                tracing::warn!(
+                    table = %self.table_name,
+                    "SPEC-091 Wave D: KV relation dropped — skipping raw KV upsert (typed authority);                      set EDGEQUAKE_CHUNK_TEXT_AUTHORITY/family flags to relational"
+                );
+            }
         }
 
-        tx.commit()
-            .await
-            .map_err(|e| StorageError::Database(format!("KV upsert commit failed: {}", e)))?;
+        // SPEC-091 Wave C/D: typed document-shell write for the
+        // metadata/content/staging families — warn-only while dual-writing,
+        // authoritative (error-propagating) once the family flips relational.
+        super::document_shell::dual_write_shell_upserts(&pool, data, metadata_relational).await?;
+
+        // SPEC-091 Wave D: cache family typed write (`public.llm_cache`) when
+        // `EDGEQUAKE_KV_FAMILY_CACHE=relational` — authoritative (the KV write
+        // set above already excluded these keys).
+        let cache_pairs: Vec<(String, serde_json::Value)> = data
+            .iter()
+            .filter(|(k, _)| super::llm_cache::is_cache_key(k) && !Self::key_family_writes_kv(k))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        if !cache_pairs.is_empty() {
+            super::llm_cache::cache_upsert(&pool, &self.namespace, &cache_pairs).await?;
+        }
 
         Ok(())
     }
@@ -389,85 +717,149 @@ impl KVStorage for PostgresKVStorage {
             return Ok(());
         }
 
-        let pool = self.pool.get().await?;
+        // SPEC-091 Wave D write-stop: keys whose family flipped relational are
+        // deleted typed-side (FK cascades + explicit sidecar deletes); nothing
+        // remains in KV to delete.
+        let kv_ids: Vec<&String> = ids
+            .iter()
+            .filter(|k| Self::key_family_writes_kv(k))
+            .collect();
 
+        // Cache family: typed delete for keys routed to `public.llm_cache`.
+        let cache_ids: Vec<String> = ids
+            .iter()
+            .filter(|k| super::llm_cache::is_cache_key(k) && !Self::key_family_writes_kv(k))
+            .cloned()
+            .collect();
+        if !cache_ids.is_empty() {
+            let pool = self.pool.get().await?;
+            super::llm_cache::cache_delete(&pool, &self.namespace, &cache_ids).await?;
+        }
+
+        if kv_ids.is_empty() {
+            return Ok(());
+        }
+
+        if self.kv_relation_absent_cached() {
+            return Ok(());
+        }
+
+        let pool = self.pool.get().await?;
+        if self.kv_relation_is_absent(&pool).await? {
+            return Ok(());
+        }
+
+        self.relation_state.record_sql_attempt();
         let sql = format!("DELETE FROM {} WHERE key = ANY($1)", self.table_name);
 
-        sqlx::query(&sql)
-            .bind(ids)
-            .execute(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV delete failed: {}", e)))?;
-
-        Ok(())
+        match sqlx::query(&sql).bind(&kv_ids).execute(&pool).await {
+            Ok(_) => Ok(()),
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                Ok(())
+            }
+            Err(e) => Err(StorageError::Database(format!("KV delete failed: {}", e))),
+        }
     }
 
     async fn is_empty(&self) -> Result<bool> {
+        if self.kv_relation_absent_cached() {
+            return Ok(true);
+        }
         let pool = self.pool.get().await?;
+        if self.kv_relation_is_absent(&pool).await? {
+            return Ok(true);
+        }
 
+        self.relation_state.record_sql_attempt();
         let sql = format!(
             "SELECT NOT EXISTS (SELECT 1 FROM {} LIMIT 1) AS is_empty",
             self.table_name
         );
 
-        let row: (bool,) = sqlx::query_as(&sql)
-            .fetch_one(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV is_empty failed: {}", e)))?;
-
-        Ok(row.0)
+        match sqlx::query_as::<_, (bool,)>(&sql).fetch_one(&pool).await {
+            Ok(row) => Ok(row.0),
+            // Dropped KV relation == empty by definition (Wave D).
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                Ok(true)
+            }
+            Err(e) => Err(StorageError::Database(format!("KV is_empty failed: {}", e))),
+        }
     }
 
     async fn count(&self) -> Result<usize> {
+        if self.kv_relation_absent_cached() {
+            return Ok(0);
+        }
         let pool = self.pool.get().await?;
+        if self.kv_relation_is_absent(&pool).await? {
+            return Ok(0);
+        }
 
         // O(1): read maintained counter — never `SELECT COUNT(*) FROM kv` (SPEC-011).
+        self.relation_state.record_sql_attempt();
         let sql = format!(
             "SELECT row_count FROM {} WHERE id = 1",
             self.stats_table_name
         );
 
-        let row: Option<(i64,)> = sqlx::query_as(&sql)
-            .fetch_optional(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV count failed: {}", e)))?;
+        let row: Option<(i64,)> = match sqlx::query_as(&sql).fetch_optional(&pool).await {
+            Ok(row) => row,
+            // Dropped stats relation == zero rows (Wave D).
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                return Ok(0);
+            }
+            Err(e) => return Err(StorageError::Database(format!("KV count failed: {}", e))),
+        };
 
         if let Some((count,)) = row {
             return Ok(count as usize);
         }
 
-        // SPEC-012 Fix H (self-heal): production logs showed `SELECT COUNT(*) as count
-        // FROM eq_eq_default_kv` running 5806× / 12 s total on a deployment that
-        // predated SPEC-011 — the stats table was never bootstrapped. Run the
-        // initialiser inline so the *next* call hits the O(1) path, then return the
-        // exact count from the bootstrap backfill we just inserted.
-        tracing::warn!(
-            stats_table = %self.stats_table_name,
-            "KV stats row missing — running self-heal (one-time COUNT(*) + create triggers)"
-        );
-        if let Err(e) = self.ensure_row_count_stats(&pool).await {
-            tracing::warn!(error = %e, "KV stats self-heal failed; falling back to COUNT(*)");
-        }
-
+        // Stats row missing (pre-drop deployment) — exact COUNT(*) fallback.
+        // Wave D removed the self-heal: stats DDL is never created at runtime.
+        self.relation_state.record_sql_attempt();
         let fallback = format!("SELECT COUNT(*) as count FROM {}", self.table_name);
-        let row: (i64,) = sqlx::query_as(&fallback)
+        match sqlx::query_as::<_, (i64,)>(&fallback)
             .fetch_one(&pool)
             .await
-            .map_err(|e| StorageError::Database(format!("KV count fallback failed: {}", e)))?;
-        Ok(row.0 as usize)
+        {
+            Ok(row) => Ok(row.0 as usize),
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                Ok(0)
+            }
+            Err(e) => Err(StorageError::Database(format!(
+                "KV count fallback failed: {}",
+                e
+            ))),
+        }
     }
 
     async fn ping(&self) -> Result<()> {
+        // SPEC-091 Doc 23 / LAW-KVH1: Absent → zero SQL (health must not burn pool).
+        if self.kv_relation_absent_cached() {
+            return Ok(());
+        }
         let pool = self.pool.get().await?;
+        if self.kv_relation_is_absent(&pool).await? {
+            return Ok(());
+        }
 
+        self.relation_state.record_sql_attempt();
         let sql = format!("SELECT 1 FROM {} LIMIT 1", self.table_name);
 
-        sqlx::query(&sql)
-            .fetch_optional(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV ping failed: {}", e)))?;
-
-        Ok(())
+        match sqlx::query(&sql).fetch_optional(&pool).await {
+            Ok(_) => Ok(()),
+            // Post-drop the KV adapter is a typed-routing facade — ping stays up.
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                Ok(())
+            }
+            Err(e) => Err(StorageError::Database(format!("KV ping failed: {}", e))),
+        }
     }
 
     /// SPEC-087 / Issue #334: O(1) round-trip chunk-key count (no payload fetch).
@@ -477,24 +869,60 @@ impl KVStorage for PostgresKVStorage {
         }
 
         let pool = self.pool.get().await?;
+        let relational = matches!(
+            crate::chunk_text_authority::chunk_text_authority_from_env(),
+            crate::chunk_text_authority::ChunkTextAuthority::Relational
+        ) || self.kv_relation_is_absent(&pool).await?;
+
+        if relational {
+            let mut uuids = Vec::with_capacity(doc_ids.len());
+            for id in doc_ids {
+                match uuid::Uuid::parse_str(id) {
+                    Ok(u) => uuids.push(u),
+                    Err(_) => continue,
+                }
+            }
+            if uuids.is_empty() {
+                return Ok(0);
+            }
+            let row: (i64,) = sqlx::query_as(
+                "SELECT COUNT(*)::bigint FROM public.chunks WHERE document_id = ANY($1::uuid[])",
+            )
+            .bind(&uuids)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "relational count_embedded_chunks_for_docs failed: {e}"
+                ))
+            })?;
+            return Ok(row.0 as usize);
+        }
+
         // Escape LIKE meta in each doc id so `%`/`_` in ids cannot widen the match.
         let patterns: Vec<String> = doc_ids
             .iter()
             .map(|id| format!("{}-chunk-%", escape_like_meta(id)))
             .collect();
 
+        self.relation_state.record_sql_attempt();
         let sql = format!(
             "SELECT COUNT(*)::bigint FROM {} WHERE key LIKE ANY($1::text[])",
             self.table_name
         );
 
-        let row: (i64,) = sqlx::query_as(&sql)
-            .bind(&patterns)
-            .fetch_one(&pool)
-            .await
-            .map_err(|e| {
-                StorageError::Database(format!("KV count_embedded_chunks_for_docs failed: {e}"))
-            })?;
+        let row: (i64,) = match sqlx::query_as(&sql).bind(&patterns).fetch_one(&pool).await {
+            Ok(row) => row,
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                return Ok(0);
+            }
+            Err(e) => {
+                return Err(StorageError::Database(format!(
+                    "KV count_embedded_chunks_for_docs failed: {e}"
+                )))
+            }
+        };
 
         Ok(row.0 as usize)
     }
@@ -502,17 +930,36 @@ impl KVStorage for PostgresKVStorage {
     async fn keys_like(&self, pattern: &str) -> Result<Vec<String>> {
         // SPEC-070: never unbounded fetch_all — safety LIMIT on the wire.
         const SAFETY_CAP: usize = 100_000;
+        if self.kv_relation_absent_cached() {
+            return Ok(Vec::new());
+        }
         let pool = self.pool.get().await?;
+        if self.kv_relation_is_absent(&pool).await? {
+            return Ok(Vec::new());
+        }
+        self.relation_state.record_sql_attempt();
         let sql = format!(
             "SELECT key FROM {} WHERE key LIKE $1 LIMIT $2",
             self.table_name
         );
-        let rows: Vec<(String,)> = sqlx::query_as(&sql)
+        let rows: Vec<(String,)> = match sqlx::query_as(&sql)
             .bind(pattern)
             .bind(i64::try_from(SAFETY_CAP).unwrap_or(100_000))
             .fetch_all(&pool)
             .await
-            .map_err(|e| StorageError::Database(format!("KV keys_like failed: {}", e)))?;
+        {
+            Ok(rows) => rows,
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                return Ok(Vec::new());
+            }
+            Err(e) => {
+                return Err(StorageError::Database(format!(
+                    "KV keys_like failed: {}",
+                    e
+                )))
+            }
+        };
         if rows.len() >= SAFETY_CAP {
             tracing::warn!(
                 pattern,
@@ -545,6 +992,43 @@ impl KVStorage for PostgresKVStorage {
         // Clamp before i64 cast — usize::MAX as i64 is -1 on 64-bit targets.
         let limit = limit.clamp(1, 1_000_000);
         let pool = self.pool.get().await?;
+
+        // SPEC-091 W1 relational cutover: `{doc}-chunk-` prefix scans resolve
+        // from the `chunks` spine (keys synthesized in the legacy format so
+        // every prefix-scan consumer migrates transparently).
+        if matches!(
+            crate::chunk_text_authority::chunk_text_authority_from_env(),
+            crate::chunk_text_authority::ChunkTextAuthority::Relational
+        ) {
+            if let Some(doc_uuid) = prefix
+                .strip_suffix("-chunk-")
+                .and_then(|raw| uuid::Uuid::parse_str(raw).ok())
+            {
+                let fetch_limit = i64::try_from(limit).unwrap_or(1_000_000).saturating_add(1);
+                let rows: Vec<(String,)> = sqlx::query_as(
+                    "SELECT document_id::text || '-chunk-' || chunk_index \
+                     FROM chunks WHERE document_id = $1 \
+                     ORDER BY chunk_index LIMIT $2",
+                )
+                .bind(doc_uuid)
+                .bind(fetch_limit)
+                .fetch_all(&pool)
+                .await
+                .map_err(|e| {
+                    StorageError::Database(format!("relational chunk prefix scan failed: {e}"))
+                })?;
+                let truncated = rows.len() > limit;
+                return Ok((
+                    rows.into_iter().take(limit).map(|(k,)| k).collect(),
+                    truncated,
+                ));
+            }
+        }
+
+        if self.kv_relation_is_absent(&pool).await? {
+            return Ok((Vec::new(), false));
+        }
+
         let like_pattern = format!("{}%", escape_like_meta(prefix));
         // Fetch limit+1 so we can report truncation without a second COUNT query.
         let fetch_limit = i64::try_from(limit).unwrap_or(1_000_000).saturating_add(1);
@@ -552,19 +1036,30 @@ impl KVStorage for PostgresKVStorage {
         // No ORDER BY: with `key text_pattern_ops` the planner can Index Scan
         // and stop after LIMIT (O(limit)). ORDER BY key forced Sort/SeqScan
         // under en_US.utf8 before the pattern index existed.
+        self.relation_state.record_sql_attempt();
         let sql = format!(
             "SELECT key FROM {} WHERE key LIKE $1 LIMIT $2",
             self.table_name
         );
 
-        let rows: Vec<(String,)> = sqlx::query_as(&sql)
+        let rows: Vec<(String,)> = match sqlx::query_as(&sql)
             .bind(&like_pattern)
             .bind(fetch_limit)
             .fetch_all(&pool)
             .await
-            .map_err(|e| {
-                StorageError::Database(format!("KV keys_with_prefix_limited failed: {}", e))
-            })?;
+        {
+            Ok(rows) => rows,
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                return Ok((Vec::new(), false));
+            }
+            Err(e) => {
+                return Err(StorageError::Database(format!(
+                    "KV keys_with_prefix_limited failed: {}",
+                    e
+                )))
+            }
+        };
 
         let truncated = rows.len() > limit;
         Ok((
@@ -593,26 +1088,43 @@ impl KVStorage for PostgresKVStorage {
         limit: usize,
     ) -> Result<(Vec<String>, bool)> {
         let limit = limit.clamp(1, 1_000_000);
+        if self.kv_relation_absent_cached() {
+            return Ok((Vec::new(), false));
+        }
         let pool = self.pool.get().await?;
+        if self.kv_relation_is_absent(&pool).await? {
+            return Ok((Vec::new(), false));
+        }
         let reversed: String = escape_like_meta(suffix).chars().rev().collect();
         let like_pattern = format!("{reversed}%");
         let fetch_limit = i64::try_from(limit).unwrap_or(1_000_000).saturating_add(1);
 
         // No ORDER BY key: that forced Sort over the full reverse-index match
         // set before LIMIT. Unordered LIMIT lets the bitmap/index path stop early.
+        self.relation_state.record_sql_attempt();
         let sql = format!(
             "SELECT key FROM {} WHERE reverse(key) LIKE $1 LIMIT $2",
             self.table_name
         );
 
-        let rows: Vec<(String,)> = sqlx::query_as(&sql)
+        let rows: Vec<(String,)> = match sqlx::query_as(&sql)
             .bind(&like_pattern)
             .bind(fetch_limit)
             .fetch_all(&pool)
             .await
-            .map_err(|e| {
-                StorageError::Database(format!("KV keys_with_suffix_limited failed: {}", e))
-            })?;
+        {
+            Ok(rows) => rows,
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                return Ok((Vec::new(), false));
+            }
+            Err(e) => {
+                return Err(StorageError::Database(format!(
+                    "KV keys_with_suffix_limited failed: {}",
+                    e
+                )))
+            }
+        };
 
         let truncated = rows.len() > limit;
         Ok((
@@ -622,30 +1134,51 @@ impl KVStorage for PostgresKVStorage {
     }
 
     async fn keys(&self) -> Result<Vec<String>> {
+        if self.kv_relation_absent_cached() {
+            return Ok(Vec::new());
+        }
         let pool = self.pool.get().await?;
+        if self.kv_relation_is_absent(&pool).await? {
+            return Ok(Vec::new());
+        }
 
+        self.relation_state.record_sql_attempt();
         let sql = format!("SELECT key FROM {}", self.table_name);
 
-        let rows: Vec<(String,)> = sqlx::query_as(&sql)
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV keys failed: {}", e)))?;
+        let rows: Vec<(String,)> = match sqlx::query_as(&sql).fetch_all(&pool).await {
+            Ok(rows) => rows,
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                return Ok(Vec::new());
+            }
+            Err(e) => return Err(StorageError::Database(format!("KV keys failed: {}", e))),
+        };
 
         Ok(rows.into_iter().map(|(k,)| k).collect())
     }
 
     async fn clear(&self) -> Result<()> {
+        if self.kv_relation_absent_cached() {
+            return Ok(());
+        }
         let pool = self.pool.get().await?;
+        if self.kv_relation_is_absent(&pool).await? {
+            return Ok(());
+        }
 
         // TRUNCATE is faster than DELETE; row triggers don't fire — reset stats explicitly.
+        self.relation_state.record_sql_attempt();
         let sql = format!("TRUNCATE {}", self.table_name);
 
-        sqlx::query(&sql)
-            .execute(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV clear failed: {}", e)))?;
-
-        self.reset_row_count_stats(&pool).await?;
+        match sqlx::query(&sql).execute(&pool).await {
+            Ok(_) => {}
+            // Post-drop there is nothing to clear (Wave D).
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                return Ok(());
+            }
+            Err(e) => return Err(StorageError::Database(format!("KV clear failed: {}", e))),
+        }
 
         Ok(())
     }
@@ -669,10 +1202,33 @@ impl KVStorage for PostgresKVStorage {
         expected_status: &str,
         new_status: &str,
     ) -> Result<bool> {
+        // SPEC-091 Wave D: shell keys transition on `documents.metadata` when
+        // the METADATA family is relational (same single-statement CAS).
+        if Self::shell_family_reads_relational() {
+            let pool = self.pool.get().await?;
+            if let Some(transitioned) = super::document_shell::shell_transition_status(
+                &pool,
+                key,
+                expected_status,
+                new_status,
+            )
+            .await?
+            {
+                return Ok(transitioned);
+            }
+        }
+
+        if self.kv_relation_absent_cached() {
+            return Ok(false);
+        }
         let pool = self.pool.get().await?;
+        if self.kv_relation_is_absent(&pool).await? {
+            return Ok(false);
+        }
 
         // Atomic update: only succeeds if current status matches expected
         // jsonb_set updates the 'status' field within the JSONB value
+        self.relation_state.record_sql_attempt();
         let sql = format!(
             r#"
             UPDATE {}
@@ -683,15 +1239,26 @@ impl KVStorage for PostgresKVStorage {
             self.table_name
         );
 
-        let result = sqlx::query(&sql)
+        let result = match sqlx::query(&sql)
             .bind(key)
             .bind(expected_status)
             .bind(new_status)
             .execute(&pool)
             .await
-            .map_err(|e| {
-                StorageError::Database(format!("KV transition_if_status failed: {}", e))
-            })?;
+        {
+            Ok(result) => result,
+            // Dropped KV relation: nothing to transition (Wave D).
+            Err(e) if Self::is_undefined_table(&e) => {
+                self.note_kv_undefined(&e);
+                return Ok(false);
+            }
+            Err(e) => {
+                return Err(StorageError::Database(format!(
+                    "KV transition_if_status failed: {}",
+                    e
+                )))
+            }
+        };
 
         // rows_affected = 1 means transition succeeded
         // rows_affected = 0 means status didn't match (or key not found)

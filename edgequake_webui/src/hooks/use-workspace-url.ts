@@ -91,7 +91,13 @@ export function useWorkspaceUrl() {
     (workspace: Workspace | null) => {
       if (!workspace) return;
 
-      const slug = workspace.slug;
+      const slug =
+        workspace.slug ||
+        workspace.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '') ||
+        workspace.id;
       if (!slug || slug === lastSlugRef.current) return; // No change needed
 
       lastSlugRef.current = slug;
@@ -191,7 +197,7 @@ export function useWorkspaceUrl() {
     if (!selectedWorkspace) return;
 
     updateUrlWithWorkspace(selectedWorkspace);
-  }, [selectedWorkspace, selectedTenant, updateUrlWithWorkspace]);
+  }, [selectedWorkspace, selectedTenant, selectedWorkspaceId, updateUrlWithWorkspace]);
 
   return {
     currentWorkspaceSlug: selectedWorkspace?.slug ?? null,

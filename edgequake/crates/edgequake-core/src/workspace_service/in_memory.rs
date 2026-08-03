@@ -13,6 +13,34 @@ use crate::types::{
 
 use super::{UpdateTenantQuotaResult, WorkspaceService};
 
+/// SPEC-096: apply extraction_language to in-memory workspace metadata.
+fn apply_in_memory_extraction_language(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    language: Option<String>,
+) -> Result<()> {
+    let Some(raw) = language else {
+        return Ok(());
+    };
+    if edgequake_pipeline::is_extraction_language_clear(&raw) {
+        metadata.remove("extraction_language");
+        return Ok(());
+    }
+    match edgequake_pipeline::canonicalize_extraction_language(&raw) {
+        Some(canonical) => {
+            metadata.insert(
+                "extraction_language".to_string(),
+                serde_json::json!(canonical),
+            );
+            Ok(())
+        }
+        None => Err(Error::validation(format!(
+            "Unsupported extraction_language '{}'. Allowed values: {}",
+            raw.trim(),
+            edgequake_pipeline::SUPPORTED_LANGUAGES.join(", ")
+        ))),
+    }
+}
+
 /// In-memory implementation of WorkspaceService for testing.
 pub struct InMemoryWorkspaceService {
     tenants: RwLock<HashMap<Uuid, Tenant>>,
@@ -289,6 +317,35 @@ impl WorkspaceService for InMemoryWorkspaceService {
             );
         }
 
+        // SPEC-085: entity types on create
+        if let Some(entity_types) = request.entity_types {
+            let normalized: Vec<String> = entity_types
+                .iter()
+                .map(|t| t.trim().to_uppercase().replace([' ', '-'], "_"))
+                .filter(|t| !t.is_empty())
+                .collect();
+            if !normalized.is_empty() {
+                workspace
+                    .metadata
+                    .insert("entity_types".to_string(), serde_json::json!(normalized));
+            }
+        }
+        if let Some(strict) = request.entity_types_strict {
+            if !strict {
+                workspace
+                    .metadata
+                    .insert("entity_types_strict".to_string(), serde_json::json!(false));
+            }
+        }
+        // SPEC-096: extraction language
+        apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
+        // SPEC-102: entity type colors
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
+
         let mut workspaces = self.workspaces.write().await;
         workspaces.insert(workspace.workspace_id, workspace.clone());
 
@@ -422,6 +479,12 @@ impl WorkspaceService for InMemoryWorkspaceService {
                     .insert("entity_types_strict".to_string(), serde_json::json!(false));
             }
         }
+        apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
 
         workspace.updated_at = chrono::Utc::now();
 
@@ -762,6 +825,8 @@ mod tests {
             pdf_parser_backend: None,
             entity_types: None,
             entity_types_strict: None,
+            extraction_language: None,
+            entity_type_colors: None,
         };
 
         let workspace = service
@@ -850,6 +915,8 @@ mod tests {
                 pdf_parser_backend: None,
                 entity_types: None,
                 entity_types_strict: None,
+                extraction_language: None,
+                entity_type_colors: None,
             };
             service
                 .create_workspace(tenant.tenant_id, request)
@@ -873,6 +940,8 @@ mod tests {
             pdf_parser_backend: None,
             entity_types: None,
             entity_types_strict: None,
+            extraction_language: None,
+            entity_type_colors: None,
         };
         let result = service.create_workspace(tenant.tenant_id, request).await;
         assert!(result.is_err());

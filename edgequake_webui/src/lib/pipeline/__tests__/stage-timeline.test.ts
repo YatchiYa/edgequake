@@ -201,6 +201,26 @@ describe("stage-timeline", () => {
     expect(tl.steps.find((s) => s.id === "embedding")?.status).toBe("pending");
   });
 
+  it("cancelled freezes at cancelledAtStage — Cancelled chip, never Failed", () => {
+    const tl = buildStageTimeline(
+      run({
+        stage: "cancelled",
+        stageStatus: "cancelled",
+        cancelledAtStage: "extracting",
+        message: "Processing cancelled",
+      }),
+    );
+    // Cancelled step is the focus chip (not Failed); priors stay done.
+    expect(tl.activeStepId).toBe("extracting");
+    expect(tl.steps.find((s) => s.id === "extracting")?.status).toBe(
+      "cancelled",
+    );
+    expect(tl.steps.find((s) => s.id === "chunking")?.status).toBe("done");
+    expect(tl.steps.find((s) => s.id === "embedding")?.status).toBe("pending");
+    expect(tl.steps.some((s) => s.status === "failed")).toBe(false);
+    expect(tl.overallProgress01).toBeLessThan(1);
+  });
+
   it("completed marks all non-skipped steps done", () => {
     const tl = buildStageTimeline(
       run({

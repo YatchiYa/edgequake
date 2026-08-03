@@ -1,0 +1,483 @@
+name: SPEC-091 Data Layer Gates
+
+# SPEC-091 IW0 (GAP-091-26, LAW-I5): the SPEC-091 typed data-layer suites were
+# authored but manual-only — this job makes them a required gate. Modeled on
+# postgres-integration.yml::postgres-age-tests (GHCR image ships pgvector + AGE).
+
+on:
+  push:
+    branches: [main, edgequake-main]
+    paths:
+      - "edgequake/crates/edgequake-storage/**"
+      - "edgequake/crates/edgequake-api/**"
+      - "edgequake/crates/edgequake-tasks/**"
+      - "edgequake/crates/edgequake-pipeline/**"
+      - "edgequake/migrations/**"
+      - "docs/data-layer/**"
+      - "scripts/check_extension_pins.sh"
+      - ".github/workflows/spec091-data-layer.yml"
+  pull_request:
+    branches: [main, edgequake-main]
+    paths:
+      - "edgequake/crates/edgequake-storage/**"
+      - "edgequake/crates/edgequake-api/**"
+      - "edgequake/crates/edgequake-tasks/**"
+      - "edgequake/crates/edgequake-pipeline/**"
+      - "edgequake/migrations/**"
+      - "docs/data-layer/**"
+      - "scripts/check_extension_pins.sh"
+      - ".github/workflows/spec091-data-layer.yml"
+  schedule:
+    - cron: "17 3 * * *" # nightly full run (UTC)
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_TOOLCHAIN: 1.95.0
+  POSTGRES_HOST: localhost
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: edgequake_test
+  POSTGRES_USER: edgequake_test
+  POSTGRES_PASSWORD: test_password_123
+  DATABASE_URL: postgresql://edgequake_test:test_password_123@localhost:5432/edgequake_test
+
+jobs:
+  extension-pin-drift:
+    name: SPEC-091 extension pin drift (docs ↔ SSOT)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify extension-pins.sh ↔ Dockerfiles ↔ docs
+        run: bash scripts/check_extension_pins.sh all
+
+  spec091-pg-matrix-smoke:
+    name: SPEC-091 PG matrix smoke (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: extension-pin-drift
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: pg16
+            image: ghcr.io/raphaelmansuy/edgequake-postgres:latest-pg16
+          - profile: pg17
+            image: ghcr.io/raphaelmansuy/edgequake-postgres:latest-pg17
+          - profile: pg18
+            image: ghcr.io/raphaelmansuy/edgequake-postgres:latest
+
+    services:
+      postgres:
+        image: ${{ matrix.image }}
+        env:
+          POSTGRES_DB: edgequake_test
+          POSTGRES_USER: edgequake_test
+          POSTGRES_PASSWORD: test_password_123
+          POSTGRES_HOST_AUTH_METHOD: md5
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U edgequake_test -d edgequake_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 60s
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: edgequake
+          key: spec091-pg-matrix-${{ matrix.profile }}
+
+      - name: Install PostgreSQL client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Wait for PostgreSQL (${{ matrix.profile }})
+        run: |
+          for i in {1..60}; do
+            if pg_isready -h localhost -p 5432 -U edgequake_test -d edgequake_test 2>/dev/null; then
+              echo "PostgreSQL (${{ matrix.profile }}) is ready!"
+              break
+            fi
+            echo "Attempt $i: PostgreSQL not ready yet..."
+            sleep 2
+          done
+
+      - name: Setup extensions
+        run: |
+          PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test << 'EOSQL'
+            CREATE EXTENSION IF NOT EXISTS vector;
+            CREATE EXTENSION IF NOT EXISTS age;
+          EOSQL
+
+      - name: Typed CRUD matrix smoke (${{ matrix.profile }})
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_pg_matrix_smoke -- --test-threads=1
+
+      - name: Capability health contract (${{ matrix.profile }})
+        working-directory: edgequake
+        env:
+          EDGEQUAKE_VECTOR_BACKEND: chunk_embeddings
+        run: cargo test -p edgequake-api --features postgres --test contract_spec091_capability_health -- --test-threads=1
+
+      - name: SPEC-098 edge cardinality + fleet report (${{ matrix.profile }})
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --features postgres --test contract_spec098_fleet_mirror_report -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_edge_upsert_cardinality -- --test-threads=1
+
+  spec091-data-layer:
+    name: SPEC-091 typed data-layer e2e + contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        image: ghcr.io/raphaelmansuy/edgequake-postgres:latest
+        env:
+          POSTGRES_DB: edgequake_test
+          POSTGRES_USER: edgequake_test
+          POSTGRES_PASSWORD: test_password_123
+          POSTGRES_HOST_AUTH_METHOD: md5
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U edgequake_test -d edgequake_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 60s
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: edgequake
+          key: spec091-data-layer
+
+      - name: Install PostgreSQL client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..60}; do
+            if pg_isready -h localhost -p 5432 -U edgequake_test -d edgequake_test 2>/dev/null; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Attempt $i: PostgreSQL not ready yet..."
+            sleep 2
+          done
+
+      - name: Setup extensions
+        run: |
+          PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test << 'EOSQL'
+            CREATE EXTENSION IF NOT EXISTS vector;
+            CREATE EXTENSION IF NOT EXISTS age;
+          EOSQL
+
+      # Suites provision their own scratch/fixture databases via the embedded
+      # migrator (tests/common + support/spec091_fixture) against DATABASE_URL.
+      # Serial steps: fixture DBs are shared per binary; --test-threads=1 inside.
+
+      - name: Wave D KV-retirement end-state contracts
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_wave_d -- --test-threads=1
+
+      - name: Migration console advisor contracts
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_console -- --test-threads=1
+
+      - name: Migration engine job control
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_job_control -- --test-threads=1
+
+      - name: W3 chunk-embedding port conformance
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_chunk_embeddings -- --test-threads=1
+
+      - name: W3 vector backfill coverage + crash-resume
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_vector_backfill -- --test-threads=1
+
+      - name: W3 typed recall parity
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_recall_parity -- --test-threads=1
+
+      - name: W3 dual-backend parity + fallback counter
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_vector_backend_dual -- --test-threads=1
+
+      - name: Typed legacy vector write-stop
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test contract_spec091_vector_write_stop -- --test-threads=1
+
+      - name: SPEC-091 typed-only ingest e2e
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_typed_only_ingest -- --test-threads=1
+
+      - name: W4 guarded vector retirement (migration 126)
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_vector_retire -- --test-threads=1
+
+      - name: B1 boot migration gate contracts
+        working-directory: edgequake
+        run: cargo test -p edgequake-api --features postgres --test contract_spec091_boot_gate -- --test-threads=1
+
+      - name: CLI migrate console (dry-run / confirm-drop)
+        working-directory: edgequake
+        run: cargo test -p edgequake --features postgres --test cli_migrate_console -- --test-threads=1
+
+      # ── SPEC-091 IW0 contracts (isolation + typed routing) ──
+
+      - name: IW0 strict scope headers (fail-closed)
+        working-directory: edgequake
+        run: cargo test -p edgequake-api --features postgres --test contract_spec091_strict_scope_headers -- --test-threads=1
+
+      - name: IP1 CQRS batch sink
+        working-directory: edgequake
+        run: cargo test -p edgequake-api --features postgres --test contract_spec091_cqrs_batch_sink -- --test-threads=1
+
+      - name: IP2 outbox ingest contract
+        working-directory: edgequake
+        run: cargo test -p edgequake-api --features postgres --test contract_spec091_outbox_ingest -- --test-threads=1
+
+      - name: RM0 outbox drain contract
+        working-directory: edgequake
+        run: cargo test -p edgequake-api --features postgres --test contract_spec091_outbox_drain -- --test-threads=1
+
+      - name: RM2 AI write contract units
+        working-directory: edgequake
+        run: cargo test -p edgequake-pipeline --lib spec091 -- --test-threads=1
+
+      - name: RM2 chunk FTS + RM3 AGE citation indexes
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --features postgres --test contract_spec091_chunk_fts -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test contract_spec091_age_citation_indexes -- --test-threads=1
+
+      - name: RM4 EXPLAIN artifact present
+        run: test -f specs/091-simplify-data-layer/measurements/rm4-explain-hot-paths.md
+
+      - name: IP0 batch queue ETA + skip legacy upsert + fence default on
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-tasks --lib batch_estimate_ranks_pending_page -- --test-threads=1
+          cargo test -p edgequake-pipeline --lib typed_authority_skips_legacy_chunk_vector_upsert -- --test-threads=1
+          cargo test -p edgequake-storage --lib contract_spec091_serving_fence_default_on -- --test-threads=1
+
+      - name: IW0 get_by_ids typed routing
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test contract_spec091_get_by_ids_typed -- --test-threads=1
+
+      - name: IW0 unknown KV family loud error
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test contract_spec091_unknown_family_loud -- --test-threads=1
+
+      - name: IW0 llm_cache cross-workspace scope contract
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test contract_spec091_llm_cache_scope -- --test-threads=1
+
+      # ── SPEC-091 IW1 Wave-0 scorecard ──
+
+      - name: IW1 ingest p95 budget
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_ingestion_p95_budget -- --test-threads=1
+
+      - name: IW1 retrieval SLO protection
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_retrieval_slo_protection -- --test-threads=1
+
+      - name: IW1 shell batch write (unnest)
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test contract_spec091_shell_batch_write -- --test-threads=1
+
+      - name: IW1 HNSW policy converged (ef_construction=128)
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_hnsw_policy_converged -- --test-threads=1
+
+      # ── SPEC-091 IW2 / IW3 closure gates ──
+
+      - name: SPEC-098 fleet spine harden (mirror report + e2e)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --features postgres --test contract_spec098_fleet_mirror_report -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_saturated_spine_ensure -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_relation_type_case -- --test-threads=1
+          cargo test -p edgequake-pipeline --lib spec098 -- --test-threads=1
+
+      - name: SPEC-098 edge upsert + arbiter harden (cardinality / reconcile / perf / sink)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_edge_upsert_cardinality -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_cypher_edge_multigraph -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_legacy_edge_unique_reconcile -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_edge_upsert_perf -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test e2e_spec098_rel_sink_batch_dedupe -- --test-threads=1
+          cargo test -p edgequake-storage --test contract_spec047_p7ef_graph_upsert -- --test-threads=1
+          cargo test -p edgequake-storage --test contract_spec060_native_writes -- --test-threads=1
+
+      - name: SPEC-098 delete dual-SSOT (admit + SQL CHECK + list merge)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-api --test e2e_spec098_delete_list_merge_deleting -- --test-threads=1
+          cargo test -p edgequake-api --test e2e_spec098_batch_delete_admit_deleting -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test e2e_spec098_delete_sql_status_constraint -- --test-threads=1
+          cargo test -p edgequake-api --lib document_read_model -- --test-threads=1
+
+      - name: SPEC-098 Symptom D delete failure honesty (W12)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-api --test e2e_spec098_batch_failed_reasons -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test e2e_spec098_delete_failed_status_persists -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --lib normalize_documents_column_status_maps_kv_vocabulary -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test contract_spec091_shell_batch_write shell_batch_normalizes -- --test-threads=1
+
+      - name: SPEC-098 cascade prune vs eq_merge (LAW-098-12)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --test contract_spec060_native_writes contract_replace_mode_skips_eq_merge -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test e2e_spec098_cascade_shared_prune_survives_eq_merge -- --test-threads=1
+
+      - name: SPEC-098 edge provenance SSOT (LAW-098-13)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --test graph_scan_ops_tests collect_source_references -- --test-threads=1
+          cargo test -p edgequake-storage --test contract_spec098_edge_delete_arbiter -- --test-threads=1
+          cargo test -p edgequake-api --lib clears_singular_citation_fields_when_empty -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_accent_rel_delete_arbiter -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test e2e_spec098_edge_provenance_cascade -- --test-threads=1
+
+      - name: GH-350 agtype batch get (merge persist fingerprint)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --test contract_spec350_agtype_batch_get -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec350_agtype_batch_get_nodes -- --test-threads=1
+
+      - name: IW2 fleet recall parity
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_fleet_recall_parity -- --test-threads=1
+
+      - name: IW2 zero runtime DDL after fleet drop (131)
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test contract_spec091_zero_runtime_ddl -- --test-threads=1
+
+      - name: Doc 23 KV hot-path short-circuit + honesty
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --features postgres --test contract_spec091_kv_ping_short_circuits -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec091_hot_path_no_missing_kv_sql -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test contract_spec091_admission_stamps_track_id -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test contract_spec091_advisor_purge_aware_residue -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test contract_spec091_health_chunk_text_ssot -- --test-threads=1
+
+      - name: IW3 KV facade census allowlist (hermetic)
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --test contract_spec091_no_kv_facade
+
+      # ── SPEC-091 IW5 (test hardening + scale proofs) ──
+
+      - name: IW5 proptest key grammar + batch clamps (hermetic)
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --test proptest_spec091_key_grammar
+
+      - name: IW5 cross-tenant graph + ANN leak gates
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --features postgres --test e2e_spec091_cross_tenant_graph_leak -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec091_cross_tenant_ann_leak -- --test-threads=1
+
+      - name: IW5 workspace delete zero-residue (100-row CI gate)
+        working-directory: edgequake
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_workspace_delete_zero_residue_1m -- --test-threads=1
+
+  spec091-iw5-nightly:
+    name: SPEC-091 IW5 chaos + scale proofs (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs: spec091-data-layer
+
+    services:
+      postgres:
+        image: ghcr.io/raphaelmansuy/edgequake-postgres:latest
+        env:
+          POSTGRES_DB: edgequake_test
+          POSTGRES_USER: edgequake_test
+          POSTGRES_PASSWORD: test_password_123
+          POSTGRES_HOST_AUTH_METHOD: md5
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U edgequake_test -d edgequake_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 60s
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: edgequake
+          key: spec091-iw5-nightly
+
+      - name: Install PostgreSQL client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..60}; do
+            if pg_isready -h localhost -p 5432 -U edgequake_test -d edgequake_test 2>/dev/null; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Attempt $i: PostgreSQL not ready yet..."
+            sleep 2
+          done
+
+      - name: Setup extensions
+        run: |
+          PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test << 'EOSQL'
+            CREATE EXTENSION IF NOT EXISTS vector;
+            CREATE EXTENSION IF NOT EXISTS age;
+          EOSQL
+
+      - name: IW5 chaos crash mid-batch + lease fencing
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --features postgres --test chaos_spec091_crash_mid_batch -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test chaos_spec091_lease_expiry_fencing -- --test-threads=1
+
+      - name: IW5 workspace delete zero-residue L3 (EQ_SCALE_PROOF=1, 10k stand-in)
+        working-directory: edgequake
+        env:
+          EQ_SCALE_PROOF: "1"
+        run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_workspace_delete_zero_residue_1m -- --test-threads=1

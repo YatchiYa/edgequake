@@ -29,6 +29,8 @@ export function useWorkspaceDetailQueries(
     queryFn: () => getWorkspace(tenantId!, workspaceId!),
     enabled,
     staleTime: 30_000,
+    // SPEC-100: keep cached workspace painted during soft refetch
+    placeholderData: (previous) => previous,
   });
 
   const statsQuery = useQuery({
@@ -37,6 +39,7 @@ export function useWorkspaceDetailQueries(
     enabled: enabled && !!workspaceId,
     staleTime: 0,
     refetchOnMount: "always",
+    placeholderData: (previous) => previous,
   });
 
   const providerHealthQuery = useQuery({
@@ -45,15 +48,17 @@ export function useWorkspaceDetailQueries(
     enabled,
     staleTime: 60_000,
     retry: 1,
+    placeholderData: (previous) => previous,
   });
 
   return {
     workspace: workspaceQuery.data,
     stats: statsQuery.data,
     providerHealth: providerHealthQuery.data,
-    isLoadingWorkspace: workspaceQuery.isLoading,
-    isLoadingStats: statsQuery.isLoading,
-    isLoadingHealth: providerHealthQuery.isLoading,
+    // SPEC-100: full-page skeleton only on cold load (no cached workspace)
+    isLoadingWorkspace: workspaceQuery.isLoading && !workspaceQuery.data,
+    isLoadingStats: statsQuery.isLoading && !statsQuery.data,
+    isLoadingHealth: providerHealthQuery.isLoading && !providerHealthQuery.data,
     refetchWorkspace: workspaceQuery.refetch,
   };
 }

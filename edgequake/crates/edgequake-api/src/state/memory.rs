@@ -124,6 +124,7 @@ impl AppState {
             resource_guard,
             graph_materialize,
             pdf_vision,
+            parse_jobs: crate::handlers::parse::ParseJobStore::from_env(),
             read_path_db,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,
@@ -280,6 +281,7 @@ impl AppState {
             resource_guard,
             graph_materialize,
             pdf_vision,
+            parse_jobs: crate::handlers::parse::ParseJobStore::from_env(),
             read_path_db,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,
@@ -397,6 +399,7 @@ impl AppState {
             resource_guard,
             graph_materialize,
             pdf_vision,
+            parse_jobs: crate::handlers::parse::ParseJobStore::from_env(),
             read_path_db,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,

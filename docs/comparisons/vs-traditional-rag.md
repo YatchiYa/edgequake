@@ -4,7 +4,7 @@ title: 'EdgeQuake vs Traditional RAG'
 
 # EdgeQuake vs Traditional RAG
 
-> **Product: v0.19.0**
+> **Product: v0.23.0**
 
 > **Why Knowledge Graphs Transform Retrieval Quality**
 
@@ -235,7 +235,8 @@ EdgeQuake's query modes let you blend both approaches:
 | `naive`  | Vector only           | Simple factual queries    |
 | `local`  | Vector + Entity graph | Entity-specific questions |
 | `global` | Graph communities     | Theme/overview questions  |
-| `hybrid` | All approaches        | Complex queries (default) |
+| `hybrid` | Local + Global + Naive| Balanced retrieval        |
+| `mix`    | Weighted blend (RRF)  | General purpose (**default**) |
 
 This means you get the best of both worlds:
 

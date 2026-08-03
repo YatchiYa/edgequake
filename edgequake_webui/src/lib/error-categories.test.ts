@@ -96,6 +96,33 @@ describe('categorizeError', () => {
         expect(result.isTransient).toBe(false);
       }
     });
+
+    it('classifies pgvector CheckExpectedDim before storage', () => {
+      const msg =
+        'Knowledge graph persist failed: Storage error: expected 1536 dimensions, not 1024';
+      const result = categorizeError(msg);
+      expect(result.category).toBe('embedding');
+      expect(result.isTransient).toBe(false);
+      expect(result.suggestion).toMatch(/Embedding dimension mismatch/i);
+      expect(result.suggestion).not.toMatch(/temporarily unavailable/i);
+    });
+
+    it('classifies typed fleet mirror before storage', () => {
+      const msg =
+        'Knowledge graph persist failed: Graph error: 1 knowledge-graph merge error(s) during persist: Storage error: Database error: SPEC-091: typed fleet mirror resolved 0/25 rows';
+      const result = categorizeError(msg);
+      expect(result.category).toBe('pipeline');
+      expect(result.isTransient).toBe(false);
+      expect(result.suggestion).not.toMatch(/temporarily unavailable/i);
+    });
+
+    it('classifies documents_valid_status before storage', () => {
+      const msg =
+        'Storage error: Database error: typed document shell batch write failed: documents_valid_status';
+      const result = categorizeError(msg);
+      expect(result.category).toBe('pipeline');
+      expect(result.isTransient).toBe(false);
+    });
   });
 
   describe('storage/database errors', () => {

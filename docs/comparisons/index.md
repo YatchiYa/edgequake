@@ -3,7 +3,7 @@ title: Comparisons
 description: See how EdgeQuake compares to other RAG solutions.
 ---
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 Objective comparisons with alternative RAG approaches.
 

@@ -38,6 +38,7 @@
 pub mod cache;
 pub mod config;
 pub mod conversation_service;
+pub mod entity_type_colors;
 pub mod env;
 pub mod error;
 pub mod graph_mapping;
@@ -80,8 +81,9 @@ pub type PostgresWorkspaceService = WorkspaceServiceImpl;
 // Re-export keyword extractor
 pub use keyword_extractor::{ExtractedKeywords, KeywordExtractor};
 pub use llm_roles::{
-    env_keyword_role_llm, parse_llm_roles_map, resolve_role_llm, role_capability_hint,
-    role_config_from_workspace, LlmRole, ResolvedRoleLlm, RoleLlmConfig,
+    env_extract_role_llm, env_keyword_role_llm, parse_llm_roles_map, resolve_extract_role_llm,
+    resolve_role_llm, role_capability_hint, role_config_from_workspace, LlmRole, ResolvedRoleLlm,
+    RoleLlmConfig,
 };
 pub use server_config_overrides::{
     install_server_config, merge_config_field, ConfigPriorityMode, ServerLlmDefaults,

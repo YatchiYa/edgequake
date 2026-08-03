@@ -5,7 +5,7 @@ description: EdgeQuake is organized into 11 focused Rust crates, each with a sin
 
 ## EdgeQuake Crate Architecture
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
 
 > EdgeQuake ships **11 workspace crates** under `edgequake/crates/`. There is no separate `edgequake-llm` or `edgequake-graph` crate; LLM providers and graph logic live inside `edgequake-core`, `edgequake-pipeline`, `edgequake-query`, and `edgequake-storage`.
 

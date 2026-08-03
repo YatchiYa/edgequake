@@ -265,18 +265,19 @@ pub async fn get_pdf_progress(
     Path(track_id): Path<String>,
 ) -> ApiResult<Json<PdfUploadProgress>> {
     // SPEC-083 S-02: ownership check — foreign track → 404.
-    crate::services::task_scope::get_task_for_context(&state, &track_id, &context).await?;
+    let task =
+        crate::services::task_scope::get_task_for_context(&state, &track_id, &context).await?;
 
-    let progress = state
-        .tasks
-        .pipeline_state
-        .get_pdf_progress(&track_id)
-        .await
-        .ok_or_else(|| {
-            ApiError::NotFound(
-                "Progress not found. Upload may have completed or not yet started.".to_string(),
-            )
-        })?;
+    // After restart the in-memory map is empty while the durable task may still
+    // be live — rehydrate a skeleton so the UI does not hard-404 (SPEC-054).
+    let progress =
+        super::progress_identity::get_or_rehydrate_pdf_progress(&state, &track_id, &task)
+            .await
+            .ok_or_else(|| {
+                ApiError::NotFound(
+                    "Progress not found. Upload may have completed or not yet started.".to_string(),
+                )
+            })?;
 
     Ok(Json(progress))
 }
@@ -338,7 +339,7 @@ pub async fn get_pdf_progress_stream(
     // SPEC-083 S-02: ownership check before opening the SSE stream.
     crate::services::task_scope::get_task_for_context(&state, &track_id, &context).await?;
 
-    let pipeline_state = state.tasks.pipeline_state.clone();
+    let state_for_stream = state.clone();
     let tid = track_id.clone();
 
     // Adaptive poll interval based on whether we've seen progress yet
@@ -350,7 +351,30 @@ pub async fn get_pdf_progress_stream(
         let poll_interval = Duration::from_millis(500);
 
         loop {
-            if let Some(progress) = pipeline_state.get_pdf_progress(&tid).await {
+            // Prefer live in-memory progress; on miss, reload the durable task so
+            // a terminal Indexed/Failed row rehydrates correctly (not a stale
+            // Processing snapshot from stream-open time).
+            let progress = if let Some(live) = state_for_stream
+                .tasks
+                .pipeline_state
+                .get_pdf_progress(&tid)
+                .await
+            {
+                Some(live)
+            } else if let Ok(Some(fresh_task)) =
+                state_for_stream.tasks.storage.get_task(&tid).await
+            {
+                super::progress_identity::get_or_rehydrate_pdf_progress(
+                    &state_for_stream,
+                    &tid,
+                    &fresh_task,
+                )
+                .await
+            } else {
+                None
+            };
+
+            if let Some(progress) = progress {
                 miss_count = 0;
                 let current_pct = progress.overall_percentage;
 

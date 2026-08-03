@@ -145,6 +145,100 @@ async fn spec013_issue216_update_workspace_entity_types() {
     assert!(persisted_types.contains(&"PRODUCT"));
 }
 
+/// SPEC-102 / FEAT-102 — workspace entity_type_colors persist + invalid hex.
+#[tokio::test]
+#[serial]
+async fn spec102_entity_type_colors_persist() {
+    let Some(app) = spec013_postgres::create_postgres_mock_app_or_skip().await else {
+        eprintln!("SKIP: no PostgreSQL DATABASE_URL configured");
+        return;
+    };
+    let suffix = uuid::Uuid::new_v4();
+
+    let (_, tenant_body) = post_json(
+        &app,
+        "/api/v1/tenants",
+        &json!({ "name": format!("SPEC102 {suffix}") }),
+    )
+    .await;
+    let tenant_id = tenant_body["id"].as_str().unwrap();
+
+    let (_, ws_body) = post_json(
+        &app,
+        &format!("/api/v1/tenants/{tenant_id}/workspaces"),
+        &json!({
+            "name": "Color WS",
+            "entity_type_colors": { "person": "#0F0", "ORGANIZATION": "#112233" }
+        }),
+    )
+    .await;
+    let workspace_id = ws_body["id"].as_str().unwrap();
+    let colors = ws_body["entity_type_colors"].as_object().expect("colors");
+    assert_eq!(colors["PERSON"].as_str(), Some("#00ff00"));
+    assert_eq!(colors["ORGANIZATION"].as_str(), Some("#112233"));
+
+    let update = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/workspaces/{workspace_id}"))
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", tenant_id)
+                .body(Body::from(
+                    json!({
+                        "entity_type_colors": { "PERSON": "#aabbcc" }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update.status(), StatusCode::OK);
+    let updated = extract_json(update).await;
+    assert_eq!(
+        updated["entity_type_colors"]["PERSON"].as_str(),
+        Some("#aabbcc")
+    );
+    assert!(updated["entity_type_colors"].get("ORGANIZATION").is_none());
+
+    let get = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/workspaces/{workspace_id}"))
+                .header("X-Tenant-ID", tenant_id)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(get.status(), StatusCode::OK);
+    let persisted = extract_json(get).await;
+    assert_eq!(
+        persisted["entity_type_colors"]["PERSON"].as_str(),
+        Some("#aabbcc")
+    );
+
+    let bad = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/workspaces/{workspace_id}"))
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", tenant_id)
+                .body(Body::from(
+                    json!({ "entity_type_colors": { "PERSON": "#gg0000" } }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+}
+
 #[tokio::test]
 #[serial]
 async fn spec013_entity_types_strict_persist_and_defaults() {

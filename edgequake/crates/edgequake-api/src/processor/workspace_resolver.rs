@@ -218,9 +218,8 @@ impl DocumentTaskProcessor {
 
         match workspace_service.get_workspace(workspace_uuid).await {
             Ok(Some(ws)) => {
-                // SPEC-046 EQ-046-13: lineage tracks Extract role (NER/RE), not Summary.
-                let extract =
-                    edgequake_core::resolve_role_llm(&ws, edgequake_core::LlmRole::Extract);
+                // SPEC-046 / SPEC-086: lineage tracks Extract role (env → llm_roles → ws).
+                let extract = edgequake_core::resolve_extract_role_llm(&ws);
                 ProviderLineage {
                     extraction_provider: extract.provider,
                     extraction_model: extract.model,

@@ -42,6 +42,13 @@ pub fn problem_title_for_code(code: &str) -> &'static str {
         "STORAGE_ERROR" => "Storage Error",
         "LLM_ERROR" => "LLM Provider Error",
         "PIPELINE_ERROR" => "Pipeline Error",
+        "parse.invalid_request" => "Invalid Parse Request",
+        "parse.unsupported_media_type" => "Unsupported Media Type",
+        "parse.document_unreadable" => "Document Unreadable",
+        "parse.too_large" => "Parse Payload Too Large",
+        "parse.backend_unavailable" => "Parse Backend Unavailable",
+        "parse.timeout" => "Parse Timeout",
+        "parse.job_not_found" => "Parse Job Not Found",
         _ => "Error",
     }
 }

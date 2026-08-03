@@ -33,6 +33,7 @@ sdks/**/bin/
 !specs/017-dry-and-solid-audit/005-edgequake-pipeline/e2e/screenshots/*.png
 !specs/017-dry-and-solid-audit/006-edgequake-query/e2e/screenshots/*.png
 !specs/017-dry-and-solid-audit/007-edgequake-storage/e2e/screenshots/*.png
+!specs/096-multi-language-extraction/e2e/screenshots/*.png
 
 # Environment files
 .env
@@ -157,3 +158,5 @@ Thumbs.db
 ehthumbs.db
 ./metals
 .edgecrab-artifacts/
+specs/93-migration-assessment/reports/*/pre-upgrade.dump
+.freebuff/

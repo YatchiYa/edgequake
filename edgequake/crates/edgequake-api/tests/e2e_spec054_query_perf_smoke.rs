@@ -7,8 +7,12 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+// Route to the dedicated scratch test database (see common/test_db.rs).
+#[path = "common/test_db.rs"]
+mod test_db;
+
 fn database_url() -> Option<String> {
-    std::env::var("DATABASE_URL")
+    let base = std::env::var("DATABASE_URL")
         .ok()
         .filter(|u| !u.is_empty())
         .or_else(|| {
@@ -16,7 +20,8 @@ fn database_url() -> Option<String> {
                 .ok()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
-        })
+        })?;
+    Some(test_db::isolated_test_url(&base))
 }
 
 fn support_083_path() -> PathBuf {

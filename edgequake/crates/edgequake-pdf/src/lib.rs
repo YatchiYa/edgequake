@@ -9,6 +9,8 @@ pub mod inline_images;
 pub mod page_assets;
 pub mod page_count;
 pub mod page_marker;
+pub mod page_selection;
+pub mod pdfium_ready;
 pub mod region_assets;
 pub mod vision_markdown;
 pub mod vision_prompts;
@@ -49,6 +51,8 @@ pub use inline_images::{
 pub use page_assets::{write_page_png_assets, PageAssetRenderConfig};
 pub use page_count::{count_pdf_pages, resolve_pdf_page_count};
 pub use page_marker::{PageMarkerWriter, PAGE_MARKER_PREFIX, PAGE_MARKER_SUFFIX};
+pub use page_selection::parse_page_selection;
+pub use pdfium_ready::{prime_pdfium, PdfPrimeError};
 pub use region_assets::{
     should_write_region_figure, tables_by_page, write_caption_region_assets, WrittenTableAsset,
 };

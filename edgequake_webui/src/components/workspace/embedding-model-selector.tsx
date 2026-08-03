@@ -25,6 +25,8 @@ interface EmbeddingModelSelectorProps {
   onChange?: (selection: EmbeddingSelection | undefined) => void;
   disabled?: boolean;
   className?: string;
+  /** SPEC-101: hide provider chip bar on simple density. */
+  showProviderFilters?: boolean;
 }
 
 export function EmbeddingModelSelector({
@@ -32,6 +34,7 @@ export function EmbeddingModelSelector({
   onChange,
   disabled,
   className,
+  showProviderFilters = true,
 }: EmbeddingModelSelectorProps) {
   const { data: embeddingData, isLoading, error } = useEmbeddingModels();
 
@@ -98,6 +101,7 @@ export function EmbeddingModelSelector({
         value={pickerValue}
         onChange={handleChange}
         disabled={disabled}
+        showProviderFilters={showProviderFilters}
         serverDefaultLabel={defaultLabel}
         placeholder="Search embedding models…"
         testId="embedding-model-picker-panel"

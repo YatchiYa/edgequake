@@ -188,6 +188,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/migration-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List automatic-migration jobs with progressive completion information.
+         * @description Surfaces the same ledger as `edgequake.migration_progress` and the CLI
+         *     (`edgequake migrate status`). Boot never blocks on these jobs.
+         */
+        get: operations["list_migration_jobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/migration-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job detail: ledger row + recent batches + derived rate/ETA (P1).
+         * @description GET /api/v1/admin/migration-jobs/{job_id}
+         */
+        get: operations["get_migration_job"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/migration-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a migration job (terminal; committed batches are not rolled back). */
+        post: operations["cancel_migration_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/migration-jobs/{job_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause a migration job at the next batch boundary. */
+        post: operations["pause_migration_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/migration-jobs/{job_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume a paused migration job (continues from the committed cursor). */
+        post: operations["resume_migration_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/storage/inspect": {
         parameters: {
             query?: never;
@@ -2192,6 +2284,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Parse a document to Markdown without ingestion (SPEC-094). */
+        post: operations["parse_document"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/parse/backends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List parse backends, reachable vision providers/models, and ceilings. */
+        get: operations["list_parse_backends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/parse/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET /api/v1/parse/jobs/{id} */
+        get: operations["get_parse_job"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pipeline/activity": {
         parameters: {
             query?: never;
@@ -2505,6 +2648,40 @@ export interface paths {
          *     including their availability status based on environment configuration.
          */
         get: operations["list_available_providers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/initialize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** POST /api/v1/setup/initialize */
+        post: operations["setup_initialize"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET /api/v1/setup/status */
+        get: operations["setup_status"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3377,6 +3554,8 @@ export interface components {
             auth_kv_harness_active?: boolean | null;
             /** @description Built-in auth mechanisms (`jwt_password`, `api_key`) — SPEC-027 phase 49. */
             auth_mechanisms?: string[] | null;
+            /** @description SPEC-091 IP0 / F-IP-21: byte admission (`try_admit`) is process-local — not cluster SSOT. */
+            byte_admission_process_local?: boolean | null;
             /** @description Local dev opt-out (`EDGEQUAKE_DEV_MODE`) — auth disabled when true. */
             dev_mode?: boolean | null;
             /** @description Documented external SSO integration pattern when `oauth2_oidc_builtin` is false. */
@@ -3393,6 +3572,10 @@ export interface components {
             oauth2_oidc_builtin?: boolean | null;
             /** @description OpenAPI document URL. */
             openapi_url: string;
+            /** @description SPEC-091 IP0 / F-IP-21: provider in-flight budget is cluster-wide (Postgres slot ledger). */
+            provider_budget_cluster?: boolean | null;
+            /** @description SPEC-091 LD-09: whether `EDGEQUAKE_SERVING_FENCE` is on (Ready vs Indexed badge). */
+            serving_fence_enabled?: boolean | null;
             /** @description Public shared-conversation path prefix. */
             shared_conversations_prefix: string;
             /** @description Swagger UI entry point. */
@@ -5105,6 +5288,13 @@ export interface components {
              */
             embedding_provider?: string | null;
             /**
+             * @description Custom entity-type → hex color map for graph visualization (SPEC-102).
+             *     Keys UPPERCASE; values `#RGB` / `#RRGGBB`. Empty object clears.
+             */
+            entity_type_colors?: {
+                [key: string]: string;
+            } | null;
+            /**
              * @description Custom entity types to extract from documents (e.g., ["MACHINE", "COMPONENT", "DEFECT"]).
              *     Names are normalized to UPPERCASE_UNDERSCORED format.
              *     If not provided, uses the workspace default (server default_entity_types).
@@ -5113,6 +5303,12 @@ export interface components {
             entity_types?: string[] | null;
             /** @description When true (default), limit extraction to listed types; unknown → OTHER. */
             entity_types_strict?: boolean | null;
+            /**
+             * @description Natural-language output language for entity/relationship values (SPEC-096).
+             *     Allowlisted names: English, Chinese, Japanese, Korean, Spanish, French,
+             *     German, Portuguese, Italian, Russian. Omit to inherit env/default.
+             */
+            extraction_language?: string | null;
             /**
              * @description LLM model for knowledge graph generation, summarization, entity extraction.
              *     Format: "model_name" or "provider/model_name" (e.g., "gemma3:12b", "ollama/gemma3:12b").
@@ -5701,6 +5897,7 @@ export interface components {
          *
          *     @implements SPEC-002: Unified Ingestion Pipeline
          * @example {
+         *       "cancelled_from_stage": {},
          *       "chunk_count": {},
          *       "content_length": {},
          *       "content_summary": {},
@@ -5711,12 +5908,17 @@ export interface components {
          *       "embedding_model": {},
          *       "entity_count": {},
          *       "error_message": {},
+         *       "eta_basis": {},
+         *       "eta_seconds": {},
          *       "file_name": {},
          *       "id": {},
          *       "input_tokens": {},
          *       "llm_model": {},
          *       "output_tokens": {},
          *       "pdf_id": {},
+         *       "progress_counts": {},
+         *       "query_ready": {},
+         *       "queue_position": {},
          *       "source_type": {},
          *       "stage_message": {},
          *       "stage_progress": {},
@@ -5730,6 +5932,12 @@ export interface components {
          *     }
          */
         DocumentSummary: {
+            /**
+             * @description Last non-terminal pipeline stage when cancel froze the run (INV-10).
+             *     Present when `status`/`current_stage` is `cancelled`.
+             * @example extracting
+             */
+            cancelled_from_stage?: string | null;
             /** @description Number of chunks. */
             chunk_count: number;
             /** @description Total length of document content in characters. */
@@ -5762,6 +5970,13 @@ export interface components {
             entity_count?: number | null;
             /** @description Error message if processing failed. */
             error_message?: string | null;
+            /** @description `measured` | `no_history` — honest uncertainty for ETA chrome. */
+            eta_basis?: string | null;
+            /**
+             * Format: int64
+             * @description Estimated seconds until claim (measured drain; clamped when unknown).
+             */
+            eta_seconds?: number | null;
             /** @description Original file name (used for display if title is not set). */
             file_name?: string | null;
             /** @description Document ID. */
@@ -5779,6 +5994,17 @@ export interface components {
              * @example 8866e3c3-bbd6-4384-b86f-215c9844914d
              */
             pdf_id?: string | null;
+            progress_counts?: null | components["schemas"]["IngestionProgressCounts"];
+            /**
+             * @description SPEC-091 IS3 / LD-09: when serving fence is on, whether the doc is queryable.
+             *     Absent when fence is off (UI hides Ready/Indexed badge).
+             */
+            query_ready?: boolean | null;
+            /**
+             * Format: int64
+             * @description SPEC-091 IS2 / LAW-IS4: 1-based FCFS queue position for pending admission.
+             */
+            queue_position?: number | null;
             /**
              * @description Document source type (pdf, markdown, text).
              *     @implements SPEC-002
@@ -6448,8 +6674,11 @@ export interface components {
          *       "content_hash": {},
          *       "document_id": {},
          *       "entity_count": {},
+         *       "eta_basis": {},
+         *       "eta_seconds": {},
          *       "filename": {},
          *       "is_duplicate": {},
+         *       "queue_position": {},
          *       "relationship_count": {},
          *       "size": {},
          *       "status": {},
@@ -6466,10 +6695,23 @@ export interface components {
             document_id: string;
             /** @description Number of entities extracted. */
             entity_count: number;
+            /** @description ETA basis: `measured` or `no_history` (honest uncertainty, R-15). */
+            eta_basis?: string | null;
+            /**
+             * Format: int64
+             * @description Estimated seconds until claim (measured drain; clamped when unknown).
+             */
+            eta_seconds?: number | null;
             /** @description Original filename. */
             filename: string;
             /** @description Whether this was a duplicate (already processed). */
             is_duplicate: boolean;
+            /**
+             * Format: int64
+             * @description Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position
+             *     at admission time. Only set for async uploads.
+             */
+            queue_position?: number | null;
             /** @description Number of relationships extracted. */
             relationship_count: number;
             /** @description File size in bytes. */
@@ -8013,6 +8255,59 @@ export interface components {
             source_ids_indexes_ready: boolean;
         };
         /**
+         * @description Response for the control verbs (pause/resume/cancel).
+         * @example {
+         *       "action": {},
+         *       "job_id": {},
+         *       "note": {},
+         *       "state": {}
+         *     }
+         */
+        MigrationJobControlResponse: {
+            action: string;
+            job_id: string;
+            note: string;
+            state: string;
+        };
+        /**
+         * @example {
+         *       "completion_pct": {},
+         *       "estimated_total": {},
+         *       "job_id": {},
+         *       "processed_count": {},
+         *       "state": {},
+         *       "step_id": {},
+         *       "throttle_reason": {}
+         *     }
+         */
+        MigrationJobItem: {
+            /** Format: double */
+            completion_pct?: number | null;
+            /** Format: int64 */
+            estimated_total?: number | null;
+            job_id: string;
+            /** Format: int64 */
+            processed_count: number;
+            state: string;
+            step_id: string;
+            throttle_reason?: string | null;
+        };
+        /**
+         * @description Response for GET /admin/migration-jobs (progressive migration information).
+         * @example {
+         *       "jobs": [],
+         *       "mode": {},
+         *       "note": {}
+         *     }
+         */
+        MigrationJobsResponse: {
+            /** @description Jobs from `edgequake.migration_progress` (empty when table missing or mode=off). */
+            jobs: components["schemas"]["MigrationJobItem"][];
+            /** @description Current `EDGEQUAKE_MIGRATION_MODE` (`off` | `verify` | `automatic`). */
+            mode: string;
+            note: string;
+        };
+        /**
          * @description Per-request Mix mode weight overrides (SPEC-022 P-H6).
          * @example {
          *       "global": {},
@@ -8752,6 +9047,22 @@ export interface components {
             task_queue: components["schemas"]["TaskQueueHealthSnapshot"];
         };
         /**
+         * @description Per-page timing row.
+         * @example {
+         *       "chars": {},
+         *       "ms": {},
+         *       "page": {}
+         *     }
+         */
+        PageTiming: {
+            /** Format: int64 */
+            chars: number;
+            /** Format: int64 */
+            ms: number;
+            /** Format: int32 */
+            page: number;
+        };
+        /**
          * @description Paginated conversations response.
          * @example {
          *       "items": [],
@@ -8839,6 +9150,210 @@ export interface components {
             limit?: number;
             /** @description Offset (default 0). */
             offset?: number;
+        };
+        /**
+         * @description 202 Accepted body for async parse jobs.
+         * @example {
+         *       "job_id": {},
+         *       "request_id": {},
+         *       "status": {}
+         *     }
+         */
+        ParseAsyncAccepted: {
+            job_id: string;
+            request_id: string;
+            status: string;
+        };
+        /**
+         * @example {
+         *       "available": {},
+         *       "name": {},
+         *       "providers": []
+         *     }
+         */
+        ParseBackendInfo: {
+            available: boolean;
+            name: string;
+            providers?: components["schemas"]["ParseProviderInfo"][];
+        };
+        /**
+         * @description Capability discovery for `/parse/backends`.
+         * @example {
+         *       "backends": [],
+         *       "default_backend": {},
+         *       "limits": {}
+         *     }
+         */
+        ParseBackendsResponse: {
+            backends: components["schemas"]["ParseBackendInfo"][];
+            default_backend: string;
+            limits: components["schemas"]["ParseLimitsInfo"];
+        };
+        /**
+         * @example {
+         *       "code": {},
+         *       "message": {}
+         *     }
+         */
+        ParseJobErrorBody: {
+            code: string;
+            message: string;
+        };
+        /**
+         * @description Poll response for async jobs.
+         * @example {
+         *       "error": {},
+         *       "job_id": {},
+         *       "request_id": {},
+         *       "result": {},
+         *       "status": {}
+         *     }
+         */
+        ParseJobStatusResponse: {
+            error?: null | components["schemas"]["ParseJobErrorBody"];
+            job_id: string;
+            request_id: string;
+            result?: null | components["schemas"]["ParseResponse"];
+            status: string;
+        };
+        /**
+         * @example {
+         *       "async_max_bytes": {},
+         *       "async_max_pages": {},
+         *       "dpi_max": {},
+         *       "dpi_min": {},
+         *       "max_concurrency": {},
+         *       "sync_max_bytes": {},
+         *       "sync_max_pages": {}
+         *     }
+         */
+        ParseLimitsInfo: {
+            /** Format: int64 */
+            async_max_bytes: number;
+            /** Format: int32 */
+            async_max_pages: number;
+            /** Format: int32 */
+            dpi_max: number;
+            /** Format: int32 */
+            dpi_min: number;
+            /** Format: int32 */
+            max_concurrency: number;
+            /** Format: int64 */
+            sync_max_bytes: number;
+            /** Format: int32 */
+            sync_max_pages: number;
+        };
+        /**
+         * @description Timing / cost metrics for a parse request.
+         * @example {
+         *       "assemble_ms": {},
+         *       "completion_tokens": {},
+         *       "estimated_cost_usd": {},
+         *       "ocr_ms": {},
+         *       "pages_per_second": {},
+         *       "prompt_tokens": {},
+         *       "render_ms": {},
+         *       "total_ms": {}
+         *     }
+         */
+        ParseMetrics: {
+            /** Format: int64 */
+            assemble_ms?: number | null;
+            /** Format: int64 */
+            completion_tokens?: number | null;
+            /** Format: double */
+            estimated_cost_usd?: number | null;
+            /** Format: int64 */
+            ocr_ms?: number | null;
+            /** Format: double */
+            pages_per_second?: number | null;
+            /** Format: int64 */
+            prompt_tokens?: number | null;
+            /** Format: int64 */
+            render_ms?: number | null;
+            /** Format: int64 */
+            total_ms: number;
+        };
+        /**
+         * @description Per-request parse options (multipart JSON `options` or query params).
+         * @example {
+         *       "allow_fallback": {},
+         *       "async": {},
+         *       "backend": {},
+         *       "concurrency": {},
+         *       "dpi": {},
+         *       "emit_assets": {},
+         *       "include_page_timings": {},
+         *       "model": {},
+         *       "pages": {},
+         *       "provider": {},
+         *       "table_method": {}
+         *     }
+         */
+        ParseOptions: {
+            /** @description When false, vision failures do not fall back to EdgeParse. */
+            allow_fallback?: boolean | null;
+            /** @description Force async job even under sync ceiling. */
+            async?: boolean | null;
+            /** @description `"vision"` or `"edgeparse"`. Default: server `EDGEQUAKE_PDF_PARSER_BACKEND` or vision. */
+            backend?: string | null;
+            /** @description Vision concurrency (1–16). */
+            concurrency?: number | null;
+            /**
+             * Format: int32
+             * @description Render DPI (72–400). Default 150.
+             */
+            dpi?: number | null;
+            /** @description When true, write page assets under a temp dir (cleaned after response). */
+            emit_assets?: boolean | null;
+            /** @description Include per-page timing rows in the response. */
+            include_page_timings?: boolean | null;
+            /** @description Vision model id. */
+            model?: string | null;
+            /** @description Page selection string (`"1-10"`, `"5"`, `"1,3,5"`, `"all"`). */
+            pages?: string | null;
+            /** @description Vision provider id (e.g. `"ollama"`, `"openai"`). */
+            provider?: string | null;
+            /** @description Table extraction method (forwarded to converter). */
+            table_method?: string | null;
+        };
+        /**
+         * @example {
+         *       "available": {},
+         *       "models": [],
+         *       "name": {}
+         *     }
+         */
+        ParseProviderInfo: {
+            available: boolean;
+            models?: string[];
+            name: string;
+        };
+        /**
+         * @description Successful parse response (sync or completed async job).
+         * @example {
+         *       "backend": {},
+         *       "backend_effective": {},
+         *       "fallback_applied": {},
+         *       "markdown": {},
+         *       "metrics": {},
+         *       "page_count": {},
+         *       "page_timings": [],
+         *       "request_id": {},
+         *       "warnings": []
+         *     }
+         */
+        ParseResponse: {
+            backend: string;
+            backend_effective: string;
+            fallback_applied: boolean;
+            markdown: string;
+            metrics: components["schemas"]["ParseMetrics"];
+            /** Format: int32 */
+            page_count: number;
+            page_timings?: components["schemas"]["PageTiming"][] | null;
+            request_id: string;
+            warnings?: string[];
         };
         /**
          * @description Result for a single file in batch PDF upload.
@@ -9146,10 +9661,13 @@ export interface components {
          *       "document_id": {},
          *       "duplicate_of": {},
          *       "estimated_time_seconds": {},
+         *       "eta_basis": {},
+         *       "eta_seconds": {},
          *       "ingestion_estimate": {},
          *       "message": {},
          *       "metadata": {},
          *       "pdf_id": {},
+         *       "queue_position": {},
          *       "status": {},
          *       "task_id": {},
          *       "track_id": {}
@@ -9169,6 +9687,13 @@ export interface components {
              * @description Estimated processing time in seconds.
              */
             estimated_time_seconds: number;
+            /** @description ETA basis: `measured` or `no_history` (honest uncertainty, R-15). */
+            eta_basis?: string | null;
+            /**
+             * Format: int64
+             * @description Estimated seconds until claim (measured drain; clamped when unknown).
+             */
+            eta_seconds?: number | null;
             ingestion_estimate?: null | components["schemas"]["IngestionEstimate"];
             /** @description Human-readable message. */
             message: string;
@@ -9176,6 +9701,12 @@ export interface components {
             metadata: components["schemas"]["PdfMetadata"];
             /** @description Generated PDF ID. */
             pdf_id: string;
+            /**
+             * Format: int64
+             * @description Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position
+             *     at admission. Only set on a fresh enqueue.
+             */
+            queue_position?: number | null;
             /** @description Processing status. */
             status: string;
             /**
@@ -9416,6 +9947,34 @@ export interface components {
             labels: components["schemas"]["PopularLabel"][];
             /** @description Total entity count in graph. */
             total_entities: number;
+        };
+        /**
+         * @description PostgreSQL runtime capabilities exposed on `/health.schema` (SPEC-091 IW4).
+         * @example {
+         *       "age_jsonb_agtype_cast_available": {},
+         *       "age_version": {},
+         *       "iterative_scan_available": {},
+         *       "pgvector_version": {},
+         *       "postgres_major": {},
+         *       "uuidv7_available": {}
+         *     }
+         */
+        PostgresCapabilityHealth: {
+            /** @description AGE ≥ 1.8 — agtype ↔ jsonb bidirectional casts (SPEC-091 RM3). */
+            age_jsonb_agtype_cast_available: boolean;
+            /** @description Installed Apache AGE `extversion`, when the extension is present. */
+            age_version?: string | null;
+            /** @description pgvector ≥ 0.8.0 — iterative index scan GUCs (`hnsw.iterative_scan`, etc.). */
+            iterative_scan_available: boolean;
+            /** @description Installed pgvector `extversion`, when the extension is present. */
+            pgvector_version?: string | null;
+            /**
+             * Format: int32
+             * @description `current_setting('server_version_num') / 10000`.
+             */
+            postgres_major: number;
+            /** @description Native `uuidv7()` available (PG18+ with function present). */
+            uuidv7_available: boolean;
         };
         /**
          * @example {
@@ -9754,6 +10313,7 @@ export interface components {
          *       "context_truncated": {},
          *       "embedding_time_ms": {},
          *       "generation_time_ms": {},
+         *       "keyword_cache_hit": {},
          *       "keyword_time_ms": {},
          *       "llm_model": {},
          *       "llm_provider": {},
@@ -9768,7 +10328,7 @@ export interface components {
          *     }
          */
         QueryStats: {
-            /** @description True when answer served from product answer cache (064). */
+            /** @description True when answer served from product answer cache (064 / SPEC-103). */
             answer_cache_hit?: boolean;
             /** @description Chunks from the global arm before merge. */
             arm_global_chunks?: number | null;
@@ -9809,6 +10369,8 @@ export interface components {
              * @description Generation time in ms.
              */
             generation_time_ms: number;
+            /** @description True when keywords served from LLM response cache (SPEC-103). */
+            keyword_cache_hit?: boolean;
             /**
              * Format: int64
              * @description Keyword extraction time in ms (059 C1b stage honesty).
@@ -9906,6 +10468,7 @@ export interface components {
          *       "context_truncated": {},
          *       "embedding_time_ms": {},
          *       "generation_time_ms": {},
+         *       "keyword_cache_hit": {},
          *       "keyword_time_ms": {},
          *       "llm_model": {},
          *       "llm_provider": {},
@@ -9949,6 +10512,8 @@ export interface components {
              * @description Generation time in ms.
              */
             generation_time_ms: number;
+            /** @description True when keywords served from LLM response cache (SPEC-103). */
+            keyword_cache_hit?: boolean;
             /**
              * Format: int64
              * @description Keyword extraction time in ms.
@@ -10968,7 +11533,10 @@ export interface components {
          *       "halfvec_conversion_applied": {},
          *       "last_applied_at": {},
          *       "latest_version": {},
+         *       "migration_required": {},
          *       "migrations_applied": {},
+         *       "pending_count": {},
+         *       "postgres_capabilities": {},
          *       "source_ids_indexes": {}
          *     }
          */
@@ -10986,8 +11554,19 @@ export interface components {
              * @description Latest migration version applied (e.g., 15 for 015_add_fulltext_search.sql).
              */
             latest_version?: number | null;
+            /**
+             * @description SPEC-091 Doc 17 (LAW-B3): true when the schema disagrees with this
+             *     binary (pending or database-newer) — `edgequake migrate` is required.
+             */
+            migration_required?: boolean | null;
             /** @description Number of successful migrations applied. */
             migrations_applied: number;
+            /**
+             * @description SPEC-091 Doc 17 (LAW-B3): embedded migrations not yet applied. Serves
+             *     post-boot drift detection (e.g. a replica up while the fleet migrated).
+             */
+            pending_count?: number | null;
+            postgres_capabilities?: null | components["schemas"]["PostgresCapabilityHealth"];
             source_ids_indexes?: null | components["schemas"]["SourceIdsIndexHealth"];
         };
         /**
@@ -11066,6 +11645,74 @@ export interface components {
             default_max_workspaces: number;
             /** @description Note about retroactivity. */
             note?: string | null;
+        };
+        /**
+         * @example {
+         *       "admin_email": {},
+         *       "admin_password": {},
+         *       "admin_username": {},
+         *       "default_embedding_model": {},
+         *       "default_embedding_provider": {},
+         *       "default_llm_model": {},
+         *       "default_llm_provider": {},
+         *       "default_vision_llm_model": {},
+         *       "default_vision_llm_provider": {},
+         *       "tenant_description": {},
+         *       "tenant_name": {},
+         *       "workspace_description": {},
+         *       "workspace_name": {},
+         *       "workspace_slug": {}
+         *     }
+         */
+        SetupInitializeRequest: {
+            admin_email?: string | null;
+            admin_password?: string | null;
+            admin_username?: string | null;
+            default_embedding_model?: string | null;
+            default_embedding_provider?: string | null;
+            default_llm_model?: string | null;
+            default_llm_provider?: string | null;
+            default_vision_llm_model?: string | null;
+            default_vision_llm_provider?: string | null;
+            tenant_description?: string | null;
+            tenant_name: string;
+            workspace_description?: string | null;
+            workspace_name: string;
+            workspace_slug?: string | null;
+        };
+        /**
+         * @example {
+         *       "admin_username": {},
+         *       "already_initialized": {},
+         *       "tenant": {},
+         *       "workspace": {}
+         *     }
+         */
+        SetupInitializeResponse: {
+            admin_username?: string | null;
+            already_initialized: boolean;
+            tenant: components["schemas"]["TenantResponse"];
+            workspace: components["schemas"]["WorkspaceResponse"];
+        };
+        /**
+         * @example {
+         *       "auth_enabled": {},
+         *       "bootstrap_admin_configured": {},
+         *       "has_login_users": {},
+         *       "needs_setup": {},
+         *       "tenant_count": {},
+         *       "workspace_count": {}
+         *     }
+         */
+        SetupStatusResponse: {
+            auth_enabled: boolean;
+            bootstrap_admin_configured: boolean;
+            has_login_users: boolean;
+            needs_setup: boolean;
+            /** Format: int64 */
+            tenant_count: number;
+            /** Format: int64 */
+            workspace_count: number;
         };
         /**
          * @description Severity level of an inspection finding.
@@ -11602,9 +12249,12 @@ export interface components {
          *       "created_at": {},
          *       "error": {},
          *       "error_message": {},
+         *       "eta_basis": {},
+         *       "eta_seconds": {},
          *       "max_retries": {},
          *       "metadata": {},
          *       "progress": {},
+         *       "queue_position": {},
          *       "result": {},
          *       "retry_count": {},
          *       "started_at": {},
@@ -11624,6 +12274,13 @@ export interface components {
             error?: null | components["schemas"]["TaskErrorResponse"];
             /** @description Simple error message (backward compatibility). */
             error_message?: string | null;
+            /** @description ETA basis: `measured` or `no_history` (honest uncertainty, R-15). */
+            eta_basis?: string | null;
+            /**
+             * Format: int64
+             * @description Estimated seconds until claim (measured drain; clamped when unknown).
+             */
+            eta_seconds?: number | null;
             /**
              * Format: int32
              * @description Maximum retry attempts.
@@ -11633,6 +12290,12 @@ export interface components {
             metadata?: unknown;
             /** @description Task progress data. */
             progress?: unknown;
+            /**
+             * Format: int64
+             * @description Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position.
+             *     Only populated for `pending` tasks on single-task reads.
+             */
+            queue_position?: number | null;
             /** @description Task result data. */
             result?: unknown;
             /**
@@ -12132,8 +12795,10 @@ export interface components {
          *       "embedding_dimension": {},
          *       "embedding_model": {},
          *       "embedding_provider": {},
+         *       "entity_type_colors": {},
          *       "entity_types": [],
          *       "entity_types_strict": {},
+         *       "extraction_language": {},
          *       "is_active": {},
          *       "llm_model": {},
          *       "llm_provider": {},
@@ -12156,10 +12821,22 @@ export interface components {
             embedding_model?: string | null;
             /** @description Update embedding provider. */
             embedding_provider?: string | null;
+            /**
+             * @description Custom entity-type → hex color map (SPEC-102). Omit = leave unchanged;
+             *     empty object clears the workspace override.
+             */
+            entity_type_colors?: {
+                [key: string]: string;
+            } | null;
             /** @description Entity types for future ingestions (does not rewrite existing graph nodes). */
             entity_types?: string[] | null;
             /** @description Strict entity type limit (default true). Set false to allow free-form types. */
             entity_types_strict?: boolean | null;
+            /**
+             * @description Extraction output language (SPEC-096). Omit = leave unchanged;
+             *     empty string or `"none"` clears the workspace override.
+             */
+            extraction_language?: string | null;
             /** @description Whether the workspace is active. */
             is_active?: boolean | null;
             /** @description Update LLM model (takes effect on next ingestion). */
@@ -12234,6 +12911,19 @@ export interface components {
             duplicate_of?: string | null;
             /** @description Number of entities extracted (only set for sync processing). */
             entity_count?: number | null;
+            /** @description ETA basis: `measured` or `no_history` (honest uncertainty, R-15). */
+            eta_basis?: string | null;
+            /**
+             * Format: int64
+             * @description Estimated seconds until claim (measured drain; clamped when unknown).
+             */
+            eta_seconds?: number | null;
+            /**
+             * Format: int64
+             * @description Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based position in the FCFS
+             *     pending queue at admission time. Only set for async uploads.
+             */
+            queue_position?: number | null;
             /** @description Number of relationships extracted (only set for sync processing). */
             relationship_count?: number | null;
             /** @description Processing status. */
@@ -12369,6 +13059,10 @@ export interface components {
             embedding_model: string;
             /** @description Embedding provider (openai, ollama, lmstudio). */
             embedding_provider: string;
+            /** @description Custom entity-type → hex color map for graph visualization (SPEC-102). */
+            entity_type_colors?: {
+                [key: string]: string;
+            } | null;
             /**
              * @description Custom entity types configured for this workspace.
              *     None means the workspace uses server default_entity_types.
@@ -12376,6 +13070,11 @@ export interface components {
             entity_types?: string[] | null;
             /** @description When true, unknown types are remapped to OTHER/CONCEPT (default true). */
             entity_types_strict: boolean;
+            /**
+             * @description Configured extraction language override (SPEC-096).
+             *     `null` / omitted means inherit `EDGEQUAKE_EXTRACTION_LANGUAGE` or English.
+             */
+            extraction_language?: string | null;
             /**
              * Format: uuid
              * @description Workspace ID.
@@ -12723,6 +13422,179 @@ export interface operations {
             };
             /** @description Apply failed */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_migration_jobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Migration job progress */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationJobsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Admin required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_migration_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Migration job UUID */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Migration job detail (ledger row + recent batches + rate/ETA) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Job not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancel_migration_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Migration job UUID */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Job cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationJobControlResponse"];
+                };
+            };
+            /** @description Job not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Illegal transition from current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    pause_migration_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Migration job UUID */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Job paused */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationJobControlResponse"];
+                };
+            };
+            /** @description Job not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Illegal transition from current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resume_migration_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Migration job UUID */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Job resumed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationJobControlResponse"];
+                };
+            };
+            /** @description Job not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Illegal transition from current state */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16248,6 +17120,136 @@ export interface operations {
             };
         };
     };
+    parse_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Send `respond-async` to force a 202 job */
+                Prefer?: string | null;
+                /** @description Filename for raw application/pdf bodies */
+                "X-Filename"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": unknown;
+            };
+        };
+        responses: {
+            /** @description Parse completed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseResponse"];
+                };
+            };
+            /** @description Async job accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseAsyncAccepted"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload or page count too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unsupported media type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Document unreadable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Backend unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Parse timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_parse_backends: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Available parse backends */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseBackendsResponse"];
+                };
+            };
+        };
+    };
+    get_parse_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parse job id returned by POST /parse */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Job status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseJobStatusResponse"];
+                };
+            };
+            /** @description Unknown or expired job */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_pipeline_activity: {
         parameters: {
             query?: never;
@@ -16366,7 +17368,10 @@ export interface operations {
     };
     get_pipeline_status: {
         parameters: {
-            query?: never;
+            query?: {
+                tenant_id?: string | null;
+                workspace_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -16757,6 +17762,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AvailableProvidersResponse"];
+                };
+            };
+        };
+    };
+    setup_initialize: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupInitializeRequest"];
+            };
+        };
+        responses: {
+            /** @description Initialized */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupInitializeResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Already initialized */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    setup_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Setup status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatusResponse"];
                 };
             };
         };

@@ -33,6 +33,8 @@ export function useInjections(workspaceId: string | null) {
     queryFn: () => listInjections(workspaceId!),
     enabled: !!workspaceId,
     staleTime: 30_000,
+    // SPEC-100: soft refresh keeps grid painted
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -44,6 +46,7 @@ export function useInjectionDetail(
     queryKey: injectionKeys.detail(workspaceId ?? "", injectionId ?? ""),
     queryFn: () => getInjection(workspaceId!, injectionId!),
     enabled: !!workspaceId && !!injectionId,
+    placeholderData: (previous) => previous,
   });
 }
 

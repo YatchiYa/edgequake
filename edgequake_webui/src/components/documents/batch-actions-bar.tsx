@@ -40,10 +40,10 @@ export function BatchActionsBar({
   return (
     <div
       className={[
-        'shrink-0 px-4 py-2 bg-primary/5 border-b border-primary/20 flex items-center justify-between',
-        // MI-04: slide-down entry animation, respects reduced motion
+        'shrink-0 px-1 py-1.5 bg-primary/5 rounded-md border border-primary/20 flex items-center justify-between',
         'motion-safe:animate-[slideDown_150ms_ease-out]',
       ].join(' ')}
+      data-testid="batch-actions-bar"
     >
       <div className="flex items-center gap-3">
         <span className="text-sm font-medium">

@@ -397,11 +397,11 @@ test.describe('Mission 06 regression proof', () => {
 
     await page.getByText('ALPHA').first().click();
 
-    await expect(page.getByRole('button', { name: /^Edit/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Merge/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Delete/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Edit entity/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Merge entity/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Delete entity/i })).toBeVisible();
 
-    await page.getByRole('button', { name: /^Edit/i }).click();
+    await page.getByRole('button', { name: /^Edit entity/i }).click();
     const editDialog = page.locator('[role="dialog"]').last();
     await expect(editDialog).toContainText(/edit entity/i);
 
@@ -413,7 +413,7 @@ test.describe('Mission 06 regression proof', () => {
     await expect(editDialog).not.toBeVisible();
 
     await page.getByText('ALPHA').first().click();
-    await page.getByRole('button', { name: /^Merge/i }).click();
+    await page.getByRole('button', { name: /^Merge entity/i }).click();
     const mergeDialog = page.locator('[role="dialog"]').last();
     await expect(mergeDialog).toContainText(/merge entities/i);
     await mergeDialog.getByTestId('merge-target-combobox').click();
@@ -430,7 +430,7 @@ test.describe('Mission 06 regression proof', () => {
     await expect.poll(() => state.mergeCalls[0]?.source_entity).toBe('ALPHA');
 
     await page.getByText('BETA').first().click();
-    await page.getByRole('button', { name: /^Delete/i }).click();
+    await page.getByRole('button', { name: /^Delete entity/i }).click();
 
     const deleteDialog = page.locator('[role="alertdialog"]').last();
     await expect(deleteDialog).toContainText(/delete entity/i);

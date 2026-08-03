@@ -6,6 +6,7 @@
 import { expect, test } from "@playwright/test";
 import { GOTO_OPTS } from "./helpers/navigation";
 import { mockBackendForUiOnly } from "./helpers/mock-backend";
+import { expectScrollable, scrollToBottom } from "./helpers/scroll";
 import { spec037Screenshot } from "./helpers/screenshot-paths";
 
 test.describe("SPEC-037 Query Settings Scroll", () => {
@@ -25,26 +26,11 @@ test.describe("SPEC-037 Query Settings Scroll", () => {
       fullPage: false,
     });
 
-    const scrollInfo = await page.evaluate(() => {
-      const sheet = document.querySelector('[data-testid="query-settings-sheet"]');
-      const viewport = sheet?.querySelector('[data-slot="scroll-area-viewport"]');
-      if (!viewport) return null;
-      return {
-        scrollHeight: viewport.scrollHeight,
-        clientHeight: viewport.clientHeight,
-        isScrollable: viewport.scrollHeight > viewport.clientHeight,
-      };
-    });
-
-    expect(scrollInfo).not.toBeNull();
-    expect(scrollInfo!.isScrollable).toBe(true);
-
-    await page.evaluate(() => {
-      const viewport = document.querySelector(
-        '[data-testid="query-settings-sheet"] [data-slot="scroll-area-viewport"]',
-      );
-      if (viewport) viewport.scrollTop = viewport.scrollHeight;
-    });
+    const viewport = page.locator(
+      '[data-testid="query-settings-sheet"] [data-slot="scroll-area-viewport"]',
+    );
+    await expectScrollable(viewport);
+    await scrollToBottom(viewport);
 
     const systemPrompt = page.getByTestId("query-settings-system-prompt");
     await expect(systemPrompt).toBeVisible();

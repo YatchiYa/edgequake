@@ -76,18 +76,18 @@ pub fn run_spec046_acc_report() -> AccReport {
         ),
     });
 
-    // --- PPR parse / default policy (OPS-P3 bridge) ---
+    // --- Graph-walk parse / default policy (086 E2-occ product default = BFS) ---
     let default_walk = parse_graph_walk_mode("");
     checks.push(AccCheckResult {
-        id: "graph_walk_default_ppr".into(),
-        passed: default_walk == GraphWalkMode::Ppr,
+        id: "graph_walk_default_bfs".into(),
+        passed: default_walk == GraphWalkMode::Bfs,
         detail: format!("parse(\"\") => {default_walk:?}"),
     });
-    let bfs_escape = parse_graph_walk_mode("bfs");
+    let ppr_escape = parse_graph_walk_mode("ppr");
     checks.push(AccCheckResult {
-        id: "graph_walk_bfs_escape".into(),
-        passed: bfs_escape == GraphWalkMode::Bfs,
-        detail: format!("parse(\"bfs\") => {bfs_escape:?}"),
+        id: "graph_walk_ppr_escape".into(),
+        passed: ppr_escape == GraphWalkMode::Ppr,
+        detail: format!("parse(\"ppr\") => {ppr_escape:?}"),
     });
 
     // --- Path prune reduces relation tax ---
@@ -218,6 +218,6 @@ mod tests {
         assert_eq!(report.routing.failed, 0);
         let json = serde_json::to_string(&report).expect("serialize");
         assert!(json.contains("routing_bench"));
-        assert!(json.contains("graph_walk_default_ppr"));
+        assert!(json.contains("graph_walk_default_bfs"));
     }
 }

@@ -8,6 +8,15 @@ import {
     BreadcrumbPage,
     BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import { getDocument } from '@/lib/api/edgequake';
+import {
+    extractDocumentIdFromPath,
+    formatGuidShort,
+    isDocumentIdSegment,
+    resolveDocumentBreadcrumbLabel,
+} from '@/lib/layout/breadcrumb-document-label';
+import { useTenantStore } from '@/stores/use-tenant-store';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, FileText, Home, MessageSquare, Network, Settings, Terminal } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -28,6 +37,14 @@ const pathConfig: Record<string, PathConfig> = {
   'settings': { label: 'Settings', icon: Settings, description: 'Configure preferences' },
 };
 
+interface CrumbItem {
+  label: string;
+  href: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  /** Full document id — always shown alongside label for document slugs */
+  guid?: string;
+}
+
 interface DynamicBreadcrumbProps {
   /** Additional custom segments to append */
   customSegments?: Array<{ label: string; href?: string }>;
@@ -35,18 +52,32 @@ interface DynamicBreadcrumbProps {
 
 export function DynamicBreadcrumb({ customSegments }: DynamicBreadcrumbProps) {
   const pathname = usePathname();
-  
-  // Parse the path into segments
+  const { selectedWorkspaceId } = useTenantStore();
+  const documentId = extractDocumentIdFromPath(pathname);
+
+  // Share cache with document detail page — no extra round-trip when already loaded.
+  const { data: document } = useQuery({
+    queryKey: ['document', documentId, selectedWorkspaceId],
+    queryFn: () => getDocument(documentId!),
+    enabled: Boolean(documentId && selectedWorkspaceId),
+    staleTime: 30_000,
+  });
+  const documentLabel = resolveDocumentBreadcrumbLabel(document);
+
   const segments = pathname.split('/').filter(Boolean);
-  
-  // Build breadcrumb items
-  const items: Array<{ label: string; href: string; icon?: React.ComponentType<{ className?: string }> }> = [
+
+  const items: CrumbItem[] = [
     { label: 'EdgeQuake', href: '/', icon: Home },
   ];
-  
+
   let currentPath = '';
-  segments.forEach((segment) => {
+  segments.forEach((segment, index) => {
     currentPath += `/${segment}`;
+    // Skip workspace-slug mount prefix `/w/:slug` — not a breadcrumb crumb.
+    if (segments[0] === 'w' && (index === 0 || index === 1)) {
+      return;
+    }
+
     const config = pathConfig[segment];
     if (config) {
       items.push({
@@ -54,16 +85,26 @@ export function DynamicBreadcrumb({ customSegments }: DynamicBreadcrumbProps) {
         href: currentPath,
         icon: config.icon,
       });
-    } else {
-      // Handle dynamic segments (e.g., document IDs, entity IDs)
-      items.push({
-        label: decodeURIComponent(segment).slice(0, 12) + (segment.length > 12 ? '...' : ''),
-        href: currentPath,
-      });
+      return;
     }
+
+    if (isDocumentIdSegment(segment)) {
+      // Always show human label + GUID for document slugs (never GUID-only).
+      items.push({
+        label: documentLabel ?? 'Document',
+        href: currentPath,
+        guid: segment.replace(/^staging:/i, ''),
+      });
+      return;
+    }
+
+    // Other dynamic segments (entity ids, etc.) — keep short fallback.
+    items.push({
+      label: decodeURIComponent(segment).slice(0, 12) + (segment.length > 12 ? '...' : ''),
+      href: currentPath,
+    });
   });
-  
-  // Add custom segments if provided
+
   if (customSegments) {
     customSegments.forEach((seg) => {
       items.push({
@@ -72,40 +113,73 @@ export function DynamicBreadcrumb({ customSegments }: DynamicBreadcrumbProps) {
       });
     });
   }
-  
-  // Don't show breadcrumbs at depth ≤ 1 (root or single-level pages).
-  // WHY: sidebar active state already communicates location; breadcrumb only
-  // earns its place when the user is at depth ≥ 2 (e.g., /documents/[id]).
+
+  // Depth ≤ 1 (/, /documents, /query, …): no band — sidebar already marks
+  // location, and an empty h-9 spacer read as a layout hole above the page
+  // title. Depth ≥ 2 (e.g. /documents/:id): paint the breadcrumb bar.
+  // WHY no reserved spacer: list→detail navigation is user-initiated, so the
+  // brief band appearance is expected (web.dev CLS: hadRecentInput).
   if (items.length <= 2) {
     return null;
   }
 
   return (
-    // Breadcrumb owns its container so the layout never reserves empty space
-    <div className="border-b px-4 py-2 bg-muted/20">
+    <div
+      className="h-9 shrink-0 border-b px-4 bg-muted/20 flex items-center"
+      data-testid="breadcrumb-bar"
+    >
     <Breadcrumb>
       <BreadcrumbList>
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
           const Icon = item.icon;
-          
+          const crumbTitle = item.guid
+            ? `${item.label} (${item.guid})`
+            : item.label;
+
+          const crumbBody = (
+            <>
+              {Icon && <Icon className="h-3 w-3 shrink-0" />}
+              <span
+                className="truncate max-w-56"
+                data-testid={item.guid ? 'breadcrumb-doc-label' : undefined}
+                data-full-name={item.guid ? item.label : undefined}
+              >
+                {item.label}
+              </span>
+              {item.guid ? (
+                <span
+                  className="shrink-0 font-mono text-[10px] font-normal text-muted-foreground"
+                  data-testid="breadcrumb-doc-guid"
+                  data-full-guid={item.guid}
+                  title={item.guid}
+                >
+                  {formatGuidShort(item.guid)}
+                </span>
+              ) : null}
+            </>
+          );
+
           return (
-            <React.Fragment key={item.href}>
+            <React.Fragment key={`${item.href}-${index}`}>
               <BreadcrumbItem>
                 {!isLast ? (
                   <BreadcrumbLink asChild>
                     <Link
                       href={item.href}
-                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      title={crumbTitle}
+                      className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      {Icon && <Icon className="h-3 w-3" />}
-                      <span>{item.label}</span>
+                      {crumbBody}
                     </Link>
                   </BreadcrumbLink>
                 ) : (
-                  <BreadcrumbPage className="flex items-center gap-1 text-xs font-medium">
-                    {Icon && <Icon className="h-3 w-3" />}
-                    <span>{item.label}</span>
+                  <BreadcrumbPage
+                    title={crumbTitle}
+                    className="flex min-w-0 items-center gap-1.5 text-xs font-medium"
+                    data-testid={item.guid ? 'breadcrumb-document-crumb' : undefined}
+                  >
+                    {crumbBody}
                   </BreadcrumbPage>
                 )}
               </BreadcrumbItem>

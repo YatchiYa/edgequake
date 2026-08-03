@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::super::*;
 use tokio_util::sync::CancellationToken;
 
@@ -47,12 +49,16 @@ impl DocumentTaskProcessor {
     }
 
     /// Check if the task has been cancelled and return early if so.
+    ///
+    /// `stage` must be a [`crate::processor::cancel_gates::CancelGate`] id
+    /// (SPEC-091 WP1 SSOT).
     pub(crate) async fn check_cancelled(
         &self,
         cancel_token: &CancellationToken,
         stage: &str,
         document_id: &str,
     ) -> TaskResult<()> {
+        let stage = crate::processor::cancel_gates::CancelGate::assert_known(stage);
         if cancel_token.is_cancelled() {
             let post_graph = Self::is_post_graph_stage(stage);
             let msg = format!(
@@ -70,9 +76,13 @@ impl DocumentTaskProcessor {
             );
             // SPEC-058: cancel wins — unindex so cancelled content is not searchable.
             self.retract_indexes_on_cancel(document_id).await;
-            self.update_document_status(document_id, "cancelled", Some(&msg))
-                .await
-                .ok();
+            // Terminal field SSOT (failure_class + stage_progress=0), same as HTTP cancel.
+            let _ = crate::services::sync_doc_cancelled_by_document_id(
+                Arc::clone(&self.kv_storage),
+                document_id,
+                &msg,
+            )
+            .await;
             // Free staging hash so cancelled shells do not block same-bytes re-upload.
             // IMP-075-11: one RT staging+final (not resolve key then re-get).
             if let Ok(Some((_, meta))) =
@@ -86,6 +96,14 @@ impl DocumentTaskProcessor {
                     let _ = crate::services::release_staging_reservation(
                         &self.kv_storage,
                         document_id,
+                        ws,
+                        hash,
+                    )
+                    .await;
+                    // SPEC-091 W2: typed ingestion_dedup staging release.
+                    #[cfg(feature = "postgres")]
+                    crate::services::ingestion_dedup_store::dual_release_staging(
+                        self.pg_pool.as_ref(),
                         ws,
                         hash,
                     )

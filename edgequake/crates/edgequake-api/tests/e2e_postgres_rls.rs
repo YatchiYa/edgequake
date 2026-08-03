@@ -1,7 +1,12 @@
 //! PostgreSQL Row Level Security (RLS) E2E Tests
 //!
 //! These tests verify tenant isolation at the database level using PostgreSQL RLS.
-//! Run with: cargo test --package edgequake-api --test e2e_postgres_rls -- --ignored
+//! Run with: cargo test --package edgequake-api --test e2e_postgres_rls
+//!
+//! SPEC-091 IW0 (GAP-091-27): the suite is no longer `#[ignore]`d — it runs by
+//! default and soft-skips (with a notice) when the RLS rig is unreachable, so
+//! plain `cargo test` stays green locally while CI (`postgres-tests` job,
+//! app_user + admin URLs) enforces it as a required gate.
 //!
 //! Key Insights:
 //! 1. Superusers ALWAYS bypass RLS - we use app_user (non-superuser) for testing
@@ -10,6 +15,23 @@
 
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use uuid::Uuid;
+
+/// Probe both RLS rig pools once; soft-skip (None) when unreachable so the
+/// default test run degrades gracefully outside the CI rig. SPEC-091 IW0.
+async fn require_rls_rig() -> Option<(Pool<Postgres>, Pool<Postgres>)> {
+    match (create_admin_pool().await, create_test_pool().await) {
+        (Ok(admin_pool), Ok(test_pool)) => Some((admin_pool, test_pool)),
+        (admin_result, test_result) => {
+            eprintln!(
+                "SKIP e2e_postgres_rls: RLS rig unreachable (admin: {}, app_user: {}) — \
+                 set ADMIN_DATABASE_URL/TEST_DATABASE_URL (CI postgres-tests job provides them)",
+                admin_result.is_ok(),
+                test_result.is_ok()
+            );
+            None
+        }
+    }
+}
 
 /// Create non-superuser pool for RLS testing
 async fn create_test_pool() -> Result<Pool<Postgres>, sqlx::Error> {
@@ -281,14 +303,10 @@ async fn insert_as_tenant(
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_postgres_rls_basic_isolation() {
-    let admin_pool = create_admin_pool()
-        .await
-        .expect("Failed to create admin pool");
-    let test_pool = create_test_pool()
-        .await
-        .expect("Failed to create test pool");
+    let Some((admin_pool, test_pool)) = require_rls_rig().await else {
+        return;
+    };
 
     clean_test_data(&admin_pool)
         .await
@@ -333,14 +351,10 @@ async fn test_postgres_rls_basic_isolation() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_postgres_rls_cross_tenant_query_blocked() {
-    let admin_pool = create_admin_pool()
-        .await
-        .expect("Failed to create admin pool");
-    let test_pool = create_test_pool()
-        .await
-        .expect("Failed to create test pool");
+    let Some((admin_pool, test_pool)) = require_rls_rig().await else {
+        return;
+    };
 
     clean_test_data(&admin_pool)
         .await
@@ -381,14 +395,10 @@ async fn test_postgres_rls_cross_tenant_query_blocked() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_postgres_update_isolation() {
-    let admin_pool = create_admin_pool()
-        .await
-        .expect("Failed to create admin pool");
-    let test_pool = create_test_pool()
-        .await
-        .expect("Failed to create test pool");
+    let Some((admin_pool, test_pool)) = require_rls_rig().await else {
+        return;
+    };
 
     clean_test_data(&admin_pool)
         .await
@@ -435,14 +445,10 @@ async fn test_postgres_update_isolation() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_postgres_delete_isolation() {
-    let admin_pool = create_admin_pool()
-        .await
-        .expect("Failed to create admin pool");
-    let test_pool = create_test_pool()
-        .await
-        .expect("Failed to create test pool");
+    let Some((admin_pool, test_pool)) = require_rls_rig().await else {
+        return;
+    };
 
     clean_test_data(&admin_pool)
         .await
@@ -487,14 +493,10 @@ async fn test_postgres_delete_isolation() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_rls_insert_isolation() {
-    let admin_pool = create_admin_pool()
-        .await
-        .expect("Failed to create admin pool");
-    let test_pool = create_test_pool()
-        .await
-        .expect("Failed to create test pool");
+    let Some((admin_pool, test_pool)) = require_rls_rig().await else {
+        return;
+    };
 
     clean_test_data(&admin_pool)
         .await
@@ -555,14 +557,10 @@ async fn test_rls_insert_isolation() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_tenant_isolation_with_concurrent_access() {
-    let admin_pool = create_admin_pool()
-        .await
-        .expect("Failed to create admin pool");
-    let test_pool = create_test_pool()
-        .await
-        .expect("Failed to create test pool");
+    let Some((admin_pool, test_pool)) = require_rls_rig().await else {
+        return;
+    };
 
     clean_test_data(&admin_pool)
         .await
@@ -619,14 +617,10 @@ async fn test_tenant_isolation_with_concurrent_access() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_rls_performance_overhead() {
-    let admin_pool = create_admin_pool()
-        .await
-        .expect("Failed to create admin pool");
-    let test_pool = create_test_pool()
-        .await
-        .expect("Failed to create test pool");
+    let Some((admin_pool, test_pool)) = require_rls_rig().await else {
+        return;
+    };
 
     clean_test_data(&admin_pool)
         .await
@@ -695,14 +689,10 @@ async fn test_rls_performance_overhead() {
 /// `e2e_rls_guc_visible_on_following_insert`: BEGIN + is_local=true makes GUC
 /// visible to a following INSERT in the same transaction.
 #[tokio::test]
-#[ignore]
 async fn e2e_rls_guc_visible_on_following_insert() {
-    let admin_pool = create_admin_pool()
-        .await
-        .expect("Failed to create admin pool");
-    let test_pool = create_test_pool()
-        .await
-        .expect("Failed to create test pool");
+    let Some((admin_pool, test_pool)) = require_rls_rig().await else {
+        return;
+    };
     clean_test_data(&admin_pool)
         .await
         .expect("Failed to clean data");
@@ -745,14 +735,10 @@ async fn e2e_rls_guc_visible_on_following_insert() {
 /// `e2e_owner_forced_rls`: FORCE RLS means even the table owner cannot bypass
 /// when connecting as a non-bypass role (app_user). Superuser admin still sees all.
 #[tokio::test]
-#[ignore]
 async fn e2e_owner_forced_rls() {
-    let admin_pool = create_admin_pool()
-        .await
-        .expect("Failed to create admin pool");
-    let test_pool = create_test_pool()
-        .await
-        .expect("Failed to create test pool");
+    let Some((admin_pool, test_pool)) = require_rls_rig().await else {
+        return;
+    };
     clean_test_data(&admin_pool)
         .await
         .expect("Failed to clean data");
@@ -806,14 +792,10 @@ async fn e2e_owner_forced_rls() {
 
 /// `e2e_null_tenant_row_invisible`: NULL tenant_id rows are not world-readable.
 #[tokio::test]
-#[ignore]
 async fn e2e_null_tenant_row_invisible() {
-    let admin_pool = create_admin_pool()
-        .await
-        .expect("Failed to create admin pool");
-    let test_pool = create_test_pool()
-        .await
-        .expect("Failed to create test pool");
+    let Some((admin_pool, test_pool)) = require_rls_rig().await else {
+        return;
+    };
     clean_test_data(&admin_pool)
         .await
         .expect("Failed to clean data");
@@ -860,14 +842,10 @@ async fn e2e_null_tenant_row_invisible() {
 
 /// `e2e_document_originals_cross_workspace_denied`: binary originals are workspace-scoped.
 #[tokio::test]
-#[ignore]
 async fn e2e_document_originals_cross_workspace_denied() {
-    let admin_pool = create_admin_pool()
-        .await
-        .expect("Failed to create admin pool");
-    let test_pool = create_test_pool()
-        .await
-        .expect("Failed to create test pool");
+    let Some((admin_pool, test_pool)) = require_rls_rig().await else {
+        return;
+    };
 
     let exists: (bool,) =
         sqlx::query_as("SELECT to_regclass('public.document_originals') IS NOT NULL")

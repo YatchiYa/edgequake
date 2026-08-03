@@ -77,6 +77,7 @@
 
 // Sub-modules organized by responsibility (SRP)
 mod batch_deletion;
+pub mod cancel_gates;
 mod document_deletion;
 mod injection_processing;
 mod pdf_processing;

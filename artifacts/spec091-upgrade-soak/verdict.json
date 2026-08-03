@@ -1,0 +1,30 @@
+{
+  "status": "GREEN",
+  "profile": "smoke",
+  "postgres_tag": "0.22.0",
+  "edgequake_version": "0.22.0",
+  "compose_project": "spec091soak",
+  "started_at": "2026-08-02T12:24:19Z",
+  "finished_at": "2026-08-02T12:25:00Z",
+  "wall_seconds": 41,
+  "pass_count": 19,
+  "fail_count": 0,
+  "postgres_version": "18.4 (Debian 18.4-1.pgdg12+1)",
+  "pre_migration_max": 105,
+  "post_migration_max": 141,
+  "tenants": 3,
+  "workspaces": 6,
+  "documents_seeded": 6,
+  "dump_sha256": "1ea2baa62e9b902c5f537be39c0342443d9125c2596462b404d9a99964076375",
+  "dump_bytes": 427669,
+  "dump_path": "/Users/raphaelmansuy/Github/03-working/edgequake/artifacts/spec091-upgrade-soak/pre-upgrade.dump",
+  "acceptance": {
+    "AC-M-01": true,
+    "AC-M-02": false,
+    "AC-M-03": true,
+    "AC-M-04": true,
+    "AC-M-05": true,
+    "AC-M-06": true,
+    "AC-M-07": true
+  }
+}

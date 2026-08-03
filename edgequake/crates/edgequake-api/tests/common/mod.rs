@@ -29,6 +29,8 @@ use tower::ServiceExt;
 
 #[cfg(feature = "postgres")]
 pub mod spec013_postgres;
+#[cfg(feature = "postgres")]
+pub mod test_db;
 
 pub mod oidc_wiremock;
 pub mod spec026_delivery;
@@ -178,6 +180,8 @@ async fn install_test_background_workers(
         max_tasks_per_tenant: 4,
         max_lifecycle_tasks_per_tenant: 4,
         processing_timeout_secs: 120,
+        provider_budget: 0,
+        tenant_lane_weight: 1,
     };
 
     let mut worker_pool = WorkerPool::new(

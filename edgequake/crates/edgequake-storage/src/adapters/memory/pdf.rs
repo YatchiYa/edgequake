@@ -279,13 +279,18 @@ impl PdfDocumentStorage for MemoryPdfStorage {
         status: &str,
     ) -> Result<()> {
         let mut documents = self.documents.write().map_err(map_lock_err)?;
+        // Mirror Postgres: never shrink stored body on conflict.
+        let content = match documents.get(document_id) {
+            Some(existing) if existing.content.len() > content.len() => existing.content.clone(),
+            _ => content.to_string(),
+        };
         documents.insert(
             *document_id,
             DocumentRecord {
                 workspace_id: *workspace_id,
                 tenant_id: tenant_id.copied(),
                 title: title.to_string(),
-                content: content.to_string(),
+                content,
                 status: status.to_string(),
                 ..Default::default()
             },
@@ -431,6 +436,28 @@ mod tests {
             storage.get_pdf(&pdf_id).await.unwrap().unwrap().document_id,
             Some(doc_id)
         );
+    }
+
+    #[tokio::test]
+    async fn ensure_document_record_does_not_shrink_content() {
+        let storage = MemoryPdfStorage::new();
+        let ws = Uuid::new_v4();
+        let doc_id = Uuid::new_v4();
+        let full = "F".repeat(800);
+
+        storage
+            .ensure_document_record(&doc_id, &ws, None, "title", &full, "indexed")
+            .await
+            .unwrap();
+        storage
+            .ensure_document_record(&doc_id, &ws, None, "title", "short-summary", "indexed")
+            .await
+            .unwrap();
+
+        let docs = storage.documents.read().unwrap();
+        let rec = docs.get(&doc_id).expect("document row");
+        assert_eq!(rec.content, full);
+        assert_eq!(rec.status, "indexed");
     }
 
     #[tokio::test]

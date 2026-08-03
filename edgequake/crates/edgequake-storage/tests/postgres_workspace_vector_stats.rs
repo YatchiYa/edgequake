@@ -68,6 +68,7 @@ async fn shared_pool(config: &PostgresConfig) -> sqlx::PgPool {
 /// Simulate graph leaving a connection on `ag_catalog`-only search_path, then
 /// create workspace vector storage (must not fail with missing stats function).
 #[tokio::test]
+#[ignore = "SPEC-091: typed default skips runtime CREATE of eq_*_vectors (RM1/LD-03); covered by contract_spec091_zero_runtime_ddl"]
 async fn workspace_vector_stats_init_with_search_path_pollution() {
     let Some(base_config) = test_config("default") else {
         let strict = env::var("EDGEQUAKE_REQUIRE_POSTGRES_TESTS")

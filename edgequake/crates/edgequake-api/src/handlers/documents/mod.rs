@@ -128,6 +128,9 @@ mod tests {
                 llm_model: Some("gpt-4o-mini".to_string()),
                 embedding_model: Some("text-embedding-3-small".to_string()),
             }),
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -183,6 +186,12 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
+            progress_counts: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
+            query_ready: None,
+            cancelled_from_stage: None,
         };
 
         let json = serde_json::to_string(&summary).unwrap();
@@ -221,6 +230,12 @@ mod tests {
                 pdf_id: None,
                 display_status: None,
                 ui_phase: None,
+                progress_counts: None,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
+                cancelled_from_stage: None,
             }],
             total: 1,
             page: 1,
@@ -349,6 +364,12 @@ mod tests {
                 pdf_id: None,
                 display_status: None,
                 ui_phase: None,
+                progress_counts: None,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
+                cancelled_from_stage: None,
             }],
             total_count: 1,
             status_summary: StatusCounts {

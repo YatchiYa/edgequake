@@ -414,9 +414,13 @@ pub struct QueryStats {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ttft_ms: Option<u64>,
 
-    /// True when answer served from product answer cache (064).
+    /// True when answer served from product answer cache (064 / SPEC-103).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub answer_cache_hit: bool,
+
+    /// True when keywords served from LLM response cache (SPEC-103 LAW-C8).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keyword_cache_hit: bool,
 
     /// Total time (ms).
     pub total_time_ms: u64,

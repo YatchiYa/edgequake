@@ -265,8 +265,14 @@ export function buildHeaders(customHeaders?: HeadersInit, body?: unknown): Heade
   }
 
   const { tenantId, workspaceId, userId } = getTenantContext();
-  if (tenantId) headers.set("X-Tenant-ID", tenantId);
-  if (workspaceId) headers.set("X-Workspace-ID", workspaceId);
+  // Allow callers to override tenant/workspace (e.g. create-tenant wizard
+  // updating the new tenant's Default Workspace before store selection).
+  if (tenantId && !headers.has("X-Tenant-ID")) {
+    headers.set("X-Tenant-ID", tenantId);
+  }
+  if (workspaceId && !headers.has("X-Workspace-ID")) {
+    headers.set("X-Workspace-ID", workspaceId);
+  }
   headers.set("X-User-ID", userId || getOrCreateUserId());
 
   return headers;

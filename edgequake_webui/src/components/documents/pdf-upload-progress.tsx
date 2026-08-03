@@ -467,6 +467,7 @@ export function PdfUploadProgress({
   const {
     progress,
     isLoading,
+    isPolling,
     phases,
     overallPercent,
     etaSeconds,
@@ -518,13 +519,33 @@ export function PdfUploadProgress({
   }
 
   if (error) {
+    const msg = error.message ?? "";
+    const isTaskGone = /task not found/i.test(msg);
+    // Progress is in-memory; after a backend restart the first polls can 404
+    // until the worker reseeds. Prefer reconnecting only while still fetching.
+    const isProgressMiss = /progress not found/i.test(msg);
+    if (isProgressMiss && (isLoading || isPolling)) {
+      return (
+        <Card className={cn("border-muted bg-muted/30", className)}>
+          <CardContent className="flex items-center gap-4 py-4">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
+              Reconnecting to progress…
+            </span>
+          </CardContent>
+        </Card>
+      );
+    }
+    const terminalMessage = isTaskGone
+      ? "Task ended — progress is no longer available. Refresh the document list or retry."
+      : isProgressMiss
+        ? "Progress unavailable — upload may have completed or the task ended."
+        : `Failed to load progress: ${msg}`;
     return (
       <Card className={cn("border-red-200 bg-red-50/50", className)}>
         <CardContent className="flex items-center gap-4 py-4">
           <AlertCircle className="h-5 w-5 text-red-500" />
-          <span className="text-sm text-red-600">
-            Failed to load progress: {error.message}
-          </span>
+          <span className="text-sm text-red-600">{terminalMessage}</span>
         </CardContent>
       </Card>
     );

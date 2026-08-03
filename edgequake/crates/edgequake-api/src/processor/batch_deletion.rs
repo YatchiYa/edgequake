@@ -6,7 +6,8 @@ use tokio_util::sync::CancellationToken;
 use crate::handlers::documents::delete::resolve_kv_key_prefix_for_batch;
 use crate::middleware::TenantContext;
 use crate::services::{
-    perform_document_deletion, purge_document_list_surfaces, ListSurfacePurgeOpts,
+    perform_document_deletion, purge_document_list_surfaces, reset_deleting_status,
+    ListSurfacePurgeOpts,
 };
 
 use super::DocumentTaskProcessor;
@@ -33,6 +34,8 @@ impl DocumentTaskProcessor {
         let total = data.document_ids.len().max(1);
         let mut deleted = 0usize;
         let mut failed_ids = Vec::new();
+        // SPEC-098 LAW-098-11: per-id reasons for FE honesty.
+        let mut failed: Vec<serde_json::Value> = Vec::new();
 
         for (idx, document_id) in data.document_ids.iter().enumerate() {
             if cancel_token.is_cancelled() {
@@ -66,12 +69,25 @@ impl DocumentTaskProcessor {
                     {
                         Ok(_) => deleted += 1,
                         Err(e) => {
+                            let reason = format!("orphan list-surface purge failed: {e}");
                             tracing::warn!(
                                 document_id = %document_id,
                                 error = %e,
                                 "batch deletion: orphan list-surface purge failed"
                             );
+                            reset_deleting_status(
+                                state,
+                                document_id,
+                                document_id,
+                                &reason,
+                                Some(&format!("{}:{document_id}", data.batch_track_id)),
+                            )
+                            .await;
                             failed_ids.push(document_id.clone());
+                            failed.push(serde_json::json!({
+                                "document_id": document_id,
+                                "reason": reason,
+                            }));
                         }
                     }
                 }
@@ -79,22 +95,52 @@ impl DocumentTaskProcessor {
                     match perform_document_deletion(state, &del_data, &tenant_ctx).await {
                         Ok(_) => deleted += 1,
                         Err(e) => {
+                            let reason = e.to_string();
                             tracing::warn!(
                                 document_id = %document_id,
                                 error = %e,
                                 "batch deletion: document cascade failed"
                             );
+                            // perform_document_deletion usually resets already;
+                            // call again for idempotent honesty on early returns.
+                            reset_deleting_status(
+                                state,
+                                document_id,
+                                &del_data.key_prefix,
+                                &reason,
+                                Some(del_data.deletion_track_id.as_str()),
+                            )
+                            .await;
                             failed_ids.push(document_id.clone());
+                            failed.push(serde_json::json!({
+                                "document_id": document_id,
+                                "reason": reason,
+                            }));
                         }
                     }
                 }
                 Err(e) => {
+                    let reason = format!("resolve failed: {e}");
                     tracing::warn!(
                         document_id = %document_id,
                         error = %e,
                         "batch deletion: resolve failed"
                     );
+                    let (key_prefix, _, _) =
+                        resolve_kv_key_prefix_for_batch(document_id, state).await;
+                    reset_deleting_status(
+                        state,
+                        document_id,
+                        &key_prefix,
+                        &reason,
+                        Some(&format!("{}:{document_id}", data.batch_track_id)),
+                    )
+                    .await;
                     failed_ids.push(document_id.clone());
+                    failed.push(serde_json::json!({
+                        "document_id": document_id,
+                        "reason": reason,
+                    }));
                 }
             }
         }
@@ -106,6 +152,7 @@ impl DocumentTaskProcessor {
             "batch_track_id": data.batch_track_id,
             "deleted_count": deleted,
             "failed_ids": failed_ids,
+            "failed": failed,
             "planned_delete_count": data.document_ids.len(),
         }))
     }

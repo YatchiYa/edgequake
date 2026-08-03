@@ -95,6 +95,8 @@ impl Default for PostgresConfig {
             hnsw_m: 16,
             // Default 128 (SPEC-090 F-090-24/25). Override via EDGEQUAKE_HNSW_EF_CONSTRUCTION.
             // Never REINDEX on boot — operator-driven only.
+            // SPEC-091 IW1 LD-06 (GAP-091-25): 128 is the single converged value for new builds.
+            // Migration 071 (ef=32) is checksum-locked historical; init.sql matches 128.
             hnsw_ef_construction: hnsw_ef_construction_from_env(),
             ivfflat_lists: 100,
         }
@@ -105,6 +107,11 @@ impl Default for PostgresConfig {
 ///
 /// Changing this only affects **new** index builds — existing HNSW requires
 /// operator `REINDEX CONCURRENTLY`.
+///
+/// SPEC-091 IW1 LD-06 (GAP-091-25): **128 is the converged SSOT for new builds.**
+/// Migration 071 historically set ef_construction=32 (checksum-locked, do not
+/// edit). `docker/init.sql` and typed-index migrations (129+) use 128. Existing
+/// legacy HNSW built at 32 requires operator `REINDEX CONCURRENTLY` to converge.
 pub fn hnsw_ef_construction_from_env() -> u32 {
     std::env::var("EDGEQUAKE_HNSW_EF_CONSTRUCTION")
         .ok()
@@ -260,7 +267,7 @@ pub(crate) fn split_qualified_table_name(qualified_name: &str) -> (&str, &str) {
 }
 
 /// Qualified KV table (`public.eq_{prefix}_kv`).
-pub(crate) fn qualified_kv_table_name(prefix: &str) -> String {
+pub fn qualified_kv_table_name(prefix: &str) -> String {
     format!("public.eq_{prefix}_kv")
 }
 

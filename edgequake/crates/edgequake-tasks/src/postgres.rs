@@ -3,13 +3,15 @@
 #[cfg(feature = "postgres")]
 use crate::config::{task_max_workers_from_env, CLAIM_SAMPLE_LIMIT};
 #[cfg(feature = "postgres")]
+use crate::fairness_hold::{lifecycle_task_type_sql, ClaimFairnessPolicy};
+#[cfg(feature = "postgres")]
 use crate::{
     error::{TaskError, TaskResult},
     storage::*,
     types::Task,
 };
 #[cfg(feature = "postgres")]
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 #[cfg(feature = "postgres")]
 use sqlx::{postgres::PgRow, Acquire, PgPool, Row};
 #[cfg(feature = "postgres")]
@@ -24,7 +26,8 @@ const TASK_SELECT_COLUMNS: &str = r#"
     track_id, tenant_id, workspace_id, task_type, status, created_at, updated_at,
     started_at, completed_at, error_message, error, retry_count,
     max_retries, consecutive_timeout_failures, circuit_breaker_tripped,
-    payload, progress, result, lease_owner, lease_token, lease_expires_at, pdf_id
+    payload, progress, result, lease_owner, lease_token, lease_expires_at, pdf_id,
+    fairness_hold_until
 "#;
 
 /// RETURNING list for `UPDATE tasks t … FROM candidate` — must qualify as `t.*`
@@ -34,7 +37,8 @@ const TASK_RETURNING_COLUMNS_ALIASED: &str = r#"
     t.track_id, t.tenant_id, t.workspace_id, t.task_type, t.status, t.created_at, t.updated_at,
     t.started_at, t.completed_at, t.error_message, t.error, t.retry_count,
     t.max_retries, t.consecutive_timeout_failures, t.circuit_breaker_tripped,
-    t.payload, t.progress, t.result, t.lease_owner, t.lease_token, t.lease_expires_at, t.pdf_id
+    t.payload, t.progress, t.result, t.lease_owner, t.lease_token, t.lease_expires_at, t.pdf_id,
+    t.fairness_hold_until
 "#;
 
 #[cfg(feature = "postgres")]
@@ -100,6 +104,7 @@ fn task_from_row(row: &PgRow) -> TaskResult<Task> {
         lease_owner: row.get("lease_owner"),
         lease_token: row.get("lease_token"),
         lease_expires_at: row.get("lease_expires_at"),
+        fairness_hold_until: row.try_get("fairness_hold_until").ok().flatten(),
     })
 }
 
@@ -635,24 +640,27 @@ impl TaskStorage for PostgresTaskStorage {
         }
     }
 
-    /**
-     * @dataop      DATA-PG-TASKS-CLAIM-NEXT-140
-     * @engine      postgres
-     * @intent      Workspace-fair task claim with lease (SKIP LOCKED).
-     * @tables      tasks
-     * @indexes     idx_tasks_claim_pending_workspace_created, idx_tasks_stale_processing_lease
-     * @complexity  time: O(B + W) bounded sample B≈1000 + ws_load; space: O(1)
-     * @limits      - Concurrent workers safe via FOR UPDATE SKIP LOCKED (two sargable arms)
-     *              - Lease TTL required; expired processing rows reclaimable
-     *              - Deadlock risk if other paths lock tasks by track_id inconsistently
-     * @scaling     Cost bounded by sample size, not full backlog depth (SPEC-090 F-090-11)
-     * @tests       tests/e2e_spec090_claim_bounded.rs, tests/postgres_claim_lease.rs
-     * @pgversions  16: ok | 17: ok | 18: ok
-     * @docs        specs/088-data-layer/postgres.md#data-pg-tasks-claim-next-140
-     */
-    async fn claim_next(&self, worker_id: &str, lease_ttl: Duration) -> TaskResult<Option<Task>> {
+    // @dataop      DATA-PG-TASKS-CLAIM-NEXT-140
+    // @engine      postgres
+    // @intent      Hold-aware, tenant-priority, workspace-fair claim (SKIP LOCKED).
+    // @tables      tasks
+    // @indexes     idx_tasks_claim_pending_workspace_created, idx_tasks_stale_processing_lease, idx_tasks_fairness_hold_until
+    // @complexity  time: O(B + W) bounded sample B≈1000 + ws/tenant load; space: O(1)
+    // @limits      Concurrent workers safe via FOR UPDATE SKIP LOCKED (two sargable arms). Lease TTL required; expired processing rows reclaimable. Active fairness_hold_until excludes Pending from claim (SPEC-057 INV-06). fairness_parked_at excluded via state machine CLAIM_PENDING_GUARD_SQL (SPEC-091 R-18). Deadlock risk if other paths lock tasks by track_id inconsistently.
+    // @scaling     Cost bounded by sample size, not full backlog depth (SPEC-090 F-090-11)
+    // @tests       tests/e2e_spec090_claim_bounded.rs, tests/postgres_claim_lease.rs
+    // @pgversions  16: ok | 17: ok | 18: ok
+    // @docs        specs/088-data-layer/postgres.md#data-pg-tasks-claim-next-140
+    async fn claim_next_with_policy(
+        &self,
+        worker_id: &str,
+        lease_ttl: Duration,
+        policy: ClaimFairnessPolicy,
+    ) -> TaskResult<Option<Task>> {
         let lease_token = Uuid::new_v4();
         let lease_expires_at = crate::lease_expires_at(Utc::now(), lease_ttl);
+        let max_ingest = policy.max_ingest_per_tenant as i64;
+        let max_lifecycle = policy.max_lifecycle_per_tenant as i64;
 
         let mut conn = self.pool.acquire().await.map_err(|e| {
             TaskError::StorageError(format!("Failed to acquire connection for claim_next: {e}"))
@@ -662,21 +670,78 @@ impl TaskStorage for PostgresTaskStorage {
             .await
             .map_err(|e| TaskError::StorageError(format!("Failed to begin claim_next txn: {e}")))?;
 
-        let fair_ws: Option<Uuid> = sqlx::query_scalar(
+        // SPEC-057 INV-06: exclude active holds; prefer under-cap tenants; then
+        // SPEC-084 workspace-fair (least loaded, oldest). FP-2: held Pending and
+        // active Processing both count toward tenant lane load; within a workspace
+        // claim ORDER BY at_cap then created_at (parity with MemoryTaskStorage).
+        let lifecycle = lifecycle_task_type_sql();
+        let tenant_inflight_sql = format!(
             r#"
-            /* DATA-PG-TASKS-CLAIM-NEXT-140 — bounded fair workspace pick */
-            WITH bounded_pending AS (
-                SELECT track_id, workspace_id, created_at
+            SELECT
+                tenant_id,
+                COUNT(*) FILTER (
+                    WHERE task_type IN ({lifecycle})
+                )::bigint AS lifecycle_n,
+                COUNT(*) FILTER (
+                    WHERE task_type NOT IN ({lifecycle})
+                )::bigint AS ingest_n
+            FROM (
+                SELECT tenant_id, task_type
+                FROM tasks
+                WHERE status = 'processing'
+                  AND lease_expires_at IS NOT NULL
+                  AND lease_expires_at >= NOW()
+                UNION ALL
+                SELECT tenant_id, task_type
                 FROM tasks
                 WHERE status = 'pending'
+                  AND fairness_hold_until IS NOT NULL
+                  AND fairness_hold_until > NOW()
+            ) lane_load
+            GROUP BY tenant_id
+            "#,
+            lifecycle = lifecycle
+        );
+        let at_cap_expr = format!(
+            r#"
+            CASE
+                WHEN t2.task_type IN ({lifecycle}) THEN
+                    CASE
+                        WHEN {max_lifecycle} = 0 THEN 0
+                        WHEN COALESCE(ti.lifecycle_n, 0) < {max_lifecycle} THEN 0
+                        ELSE 1
+                    END
+                ELSE
+                    CASE
+                        WHEN {max_ingest} = 0 THEN 0
+                        WHEN COALESCE(ti.ingest_n, 0) < {max_ingest} THEN 0
+                        ELSE 1
+                    END
+            END
+            "#,
+            lifecycle = lifecycle,
+            max_ingest = max_ingest,
+            max_lifecycle = max_lifecycle
+        );
+
+        let fair_pick_sql = format!(
+            r#"
+            /* DATA-PG-TASKS-CLAIM-NEXT-140 — hold-aware + tenant-priority fair pick */
+            WITH bounded_pending AS (
+                SELECT track_id, tenant_id, workspace_id, task_type, created_at
+                FROM tasks
+                WHERE status = 'pending'
+                  AND fairness_parked_at IS NULL
+                  AND (fairness_hold_until IS NULL OR fairness_hold_until <= NOW())
                 ORDER BY created_at ASC
                 LIMIT $1
             ),
             bounded_stale AS (
-                SELECT track_id, workspace_id, created_at
+                SELECT track_id, tenant_id, workspace_id, task_type, created_at
                 FROM tasks
                 WHERE status = 'processing'
                   AND (lease_expires_at IS NULL OR lease_expires_at < NOW())
+                  AND (fairness_hold_until IS NULL OR fairness_hold_until <= NOW())
                 ORDER BY created_at ASC
                 LIMIT $1
             ),
@@ -685,6 +750,9 @@ impl TaskStorage for PostgresTaskStorage {
                 UNION ALL
                 SELECT * FROM bounded_stale
             ),
+            tenant_inflight AS (
+                {tenant_inflight}
+            ),
             ws_load AS (
                 SELECT workspace_id, COUNT(*)::bigint AS active_count
                 FROM tasks
@@ -692,19 +760,49 @@ impl TaskStorage for PostgresTaskStorage {
                   AND lease_expires_at IS NOT NULL
                   AND lease_expires_at >= NOW()
                 GROUP BY workspace_id
+            ),
+            scored AS (
+                SELECT
+                    c.workspace_id,
+                    c.created_at,
+                    CASE
+                        WHEN c.task_type IN ({lifecycle}) THEN
+                            CASE
+                                WHEN $3::bigint = 0 THEN 0
+                                WHEN COALESCE(ti.lifecycle_n, 0) < $3::bigint THEN 0
+                                ELSE 1
+                            END
+                        ELSE
+                            CASE
+                                WHEN $2::bigint = 0 THEN 0
+                                WHEN COALESCE(ti.ingest_n, 0) < $2::bigint THEN 0
+                                ELSE 1
+                            END
+                    END AS at_cap
+                FROM claimable c
+                LEFT JOIN tenant_inflight ti ON ti.tenant_id = c.tenant_id
             )
-            SELECT c.workspace_id
-            FROM claimable c
-            LEFT JOIN ws_load w ON w.workspace_id = c.workspace_id
-            GROUP BY c.workspace_id
-            ORDER BY COALESCE(MAX(w.active_count), 0) ASC, MIN(c.created_at) ASC
+            SELECT s.workspace_id
+            FROM scored s
+            LEFT JOIN ws_load w ON w.workspace_id = s.workspace_id
+            GROUP BY s.workspace_id
+            ORDER BY
+                MIN(s.at_cap) ASC,
+                COALESCE(MAX(w.active_count), 0) ASC,
+                MIN(s.created_at) ASC
             LIMIT 1
             "#,
-        )
-        .bind(CLAIM_SAMPLE_LIMIT)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|e| TaskError::StorageError(format!("Failed to pick fair workspace: {e}")))?;
+            tenant_inflight = tenant_inflight_sql,
+            lifecycle = lifecycle
+        );
+
+        let fair_ws: Option<Uuid> = sqlx::query_scalar(&fair_pick_sql)
+            .bind(CLAIM_SAMPLE_LIMIT)
+            .bind(max_ingest)
+            .bind(max_lifecycle)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| TaskError::StorageError(format!("Failed to pick fair workspace: {e}")))?;
 
         let Some(fair_ws) = fair_ws else {
             let _ = tx.rollback().await;
@@ -712,6 +810,9 @@ impl TaskStorage for PostgresTaskStorage {
         };
 
         // DRY: pending vs stale arms share the same UPDATE/RETURNING shape.
+        // SPEC-091 QW0 (LAW-Q2): guard fragments come from the state machine SSOT
+        // (crate::state_machine); rewriting them as literals breaks the drift test.
+        // Within-workspace: prefer under-cap tenants then FIFO (memory parity).
         let claim_arm_sql = |candidate_where: &str| {
             format!(
                 r#"
@@ -720,25 +821,34 @@ impl TaskStorage for PostgresTaskStorage {
                     lease_owner = $1,
                     lease_token = $2,
                     lease_expires_at = $3,
+                    fairness_hold_until = NULL,
                     started_at = COALESCE(t.started_at, NOW()),
                     updated_at = NOW(),
                     completed_at = NULL
                 FROM (
-                    SELECT track_id
-                    FROM tasks
-                    WHERE workspace_id = $4
+                    SELECT t2.track_id
+                    FROM tasks t2
+                    LEFT JOIN (
+                        {tenant_inflight}
+                    ) ti ON ti.tenant_id = t2.tenant_id
+                    WHERE t2.workspace_id = $4
                       AND {candidate_where}
-                    ORDER BY created_at ASC
-                    FOR UPDATE SKIP LOCKED
+                      AND (t2.fairness_hold_until IS NULL OR t2.fairness_hold_until <= NOW())
+                    ORDER BY
+                        ({at_cap}) ASC,
+                        t2.created_at ASC
+                    FOR UPDATE OF t2 SKIP LOCKED
                     LIMIT 1
                 ) candidate
                 WHERE t.track_id = candidate.track_id
                 RETURNING {TASK_RETURNING_COLUMNS_ALIASED}
-                "#
+                "#,
+                tenant_inflight = tenant_inflight_sql,
+                at_cap = at_cap_expr
             )
         };
 
-        let pending_sql = claim_arm_sql("status = 'pending'");
+        let pending_sql = claim_arm_sql(crate::state_machine::CLAIM_PENDING_GUARD_SQL);
         let row = match sqlx::query(&pending_sql)
             .bind(worker_id)
             .bind(lease_token)
@@ -759,9 +869,7 @@ impl TaskStorage for PostgresTaskStorage {
         let row = if row.is_some() {
             row
         } else {
-            let stale_sql = claim_arm_sql(
-                "status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at < NOW())",
-            );
+            let stale_sql = claim_arm_sql(crate::state_machine::CLAIM_STALE_GUARD_SQL);
             match sqlx::query(&stale_sql)
                 .bind(worker_id)
                 .bind(lease_token)
@@ -788,6 +896,43 @@ impl TaskStorage for PostgresTaskStorage {
             Some(row) => Ok(Some(task_from_row(&row)?)),
             None => Ok(None),
         }
+    }
+
+    async fn mark_fairness_hold(&self, track_id: &str, hold_ttl: Duration) -> TaskResult<()> {
+        let until = crate::lease_expires_at(Utc::now(), hold_ttl);
+        let result = sqlx::query(
+            r#"
+            UPDATE tasks
+            SET fairness_hold_until = $2,
+                updated_at = NOW()
+            WHERE track_id = $1
+            "#,
+        )
+        .bind(track_id)
+        .bind(until)
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| TaskError::StorageError(format!("Failed to mark fairness hold: {e}")))?;
+        if result.rows_affected() == 0 {
+            return Err(TaskError::TaskNotFound(track_id.to_string()));
+        }
+        Ok(())
+    }
+
+    async fn clear_fairness_hold(&self, track_id: &str) -> TaskResult<()> {
+        sqlx::query(
+            r#"
+            UPDATE tasks
+            SET fairness_hold_until = NULL,
+                updated_at = NOW()
+            WHERE track_id = $1
+            "#,
+        )
+        .bind(track_id)
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| TaskError::StorageError(format!("Failed to clear fairness hold: {e}")))?;
+        Ok(())
     }
 
     async fn refresh_lease(
@@ -827,7 +972,8 @@ impl TaskStorage for PostgresTaskStorage {
         worker_id: &str,
         lease_token: Uuid,
     ) -> TaskResult<bool> {
-        let result = sqlx::query(
+        // SPEC-091 QW0: Release guard from the state machine SSOT.
+        let sql = format!(
             r#"
             UPDATE tasks
             SET status = 'pending',
@@ -839,17 +985,96 @@ impl TaskStorage for PostgresTaskStorage {
             WHERE track_id = $1
               AND lease_owner = $2
               AND lease_token = $3
-              AND status = 'processing'
+              AND {}
+            "#,
+            crate::state_machine::RELEASE_GUARD_SQL
+        );
+        let result = sqlx::query(&sql)
+            .bind(track_id)
+            .bind(worker_id)
+            .bind(lease_token)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| TaskError::StorageError(format!("Failed to release claim: {}", e)))?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn mark_fairness_parked(
+        &self,
+        track_id: &str,
+        worker_id: &str,
+        lease_token: Uuid,
+    ) -> TaskResult<bool> {
+        // SPEC-091 R-18: release + park marker in ONE round trip. The marker
+        // (migration 111) excludes the row from claim_next via the state
+        // machine's CLAIM_PENDING_GUARD_SQL — idle workers stop spinning.
+        let sql = format!(
+            r#"
+            UPDATE tasks
+            SET status = 'pending',
+                lease_owner = NULL,
+                lease_token = NULL,
+                lease_expires_at = NULL,
+                started_at = NULL,
+                fairness_parked_at = NOW(),
+                updated_at = NOW()
+            WHERE track_id = $1
+              AND lease_owner = $2
+              AND lease_token = $3
+              AND {}
+            "#,
+            crate::state_machine::RELEASE_GUARD_SQL
+        );
+        let result = sqlx::query(&sql)
+            .bind(track_id)
+            .bind(worker_id)
+            .bind(lease_token)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| {
+                TaskError::StorageError(format!("Failed to mark fairness-parked: {}", e))
+            })?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn clear_fairness_park(&self, track_id: &str) -> TaskResult<()> {
+        sqlx::query(
+            r#"
+            UPDATE tasks
+            SET fairness_parked_at = NULL, updated_at = NOW()
+            WHERE track_id = $1
+              AND status = 'pending'
+              AND fairness_parked_at IS NOT NULL
             "#,
         )
         .bind(track_id)
-        .bind(worker_id)
-        .bind(lease_token)
         .execute(&*self.pool)
         .await
-        .map_err(|e| TaskError::StorageError(format!("Failed to release claim: {}", e)))?;
+        .map_err(|e| TaskError::StorageError(format!("Failed to clear fairness park: {}", e)))?;
+        Ok(())
+    }
 
-        Ok(result.rows_affected() > 0)
+    async fn clear_stale_fairness_parks(&self, max_age: Duration) -> TaskResult<u64> {
+        // Age is computed in SQL for clock hygiene; 0 clears all parks (boot).
+        let max_age_secs = max_age.as_secs_f64();
+        let result = sqlx::query(
+            r#"
+            UPDATE tasks
+            SET fairness_parked_at = NULL, updated_at = NOW()
+            WHERE status = 'pending'
+              AND fairness_parked_at IS NOT NULL
+              AND fairness_parked_at <= NOW() - make_interval(secs => $1)
+            "#,
+        )
+        .bind(max_age_secs)
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| {
+            TaskError::StorageError(format!("Failed to sweep stale fairness parks: {}", e))
+        })?;
+        Ok(result.rows_affected())
     }
 
     async fn get_queue_metrics_filtered(
@@ -945,7 +1170,12 @@ impl TaskStorage for PostgresTaskStorage {
             max_wait_time_seconds,
             throughput_per_minute,
             estimated_queue_time_seconds,
-            rate_limited: false,
+            rate_limited: QueueMetrics::compute_rate_limited(
+                pending_count,
+                active_workers,
+                max_workers,
+                throughput_per_minute,
+            ),
             timestamp: chrono::Utc::now(),
         })
     }
@@ -975,6 +1205,72 @@ impl TaskStorage for PostgresTaskStorage {
             .await;
 
         Ok(result.rows_affected())
+    }
+
+    async fn count_pending_older_than(&self, created_at: DateTime<Utc>) -> TaskResult<u64> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*) FROM tasks
+            WHERE status = 'pending' AND created_at < $1
+            "#,
+        )
+        .bind(created_at)
+        .fetch_one(&*self.pool)
+        .await
+        .map_err(|e| TaskError::StorageError(format!("Failed to count pending ahead: {e}")))?;
+        Ok(count.max(0) as u64)
+    }
+
+    async fn count_completed_within(&self, window: Duration) -> TaskResult<u64> {
+        let secs = i32::try_from(window.as_secs().max(1))
+            .map_err(|_| TaskError::StorageError("window exceeds i32 seconds".to_string()))?;
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*) FROM tasks
+            WHERE completed_at IS NOT NULL
+              AND completed_at >= NOW() - make_interval(secs => $1)
+            "#,
+        )
+        .bind(secs)
+        .fetch_one(&*self.pool)
+        .await
+        .map_err(|e| TaskError::StorageError(format!("Failed to count recent completions: {e}")))?;
+        Ok(count.max(0) as u64)
+    }
+
+    async fn pending_queue_ahead_batch(
+        &self,
+        track_ids: &[String],
+    ) -> TaskResult<Vec<(String, u64)>> {
+        if track_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        // One RT: FCFS rank among all pending, filtered to the page's track_ids.
+        // Tie-break on track_id for stable ordering when created_at collides.
+        let rows = sqlx::query_as::<_, (String, i64)>(
+            r#"
+            WITH pending AS (
+                SELECT track_id, created_at,
+                       (ROW_NUMBER() OVER (ORDER BY created_at ASC, track_id ASC) - 1)::bigint
+                         AS ahead
+                FROM tasks
+                WHERE status = 'pending'
+            )
+            SELECT track_id, ahead
+            FROM pending
+            WHERE track_id = ANY($1)
+            "#,
+        )
+        .bind(track_ids)
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(|e| {
+            TaskError::StorageError(format!("Failed to batch pending queue ranks: {e}"))
+        })?;
+        Ok(rows
+            .into_iter()
+            .map(|(id, ahead)| (id, ahead.max(0) as u64))
+            .collect())
     }
 }
 

@@ -181,6 +181,14 @@ pub async fn purge_document_list_surfaces(
                 content_hash,
             ));
             keys.push(kv_keys::staging_workspace_hash(workspace_id, content_hash));
+            // SPEC-091 W2: typed ingestion_dedup delete parity.
+            #[cfg(feature = "postgres")]
+            crate::services::ingestion_dedup_store::dual_delete_all(
+                state.pg_pool.as_ref(),
+                workspace_id,
+                content_hash,
+            )
+            .await;
         }
     }
 
@@ -252,6 +260,23 @@ pub async fn purge_document_list_surfaces(
         for id in identity_variants(document_id, key_prefix, key_id_mismatch) {
             let _ =
                 crate::services::delete_document_mm_assets(mm_storage, id, workspace_uuid).await;
+
+            // SPEC-091 Wave B5: typed sidecar parity — the legacy KV family
+            // keys (lineage/manifest/chunks/checkpoint/snapshot) are swept by
+            // the metadata-prefix delete above; the typed rows need explicit
+            // deletes for documents whose `documents` row removal does not
+            // cascade (identity variants, missing row).
+            crate::services::relational_sidecar_store::typed_artifact_delete_all(id).await;
+            crate::services::relational_sidecar_store::typed_checkpoint_delete(
+                id,
+                crate::services::relational_sidecar_store::CHECKPOINT_KIND_CRASH,
+            )
+            .await;
+            crate::services::relational_sidecar_store::typed_checkpoint_delete(
+                id,
+                crate::services::relational_sidecar_store::CHECKPOINT_KIND_SNAPSHOT,
+            )
+            .await;
         }
     }
 
@@ -318,6 +343,12 @@ pub async fn reset_deleting_status(
                 .await;
             }
         }
+    }
+
+    // SPEC-098 LAW-098-9: mirror delete_failed to SQL list column.
+    crate::services::touch_sql_delete_failed(document_id).await;
+    if key_prefix != document_id {
+        crate::services::touch_sql_delete_failed(key_prefix).await;
     }
 
     if let Some(track_id) = deletion_track_id {

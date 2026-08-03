@@ -6,10 +6,13 @@
 //! PostgreSQL with a real password hash. Fresh installs and upgrades that only had KV
 //! identity rows therefore return 401 until an admin exists.
 //!
-//! This module closes the gap by:
-//! 1. Importing legacy KV `auth:user:*` records into PostgreSQL when present.
-//! 2. Creating a bootstrap admin from `EDGEQUAKE_BOOTSTRAP_ADMIN_*` when no
-//!    login-capable users remain.
+//! This module closes the gap by creating a bootstrap admin from
+//! `EDGEQUAKE_BOOTSTRAP_ADMIN_*` when no login-capable users remain.
+//!
+//! SPEC-091 Wave B7: the legacy KV `auth:user:*` import shim is removed —
+//! identity is PostgreSQL-native, and remaining `auth:%` KV keys are purged
+//! by migration 120. Deployments upgrading from the KV-identity era must pass
+//! through an intermediate release that still carried the importer.
 
 use chrono::Utc;
 use edgequake_auth::Role;
@@ -51,14 +54,6 @@ pub async fn bootstrap_auth_identity_if_needed(
             pool: state.pg_pool.clone(),
             capabilities: state.postgres_capabilities.clone(),
         };
-
-        let imported = import_legacy_kv_users(state, &pg_runtime).await?;
-        if imported > 0 {
-            info!(
-                imported,
-                "Imported legacy KV auth users into PostgreSQL (SPEC-027 upgrade path)"
-            );
-        }
 
         let username = std::env::var("EDGEQUAKE_BOOTSTRAP_ADMIN_USERNAME")
             .ok()
@@ -176,60 +171,6 @@ pub async fn bootstrap_auth_identity_if_needed(
 
         Ok(())
     }
-}
-
-#[cfg(feature = "postgres")]
-async fn import_legacy_kv_users(
-    state: &AppState,
-    pg_runtime: &PostgresRuntime,
-) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
-    let keys = state
-        .storage
-        .kv_storage
-        .keys_with_prefix("auth:user:")
-        .await
-        .map_err(|e| format!("KV auth user scan failed: {e}"))?;
-
-    if keys.is_empty() {
-        return Ok(0);
-    }
-
-    let mut imported = 0u32;
-    for key in keys {
-        let Some(raw) = state
-            .storage
-            .kv_storage
-            .get_by_id(&key)
-            .await
-            .map_err(|e| format!("KV auth user load failed for {key}: {e}"))?
-        else {
-            continue;
-        };
-
-        let record: UserRecord = match serde_json::from_value(raw) {
-            Ok(record) => record,
-            Err(e) => {
-                warn!(key = %key, error = %e, "Skipping malformed legacy KV auth user");
-                continue;
-            }
-        };
-
-        if !is_login_capable_password_hash(&record.password_hash) {
-            continue;
-        }
-
-        crate::services::identity_storage::persist_user_record(
-            &state.storage,
-            Some(pg_runtime),
-            &state.security,
-            &record,
-        )
-        .await?;
-
-        imported += 1;
-    }
-
-    Ok(imported)
 }
 
 #[cfg(test)]

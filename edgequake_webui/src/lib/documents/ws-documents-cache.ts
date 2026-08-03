@@ -98,6 +98,10 @@ function patchFieldsFromMessage(
     if (task_id) fields.track_id = task_id;
     fields.status = "processing";
     fields.current_stage = "converting";
+    // SPEC-120: display_status must not remain "queued" or the badge ignores
+    // current_stage (getDocumentDisplayStatus prefers display_status).
+    fields.display_status = "converting";
+    fields.ui_phase = "running";
     if (typeof progress === "number") {
       fields.stage_progress = Math.round(
         progress <= 1 ? progress * 100 : progress,
@@ -121,7 +125,11 @@ function patchFieldsFromMessage(
   if (type === "StageTransition" && message.data) {
     fields.status = "processing";
     fields.track_id = message.data.task_id ?? fields.track_id;
-    if (message.data.stage) fields.current_stage = message.data.stage;
+    if (message.data.stage) {
+      fields.current_stage = message.data.stage;
+      fields.display_status = message.data.stage;
+      fields.ui_phase = "running";
+    }
     if (message.data.stage_message) {
       fields.stage_message = message.data.stage_message;
     }

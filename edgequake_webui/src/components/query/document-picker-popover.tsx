@@ -35,7 +35,6 @@ import {
 } from 'lucide-react';
 import {
     useCallback,
-    useEffect,
     useMemo,
     useRef,
     useState,
@@ -62,17 +61,15 @@ export function DocumentPickerPopover({
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const { data: results, isLoading } = useDocumentSearch(search, open);
+  const {
+    data: results,
+    total,
+    hasMore,
+    loadMore,
+    isLoading,
+  } = useDocumentSearch(search, open);
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-
-  // Auto-focus search on open
-  useEffect(() => {
-    if (open) {
-      const t = setTimeout(() => searchRef.current?.focus(), 60);
-      return () => clearTimeout(t);
-    }
-  }, [open]);
 
   const toggle = useCallback(
     (item: DocumentSearchItem) => {
@@ -176,6 +173,7 @@ export function DocumentPickerPopover({
           <button
             type="button"
             disabled={disabled}
+            data-testid="scope-picker-add-trigger"
             className={cn(
               'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs',
               'text-muted-foreground hover:text-foreground hover:bg-muted/60',
@@ -207,12 +205,25 @@ export function DocumentPickerPopover({
         collisionPadding={12}
         className="w-[340px] p-0 shadow-xl z-[9999] overflow-hidden"
         aria-label={t('query.scope.popover', 'Document scope selector')}
+        // Focus the search input on open via Radix's auto-focus hook instead of a
+        // setTimeout, which raced Radix's own focus management.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          searchRef.current?.focus();
+        }}
         style={{
           maxHeight:
             'calc(var(--radix-popover-content-available-height, 500px) - 24px)',
         }}
       >
-        <div className="flex flex-col h-full">
+        {/*
+          max-h-[inherit] (not h-full): the column must inherit PopoverContent's
+          definite max-height so `flex-1 min-h-0` on the list has a bounded height
+          to shrink against. With h-full against an auto-height parent the column
+          collapsed to content height and overflow-y-auto never engaged (the list
+          was clipped, not scrollable).
+        */}
+        <div className="flex flex-col max-h-[inherit]">
           {/* ── Header ─────────────────────────────────────── */}
           <div className="px-3 pt-3 pb-2.5 shrink-0">
             <div className="flex items-center justify-between mb-2">
@@ -240,6 +251,7 @@ export function DocumentPickerPopover({
                 ref={searchRef}
                 type="text"
                 role="searchbox"
+                data-testid="scope-picker-search"
                 placeholder={t('query.scope.searchPlaceholder', 'Search by title…')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -281,6 +293,7 @@ export function DocumentPickerPopover({
           <div
             ref={listRef}
             id="scope-picker-list"
+            data-testid="scope-picker-list"
             role="listbox"
             aria-label={t('query.scope.resultsList', 'Document search results')}
             aria-multiselectable="true"
@@ -323,6 +336,27 @@ export function DocumentPickerPopover({
                 onKeyDown={(e) => handleItemKeyDown(e, item)}
               />
             ))}
+
+            {hasMore && (
+              <button
+                type="button"
+                data-testid="scope-picker-load-more"
+                onClick={loadMore}
+                className={cn(
+                  'w-full px-3 py-2 text-xs text-muted-foreground text-center',
+                  'border-t border-border/50',
+                  'hover:bg-accent hover:text-accent-foreground',
+                  'focus-visible:outline-none focus-visible:bg-accent',
+                  'transition-colors',
+                )}
+              >
+                {t(
+                  'query.scope.loadMore',
+                  'Load more ({{shown}} of {{total}})',
+                  { shown: sortedResults.length, total },
+                )}
+              </button>
+            )}
           </div>
 
           {/* ── Footer ─────────────────────────────────────── */}
@@ -378,6 +412,7 @@ function PickerItem({
       role="option"
       aria-selected={checked}
       id={`scope-item-${item.id}`}
+      data-testid="scope-picker-option"
       onClick={onToggle}
       onKeyDown={onKeyDown}
       className={cn(

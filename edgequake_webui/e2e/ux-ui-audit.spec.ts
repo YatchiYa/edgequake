@@ -74,14 +74,16 @@ test.describe("@audit UX/UI Comprehensive Audit", () => {
       fullPage: true,
     });
 
-    // Check for upload area
-    const uploadArea = page
-      .locator('[type="file"], [data-upload], .dropzone')
-      .first();
+    // SPEC-099 F-099-13: locate the always-on drop zone via stable testid
+    const uploadArea = page.getByTestId("document-dropzone");
+    await uploadArea.waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
     if ((await uploadArea.count()) > 0) {
+      console.log("  ✅ document-dropzone found");
       await uploadArea.screenshot({
         path: resolveAuditPath(undefined, "02-documents-upload-area.png"),
       });
+    } else {
+      console.log("  ❌ document-dropzone missing");
     }
 
     // Check for document list/table

@@ -457,9 +457,19 @@ async fn get_document_inner(
         Some(tid) => tasks.cancellation_registry.has_cancel_intent(tid).await,
         None => false,
     };
+    let task_status_owned = match track_id.as_deref() {
+        Some(tid) => tasks
+            .storage
+            .get_task(tid)
+            .await
+            .ok()
+            .flatten()
+            .map(|t| t.status.to_string()),
+        None => None,
+    };
     let status_view =
         crate::services::map_ingestion_status(crate::services::IngestionStatusInputs {
-            task_status: None,
+            task_status: task_status_owned.as_deref(),
             doc_status: Some(status.as_str()),
             current_stage: current_stage.as_deref(),
             failure_class: failure_class.as_deref(),

@@ -672,6 +672,10 @@ make backend-bg
 | `OPENAI_API_KEY`               | Optional | Enable OpenAI provider          | `sk-proj-...`                                        |
 | `EDGEQUAKE_LLM_PROVIDER`       | Optional | Override LLM provider           | `openai`, `ollama`, `lmstudio`, `mock`               |
 | `EDGEQUAKE_EMBEDDING_PROVIDER` | Optional | Hybrid mode: separate embedding | `ollama` (use with `EDGEQUAKE_LLM_PROVIDER=openai`)  |
+| `EDGEQUAKE_LLM_CACHE`          | Optional | Master keywords+answer LLM cache (SPEC-103; default **on**) | `0` / `false` disables both; Acc pins `0` |
+| `EDGEQUAKE_KEYWORD_CACHE`      | Optional | Keyword extract cache override (SPEC-103) | `0` disables keywords only |
+| `EDGEQUAKE_QUERY_ANSWER_CACHE` | Optional | Answer cache override (SPEC-103; unset follows master) | `0` / `1` |
+| `EDGEQUAKE_EXTRACTION_LANGUAGE`| Optional | Fleet default KG extraction NL language (SPEC-096); workspace metadata overrides | `English`, `Chinese`, `French`, … |
 | `OLLAMA_HOST`                  | Optional | Ollama server URL               | `http://localhost:11434`                             |
 | `OLLAMA_EMBEDDING_MODEL`       | Optional | Ollama embedding model          | `embeddinggemma:latest`                              |
 | `RUST_LOG`                     | Optional | Logging level                   | `debug`, `info`, `warn`                              |
@@ -804,11 +808,12 @@ Checklist summary:
 
 1. `make version-bump VERSION=X.Y.Z` → `make codegen-openapi-refresh` → `cargo test -p edgequake-api --test spec027_api_contract`
 2. Local gates: `cargo fmt` / `cargo clippy --workspace --all-targets -- -D warnings` / `make release-gates`
-3. Commit `release: bump to vX.Y.Z` (workspace crates are **not** published to crates.io)
-4. `git tag vX.Y.Z && git push origin vX.Y.Z` → GHCR via `release-docker.yml`
-5. Verify: `gh release view vX.Y.Z` + `docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:X.Y.Z`
+3. **SPEC-001 LightRAG Acc (before tag):** `make bench001-doctor` → `make bench` (medical-mid n=200 dual-SUT + `publish/latest/`). Local mandatory — not in `release_gates.sh` / CI. Smoke n=40 is not the release Acc score. See [release-and-cd § SPEC-001](docs/operations/release-and-cd.md#spec-001-lightrag-acc-before-tag).
+4. Commit `release: bump to vX.Y.Z` (workspace crates are **not** published to crates.io)
+5. `git tag vX.Y.Z && git push origin vX.Y.Z` → GHCR via `release-docker.yml`
+6. Verify: `gh release view vX.Y.Z` + `docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:X.Y.Z`
 
-Current product pin: **v0.22.0**.
+Current product pin: **v0.23.0**.
 
 ## Automation & Agent Workflow
 

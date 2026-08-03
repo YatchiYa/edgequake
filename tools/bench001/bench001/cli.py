@@ -88,7 +88,7 @@ def _add_provider_flags(p: argparse.ArgumentParser) -> None:
     g.add_argument(
         "--profile-id",
         default=None,
-        help="Profile id recorded in scorecard (default: P0_mistral_mix)",
+        help="Profile id recorded in scorecard (default: ACC_E2OCC_086_v1)",
     )
 
 

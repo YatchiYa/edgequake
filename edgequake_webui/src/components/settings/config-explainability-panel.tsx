@@ -287,8 +287,11 @@ export function ConfigExplainabilityPanel() {
     return () => window.removeEventListener('edgequake:config-changed', onConfigChanged);
   }, []);
 
-  const anyMismatch = config && (
-    config.llm.has_mismatch || config.embedding.has_mismatch || config.vision.has_mismatch
+  // SPEC-100: guard partial payloads so settings page does not crash → remount CLS
+  const anyMismatch = Boolean(
+    config?.llm?.has_mismatch ||
+      config?.embedding?.has_mismatch ||
+      config?.vision?.has_mismatch,
   );
 
   return (

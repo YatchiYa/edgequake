@@ -1,6 +1,9 @@
 //! Task storage abstraction and implementations.
 
-use crate::{error::TaskResult, types::Task, types::TaskStatus, types::TaskType};
+use crate::{
+    error::TaskResult, fairness_hold::ClaimFairnessPolicy, types::Task, types::TaskStatus,
+    types::TaskType,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -107,9 +110,31 @@ pub trait TaskStorage: Send + Sync {
     /// Claim the next eligible task with a processing lease (SPEC-057 P1).
     ///
     /// Eligible: `pending`, or `processing` with expired/missing lease.
-    /// Never claims Cancelled / Indexed / Failed. Uses SKIP LOCKED semantics
-    /// on Postgres; memory uses a single write-lock pick.
-    async fn claim_next(&self, worker_id: &str, lease_ttl: Duration) -> TaskResult<Option<Task>>;
+    /// Never claims Cancelled / Indexed / Failed. Skips active fairness holds
+    /// (SPEC-057 INV-06). Uses SKIP LOCKED semantics on Postgres; memory uses
+    /// a single write-lock pick.
+    ///
+    /// Default policy: exclude holds only (no under-cap tenant preference).
+    async fn claim_next(&self, worker_id: &str, lease_ttl: Duration) -> TaskResult<Option<Task>> {
+        self.claim_next_with_policy(worker_id, lease_ttl, ClaimFairnessPolicy::default())
+            .await
+    }
+
+    /// Claim with tenant-priority policy (SPEC-057 INV-06 FP-2).
+    ///
+    /// Prefer tenants under configured lane caps, then workspace-fair FIFO.
+    async fn claim_next_with_policy(
+        &self,
+        worker_id: &str,
+        lease_ttl: Duration,
+        policy: ClaimFairnessPolicy,
+    ) -> TaskResult<Option<Task>>;
+
+    /// Mark task claim-invisible until `now + hold_ttl` (fairness park).
+    async fn mark_fairness_hold(&self, track_id: &str, hold_ttl: Duration) -> TaskResult<()>;
+
+    /// Clear fairness hold so the task is claimable again (park wake).
+    async fn clear_fairness_hold(&self, track_id: &str) -> TaskResult<()>;
 
     /// Extend lease if `worker_id` + `lease_token` still own the task.
     /// Returns `false` when ownership was lost (abort processing).
@@ -128,6 +153,37 @@ pub trait TaskStorage: Send + Sync {
         worker_id: &str,
         lease_token: Uuid,
     ) -> TaskResult<bool>;
+
+    /// Atomically release a claim AND mark the task fairness-parked (LAW-Q5).
+    ///
+    /// Replaces [`Self::release_claim`] on the fair-share park path: the park
+    /// marker excludes the row from `claim_next` (state-machine guard SQL,
+    /// migration 111) so idle workers never spin claim→release cycles on
+    /// parked rows. Returns `true` when the lease CAS matched.
+    async fn mark_fairness_parked(
+        &self,
+        track_id: &str,
+        worker_id: &str,
+        lease_token: Uuid,
+    ) -> TaskResult<bool> {
+        let _ = (track_id, worker_id, lease_token);
+        Ok(false)
+    }
+
+    /// Clear the fairness-park marker before the park waiter's queue re-wake.
+    async fn clear_fairness_park(&self, track_id: &str) -> TaskResult<()> {
+        let _ = track_id;
+        Ok(())
+    }
+
+    /// Sweep park markers older than `max_age` on pending rows (`max_age = 0`
+    /// clears all — used at boot, where no park waiter can be alive).
+    /// Replica-death backstop: a crashed replica's parks would otherwise
+    /// exclude rows from claims forever. Returns rows cleared.
+    async fn clear_stale_fairness_parks(&self, max_age: Duration) -> TaskResult<u64> {
+        let _ = max_age;
+        Ok(0)
+    }
 
     /// Find an in-flight Convert or Ingest task for the same PDF (P-G14 / SPEC-057 P2).
     ///
@@ -183,6 +239,45 @@ pub trait TaskStorage: Send + Sync {
     /// Removes rows in `indexed`, `failed`, or `cancelled` status whose
     /// `completed_at` is older than the cutoff. Returns the number of rows deleted.
     async fn prune_terminal_tasks(&self, older_than_days: u32) -> TaskResult<u64>;
+
+    /// Count `pending` tasks enqueued strictly before `created_at` (SPEC-091 QW2).
+    ///
+    /// FCFS queue-position projection (LAW-Q4). Default returns 0 so legacy
+    /// adapters keep compiling; memory + Postgres implement the real count.
+    async fn count_pending_older_than(&self, _created_at: DateTime<Utc>) -> TaskResult<u64> {
+        Ok(0)
+    }
+
+    /// Count tasks completed within the last `window` (SPEC-091 QW2).
+    ///
+    /// Drain-rate projection feeding the queue ETA (LAW-Q1: measured, never
+    /// guessed). Default returns 0 → ETA basis `no_history`.
+    async fn count_completed_within(&self, _window: Duration) -> TaskResult<u64> {
+        Ok(0)
+    }
+
+    /// SPEC-091 IP0: pending FCFS ranks (tasks ahead) for a set of track ids.
+    ///
+    /// Returns `(track_id, ahead)` only for rows that are currently `pending`.
+    /// One round-trip on Postgres/memory — LAW-D7 / IP-AC-02.
+    /// Default: per-id `get_task` + `count_pending_older_than` (legacy adapters).
+    async fn pending_queue_ahead_batch(
+        &self,
+        track_ids: &[String],
+    ) -> TaskResult<Vec<(String, u64)>> {
+        let mut out = Vec::new();
+        for id in track_ids {
+            let Some(task) = self.get_task(id).await? else {
+                continue;
+            };
+            if task.status != crate::types::TaskStatus::Pending {
+                continue;
+            }
+            let ahead = self.count_pending_older_than(task.created_at).await?;
+            out.push((id.clone(), ahead));
+        }
+        Ok(out)
+    }
 
     /// Find an in-flight Insert (KG ingest) for the same PDF (SPEC-057 P2).
     async fn find_active_pdf_ingest_task(
@@ -358,6 +453,38 @@ pub struct QueueMetrics {
 
     /// Timestamp of this metrics snapshot.
     pub timestamp: DateTime<Utc>,
+}
+
+/// Env key mirroring `edgequake_pipeline::admission_resolver::QUEUE_TARGET_WAIT_SECS_ENV`
+/// (tasks crate is lower in the dependency graph; the resolver drift test pins
+/// the shared default of 600s).
+const QUEUE_TARGET_WAIT_SECS_ENV_KEY: &str = "EDGEQUAKE_QUEUE_TARGET_WAIT_SECS";
+const DEFAULT_QUEUE_TARGET_WAIT_SECS: u64 = 600;
+
+impl QueueMetrics {
+    /// SPEC-091 QW2 (LAW-Q4): the honest `rate_limited` signal — replaces the
+    /// hardcoded `false` (F-091-19). Rate-limited ⇔ a backlog exists while
+    /// every worker is busy (arrivals necessarily wait), or the backlog
+    /// exceeds the Little's-Law soft bound `ceil(λ̂ × target_wait)` derived
+    /// from measured throughput — never a guessed constant (LAW-Q1).
+    pub fn compute_rate_limited(
+        pending_count: u64,
+        active_workers: u32,
+        max_workers: u32,
+        throughput_per_minute: f64,
+    ) -> bool {
+        let target_wait_secs = std::env::var(QUEUE_TARGET_WAIT_SECS_ENV_KEY)
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .unwrap_or(DEFAULT_QUEUE_TARGET_WAIT_SECS);
+        let soft_bound = if throughput_per_minute > 0.0 {
+            (throughput_per_minute * (target_wait_secs as f64 / 60.0)).ceil() as u64
+        } else {
+            0
+        };
+        let saturated = max_workers > 0 && active_workers >= max_workers && pending_count > 0;
+        pending_count > soft_bound || saturated
+    }
 }
 
 impl Default for QueueMetrics {

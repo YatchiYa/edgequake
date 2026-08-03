@@ -6,7 +6,7 @@ sidebar:
 
 # Architecture: Crate Reference
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
 
 > EdgeQuake's modular Rust workspace (11 crates)
 
@@ -38,7 +38,7 @@ EdgeQuake splits responsibilities across focused crates with clear dependency bo
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    EDGEQUAKE CRATE HIERARCHY (v0.19.0)          │
+│                    EDGEQUAKE CRATE HIERARCHY (v0.23.0)          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │                      ┌──────────────────┐                       │

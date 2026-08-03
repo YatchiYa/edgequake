@@ -57,6 +57,21 @@ fn get_original_storage(
 
 async fn load_document_metadata(state: &AppState, document_id: &str) -> ApiResult<Value> {
     let metadata_key = metadata_key_for_document(document_id);
+
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = state.pg_pool.as_ref() {
+        if let Some(value) =
+            edgequake_storage::adapters::postgres::document_shell::shell_value_by_key(
+                pool,
+                &metadata_key,
+            )
+            .await
+            .map_err(ApiError::from)?
+        {
+            return Ok(value);
+        }
+    }
+
     let metadata = state
         .storage
         .kv_storage

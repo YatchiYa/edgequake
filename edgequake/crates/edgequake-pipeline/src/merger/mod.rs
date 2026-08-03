@@ -34,6 +34,7 @@
 
 mod description_merge;
 mod entity;
+mod entity_resolution;
 mod entity_type_vote;
 pub mod lineage;
 mod merge_limits;
@@ -49,6 +50,11 @@ pub use description_merge::{
     DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE, DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP,
 };
 pub use entity::description_similarity;
+pub use entity_resolution::{
+    cosine_similarity, entity_embed_er_enabled, er_llm_enabled, record_exact_merge,
+    resolve_after_exact_miss, ErDecision, DEFAULT_EMBED_ER_THRESHOLD, ENTITY_EMBED_ER_ENV,
+    ER_LLM_ENV,
+};
 pub use entity_type_vote::{apply_entity_type_vote, resolve_majority_type, ENTITY_TYPE_VOTES_KEY};
 pub use lineage::{
     document_id_from_chunk_id, document_ids_from_chunk_ids, insert_chunk_lineage_properties,
@@ -256,12 +262,37 @@ impl LineageSink for NoopLineageSink {
 /// - `PostgresEntitySink` in `edgequake-api` — writes to `entities` table
 ///
 /// @implements SPEC-021 P3-01
+/// One relational entity upsert (SPEC-091 IP1 batch row).
+#[derive(Debug, Clone)]
+pub struct EntitySinkRow {
+    pub name: String,
+    pub entity_type: String,
+    pub description: String,
+    pub tenant_id: Option<String>,
+    pub workspace_id: Option<String>,
+    pub source_chunk_ids: Vec<String>,
+}
+
+/// One relational relationship upsert (SPEC-091 IP1 batch row).
+#[derive(Debug, Clone)]
+pub struct RelationshipSinkRow {
+    pub source_name: String,
+    pub target_name: String,
+    pub relation_type: String,
+    pub description: String,
+    pub weight: f32,
+    pub tenant_id: Option<String>,
+    pub workspace_id: Option<String>,
+}
+
 #[async_trait]
+#[allow(clippy::too_many_arguments)]
 pub trait RelationalEntitySink: Send + Sync {
     /// Upsert an entity into the relational CQRS read model.
     ///
     /// Called after the primary graph write succeeds.
-    /// Must be best-effort: implementors SHOULD NOT fail the ingestion on error.
+    /// Must be best-effort: implementors SHOULD NOT fail the ingestion on error
+    /// unless the typed vector backend requires a fail-closed FK spine.
     async fn upsert_entity(
         &self,
         name: &str,
@@ -271,6 +302,55 @@ pub trait RelationalEntitySink: Send + Sync {
         workspace_id: Option<&str>,
         source_chunk_ids: &[String],
     ) -> Result<()>;
+
+    /// Upsert a relationship into the relational CQRS read model (typed fleet FK).
+    ///
+    /// Default no-op so legacy callers/tests stay green.
+    async fn upsert_relationship(
+        &self,
+        _source_name: &str,
+        _target_name: &str,
+        _relation_type: &str,
+        _description: &str,
+        _weight: f32,
+        _tenant_id: Option<&str>,
+        _workspace_id: Option<&str>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    /// SPEC-091 IP1 / LAW-IP2: batch entity upsert (default loops single-row).
+    async fn upsert_entities_batch(&self, rows: &[EntitySinkRow]) -> Result<()> {
+        for row in rows {
+            self.upsert_entity(
+                &row.name,
+                &row.entity_type,
+                &row.description,
+                row.tenant_id.as_deref(),
+                row.workspace_id.as_deref(),
+                &row.source_chunk_ids,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// SPEC-091 IP1 / LAW-IP2: batch relationship upsert (default loops single-row).
+    async fn upsert_relationships_batch(&self, rows: &[RelationshipSinkRow]) -> Result<()> {
+        for row in rows {
+            self.upsert_relationship(
+                &row.source_name,
+                &row.target_name,
+                &row.relation_type,
+                &row.description,
+                row.weight,
+                row.tenant_id.as_deref(),
+                row.workspace_id.as_deref(),
+            )
+            .await?;
+        }
+        Ok(())
+    }
 
     /// Remove or update source references when a document is deleted.
     ///
@@ -422,6 +502,9 @@ pub struct KnowledgeGraphMerger<G: GraphStorage + ?Sized, V: VectorStorage + ?Si
     /// Optional lineage sink (SPEC-032 W-08).
     /// When None, lineage links are not persisted.
     pub(super) lineage_sink: Arc<dyn LineageSink>,
+    /// SPEC-091 IW2: optional typed fleet mirror (entity/relationship/report).
+    pub(super) fleet_embedding_index:
+        Option<Arc<dyn edgequake_storage::traits::FleetEmbeddingIndex>>,
 }
 
 impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G, V> {
@@ -437,7 +520,17 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             text_embedder: None,
             relational_sink: Arc::new(NoopEntitySink),
             lineage_sink: Arc::new(NoopLineageSink),
+            fleet_embedding_index: None,
         }
+    }
+
+    /// SPEC-091 IW2: mirror entity/relationship/report vectors into typed tables.
+    pub fn with_fleet_embedding_index(
+        mut self,
+        index: Arc<dyn edgequake_storage::traits::FleetEmbeddingIndex>,
+    ) -> Self {
+        self.fleet_embedding_index = Some(index);
+        self
     }
 
     /// Wire a relational CQRS sink for dual-write (SPEC-021 P3-01).
@@ -502,6 +595,56 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                     artifacts.entity_vector_ids.push(id);
                 } else {
                     artifacts.relationship_vector_ids.push(id);
+                }
+            }
+            if let Some(ref fleet_index) = self.fleet_embedding_index {
+                match fleet_index
+                    .mirror_legacy_batch(slice, count_as_entities)
+                    .await
+                {
+                    Ok(report) => {
+                        let typed = edgequake_storage::vector_backend::vector_backend_reads_typed(
+                            edgequake_storage::vector_backend_from_env(),
+                        );
+                        if typed && !slice.is_empty() {
+                            if !report.invalid_workspace.is_empty() {
+                                return Err(crate::error::PipelineError::StorageError(
+                                    edgequake_storage::error::StorageError::Database(format!(
+                                        "SPEC-098: typed fleet mirror invalid workspace_id on {}/{} rows \
+                                         (sample: {:?})",
+                                        report.invalid_workspace.len(),
+                                        slice.len(),
+                                        report.invalid_workspace
+                                    )),
+                                ));
+                            }
+                            if !report.is_complete() {
+                                return Err(crate::error::PipelineError::StorageError(
+                                    edgequake_storage::error::StorageError::Database(format!(
+                                        "SPEC-091: typed fleet mirror resolved {}/{} rows \
+                                         (relational entity/rel FK miss or name mismatch — \
+                                         bare entities.name must match entity:NAME; ensure \
+                                         PostgresEntitySink wrote the spine before fleet mirror; \
+                                         SPEC-098 misses: {:?})",
+                                        report.resolved, report.eligible, report.misses
+                                    )),
+                                ));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let typed = edgequake_storage::vector_backend::vector_backend_reads_typed(
+                            edgequake_storage::vector_backend_from_env(),
+                        );
+                        if typed {
+                            return Err(crate::error::PipelineError::StorageError(e));
+                        }
+                        tracing::warn!(
+                            error = %e,
+                            count_as_entities,
+                            "SPEC-091 IW2: typed fleet dual-write failed (legacy upsert succeeded)"
+                        );
+                    }
                 }
             }
             done += slice.len();
@@ -683,7 +826,13 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
         emit_progress(
             progress,
             MergeProgress {
-                phase: MergePhase::EntityVectors,
+                phase: if edgequake_storage::vector_backend::vector_backend_reads_typed(
+                    edgequake_storage::vector_backend_from_env(),
+                ) {
+                    MergePhase::EntityGraph
+                } else {
+                    MergePhase::EntityVectors
+                },
                 entities_processed: 0,
                 entities_total: total_entities,
                 relationships_processed: 0,
@@ -695,12 +844,30 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             },
         );
 
-        // ── Phase 1: Entity vector upserts — chunked for progress honesty ──
-        // WHY: entity vectors are collected globally already (P-G4-merger).
-        // SPEC-047 P5: mega-docs take ~1.5s/1k HNSW upserts; emit mid-batch
-        // progress so UI does not freeze at "Embedding 100%".
+        // ── Entity / relationship vector + graph phases ─────────────────
+        // Under typed_embeddings, graph merge MUST precede fleet vector write
+        // (mirror_legacy_batch resolves entities/relationships by name FK).
+        let typed_authority = edgequake_storage::vector_backend::vector_backend_reads_typed(
+            edgequake_storage::vector_backend_from_env(),
+        );
         let entity_vector_batch = self.collect_entity_vector_batch(&results);
-        if !entity_vector_batch.is_empty() {
+        let all_rels: Vec<_> = results
+            .iter()
+            .flat_map(|r| r.relationships.iter().cloned())
+            .collect();
+        let all_rel_vectors = self.collect_relationship_vector_batch(&all_rels);
+        let all_entities: Vec<_> = results
+            .iter()
+            .flat_map(|r| r.entities.iter().cloned())
+            .collect();
+        let all_relationships: Vec<_> = results
+            .iter()
+            .flat_map(|r| r.relationships.iter().cloned())
+            .collect();
+
+        // Legacy order: EntityVectors → EntityGraph → RelVectors → RelGraph.
+        // Typed order:  EntityGraph → EntityVectors → RelGraph → RelVectors.
+        if !typed_authority && !entity_vector_batch.is_empty() {
             let stage_start = Instant::now();
             let entity_vec_result = self
                 .upsert_vectors_chunked(
@@ -715,14 +882,11 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                     &mut stats.artifacts,
                 )
                 .await;
-            // SPEC-060: entity vector upsert stage
             record_ingest_stage_duration(
                 "entity_vector_upsert",
                 stage_start.elapsed().as_secs_f64(),
             );
             if let Err(e) = entity_vec_result {
-                // SPEC-057 P3: abort with partial artifacts (Ok + errors) so
-                // persister compensates written IDs instead of MergeArtifacts::default().
                 stats.record_error(e.to_string());
                 tracing::warn!(
                     error.source = "pipeline_merger",
@@ -750,22 +914,11 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             },
         );
 
-        // ── Phase 2: Entity graph merge — globally batched ────────────────
-        // WHY: collect all entities from all chunks first, dedup within-doc,
-        // then a single get_nodes_batch + upsert_nodes_batch.
-        let all_entities: Vec<_> = results
-            .iter()
-            .flat_map(|r| r.entities.iter().cloned())
-            .collect();
-
         if !all_entities.is_empty() {
             let stage_start = Instant::now();
             let entity_graph_result = self.merge_entities_batch(all_entities, &mut stats).await;
-            // SPEC-060: AGE node upsert stage
             record_ingest_stage_duration("age_node_upsert", stage_start.elapsed().as_secs_f64());
             if let Err(e) = entity_graph_result {
-                // SPEC-058: fail-fast — do not amplify partial state by continuing
-                // into relationship vector/graph phases after entity AGE failure.
                 stats.record_error(e.to_string());
                 tracing::warn!(
                     error.source = "pipeline_merger",
@@ -777,10 +930,60 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             }
         }
 
+        if typed_authority && !entity_vector_batch.is_empty() {
+            emit_progress(
+                progress,
+                MergeProgress {
+                    phase: MergePhase::EntityVectors,
+                    entities_processed: 0,
+                    entities_total: total_entities,
+                    relationships_processed: 0,
+                    relationships_total: total_relationships,
+                    entities_created: stats.entities_created,
+                    entities_updated: stats.entities_updated,
+                    relationships_created: 0,
+                    relationships_updated: 0,
+                },
+            );
+            let stage_start = Instant::now();
+            let entity_vec_result = self
+                .upsert_vectors_chunked(
+                    &entity_vector_batch,
+                    progress,
+                    MergePhase::EntityVectors,
+                    total_entities,
+                    total_relationships,
+                    0,
+                    0,
+                    true,
+                    &mut stats.artifacts,
+                )
+                .await;
+            record_ingest_stage_duration(
+                "entity_vector_upsert",
+                stage_start.elapsed().as_secs_f64(),
+            );
+            if let Err(e) = entity_vec_result {
+                stats.record_error(e.to_string());
+                tracing::warn!(
+                    error.source = "pipeline_merger",
+                    error.action = "upsert_entity_vectors",
+                    error.message = %e,
+                    partial_entity_vectors = stats.artifacts.entity_vector_ids.len(),
+                    "Failed entity vector upsert; returning partial MergeArtifacts"
+                );
+                return Ok(stats);
+            }
+        }
+
         emit_progress(
             progress,
             MergeProgress {
-                phase: MergePhase::RelationshipVectors,
+                phase: if typed_authority {
+                    MergePhase::RelationshipGraph
+                } else {
+                    MergePhase::RelationshipVectors
+                },
                 entities_processed: total_entities,
                 entities_total: total_entities,
                 relationships_processed: 0,
@@ -792,15 +995,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             },
         );
 
-        // ── Phase 3: Relationship vector upserts — chunked for progress ──
-        // WHY: previously done per ExtractionResult inside the loop (F-09).
-        // SPEC-047 P6: flatten then unique-dedupe once (not per-chunk).
-        let all_rels: Vec<_> = results
-            .iter()
-            .flat_map(|r| r.relationships.iter().cloned())
-            .collect();
-        let all_rel_vectors = self.collect_relationship_vector_batch(&all_rels);
-        if !all_rel_vectors.is_empty() {
+        if !typed_authority && !all_rel_vectors.is_empty() {
             let stage_start = Instant::now();
             let rel_vec_result = self
                 .upsert_vectors_chunked(
@@ -815,7 +1010,6 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                     &mut stats.artifacts,
                 )
                 .await;
-            // SPEC-060: relationship vector upsert stage
             record_ingest_stage_duration("rel_vector_upsert", stage_start.elapsed().as_secs_f64());
             if let Err(e) = rel_vec_result {
                 stats.record_error(e.to_string());
@@ -831,26 +1025,22 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             }
         }
 
-        emit_progress(
-            progress,
-            MergeProgress {
-                phase: MergePhase::RelationshipGraph,
-                entities_processed: total_entities,
-                entities_total: total_entities,
-                relationships_processed: 0,
-                relationships_total: total_relationships,
-                entities_created: stats.entities_created,
-                entities_updated: stats.entities_updated,
-                relationships_created: 0,
-                relationships_updated: 0,
-            },
-        );
-
-        // ── Phase 4: Relationship graph merge — globally batched ─────────
-        let all_relationships: Vec<_> = results
-            .iter()
-            .flat_map(|r| r.relationships.iter().cloned())
-            .collect();
+        if !typed_authority {
+            emit_progress(
+                progress,
+                MergeProgress {
+                    phase: MergePhase::RelationshipGraph,
+                    entities_processed: total_entities,
+                    entities_total: total_entities,
+                    relationships_processed: 0,
+                    relationships_total: total_relationships,
+                    entities_created: stats.entities_created,
+                    entities_updated: stats.entities_updated,
+                    relationships_created: 0,
+                    relationships_updated: 0,
+                },
+            );
+        }
 
         if !all_relationships.is_empty() {
             let progress_ctx = progress.map(|cb| merge_progress::MergeProgressCtx {
@@ -866,16 +1056,58 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             let rel_graph_result = self
                 .merge_relationships_batch(all_relationships, &mut stats, progress_ctx)
                 .await;
-            // SPEC-060: AGE edge upsert stage
             record_ingest_stage_duration("age_edge_upsert", stage_start.elapsed().as_secs_f64());
             if let Err(e) = rel_graph_result {
-                // SPEC-058: fail-fast on relationship AGE errors.
                 stats.record_error(e.to_string());
                 tracing::warn!(
                     error.source = "pipeline_merger",
                     error.action = "merge_relationships_batch_global",
                     error.message = %e,
                     "Failed to merge global relationship batch; aborting finalize"
+                );
+                return Ok(stats);
+            }
+        }
+
+        if typed_authority && !all_rel_vectors.is_empty() {
+            emit_progress(
+                progress,
+                MergeProgress {
+                    phase: MergePhase::RelationshipVectors,
+                    entities_processed: total_entities,
+                    entities_total: total_entities,
+                    relationships_processed: 0,
+                    relationships_total: total_relationships,
+                    entities_created: stats.entities_created,
+                    entities_updated: stats.entities_updated,
+                    relationships_created: stats.relationships_created,
+                    relationships_updated: stats.relationships_updated,
+                },
+            );
+            let stage_start = Instant::now();
+            let rel_vec_result = self
+                .upsert_vectors_chunked(
+                    &all_rel_vectors,
+                    progress,
+                    MergePhase::RelationshipVectors,
+                    total_entities,
+                    total_relationships,
+                    stats.entities_created,
+                    stats.entities_updated,
+                    false,
+                    &mut stats.artifacts,
+                )
+                .await;
+            record_ingest_stage_duration("rel_vector_upsert", stage_start.elapsed().as_secs_f64());
+            if let Err(e) = rel_vec_result {
+                stats.record_error(e.to_string());
+                tracing::warn!(
+                    error.source = "pipeline_merger",
+                    error.action = "upsert_relationship_vectors",
+                    error.message = %e,
+                    partial_relationship_vectors =
+                        stats.artifacts.relationship_vector_ids.len(),
+                    "Failed relationship vector upsert; returning partial MergeArtifacts"
                 );
                 return Ok(stats);
             }
@@ -984,6 +1216,9 @@ pub struct MergeStats {
 
     /// SPEC-047 P7d: entity updates skipped (KEEP saturated).
     pub entities_skipped_saturated: usize,
+
+    /// SPEC-098: saturated KEEP still ensured relational spine (AGE skipped).
+    pub entities_spine_ensured_saturated: usize,
 
     /// SPEC-047 P7d: relationship updates skipped (KEEP saturated).
     pub relationships_skipped_saturated: usize,
@@ -1239,6 +1474,122 @@ mod tests {
 
         assert_eq!(stats.total_entities(), 8);
         assert_eq!(stats.total_relationships(), 12);
+    }
+
+    /// SPEC-098: saturated KEEP still ensures relational spine (AGE skip preserved).
+    #[tokio::test]
+    async fn spec098_saturated_spine_ensure_stat() {
+        use std::sync::Mutex;
+
+        struct SpySink {
+            calls: Mutex<Vec<String>>,
+        }
+
+        #[async_trait::async_trait]
+        impl RelationalEntitySink for SpySink {
+            async fn upsert_entity(
+                &self,
+                name: &str,
+                _entity_type: &str,
+                _description: &str,
+                _tenant_id: Option<&str>,
+                _workspace_id: Option<&str>,
+                _source_chunk_ids: &[String],
+            ) -> crate::error::Result<()> {
+                self.calls.lock().unwrap().push(format!("upsert:{name}"));
+                Ok(())
+            }
+
+            async fn remove_entity_sources(
+                &self,
+                _name: &str,
+                _workspace_id: Option<&str>,
+                _sources_to_remove: &[String],
+                _remaining: &[String],
+            ) -> crate::error::Result<()> {
+                Ok(())
+            }
+        }
+
+        let spy = Arc::new(SpySink {
+            calls: Mutex::new(Vec::new()),
+        });
+        let graph = Arc::new(edgequake_storage::MemoryGraphStorage::new("spec098"));
+        let vector = Arc::new(edgequake_storage::MemoryVectorStorage::new("spec098", 4));
+        graph.initialize().await.unwrap();
+        vector.initialize().await.unwrap();
+
+        let config = MergerConfig {
+            source_ids_limit_method: SourceIdsLimitMethod::Keep,
+            max_source_ids_per_entity: 2,
+            use_llm_summarization: false,
+            ..Default::default()
+        };
+
+        let merger = KnowledgeGraphMerger::new(config, graph.clone(), vector)
+            .with_relational_sink(spy.clone());
+
+        for i in 0..2 {
+            let entity = ExtractedEntity {
+                name: "Saturated".to_string(),
+                entity_type: "CONCEPT".to_string(),
+                description: format!("seed {i}"),
+                importance: 0.5,
+                source_spans: vec![],
+                source_chunk_ids: vec![format!("seed{i}")],
+                embedding: None,
+                source_document_id: None,
+                source_file_path: None,
+                display_name: None,
+                page_num: None,
+                figure_index: None,
+                asset_id: None,
+                mm_subtype: None,
+            };
+            let mut stats = MergeStats::default();
+            merger
+                .merge_entities_batch(vec![entity], &mut stats)
+                .await
+                .unwrap();
+        }
+
+        spy.calls.lock().unwrap().clear();
+
+        let entity = ExtractedEntity {
+            name: "Saturated".to_string(),
+            entity_type: "CONCEPT".to_string(),
+            description: "should not mutate graph".to_string(),
+            importance: 0.5,
+            source_spans: vec![],
+            source_chunk_ids: vec!["brand-new".to_string()],
+            embedding: None,
+            source_document_id: None,
+            source_file_path: None,
+            display_name: None,
+            page_num: None,
+            figure_index: None,
+            asset_id: None,
+            mm_subtype: None,
+        };
+        let mut stats = MergeStats::default();
+        merger
+            .merge_entities_batch(vec![entity], &mut stats)
+            .await
+            .unwrap();
+
+        assert!(
+            stats.entities_skipped_saturated >= 1,
+            "expected KEEP skip: {stats:?}"
+        );
+        assert!(
+            stats.entities_spine_ensured_saturated >= 1,
+            "SPEC-098: spine ensure on saturated: {stats:?}"
+        );
+        let calls = spy.calls.lock().unwrap().clone();
+        assert!(
+            calls.iter().any(|c| c.contains("SATURATED")),
+            "saturated KEEP must still upsert spine, got {calls:?}"
+        );
     }
 
     #[test]
@@ -1545,11 +1896,8 @@ mod tests {
             .unwrap();
 
         let phases = phases_seen.lock().unwrap().clone();
-        // Must emit at least: EntityVectors, EntityGraph, RelationshipVectors, RelationshipGraph, Finalizing
-        assert!(
-            phases.contains(&MergePhase::EntityVectors),
-            "Expected EntityVectors phase"
-        );
+        // Typed default: EntityGraph precedes EntityVectors; EntityVectors is
+        // only emitted when the batch has embeddings. This fixture has none.
         assert!(
             phases.contains(&MergePhase::EntityGraph),
             "Expected EntityGraph phase"
@@ -1558,6 +1906,14 @@ mod tests {
             phases.contains(&MergePhase::Finalizing),
             "Expected Finalizing phase"
         );
+        if edgequake_storage::vector_backend::vector_backend_reads_typed(
+            edgequake_storage::vector_backend_from_env(),
+        ) {
+            assert!(
+                !phases.contains(&MergePhase::EntityVectors),
+                "EntityVectors should be skipped when embeddings are absent under typed authority"
+            );
+        }
     }
 
     /// SPEC-032 W-06: Similarity gate — identical descriptions must not call LLM.

@@ -80,7 +80,7 @@ impl PostgresPdfStorage {
         // Fall back to metadata-only if that column is still missing on older DBs.
         let result = sqlx::query(
             r#"
-            UPDATE documents SET
+            UPDATE public.documents SET
                 chunk_count        = $2,
                 entity_count       = $3,
                 relationship_count = $4,
@@ -105,7 +105,7 @@ impl PostgresPdfStorage {
                 // Pre-M041 schema: no relationship_count column — metadata JSONB only.
                 sqlx::query(
                     r#"
-                    UPDATE documents SET
+                    UPDATE public.documents SET
                         chunk_count = $2,
                         entity_count  = $3,
                         status        = $4,
@@ -589,13 +589,19 @@ impl PdfDocumentStorage for PostgresPdfStorage {
     ) -> Result<()> {
         // WHY: INSERT ... ON CONFLICT ensures idempotency (safe to call multiple times).
         // Updates status and content on conflict so reprocessing refreshes the record.
+        // INVARIANT: never shrink `content` — a shorter payload (e.g. legacy 500-char
+        // summary mistaken for body) must not clobber a longer stored body.
         // @implements FIX-ISSUE-74: Ensure document record exists before FK link
         sqlx::query(
             r#"
-            INSERT INTO documents (id, tenant_id, workspace_id, title, content, status, updated_at)
+            INSERT INTO public.documents (id, tenant_id, workspace_id, title, content, status, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, NOW())
             ON CONFLICT (id) DO UPDATE SET
-                content = EXCLUDED.content,
+                content = CASE
+                    WHEN length(EXCLUDED.content) >= length(documents.content)
+                        THEN EXCLUDED.content
+                    ELSE documents.content
+                END,
                 status  = EXCLUDED.status,
                 title   = EXCLUDED.title,
                 updated_at = NOW()
@@ -639,7 +645,7 @@ impl PdfDocumentStorage for PostgresPdfStorage {
 
         let result = sqlx::query(
             r#"
-            UPDATE documents SET
+            UPDATE public.documents SET
                 chunk_count        = $2,
                 entity_count       = $3,
                 relationship_count = $4,
@@ -713,7 +719,7 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         };
         let result = sqlx::query(
             r#"
-            UPDATE documents SET
+            UPDATE public.documents SET
                 status     = $2,
                 updated_at = NOW()
             WHERE id = $1
@@ -740,7 +746,7 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         // @implements FIX-ISSUE-73: Cascade delete pdf_documents/chunks on document removal
         let result = sqlx::query(
             r#"
-            DELETE FROM documents WHERE id = $1
+            DELETE FROM public.documents WHERE id = $1
             "#,
         )
         .bind(document_id)

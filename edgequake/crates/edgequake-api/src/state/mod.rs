@@ -170,6 +170,9 @@ pub struct AppState {
     /// P-G13: caps concurrent vision PDF conversions process-wide.
     pub pdf_vision: Arc<PdfVisionSemaphore>,
 
+    /// SPEC-094: in-memory async parse jobs + dedicated admission semaphore.
+    pub parse_jobs: crate::handlers::parse::ParseJobStore,
+
     /// Interactive HTTP read-path DB bulkhead (list/get docs, tenants, workspaces).
     pub read_path_db: Arc<crate::read_path::ReadPathDbPermit>,
 

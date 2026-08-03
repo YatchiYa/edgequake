@@ -52,6 +52,7 @@ from edgequake.resources.documents import (
     DocumentsResource,
     PdfResource,
 )
+from edgequake.resources.parse import AsyncParseResource, ParseResource
 from edgequake.resources.graph import (
     AsyncEntitiesResource,
     AsyncGraphResource,
@@ -147,6 +148,11 @@ class EdgeQuake:
     def pdf(self) -> PdfResource:
         """PDF-specific operations — upload, download, extract content."""
         return PdfResource(self._transport)
+
+    @cached_property
+    def parse(self) -> ParseResource:
+        """SPEC-094: Stateless PDF → Markdown parse."""
+        return ParseResource(self._transport)
 
     @cached_property
     def query(self) -> QueryResource:
@@ -355,6 +361,11 @@ class AsyncEdgeQuake:
     def pdf(self) -> AsyncPdfResource:
         """PDF-specific operations — upload, download, extract content."""
         return AsyncPdfResource(self._transport)
+
+    @cached_property
+    def parse(self) -> AsyncParseResource:
+        """SPEC-094: Stateless PDF → Markdown parse."""
+        return AsyncParseResource(self._transport)
 
     @cached_property
     def query(self) -> AsyncQueryResource:

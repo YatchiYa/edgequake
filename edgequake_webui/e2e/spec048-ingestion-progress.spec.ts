@@ -457,7 +457,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
     ]);
   });
 
-  test("S02 working banner + row stage parity", async ({ page }) => {
+  test("S02 working banner + ActiveRuns phase parity", async ({ page }) => {
     await mockDocs(page, [EXTRACTING_DOC, COMPLETED_DOC], {
       pending: 0,
       processing: 1,
@@ -469,25 +469,29 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
     await expect(page.getByTestId("spec048-run-headline")).toContainText(
       /Extracting Entities/i,
     );
+    // SPEC-091 IS3: 4-phase strip + wire markers (not table row subtitle).
+    await expect(page.getByTestId("spec091-phase-strip")).toBeVisible();
+    await expect(page.getByTestId("spec091-phase-extract")).toHaveAttribute(
+      "data-state",
+      "active",
+    );
     await expect(page.getByTestId("spec048-stage-extracting")).toHaveAttribute(
       "data-state",
       "active",
     );
-    const rowStage = page.getByTestId("spec048-row-stage").first();
-    await expect(rowStage).toBeVisible();
-    expect(await rowStage.getAttribute("data-stage")).toBe("extracting");
+    // LAW-IS3: live narrative lives in ActiveRuns — table has no row stage.
+    await expect(page.getByTestId("spec048-row-stage")).toHaveCount(0);
     await expect(page.getByTestId("pipeline-header-button")).toContainText(
       /Working/i,
     );
-    await expect(page.getByTestId("document-dropzone")).toHaveAttribute(
-      "data-quiet",
-      "true",
-    );
+    const dropzone = page.getByTestId("document-dropzone");
+    await expect(dropzone).toHaveAttribute("data-quiet", "false");
+    await expect(dropzone).toHaveAttribute("data-collapsed", "true");
     await capture(page, "S02-working-parity", [
       "ActiveRunsPanel owns working narrative (banner demoted)",
       "Headline is stage-specific (Extracting Entities)",
-      "Stepper extracting=active",
-      "Row stage=extracting (parity AC-02)",
+      "Phase strip extract=active; wire extracting=active",
+      "No row stage under ActiveRuns (LAW-IS3)",
       "Working pill visible; completed row muted",
       "Dropzone quiet while Working",
     ]);
@@ -514,21 +518,24 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
     await expect(detail).toBeVisible();
     await expect(detail).toContainText(/42\/351/);
     await expect(detail).toHaveAttribute("data-stage", "extracting");
-    // Realistic overall: never 100% mid-extract
-    const overall = page.getByTestId("spec048-run-overall-pct");
-    await expect(overall).toBeVisible();
-    const overallText = await overall.textContent();
-    const overallNum = Number((overallText || "0").replace("%", ""));
-    expect(overallNum).toBeGreaterThan(0);
-    expect(overallNum).toBeLessThan(100);
-    await expect(page.getByTestId("spec048-overall-progress")).toContainText(
-      /Overall \(est\.\)/,
+    // LAW-IS2: stage N/M is primary — overall meter collapses while counts exist.
+    await expect(page.getByTestId("spec048-stage-progress")).toBeVisible();
+    await expect(page.getByTestId("spec048-overall-progress")).toHaveAttribute(
+      "data-collapsed",
+      "true",
     );
+    const overallProgress = Number(
+      await page
+        .getByTestId("spec048-server-stage-stepper")
+        .getAttribute("data-overall-progress"),
+    );
+    expect(overallProgress).toBeGreaterThan(0);
+    expect(overallProgress).toBeLessThan(1);
     await capture(page, "S03-server-stepper", [
       "ActiveRunsPanel visible",
       "Full UnifiedStage timeline: prior done, extracting active, later pending",
       "Step detail shows 42/351 chunks",
-      "Overall (est.) < 100% mid-flight (first-principles progress)",
+      "Overall collapsed while stage meter owns N/M (LAW-IS2)",
       "Client 4-step legend not required (DEF-10 morph)",
     ]);
   });

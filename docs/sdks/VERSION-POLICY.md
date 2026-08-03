@@ -8,10 +8,10 @@ title: "SDK version policy (SPEC-083 X-33)"
 
 | Surface | Version today | Meaning |
 |---------|---------------|---------|
-| Server / webui / workspace crates | **0.20.x** | Product release (GHCR / `Cargo.toml` workspace) |
+| Server / webui / workspace crates | **0.23.0** | Product release (GHCR / `Cargo.toml` workspace) |
 | Hand-written SDKs (Rust/Python/TS/…) | **0.4.x** (aligned) | Client library semver — **not** the product version |
 
-SDK major/minor may lag the product version when the HTTP contract remains compatible. A `0.4.x` client talking to a `0.20.x` server is intentional when OpenAPI paths match.
+SDK major/minor may lag the product version when the HTTP contract remains compatible. A `0.4.x` client talking to a `0.23.0` server is intentional when OpenAPI paths match.
 
 ## Policy
 

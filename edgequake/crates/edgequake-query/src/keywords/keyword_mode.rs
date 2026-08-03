@@ -19,17 +19,12 @@ pub enum KeywordMode {
     Heuristic,
 }
 
-/// Keyword LLM result cache (064). Default **on**; set `EDGEQUAKE_KEYWORD_CACHE=0` to disable.
+/// Keyword LLM result cache (064 / SPEC-103 LAW-C6).
+///
+/// Default **on** when master `EDGEQUAKE_LLM_CACHE` is on; set
+/// `EDGEQUAKE_KEYWORD_CACHE=0` or `EDGEQUAKE_LLM_CACHE=0` to disable.
 pub fn keyword_cache_enabled() -> bool {
-    !matches!(
-        std::env::var("EDGEQUAKE_KEYWORD_CACHE")
-            .ok()
-            .as_deref()
-            .map(str::trim)
-            .map(str::to_ascii_lowercase)
-            .as_deref(),
-        Some("0") | Some("false") | Some("off") | Some("no")
-    )
+    crate::cache::llm_response_cache::keyword_cache_enabled_from_flags()
 }
 
 /// `EDGEQUAKE_KEYWORD_MODE=llm|heuristic` (default `llm`).

@@ -2,7 +2,7 @@
 //!
 //! Provides multi-level caching:
 //! - In-memory LRU cache (fast, limited size)
-//! - PostgreSQL persistent cache (durable, shared across instances)
+//! - Durable L2 via SPEC-103 [`crate::cache::LlmResponseCache`] → `public.llm_cache`
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -10,6 +10,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use super::extractor::ExtractedKeywords;
+use crate::cache::llm_response_cache::{LlmCacheType, SharedLlmResponseCache};
 use crate::error::Result;
 
 /// Trait for keyword cache implementations.
@@ -204,94 +205,52 @@ impl Default for InMemoryKeywordCache {
     }
 }
 
-/// PostgreSQL-based keyword cache.
+/// L1 memory + optional L2 durable LLM response cache (SPEC-103).
 ///
-/// Persistent and shared across instances. Use as L2 cache.
-#[cfg(feature = "postgres")]
-pub struct PostgresKeywordCache {
-    pool: sqlx::PgPool,
-    table_name: String,
-    stats: RwLock<CacheStats>,
+/// Keys are already LR-shaped storage keys (`{mode}:keywords:{hash}-cache`).
+pub struct TieredKeywordCache {
+    l1: InMemoryKeywordCache,
+    l2: Option<SharedLlmResponseCache>,
 }
 
-#[cfg(feature = "postgres")]
-impl PostgresKeywordCache {
-    /// Create a new PostgreSQL cache.
-    pub async fn new(pool: sqlx::PgPool, table_prefix: &str) -> Result<Self> {
-        let table_name = format!("eq_{}_keyword_cache", table_prefix);
-        let cache = Self {
-            pool,
-            table_name,
-            stats: RwLock::new(CacheStats::default()),
-        };
-
-        cache.initialize().await?;
-        Ok(cache)
+impl TieredKeywordCache {
+    pub fn new(l1: InMemoryKeywordCache, l2: Option<SharedLlmResponseCache>) -> Self {
+        Self { l1, l2 }
     }
 
-    /// Initialize the cache table.
-    async fn initialize(&self) -> Result<()> {
-        let sql = format!(
-            r#"
-            CREATE TABLE IF NOT EXISTS {} (
-                cache_key TEXT PRIMARY KEY,
-                keywords JSONB NOT NULL,
-                expires_at TIMESTAMPTZ,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-            
-            CREATE INDEX IF NOT EXISTS idx_{}_expires 
-            ON {} (expires_at) 
-            WHERE expires_at IS NOT NULL;
-            "#,
-            self.table_name,
-            self.table_name.replace('.', "_"),
-            self.table_name
-        );
+    pub fn memory_only(max_size: usize) -> Self {
+        Self::new(InMemoryKeywordCache::new(max_size), None)
+    }
 
-        sqlx::query(&sql).execute(&self.pool).await.map_err(|e| {
-            crate::error::QueryError::Internal(format!("Failed to create cache table: {}", e))
-        })?;
-
-        Ok(())
+    pub fn with_durable(max_size: usize, durable: SharedLlmResponseCache) -> Self {
+        Self::new(InMemoryKeywordCache::new(max_size), Some(durable))
     }
 }
 
 #[async_trait]
-#[cfg(feature = "postgres")]
-impl KeywordCache for PostgresKeywordCache {
+impl KeywordCache for TieredKeywordCache {
     async fn get(&self, key: &str) -> Result<Option<ExtractedKeywords>> {
-        let sql = format!(
-            r#"
-            UPDATE {} 
-            SET accessed_at = NOW()
-            WHERE cache_key = $1 
-              AND (expires_at IS NULL OR expires_at > NOW())
-            RETURNING keywords
-            "#,
-            self.table_name
-        );
-
-        let result: Option<(serde_json::Value,)> = sqlx::query_as(&sql)
-            .bind(key)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| crate::error::QueryError::Internal(format!("Cache get failed: {}", e)))?;
-
-        let mut stats = self.stats.write().unwrap();
-        if let Some((json,)) = result {
-            stats.hits += 1;
-            let keywords: ExtractedKeywords = serde_json::from_value(json).map_err(|e| {
-                crate::error::QueryError::Internal(format!(
-                    "Failed to parse cached keywords: {}",
-                    e
-                ))
-            })?;
-            Ok(Some(keywords))
-        } else {
-            stats.misses += 1;
-            Ok(None)
+        if let Some(hit) = self.l1.get(key).await? {
+            return Ok(Some(hit));
+        }
+        let Some(l2) = &self.l2 else {
+            return Ok(None);
+        };
+        let Some(raw) = l2.get_return(key).await else {
+            return Ok(None);
+        };
+        match serde_json::from_str::<ExtractedKeywords>(&raw) {
+            Ok(kw) => {
+                let _ = self
+                    .l1
+                    .set(key, &kw, Some(Duration::from_secs(24 * 60 * 60)))
+                    .await;
+                Ok(Some(kw))
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, key = %key, "SPEC-103 keyword L2 deserialize failed");
+                Ok(None)
+            }
         }
     }
 
@@ -301,71 +260,33 @@ impl KeywordCache for PostgresKeywordCache {
         keywords: &ExtractedKeywords,
         ttl: Option<Duration>,
     ) -> Result<()> {
-        let keywords_json = serde_json::to_value(keywords).map_err(|e| {
-            crate::error::QueryError::Internal(format!("Failed to serialize keywords: {}", e))
-        })?;
-
-        let expires_at: Option<chrono::DateTime<chrono::Utc>> =
-            ttl.map(|d| chrono::Utc::now() + chrono::Duration::from_std(d).unwrap_or_default());
-
-        let sql = format!(
-            r#"
-            INSERT INTO {} (cache_key, keywords, expires_at, accessed_at)
-            VALUES ($1, $2, $3, NOW())
-            ON CONFLICT (cache_key) DO UPDATE SET
-                keywords = EXCLUDED.keywords,
-                expires_at = EXCLUDED.expires_at,
-                accessed_at = NOW()
-            "#,
-            self.table_name
-        );
-
-        sqlx::query(&sql)
-            .bind(key)
-            .bind(&keywords_json)
-            .bind(expires_at)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| crate::error::QueryError::Internal(format!("Cache set failed: {}", e)))?;
-
+        self.l1.set(key, keywords, ttl).await?;
+        if let Some(l2) = &self.l2 {
+            match serde_json::to_string(keywords) {
+                Ok(raw) => {
+                    l2.set_return(key, LlmCacheType::Keywords, &raw, None).await;
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "SPEC-103 keyword L2 serialize failed");
+                }
+            }
+        }
         Ok(())
     }
 
     async fn delete(&self, key: &str) -> Result<()> {
-        let sql = format!("DELETE FROM {} WHERE cache_key = $1", self.table_name);
-
-        sqlx::query(&sql)
-            .bind(key)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| {
-                crate::error::QueryError::Internal(format!("Cache delete failed: {}", e))
-            })?;
-
-        Ok(())
+        self.l1.delete(key).await
     }
 
     async fn clear(&self) -> Result<()> {
-        let sql = format!("DELETE FROM {}", self.table_name);
-
-        sqlx::query(&sql).execute(&self.pool).await.map_err(|e| {
-            crate::error::QueryError::Internal(format!("Cache clear failed: {}", e))
-        })?;
-
-        Ok(())
+        if let Some(l2) = &self.l2 {
+            l2.clear_l1();
+        }
+        self.l1.clear().await
     }
 
     async fn stats(&self) -> CacheStats {
-        // Get count from database
-        let sql = format!("SELECT COUNT(*) FROM {}", self.table_name);
-        let count: i64 = sqlx::query_scalar(&sql)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or(0);
-
-        let mut stats = self.stats.read().unwrap().clone();
-        stats.size = count as usize;
-        stats
+        self.l1.stats().await
     }
 }
 

@@ -4,11 +4,11 @@ title: 'Integration: Open WebUI'
 
 # Integration: Open WebUI
 
-> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 Connect [Open WebUI](https://github.com/open-webui/open-webui) to EdgeQuake's **Ollama-compatible API** for a ChatGPT-style UI backed by Graph-RAG.
 
-**Ports (v0.19.0)**:
+**Ports (v0.23.0)**:
 
 | Service | URL |
 | ------- | --- |
@@ -36,18 +36,18 @@ Upload documents via EdgeQuake WebUI (`:3000`) or REST — not through Open WebU
 
 ## Quick start
 
-### 1. Start EdgeQuake (GHCR 0.19.0)
+### 1. Start EdgeQuake (GHCR 0.23.0)
 
 ```bash
-EDGEQUAKE_VERSION=0.19.0 docker compose -f docker-compose.quickstart.yml up -d
+EDGEQUAKE_VERSION=0.23.0 docker compose -f docker-compose.quickstart.yml up -d
 ```
 
 Images (SSOT from release CI):
 
 ```
-ghcr.io/raphaelmansuy/edgequake:0.19.0
-ghcr.io/raphaelmansuy/edgequake-frontend:0.19.0
-ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0
+ghcr.io/raphaelmansuy/edgequake:0.23.0
+ghcr.io/raphaelmansuy/edgequake-frontend:0.23.0
+ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0
 ```
 
 Verify:
@@ -100,10 +100,10 @@ Open **`http://localhost:8081`**, create an admin account, select model **`edgeq
 ## Docker Compose (EdgeQuake + Open WebUI)
 
 ```yaml
-# docker-compose.open-webui.yml — pin 0.19.0
+# docker-compose.open-webui.yml — pin 0.23.0
 services:
   postgres:
-    image: ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0
+    image: ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0
     environment:
       POSTGRES_USER: edgequake
       POSTGRES_PASSWORD: edgequake_secret
@@ -114,7 +114,7 @@ services:
       retries: 5
 
   api:
-    image: ghcr.io/raphaelmansuy/edgequake:0.19.0
+    image: ghcr.io/raphaelmansuy/edgequake:0.23.0
     ports:
       - "8080:8080"
     environment:
@@ -128,7 +128,7 @@ services:
         condition: service_healthy
 
   frontend:
-    image: ghcr.io/raphaelmansuy/edgequake-frontend:0.19.0
+    image: ghcr.io/raphaelmansuy/edgequake-frontend:0.23.0
     ports:
       - "3000:3000"
     environment:

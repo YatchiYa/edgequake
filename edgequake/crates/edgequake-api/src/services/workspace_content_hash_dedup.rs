@@ -66,6 +66,17 @@ pub async fn recycle_orphan_workspace_hash(
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to recycle orphan hash key: {e}")))?;
 
+    // SPEC-091 W2: typed ingestion_dedup recycle parity.
+    #[cfg(feature = "postgres")]
+    if let Some(content_hash) = content_hash_from_workspace_hash_key(hash_key, workspace_id) {
+        crate::services::ingestion_dedup_store::dual_delete_all(
+            state.pg_pool.as_ref(),
+            workspace_id,
+            &content_hash,
+        )
+        .await;
+    }
+
     Ok(())
 }
 

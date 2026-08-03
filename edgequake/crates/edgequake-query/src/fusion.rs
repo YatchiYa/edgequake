@@ -2,8 +2,9 @@
 //!
 //! Mix mode supports max-after-minmax blending, Reciprocal Rank Fusion (RRF),
 //! or LightRAG-style round-robin merge.
-//! Default: RRF. Set `EDGEQUAKE_MIX_FUSION=max_after_minmax` (legacy alias:
-//! `weighted`) or `round_robin` to ablate.
+//! Default: **round_robin** (SPEC-086 E2-occ / LightRAG Mix identity). Set
+//! `EDGEQUAKE_MIX_FUSION=rrf` or `max_after_minmax` (legacy alias: `weighted`)
+//! to ablate.
 //!
 //! SPEC-083 D-35: the historical "weighted" label implied a weighted sum; the
 //! implementation takes the **max** of per-arm weighted min-max contributions.
@@ -28,7 +29,7 @@ pub enum MixFusionMode {
     RoundRobin,
 }
 
-/// Read fusion mode from environment (default: RRF per SPEC-024 2.1).
+/// Read fusion mode from environment (default: round_robin — SPEC-086 E2-occ).
 pub fn mix_fusion_mode_from_env() -> MixFusionMode {
     match std::env::var("EDGEQUAKE_MIX_FUSION")
         .unwrap_or_default()
@@ -39,8 +40,10 @@ pub fn mix_fusion_mode_from_env() -> MixFusionMode {
         "weighted" | "max_after_minmax" | "max-after-minmax" | "max" => {
             MixFusionMode::MaxAfterMinMax
         }
-        "round_robin" | "round-robin" | "rr" | "lightrag" => MixFusionMode::RoundRobin,
-        _ => MixFusionMode::Rrf,
+        "rrf" | "reciprocal" | "reciprocal_rank" => MixFusionMode::Rrf,
+        // Empty / LightRAG aliases → product default (E2-occ).
+        "round_robin" | "round-robin" | "rr" | "lightrag" | "" => MixFusionMode::RoundRobin,
+        _ => MixFusionMode::RoundRobin,
     }
 }
 

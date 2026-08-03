@@ -19,8 +19,15 @@ import {
   type SortDirection,
   type SortField,
 } from "@/lib/documents/document-sort";
+import {
+  countClientStatusCounts,
+  type StatusCounts,
+} from "@/lib/documents/inventory-view-model";
 import { useMemo } from "react";
 import type { DocStatus } from "./use-document-preferences";
+
+export type { StatusCounts };
+export { countClientStatusCounts };
 
 /**
  * Options for useDocumentFiltering hook.
@@ -46,38 +53,6 @@ export interface UseDocumentFilteringOptions {
     failed: number;
     partial_failure?: number;
     cancelled?: number;
-  };
-}
-
-/**
- * Status counts for document status tabs.
- */
-export interface StatusCounts {
-  all: number;
-  pending: number;
-  processing: number;
-  completed: number;
-  failed: number;
-  partial_failure: number;
-  cancelled: number;
-}
-
-/**
- * Client-side status counts (SPEC-057 P0: failed excludes cancelled).
- */
-export function countClientStatusCounts(
-  docs: Array<{ status?: string | null }>,
-): StatusCounts {
-  return {
-    all: docs.length,
-    pending: docs.filter((d) => d.status === "pending").length,
-    processing: docs.filter((d) => d.status === "processing").length,
-    completed: docs.filter(
-      (d) => !d.status || d.status === "completed" || d.status === "indexed",
-    ).length,
-    failed: docs.filter((d) => d.status === "failed").length,
-    partial_failure: docs.filter((d) => d.status === "partial_failure").length,
-    cancelled: docs.filter((d) => d.status === "cancelled").length,
   };
 }
 

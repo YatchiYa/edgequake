@@ -4,7 +4,7 @@ title: 'LinkedIn Post — EdgeQuake v0.4.0'
 
 # LinkedIn Post — EdgeQuake v0.4.0
 
-> **Historical document.** Marketing snapshot for **v0.4.0**. Current product is **v0.19.0**. For up-to-date PDF vision, cancel/progress, and ops guidance see [PDF Processing](deep-dives/pdf-processing.md), [PDF Ingestion](tutorials/pdf-ingestion.md), and [CHANGELOG](../CHANGELOG.md). Not part of the living docs nav.
+> **Historical document.** Marketing snapshot for **v0.4.0**. Current product is **v0.23.0**. For up-to-date PDF vision, cancel/progress, and ops guidance see [PDF Processing](deep-dives/pdf-processing.md), [PDF Ingestion](tutorials/pdf-ingestion.md), and [CHANGELOG](../CHANGELOG.md). Not part of the living docs nav.
 
 **Title:** Why your RAG pipeline struggles with PDFs — and how we fixed it with LLM Vision
 

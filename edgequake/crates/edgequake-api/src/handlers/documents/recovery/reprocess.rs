@@ -964,6 +964,7 @@ pub(crate) async fn run_reprocess_failed(
                     lease_owner: None,
                     lease_token: None,
                     lease_expires_at: None,
+                    fairness_hold_until: None,
                 };
 
                 // Bind KV document.track_id to task id when a document row exists.

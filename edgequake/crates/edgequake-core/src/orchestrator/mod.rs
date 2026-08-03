@@ -16,14 +16,14 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────┐
-//! │                       EdgeQuake                              │
-//! │  ┌─────────────────────────────────────────────────────────┐ │
-//! │  │                    Orchestrator                          │ │
-//! │  │  - config: EdgeQuakeConfig                              │ │
-//! │  │  - storage: KV + Vector + Graph                         │ │
-//! │  │  - providers: LLM + Embedding                           │ │
-//! │  └────────────────────────┬────────────────────────────────┘ │
-//! │                           │                                  │
+//! │                       EdgeQuake                             │
+//! │  ┌─────────────────────────────────────────────────────────┐│
+//! │  │                    Orchestrator                         ││
+//! │  │  - config: EdgeQuakeConfig                              ││
+//! │  │  - storage: KV + Vector + Graph                         ││
+//! │  │  - providers: LLM + Embedding                           ││
+//! │  └────────────────────────┬────────────────────────────────┘│
+//! │                           │                                 │
 //! │     ┌─────────────────────┼─────────────────────┐           │
 //! │     │                     │                     │           │
 //! │     ▼                     ▼                     ▼           │
@@ -440,6 +440,20 @@ pub struct EdgeQuake {
     /// Defaults to NoopEntitySink — set via `with_relational_sink()` to enable dual-write.
     relational_sink: Arc<dyn edgequake_pipeline::RelationalEntitySink>,
 
+    /// SPEC-091 W1: relational chunk authority repository (optional).
+    /// Set via `with_relational_chunks()` so `EDGEQUAKE_CHUNK_TEXT_AUTHORITY`
+    /// dual/relational writes land on this path too.
+    relational_chunks: Option<Arc<dyn edgequake_storage::traits::domain::ChunkRepository>>,
+
+    /// SPEC-091 W3: typed chunk-embedding index (optional).
+    /// Set via `with_typed_embedding_index()` (by the API layer, which owns the
+    /// Postgres pool) so ingestion dual-writes chunk embeddings to typed
+    /// `chunk_embeddings` on this path too.
+    typed_embedding_index: Option<Arc<dyn edgequake_storage::traits::domain::EmbeddingIndex>>,
+
+    /// SPEC-091 IW2: typed fleet embedding index (entity/relationship/report).
+    fleet_embedding_index: Option<Arc<dyn edgequake_storage::traits::FleetEmbeddingIndex>>,
+
     /// Per-workspace vector registry (W7 / SPEC-024 pass 14).
     vector_registry: Option<Arc<dyn WorkspaceVectorRegistry>>,
 
@@ -464,6 +478,9 @@ impl EdgeQuake {
             pipeline: None,
             query_engine: None,
             relational_sink: Arc::new(edgequake_pipeline::NoopEntitySink),
+            relational_chunks: None,
+            typed_embedding_index: None,
+            fleet_embedding_index: None,
             vector_registry: None,
             workspace_service: None,
             strict_workspace_vectors: false,
@@ -498,6 +515,40 @@ impl EdgeQuake {
         sink: Arc<dyn edgequake_pipeline::RelationalEntitySink>,
     ) -> Self {
         self.relational_sink = sink;
+        self
+    }
+
+    /// Wire the relational chunk repository (SPEC-091 W1 cutover).
+    ///
+    /// When set and `EDGEQUAKE_CHUNK_TEXT_AUTHORITY` is `dual`/`relational`,
+    /// ingestion persists chunk text to the relational `chunks` spine as well.
+    pub fn with_relational_chunks(
+        mut self,
+        repo: Arc<dyn edgequake_storage::traits::domain::ChunkRepository>,
+    ) -> Self {
+        self.relational_chunks = Some(repo);
+        self
+    }
+
+    /// Wire the typed chunk-embedding index (SPEC-091 W3 cutover).
+    ///
+    /// When set, ingestion dual-writes chunk embeddings to typed
+    /// `chunk_embeddings` on this path. Injected by the API layer, which owns
+    /// the Postgres pool needed to build `PgChunkEmbeddingIndex`.
+    pub fn with_typed_embedding_index(
+        mut self,
+        index: Arc<dyn edgequake_storage::traits::domain::EmbeddingIndex>,
+    ) -> Self {
+        self.typed_embedding_index = Some(index);
+        self
+    }
+
+    /// Wire the typed fleet embedding index (SPEC-091 IW2).
+    pub fn with_fleet_embedding_index(
+        mut self,
+        index: Arc<dyn edgequake_storage::traits::FleetEmbeddingIndex>,
+    ) -> Self {
+        self.fleet_embedding_index = Some(index);
         self
     }
 

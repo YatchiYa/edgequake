@@ -125,6 +125,10 @@ pub fn build_ann_select_sql(
 mod tests {
     use super::*;
 
+    /// Env vars are process-global: tests that mutate them must be serialized
+    /// or parallel scheduling races (`set_var` vs `remove_var`) flake.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn default_policy_is_off() {
         let p = AnnExactReorderPolicy::default();
@@ -134,6 +138,7 @@ mod tests {
 
     #[test]
     fn relaxed_order_forces_reorder() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::remove_var("EDGEQUAKE_ANN_EXACT_REORDER");
         std::env::remove_var("EDGEQUAKE_ANN_REORDER_CANDIDATE_K");
         let p = AnnExactReorderPolicy::for_search("relaxed_order", 20);
@@ -143,6 +148,7 @@ mod tests {
 
     #[test]
     fn enabled_raises_candidate_k() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("EDGEQUAKE_ANN_EXACT_REORDER", "1");
         std::env::set_var("EDGEQUAKE_ANN_REORDER_CANDIDATE_K", "50");
         let p = AnnExactReorderPolicy::from_env();

@@ -4,7 +4,7 @@ title: 'EdgeQuake Architecture Overview'
 
 # EdgeQuake Architecture Overview
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 > Understanding the system design through first principles
 
@@ -14,7 +14,7 @@ title: 'EdgeQuake Architecture Overview'
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ EdgeQuake v0.19.0                                                       │
+│ EdgeQuake v0.23.0                                                       │
 │                                                                         │
 │  Client: WebUI :3000  |  REST/WS :8080  |  SDKs                         │
 │                      |                                                  │

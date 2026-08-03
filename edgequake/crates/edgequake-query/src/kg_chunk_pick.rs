@@ -102,22 +102,29 @@ impl KgChunkPickMethod {
     }
 }
 
-fn env_flag_on(name: &str) -> bool {
-    std::env::var(name)
-        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false)
+/// Default-on flags (SPEC-086 E2-occ product profile). Explicit `0`/`false`/`off` disables.
+fn env_flag_on_default_true(name: &str) -> bool {
+    match std::env::var(name) {
+        Ok(v) => !matches!(
+            v.to_ascii_lowercase().as_str(),
+            "0" | "false" | "no" | "off"
+        ),
+        Err(_) => true,
+    }
 }
 
-/// 024 Q1: LightRAG Step-3 — sort each entity's chunks by global citation frequency
-/// before applying `related_chunk_number` take.
+/// 024 Q1 / 086 E2-occ: LightRAG Step-3 — sort each entity's chunks by global
+/// citation frequency before applying `related_chunk_number` take.
+/// Product default **on**; set `EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=0` to disable.
 pub fn occurrence_sort_enabled() -> bool {
-    env_flag_on("EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT")
+    env_flag_on_default_true("EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT")
 }
 
-/// 024 Q2: LightRAG VECTOR path — uncapped pool, then take
+/// 024 Q2 / 086 E2-occ: LightRAG VECTOR path — uncapped pool, then take
 /// `related_chunk_number * n_entities / 2`.
+/// Product default **on**; set `EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=0` to disable.
 pub fn lr_vector_budget_enabled() -> bool {
-    env_flag_on("EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET")
+    env_flag_on_default_true("EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET")
 }
 
 /// LightRAG VECTOR budget: `related_chunk_number * n_entities / 2` (integer).
@@ -376,9 +383,9 @@ mod tests {
 
     #[test]
     fn occurrence_sort_prefers_high_citation_before_take() {
-        // Without sort: take(1) keeps storage-first "cold".
-        // With sort: "hot" cited by two entities wins.
-        std::env::remove_var("EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT");
+        // Opt-out: take(1) may keep storage-first "cold".
+        // Default-on / explicit 1: "hot" cited by two entities wins.
+        std::env::set_var("EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT", "0");
         let mut ctx = QueryContext::new();
         let mut e1 = RetrievedEntity::new("A", "PERSON", "d");
         e1.source_chunk_ids = vec!["cold".into(), "hot".into()];
@@ -389,9 +396,8 @@ mod tests {
         let unsorted = collect_kg_chunk_ids(&ctx, 1);
         assert!(unsorted.contains(&"cold".to_string()) || unsorted.contains(&"hot".to_string()));
 
-        std::env::set_var("EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT", "1");
-        let sorted = collect_kg_chunk_ids(&ctx, 1);
         std::env::remove_var("EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT");
+        let sorted = collect_kg_chunk_ids(&ctx, 1);
         assert_eq!(sorted, vec!["hot".to_string()]);
     }
 

@@ -103,6 +103,7 @@ async fn test_postgres_extensions_pgvector_and_age_available() {
 // ============ KV Storage Tests ============
 
 #[tokio::test]
+#[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_*"]
 async fn test_postgres_kv_basic_operations() {
     let config = require_postgres!();
 
@@ -150,6 +151,7 @@ async fn test_postgres_kv_basic_operations() {
 }
 
 #[tokio::test]
+#[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_*"]
 async fn test_postgres_kv_bulk_operations() {
     let config = require_postgres!();
 
@@ -191,6 +193,7 @@ async fn test_postgres_kv_bulk_operations() {
 // ============ Vector Storage Tests ============
 
 #[tokio::test]
+#[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_*"]
 async fn test_pgvector_basic_operations() {
     let config = require_postgres!();
 
@@ -253,6 +256,7 @@ async fn test_pgvector_basic_operations() {
 }
 
 #[tokio::test]
+#[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_*"]
 async fn test_pgvector_similarity_search() {
     let config = require_postgres!();
 
@@ -497,6 +501,7 @@ async fn test_postgres_age_graph_traversal() {
 // ============ Full E2E with PostgreSQL ============
 
 #[tokio::test]
+#[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_*"]
 async fn test_postgres_full_e2e_pipeline() {
     let config = require_postgres!();
 
@@ -1358,6 +1363,7 @@ async fn test_postgres_source_tracking_in_relationships() {
 
 /// Test source tracking roundtrip through full E2E pipeline
 #[tokio::test]
+#[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_*"]
 async fn test_postgres_source_tracking_e2e() {
     let config = require_postgres!();
 

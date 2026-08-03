@@ -87,8 +87,8 @@ fn spec017_chunker_strategy_changes_output() {
 #[test]
 fn spec017_json_prompts_single_source() {
     let schema = EntityExtractionSchema::server_default();
-    let primary = json_extraction_prompt("Hello world.", &schema);
-    let glean = json_gleaning_prompt("Hello world.", &["ALICE".into()], &schema);
+    let primary = json_extraction_prompt("Hello world.", &schema, "English");
+    let glean = json_gleaning_prompt("Hello world.", &["ALICE".into()], &schema, "English");
 
     assert!(primary.contains("\"entities\""));
     assert!(glean.contains("\"entities\""));

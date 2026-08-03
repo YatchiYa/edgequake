@@ -8,6 +8,35 @@ use std::env;
 use std::time::Duration;
 use uuid::Uuid;
 
+/// Embedded migrations (SSOT: `edgequake/migrations`). Used to auto-provision
+/// the dedicated scratch test database so tests never touch the shared dev DB.
+static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
+
+/// Name of the dedicated scratch test database.
+///
+/// WHY (root cause of "many documents with the same title" in the dev UI):
+/// tests historically resolved `DATABASE_URL` / `/tmp/edgequake-db-url`, both of
+/// which point at the **shared dev database**. KV/vector tables get a per-test
+/// random namespace, but post-SPEC-091 `public.documents` is a single global
+/// typed table — so every document-writing e2e test leaked rows into the dev
+/// document store (e.g. 1600 `Wipe Scale` rows, repeated `Tech Article PG`).
+/// Routing every test to an isolated `{dev}_test` database makes that pollution
+/// impossible while preserving the exact already-migrated schema tests expect.
+/// Override with `EDGEQUAKE_TEST_DATABASE` (e.g. CI pointing at another cluster).
+fn test_database_name(base: &str) -> String {
+    if let Ok(over) = env::var("EDGEQUAKE_TEST_DATABASE") {
+        if !over.trim().is_empty() {
+            return over.trim().to_string();
+        }
+    }
+    // Idempotent: a base already suffixed `_test` is left as-is.
+    if base.ends_with("_test") {
+        base.to_string()
+    } else {
+        format!("{base}_test")
+    }
+}
+
 /// Soft-skip unless `EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1` (SPEC-060: nightly hard gate).
 pub fn require_or_skip_postgres(namespace_prefix: &str) -> Option<PostgresConfig> {
     if let Some(cfg) = contract_postgres_config(namespace_prefix) {
@@ -28,7 +57,17 @@ pub fn require_or_skip_postgres(namespace_prefix: &str) -> Option<PostgresConfig
 }
 
 /// Build a postgres config when `DATABASE_URL` or `POSTGRES_PASSWORD` is set; otherwise `None`.
+///
+/// The resolved database is redirected to a dedicated scratch test database
+/// (see [`test_database_name`]) and auto-provisioned once per process (see
+/// [`ensure_test_db_ready`]) so tests run fully isolated from the dev database.
 pub fn contract_postgres_config(namespace_prefix: &str) -> Option<PostgresConfig> {
+    let cfg = resolve_postgres_config(namespace_prefix)?;
+    ensure_test_db_ready(&cfg);
+    Some(cfg)
+}
+
+fn resolve_postgres_config(namespace_prefix: &str) -> Option<PostgresConfig> {
     if let Ok(url) = env::var("DATABASE_URL") {
         if !url.trim().is_empty() {
             return postgres_config_from_database_url(url.trim(), namespace_prefix);
@@ -60,7 +99,7 @@ fn postgres_config_from_database_url(url: &str, namespace_prefix: &str) -> Optio
     Some(PostgresConfig {
         host,
         port,
-        database,
+        database: test_database_name(&database),
         user: user.to_string(),
         password: password.to_string(),
         namespace: isolated_namespace(namespace_prefix),
@@ -73,13 +112,14 @@ fn postgres_config_from_database_url(url: &str, namespace_prefix: &str) -> Optio
 }
 
 fn postgres_config_from_env(password: String, namespace_prefix: &str) -> PostgresConfig {
+    let base_db = env::var("POSTGRES_DB").unwrap_or_else(|_| "edgequake".to_string());
     PostgresConfig {
         host: env::var("POSTGRES_HOST").unwrap_or_else(|_| "localhost".to_string()),
         port: env::var("POSTGRES_PORT")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(5432),
-        database: env::var("POSTGRES_DB").unwrap_or_else(|_| "edgequake".to_string()),
+        database: test_database_name(&base_db),
         user: env::var("POSTGRES_USER").unwrap_or_else(|_| "edgequake".to_string()),
         password,
         namespace: isolated_namespace(namespace_prefix),
@@ -88,6 +128,66 @@ fn postgres_config_from_env(password: String, namespace_prefix: &str) -> Postgre
         connect_timeout: Duration::from_secs(10),
         idle_timeout: Duration::from_secs(60),
         ..Default::default()
+    }
+}
+
+/// Provision the scratch test database once per test process: create it when
+/// missing, then apply all embedded migrations so tests see an already-migrated
+/// schema identical to (but isolated from) the dev database.
+///
+/// Best-effort: when the server is unreachable the caller still returns a
+/// config and the test soft-skips / fails on connect exactly as it would
+/// against the dev database today. Runs on a dedicated thread + runtime so it
+/// is safe to call from inside an async test (no nested-runtime panic).
+fn ensure_test_db_ready(cfg: &PostgresConfig) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let cfg = cfg.clone();
+        let _ = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("test-db provision runtime");
+            rt.block_on(provision_test_db(cfg));
+        })
+        .join();
+    });
+}
+
+async fn provision_test_db(cfg: PostgresConfig) {
+    let admin_url = format!(
+        "postgres://{}:{}@{}:{}/postgres",
+        cfg.user, cfg.password, cfg.host, cfg.port
+    );
+    let Ok(admin) = sqlx::PgPool::connect(&admin_url).await else {
+        return;
+    };
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)")
+            .bind(&cfg.database)
+            .fetch_one(&admin)
+            .await
+            .unwrap_or(false);
+    if !exists {
+        // CREATE DATABASE cannot be parameterized; the name is derived internally
+        // (`{base}_test` or the `EDGEQUAKE_TEST_DATABASE` override), never user SQL.
+        let _ = sqlx::query(&format!("CREATE DATABASE {}", cfg.database))
+            .execute(&admin)
+            .await;
+    }
+    admin.close().await;
+
+    let test_url = format!(
+        "postgres://{}:{}@{}:{}/{}",
+        cfg.user, cfg.password, cfg.host, cfg.port, cfg.database
+    );
+    if let Ok(pool) = sqlx::PgPool::connect(&test_url).await {
+        // Idempotent: applies only pending migrations, so concurrent test
+        // processes and repeat runs converge without dropping anything.
+        if let Err(e) = MIGRATOR.run(&pool).await {
+            eprintln!("test-db provisioning migrate failed: {e}");
+        }
+        pool.close().await;
     }
 }
 

@@ -1,54 +1,73 @@
 "use client";
 
+import { StatusBadge } from "@/components/documents/status-badge";
 import {
   getDocumentDisplayStatus,
-  isProcessingStatus,
-  normalizeStatus,
-  StatusBadge,
-} from "@/components/documents/status-badge";
+  isTerminalStatus,
+} from "@/lib/documents/status-domain";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { getDocuments } from "@/lib/api/edgequake";
 import {
-  scopedQueryKey,
-  usePipelineWorkspace,
-} from "@/lib/pipeline/pipeline-workspace-context";
-import { useQuery } from "@tanstack/react-query";
-import { FileText, Loader2 } from "lucide-react";
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { usePipelineDocuments } from "@/hooks/use-pipeline-documents";
+import { isInitialLoading } from "@/lib/layout/cls-stability";
+import {
+  activeDocumentCount,
+  hiddenPreviewCount,
+} from "@/lib/pipeline/pipeline-monitor-counts";
+import { FileText } from "lucide-react";
 
 export function PipelineProcessingDocumentsCard() {
-  const { selectedTenantId, selectedWorkspaceId } = usePipelineWorkspace();
-
-  const { data: documents, isLoading } = useQuery({
-    queryKey: scopedQueryKey("documents", selectedTenantId, selectedWorkspaceId),
-    queryFn: () => getDocuments({ page: 1, page_size: 50 }),
+  const { data, isLoading } = usePipelineDocuments({
     refetchInterval: 2000,
-    select: (data) =>
-      data.items.filter((doc) =>
-        isProcessingStatus(normalizeStatus(doc.status)),
-      ),
   });
+  const cold = isInitialLoading(isLoading, Boolean(data));
+  const documents =
+    data?.items.filter(
+      (doc) => !isTerminalStatus(getDocumentDisplayStatus(doc)),
+    ) ?? [];
+  const activeCount = activeDocumentCount(data?.status_counts);
+  const hiddenActiveCount = hiddenPreviewCount(activeCount, documents.length);
 
   return (
-    <Card>
+    <Card data-testid="spec100-pipeline-active-docs">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg flex items-center gap-2">
           <FileText className="h-5 w-5" />
-          Processing Documents
-          {documents && documents.length > 0 && (
-            <Badge variant="secondary">{documents.length}</Badge>
-          )}
+          Active Documents
+          {activeCount > 0 && <Badge variant="secondary">{activeCount}</Badge>}
         </CardTitle>
-        <CardDescription>Documents currently in the pipeline</CardDescription>
+        <CardDescription>
+          Queued and processing documents
+          {hiddenActiveCount > 0
+            ? ` · showing ${documents.length} of ${activeCount}`
+            : ""}
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
-          <div className="flex flex-col justify-center items-center gap-2 py-4">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Loading documents...</p>
+        {cold ? (
+          <div className="h-64 space-y-2" data-testid="spec100-pipeline-active-docs-skeleton">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex h-14 items-center gap-3 rounded-lg border px-2"
+              >
+                <Skeleton className="h-4 w-4 shrink-0" />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <Skeleton className="h-5 w-20 rounded-full" />
+              </div>
+            ))}
           </div>
-        ) : documents && documents.length > 0 ? (
+        ) : documents.length > 0 ? (
           <ScrollArea className="h-64">
             <div className="space-y-2">
               {documents.map((doc) => (
@@ -75,9 +94,11 @@ export function PipelineProcessingDocumentsCard() {
             </div>
           </ScrollArea>
         ) : (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No documents currently processing
-          </p>
+          <div className="flex h-64 items-center justify-center">
+            <p className="text-sm text-muted-foreground text-center">
+              No queued or processing documents
+            </p>
+          </div>
         )}
       </CardContent>
     </Card>

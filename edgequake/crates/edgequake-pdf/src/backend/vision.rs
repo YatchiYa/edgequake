@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use edgequake_pdf2md::{convert_from_bytes, ConversionConfig, FileCheckpointStore};
+use edgequake_pdf2md::{convert_from_bytes, ConversionConfig, FileCheckpointStore, PageSelection};
 use tracing::{info, warn};
 
 use super::{PdfConversionConfig, PdfConverter};
@@ -81,6 +81,15 @@ impl PdfConverter for VisionPdfConverter {
         }
         if vision.no_resume {
             builder = builder.no_resume(true);
+        }
+        // Prefer vision.pages; fall back to top-level PdfConversionConfig.pages.
+        let pages = vision
+            .pages
+            .clone()
+            .or_else(|| config.pages.clone())
+            .unwrap_or(PageSelection::All);
+        if !matches!(pages, PageSelection::All) {
+            builder = builder.pages(pages);
         }
 
         let conversion_config = builder

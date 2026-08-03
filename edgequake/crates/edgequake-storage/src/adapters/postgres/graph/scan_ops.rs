@@ -387,14 +387,16 @@ impl PostgresAGEGraphStorage {
         let probe_limit = super::helpers::SOURCE_CHUNK_PROBE_LIMIT as i32;
 
         // SPEC-083 / X-03: never drop non-backfilled edges (eq_* IS NULL).
+        // Contract: modern path resolves endpoints via eq_source_id / eq_target_id
+        // (coalesce_endpoint) — not AGE parent text-cast JOINs.
         let eq_present = self.eq_columns_present(&mut conn).await?;
         let src_expr = if eq_present {
-            super::helpers::coalesce_endpoint("e", "source")
+            super::helpers::coalesce_endpoint("e", "source") // eq_source_id
         } else {
             super::helpers::prop_only_endpoint("e", "source")
         };
         let tgt_expr = if eq_present {
-            super::helpers::coalesce_endpoint("e", "target")
+            super::helpers::coalesce_endpoint("e", "target") // eq_target_id
         } else {
             super::helpers::prop_only_endpoint("e", "target")
         };
@@ -456,7 +458,8 @@ impl PostgresAGEGraphStorage {
         };
 
         let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
-        let mut by_key: HashMap<(String, String), GraphEdge> = HashMap::new();
+        // SPEC-098 D-30 / Symptom F: collapse on (src, tgt, rel), not (src, tgt).
+        let mut by_key: HashMap<(String, String, String), GraphEdge> = HashMap::new();
         let modern_rows = match sqlx::query(&modern_sql)
             .bind(&exact_ids)
             .bind(&chunk_prefixes)
@@ -473,22 +476,7 @@ impl PostgresAGEGraphStorage {
             }
         };
         for row in modern_rows {
-            let props: serde_json::Value = row.get("props");
-            let source: String = row.get("source_id");
-            let target: String = row.get("target_id");
-            if source.is_empty() || target.is_empty() {
-                continue;
-            }
-            let Some(obj) = props.as_object() else {
-                continue;
-            };
-            by_key
-                .entry((source.clone(), target.clone()))
-                .or_insert(GraphEdge {
-                    source,
-                    target,
-                    properties: obj.clone().into_iter().collect(),
-                });
+            Self::insert_discovered_edge(&mut by_key, row);
         }
 
         if let Some(legacy_sql) = legacy_sql {
@@ -505,29 +493,94 @@ impl PostgresAGEGraphStorage {
                 }
             };
             for row in legacy_rows {
-                let props: serde_json::Value = row.get("props");
-                let source: String = row.get("source_id");
-                let target: String = row.get("target_id");
-                if source.is_empty() || target.is_empty() {
-                    continue;
-                }
-                let Some(obj) = props.as_object() else {
-                    continue;
-                };
-                by_key
-                    .entry((source.clone(), target.clone()))
-                    .or_insert(GraphEdge {
-                        source,
-                        target,
-                        properties: obj.clone().into_iter().collect(),
-                    });
+                Self::insert_discovered_edge(&mut by_key, row);
             }
         }
+
+        // SPEC-098 Symptom F: poisoned source_ids leave singular source_chunk_id /
+        // source_document_id as the only citation. Bounded exact probes (no SeqScan
+        // unnest of source_chunk_ids arrays — SPEC-071).
+        let singular_sql = format!(
+            r#"
+            WITH probes AS (
+              SELECT unnest($1::text[]) AS probe_id
+              UNION ALL
+              SELECT pref || gs.i::text
+              FROM unnest($2::text[]) AS pref
+              CROSS JOIN generate_series(0, $3::int - 1) AS gs(i)
+            )
+            SELECT
+                ag_catalog.agtype_to_json(e.properties) AS props,
+                {src} AS source_id,
+                {tgt} AS target_id
+            FROM {graph}."EDGE" e
+            WHERE {tenant_where}
+              AND {src} IS NOT NULL
+              AND {tgt} IS NOT NULL
+              AND (
+                ({props})::jsonb->>'source_chunk_id' IN (SELECT probe_id FROM probes)
+                OR ({props})::jsonb->>'source_document_id' IN (SELECT probe_id FROM probes)
+              )
+            LIMIT 5000
+            "#,
+            props = props_expr,
+            graph = self.graph_name,
+            tenant_where = tenant_where_e,
+            src = src_expr,
+            tgt = tgt_expr,
+        );
+        let singular_rows = match sqlx::query(&singular_sql)
+            .bind(&exact_ids)
+            .bind(&chunk_prefixes)
+            .bind(probe_limit)
+            .fetch_all(&mut **timed.as_mut())
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = timed.rollback().await;
+                return Err(StorageError::Database(format!(
+                    "Source-prefix singular edge query failed: {e}"
+                )));
+            }
+        };
+        for row in singular_rows {
+            Self::insert_discovered_edge(&mut by_key, row);
+        }
+
         timed.commit().await?;
 
         let mut out: Vec<GraphEdge> = by_key.into_values().collect();
-        out.sort_by(|a, b| (&a.source, &a.target).cmp(&(&b.source, &b.target)));
+        out.sort_by(|a, b| {
+            let ar = crate::graph_batch_dedupe::normalize_rel_type(&a.properties);
+            let br = crate::graph_batch_dedupe::normalize_rel_type(&b.properties);
+            (&a.source, &a.target, ar).cmp(&(&b.source, &b.target, br))
+        });
         Ok(out)
+    }
+
+    fn insert_discovered_edge(
+        by_key: &mut HashMap<(String, String, String), GraphEdge>,
+        row: sqlx::postgres::PgRow,
+    ) {
+        let props: serde_json::Value = row.get("props");
+        let source: String = row.get("source_id");
+        let target: String = row.get("target_id");
+        if source.is_empty() || target.is_empty() {
+            return;
+        }
+        let Some(obj) = props.as_object() else {
+            return;
+        };
+        let properties: HashMap<String, serde_json::Value> = obj.clone().into_iter().collect();
+        let rel = crate::graph_batch_dedupe::normalize_rel_type(&properties);
+        by_key
+            .entry((source.clone(), target.clone(), rel))
+            .or_insert(GraphEdge {
+                source,
+                target,
+                properties,
+            });
     }
 
     pub(super) async fn pg_find_edge_by_relationship_id(

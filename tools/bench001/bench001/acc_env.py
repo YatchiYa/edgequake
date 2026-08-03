@@ -8,7 +8,9 @@ from ``/tmp/edgequake-start.sh`` (Makefile Acc backend start script).
 Publication Acc pins (forced, not setdefault):
   text LLM / vision / judge = mistral-small-latest
   embedding = mistral-embed (Mistral embedding API — not a chat model)
-  chunk = 1200 / overlap 100, adaptive off, fusion rrf
+  chunk = 1200 / overlap 100, adaptive off
+  Mix Acc law (SPEC-086) = E2-occ: round_robin · rerank off · bfs · retrieval
+  rank · LR VECTOR budget · occurrence_sort · Fact L2 fact_replace
 """
 
 from __future__ import annotations
@@ -67,8 +69,22 @@ PUBLICATION_ENV: dict[str, str] = {
     "EDGEQUAKE_CHUNK_SIZE": ACC_CHUNK_SIZE,
     "EDGEQUAKE_CHUNK_OVERLAP": ACC_CHUNK_OVERLAP,
     "EDGEQUAKE_MIX_ARM_GATE": "false",
-    "EDGEQUAKE_MIX_FUSION": "rrf",
-    "EDGEQUAKE_HYBRID_FUSION": "rrf",
+    # SPEC-086 Acc law = E2-occ (prior P0 rrf is labeled peer only).
+    "EDGEQUAKE_MIX_FUSION": "round_robin",
+    "EDGEQUAKE_HYBRID_FUSION": "round_robin",
+    "BENCH001_ALLOW_ROUND_ROBIN": "1",
+    "BENCH001_EQ_ENABLE_RERANK": "0",
+    "EDGEQUAKE_ENTITY_RANK": "retrieval",
+    "EDGEQUAKE_GRAPH_WALK": "bfs",
+    "EDGEQUAKE_KG_CHUNK_PICK": "vector",
+    "EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET": "1",
+    "EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT": "1",
+    "EDGEQUAKE_BM25_RETRIEVAL": "1",
+    "EDGEQUAKE_L2_BM25_UNION": "1",
+    "EDGEQUAKE_L2_BM25_MODE": "fact_replace",
+    "EDGEQUAKE_L2_BM25_MIX_TOP_K": "30",
+    # SPEC-103 LAW-C7: Acc cold peer — warm LLM cache is never a Beat claim.
+    "EDGEQUAKE_LLM_CACHE": "0",
     # SPEC-001 Phase 1 relevancy prune — OFF for Acc headline (gate not met).
     # Cosine ablation: set PRUNE=1 and SCORE=cosine on the Acc server process.
     "EDGEQUAKE_MIX_RELEVANCY_PRUNE": "0",
@@ -77,7 +93,7 @@ PUBLICATION_ENV: dict[str, str] = {
     "EDGEQUAKE_MIX_RELEVANCY_MIN_KEEP": "8",
     "EDGEQUAKE_MIX_RELEVANCY_SCORE_FLOOR": "0.25",
     "EDGEQUAKE_MIX_GRAPH_SOFT_PRUNE": "0",
-    # CE / PathRAG Acc headline: BM25 + PATH_PRUNE off (T011703Z BM25+path=0.4 Acc loss).
+    # CE / PathRAG Acc headline: PATH_PRUNE off (T011703Z BM25+path=0.4 Acc loss).
     # Soft path only with labeled CE+protect (F2a / path_pack_v1).
     "EDGEQUAKE_RERANKER": "bm25",
     "EDGEQUAKE_PATH_PRUNE": "0",
@@ -329,17 +345,25 @@ def backend_pin_mismatches(health: dict[str, Any]) -> list[str]:
 
     qe = ((health.get("operational") or {}).get("query_engine") or {})
     mix = str(qe.get("mix_fusion") or "").lower()
-    allow_rr = (os.environ.get("BENCH001_ALLOW_ROUND_ROBIN") or "").strip().lower() in {
+    # SPEC-086 Acc law default = round_robin. Legacy P0 rrf peers set
+    # BENCH001_ALLOW_RRF_LEGACY=1 (or unset ALLOW_ROUND_ROBIN and force rrf).
+    allow_rr = (os.environ.get("BENCH001_ALLOW_ROUND_ROBIN") or "1").strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
     }
-    if mix and mix != "rrf":
-        if allow_rr and mix in {"round_robin", "rr", "lightrag"}:
-            pass  # 022 P2a labeled LightRAG-parity fusion ablation
+    allow_rrf_legacy = (
+        os.environ.get("BENCH001_ALLOW_RRF_LEGACY") or ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if mix:
+        if mix in {"round_robin", "rr", "lightrag"} and allow_rr:
+            pass  # 086 Acc law / labeled RR peers
+        elif mix == "rrf" and (allow_rrf_legacy or not allow_rr):
+            pass  # prior P0 Acc peer
         else:
-            mismatches.append(f"mix_fusion={mix} (want rrf)")
+            want = "round_robin" if allow_rr else "rrf"
+            mismatches.append(f"mix_fusion={mix} (want {want})")
     return mismatches
 
 

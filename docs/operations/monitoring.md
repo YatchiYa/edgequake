@@ -2,7 +2,7 @@
 title: 'Monitoring Guide'
 ---
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Monitoring Guide
 
@@ -43,7 +43,7 @@ EdgeQuake provides built-in health endpoints:
 
 | Endpoint      | Purpose             | Response                  |
 | ------------- | ------------------- | ------------------------- |
-| `GET /health` | Basic health        | `{ "status": "healthy", "version": "0.19.0", ... }` |
+| `GET /health` | Basic health        | `{ "status": "healthy", "version": "0.23.0", ... }` |
 | `GET /ready`  | Readiness check     | JSON blockers; **503** when not ready |
 | `GET /live`   | Kubernetes liveness | Process check             |
 | `GET /api/v1/pipeline/queue-metrics` | Ingest backpressure + fairness | Pending depth, park waiters, store contention |
@@ -57,10 +57,20 @@ curl http://localhost:8080/health
 ```json
 {
   "status": "healthy",
-  "version": "0.19.0",
-  "storage_mode": "postgresql"
+  "version": "0.23.0",
+  "storage_mode": "postgresql",
+  "workspace_id": "default",
+  "components": {
+    "kv_storage": true,
+    "vector_storage": true,
+    "graph_storage": true,
+    "llm_provider": true
+  },
+  "llm_provider_name": "ollama"
 }
 ```
+
+`/health` is **liveness** (HTTP 200 while degraded, `status: "degraded"`). Use `/ready` for traffic gating. A `build_info` block (git hash, timestamp) is attached when the binary carries build metadata.
 
 ### Readiness Check
 
@@ -90,7 +100,7 @@ curl http://localhost:8080/ready
 }
 ```
 
-Common `/ready` blockers (v0.19.0):
+Common `/ready` blockers (v0.23.0):
 
 | Blocker prefix | Cause | Operator action |
 | -------------- | ----- | ----------------- |

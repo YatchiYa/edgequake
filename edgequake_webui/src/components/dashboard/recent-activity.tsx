@@ -40,17 +40,18 @@ const statusConfig = {
 export function RecentActivity({ documents, isLoading }: RecentActivityProps) {
   const { t } = useTranslation();
 
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">{t('dashboard.recentActivity.title', 'Recent Activity')}</CardTitle>
-          <CardDescription>
-            {t('dashboard.recentActivity.subtitle', 'Latest document uploads and processing')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
+  return (
+    <Card data-testid="spec100-dashboard-activity">
+      <CardHeader>
+        <CardTitle className="text-lg">{t('dashboard.recentActivity.title', 'Recent Activity')}</CardTitle>
+        <CardDescription>
+          {t('dashboard.recentActivity.subtitle', 'Latest document uploads and processing')}
+        </CardDescription>
+      </CardHeader>
+      {/* SPEC-100: min-h matches 5-row skeleton / ScrollArea so empty↔list does not CLS */}
+      <CardContent className="min-h-[300px]">
+        {isLoading ? (
+          <div className="space-y-3" data-testid="spec100-dashboard-activity-skeleton">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 p-3 rounded-lg border">
                 <Skeleton className="h-8 w-8 rounded" />
@@ -62,22 +63,8 @@ export function RecentActivity({ documents, isLoading }: RecentActivityProps) {
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">{t('dashboard.recentActivity.title', 'Recent Activity')}</CardTitle>
-        <CardDescription>
-          {t('dashboard.recentActivity.subtitle', 'Latest document uploads and processing')}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {documents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
+        ) : documents.length === 0 ? (
+          <div className="flex min-h-[260px] flex-col items-center justify-center py-8 text-center">
             <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
               <FileText className="h-6 w-6 text-muted-foreground" />
             </div>

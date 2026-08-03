@@ -270,16 +270,32 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
 
         let mut node_batch: Vec<(String, HashMap<String, serde_json::Value>)> =
             Vec::with_capacity(ordered.len());
+        let mut sink_rows: Vec<crate::merger::EntitySinkRow> = Vec::with_capacity(ordered.len());
+        let mut lineage_links: Vec<crate::merger::EntityLineageLink> = Vec::new();
+        let ws = self.workspace_id.as_deref().unwrap_or("default");
 
         for (i, outcome) in ordered {
+            let key = &keys[i];
+            // SPEC-098 LAW-098-2: KEEP is AGE-only. Saturated entities skip
+            // graph mutation but must still ensure the relational spine so
+            // typed fleet mirror can resolve entity:NAME → entities.id.
             if outcome.skipped_saturated {
                 stats.entities_skipped_saturated += 1;
+                stats.entities_spine_ensured_saturated += 1;
+                sink_rows.push(crate::merger::EntitySinkRow {
+                    name: key.clone(),
+                    entity_type: entity_types[i].clone(),
+                    description: descriptions[i].clone(),
+                    tenant_id: self.tenant_id.clone(),
+                    workspace_id: self.workspace_id.clone(),
+                    source_chunk_ids: source_chunk_ids[i].clone(),
+                });
                 continue;
             }
             // Entity vector IDs are recorded in upsert_vectors_chunked (SPEC-057 P3).
             let _ = outcome.vector_id;
-            if let Some(key) = outcome.graph_key_created {
-                stats.artifacts.graph_nodes_created.push(key);
+            if let Some(graph_key) = outcome.graph_key_created {
+                stats.artifacts.graph_nodes_created.push(graph_key);
             }
             node_batch.push((outcome.node_id, outcome.properties));
             if outcome.is_new {
@@ -288,52 +304,54 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 stats.entities_updated += 1;
             }
 
-            let key = &keys[i];
-            // CQRS relational sink (SPEC-021)
-            self.relational_sink
-                .upsert_entity(
-                    key,
-                    &entity_types[i],
-                    &descriptions[i],
-                    self.tenant_id.as_deref(),
-                    self.workspace_id.as_deref(),
-                    &source_chunk_ids[i],
-                )
-                .await
-                .unwrap_or_else(|e| {
-                    tracing::warn!(
-                        entity = %key,
-                        error = %e,
-                        "Relational entity sink failed (best-effort; graph write succeeded)"
-                    );
-                });
-            // Lineage sink (SPEC-032 W-08 / SPEC-047 P4): batch chunk→entity links
-            let ws = self.workspace_id.as_deref().unwrap_or("default");
-            let links: Vec<crate::merger::EntityLineageLink> = source_chunk_ids[i]
-                .iter()
-                .map(|chunk_id| crate::merger::EntityLineageLink {
+            // SPEC-091 IP1: collect CQRS rows for one batch upsert (LAW-IP2).
+            sink_rows.push(crate::merger::EntitySinkRow {
+                name: key.clone(),
+                entity_type: entity_types[i].clone(),
+                description: descriptions[i].clone(),
+                tenant_id: self.tenant_id.clone(),
+                workspace_id: self.workspace_id.clone(),
+                source_chunk_ids: source_chunk_ids[i].clone(),
+            });
+            for chunk_id in &source_chunk_ids[i] {
+                lineage_links.push(crate::merger::EntityLineageLink {
                     chunk_id: chunk_id.clone(),
                     entity_name: key.to_string(),
                     workspace_id: ws.to_string(),
-                })
-                .collect();
-            if !links.is_empty() {
-                self.lineage_sink
-                    .record_entity_links_batch(&links)
-                    .await
-                    .unwrap_or_else(|e| {
-                        tracing::warn!(
-                            entity = %key,
-                            count = links.len(),
-                            error = %e,
-                            "Lineage sink record_entity_links_batch failed (best-effort)"
-                        );
-                    });
+                });
             }
         }
 
         if !node_batch.is_empty() {
             self.graph_storage.upsert_nodes_batch(&node_batch).await?;
+        }
+
+        if !sink_rows.is_empty() {
+            if let Err(e) = self.relational_sink.upsert_entities_batch(&sink_rows).await {
+                tracing::warn!(
+                    count = sink_rows.len(),
+                    error = %e,
+                    "Relational entity sink batch failed"
+                );
+                if edgequake_storage::vector_backend_reads_typed(
+                    edgequake_storage::vector_backend_from_env(),
+                ) {
+                    return Err(e);
+                }
+            }
+        }
+
+        if !lineage_links.is_empty() {
+            self.lineage_sink
+                .record_entity_links_batch(&lineage_links)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        count = lineage_links.len(),
+                        error = %e,
+                        "Lineage sink record_entity_links_batch failed (best-effort)"
+                    );
+                });
         }
 
         Ok(())

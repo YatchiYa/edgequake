@@ -114,6 +114,15 @@ pub struct WorkspaceResponse {
     /// When true, unknown types are remapped to OTHER/CONCEPT (default true).
     pub entity_types_strict: bool,
 
+    /// Configured extraction language override (SPEC-096).
+    /// `null` / omitted means inherit `EDGEQUAKE_EXTRACTION_LANGUAGE` or English.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extraction_language: Option<String>,
+
+    /// Custom entity-type → hex color map for graph visualization (SPEC-102).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
+
     /// Creation timestamp.
     pub created_at: String,
     /// Last update timestamp.

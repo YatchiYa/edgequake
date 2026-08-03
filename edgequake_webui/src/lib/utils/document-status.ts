@@ -9,7 +9,7 @@ import {
   getDocumentDisplayStatus,
   isProcessingStatus,
   type DocumentStatus,
-} from "@/components/documents/status-badge";
+} from "@/lib/documents/status-domain";
 import type { Document } from "@/types";
 import { formatGraphMergeStageMessage } from "@/lib/pipeline/graph-merge-progress";
 
@@ -174,6 +174,11 @@ export function resolveDocumentDisplayStatus(
       stageMsg.includes('interrupted during'))
   ) {
     return 'partial_success';
+  }
+
+  // SPEC-098 LAW-098-11: never collapse lifecycle delete_failed → pipeline Failed.
+  if (legacyStatus === "delete_failed" || baseStatus === "delete_failed") {
+    return "delete_failed";
   }
 
   const terminalError = getEffectiveErrorMessage(doc);

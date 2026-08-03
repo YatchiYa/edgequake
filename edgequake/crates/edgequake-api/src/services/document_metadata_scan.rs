@@ -44,12 +44,14 @@ pub async fn load_workspace_metadata_values(
 }
 
 /// Load all `(key, metadata)` pairs via indexed suffix scan (unscoped).
+///
+/// SPEC-091: when the metadata family is relational, enumerate typed
+/// `documents` shells (`shell_metadata_keys`) — KV suffix scan is empty after
+/// migration 125 and would otherwise make orphan reconcile a no-op.
 pub async fn load_all_document_metadata_entries(
     kv_storage: &(dyn KVStorage + Send + Sync),
 ) -> ApiResult<Vec<(String, serde_json::Value)>> {
-    let keys = kv_storage
-        .keys_with_suffix(DOCUMENT_METADATA_SUFFIX)
-        .await?;
+    let keys = load_all_document_metadata_keys(kv_storage).await?;
     if keys.is_empty() {
         return Ok(vec![]);
     }
@@ -59,6 +61,41 @@ pub async fn load_all_document_metadata_entries(
         .zip(values)
         .filter_map(|(key, value)| value.map(|v| (key, v)))
         .collect())
+}
+
+/// Key enumeration for unscoped metadata scans (typed shell → KV fallback).
+async fn load_all_document_metadata_keys(
+    kv_storage: &(dyn KVStorage + Send + Sync),
+) -> ApiResult<Vec<String>> {
+    #[cfg(feature = "postgres")]
+    {
+        use edgequake_storage::kv_family_cutover::{
+            kv_family_mode_from_env, KvFamilyMode, KV_FAMILY_METADATA,
+        };
+        if kv_family_mode_from_env(KV_FAMILY_METADATA) == KvFamilyMode::Relational {
+            if let Some(pool) = crate::services::relational_sidecar_store::sidecar_pool() {
+                // Bound the janitor scan; reconcile already stamps max_documents.
+                match edgequake_storage::adapters::postgres::document_shell::shell_metadata_keys(
+                    pool,
+                    Some(5_000),
+                )
+                .await
+                {
+                    Ok(keys) if !keys.is_empty() => return Ok(keys),
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "typed metadata key scan failed — falling back to KV suffix"
+                        );
+                    }
+                }
+            }
+        }
+    }
+    Ok(kv_storage
+        .keys_with_suffix(DOCUMENT_METADATA_SUFFIX)
+        .await?)
 }
 
 /// Load all document metadata values via indexed suffix scan (unscoped).
@@ -204,12 +241,47 @@ async fn load_staging_metadata_entries(
     kv_storage: &(dyn KVStorage + Send + Sync),
     tenant_ctx: &TenantContext,
 ) -> ApiResult<Vec<(String, serde_json::Value)>> {
-    let staging_keys: Vec<String> = kv_storage
-        .keys_with_prefix("staging:")
-        .await?
-        .into_iter()
-        .filter(|k| k.ends_with(DOCUMENT_METADATA_SUFFIX) && !k.contains(":hash:"))
-        .collect();
+    // SPEC-091 Wave C: enumerate staging shells from `documents` in relational
+    // mode (synthesized legacy keys; value fetch below already dispatches
+    // typed-first). KV scan remains the dual-write fallback.
+    #[cfg(feature = "postgres")]
+    let typed_keys: Option<Vec<String>> =
+        match crate::services::relational_sidecar_store::sidecar_pool() {
+            Some(pool)
+                if edgequake_storage::kv_family_cutover::kv_family_mode_from_env(
+                    edgequake_storage::kv_family_cutover::KV_FAMILY_METADATA,
+                ) == edgequake_storage::kv_family_cutover::KvFamilyMode::Relational =>
+            {
+                match edgequake_storage::adapters::postgres::document_shell::shell_staging_keys(
+                    pool,
+                )
+                .await
+                {
+                    Ok(keys) => Some(
+                        keys.into_iter()
+                            .filter(|k| k.ends_with(DOCUMENT_METADATA_SUFFIX))
+                            .collect(),
+                    ),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "typed staging scan failed — falling back to KV");
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
+    #[cfg(not(feature = "postgres"))]
+    let typed_keys: Option<Vec<String>> = None;
+
+    let staging_keys: Vec<String> = match typed_keys {
+        Some(keys) => keys,
+        None => kv_storage
+            .keys_with_prefix("staging:")
+            .await?
+            .into_iter()
+            .filter(|k| k.ends_with(DOCUMENT_METADATA_SUFFIX) && !k.contains(":hash:"))
+            .collect(),
+    };
     if staging_keys.is_empty() {
         return Ok(Vec::new());
     }

@@ -2,6 +2,7 @@
 //!
 //! This is the main entry point for the EdgeQuake server.
 
+mod migrate_advisor_cli;
 mod migrate_console;
 
 use anyhow::{Context, Result};
@@ -13,6 +14,7 @@ use edgequake_api::{AppState, DocumentTaskProcessor, Server, ServerConfig, Stora
 use edgequake_observability::{
     init_observability, record_db_pool_stats, ErrorEvent, ObservabilityConfig,
 };
+use edgequake_pdf::prime_pdfium;
 use edgequake_tasks::{
     Pagination, TaskFilter, TaskQueue, TaskStatus, TaskStorage, WorkerPool, WorkerPoolConfig,
 };
@@ -74,7 +76,12 @@ fn clear_empty_env_var(name: &str) {
 }
 
 /// Resolve worker pool + dual-lane tenant limits (SSOT in edgequake-pipeline).
-fn resolve_worker_pool_limits() -> (usize, usize, usize) {
+///
+/// Returns `(num_workers, max_ingest_per_tenant, max_lifecycle_per_tenant,
+/// provider_budget, tenant_lane_weight)`. SPEC-091 QW3 (LAW-Q5, LD-13): for
+/// local providers the ingest lane divides the **provider budget** fairly
+/// between tenants (DRR); cloud keeps the legacy per-tenant hard caps.
+fn resolve_worker_pool_limits() -> (usize, usize, usize, usize, u32) {
     let provider = edgequake_pipeline::resolve_extract_provider_name_for_fairness();
     let limits = edgequake_pipeline::resolve_worker_pool_limits();
     if limits.local_clamped {
@@ -96,14 +103,43 @@ fn resolve_worker_pool_limits() -> (usize, usize, usize) {
             "Local worker pool fairness lanes (ingest vs lifecycle)"
         );
     }
+
+    // QW3: one ProviderProfile → one AdmissionPlan (SSOT, LAW-Q1). The lane
+    // weight comes from the plan; the budget from the QW1 resolver.
+    let budget = edgequake_tasks::provider_budget_from_env();
+    let profile =
+        edgequake_pipeline::ProviderProfile::for_provider(&provider).with_budget(budget.max(1));
+    let plan = edgequake_pipeline::resolve_admission_plan(
+        &profile,
+        0.0,
+        edgequake_pipeline::queue_target_wait_secs_from_env(),
+    );
+    // Fair-share ingest only where the provider budget is the scarce resource
+    // (local, ledger-enabled). `0` keeps per-tenant hard caps (cloud / tests).
+    let provider_budget = if edgequake_pipeline::is_local_extraction_provider(&provider) {
+        usize::from(budget)
+    } else {
+        0
+    };
+    if provider_budget > 0 {
+        info!(
+            extract_provider = %provider,
+            provider_budget,
+            tenant_lane_weight = plan.tenant_lane_weight,
+            "SPEC-091 QW3: ingest lane = weighted fair-share over provider budget (DRR)"
+        );
+    }
+
     (
         limits.num_workers,
         limits.max_ingest_per_tenant,
         limits.max_lifecycle_per_tenant,
+        provider_budget,
+        plan.tenant_lane_weight,
     )
 }
 
-fn redact_database_url(url: &str) -> String {
+pub(crate) fn redact_database_url(url: &str) -> String {
     let Some((prefix, host)) = url.rsplit_once('@') else {
         return url.to_string();
     };
@@ -543,15 +579,99 @@ async fn periodic_orphan_check(
     Ok(())
 }
 
-/// SPEC-090 F-090-20b: apply sqlx migrations + support reconcile on an admin pool.
+/// SPEC-091: preview-only upgrade posture — zero schema mutations.
+///
+/// Lists pending migrations (with expandable vs IRREVERSIBLE class labels),
+/// prints live advisor posture (family / NEXT / guard), and an operator
+/// checklist. Exit 0 when the preview completed (even if drop-readiness is
+/// RED — that is information). Non-zero only on connect/advisor hard errors.
 #[cfg(feature = "postgres")]
-async fn run_migrate_cli() -> Result<()> {
+async fn run_migrate_dry_run_cli() -> Result<()> {
+    let database_url = std::env::var("DATABASE_URL")
+        .context("DATABASE_URL required for `edgequake migrate dry-run`")?;
+    let redacted = redact_database_url(&database_url);
+    migrate_console::print_dry_run_header(env!("CARGO_PKG_VERSION"), &redacted);
+
+    let bundle = match edgequake_storage::PgPoolBundle::connect(&database_url).await {
+        Ok(b) => b,
+        Err(e) => {
+            migrate_console::print_failure_hint(&e);
+            return Err(e).context("PgPoolBundle connect failed");
+        }
+    };
+
+    let pending =
+        match edgequake_api::state::migration_bootstrap::list_pending_migrations(&bundle.admin)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                migrate_console::print_failure_hint(&e);
+                return Err(e).context("list pending migrations failed");
+            }
+        };
+    migrate_console::print_preflight(&pending);
+
+    let has_drop = pending
+        .iter()
+        .any(|(v, _)| migrate_console::is_irreversible_drop(*v));
+    if has_drop {
+        println!();
+        println!(" RISK: DROP OLD migration(s) are PENDING (destroy-data — no undo SQL).");
+        println!("       Apply only after drop-readiness is GREEN via --confirm-drop.");
+        for (v, _) in pending
+            .iter()
+            .filter(|(v, _)| migrate_console::is_irreversible_drop(*v))
+        {
+            println!(
+                "       • {v}: {}",
+                migrate_console::irreversible_drop_plain(*v)
+            );
+        }
+    }
+
+    // Advisor requires ledger / typed tables that may not exist yet on a blank
+    // DB. Pending list + risk box are still valuable — soft-fail like the
+    // refuse path, and exit 0 when the preview completed.
+    match edgequake_storage::migration_engine::advisor::posture(&bundle.query).await {
+        Ok(posture) => {
+            let guidance = edgequake_storage::migration_engine::advisor::derive_guidance(&posture);
+            let actions = edgequake_storage::migration_engine::advisor::derive_actions(&posture);
+            println!();
+            migrate_console::print_family_table(&posture);
+            migrate_console::print_instructions(&guidance);
+            migrate_console::print_actions(&actions);
+            migrate_console::print_guard(&posture, &posture.residue);
+        }
+        Err(e) => {
+            eprintln!("  (advisor posture unavailable: {e})");
+            eprintln!(
+                "  hint: apply SAFE SCHEMA first (`edgequake migrate`), then re-run dry-run."
+            );
+        }
+    }
+    migrate_console::print_upgrade_risk_box(has_drop);
+
+    println!("dry-run complete: no migrations applied (preview only).");
+    Ok(())
+}
+
+/// SPEC-090 F-090-20b: apply sqlx migrations + support reconcile on an admin pool.
+///
+/// SPEC-091 C3 (doc 15 §7, LAW-C5): migration 125 (the IRREVERSIBLE KV drop) is
+/// never applied silently. On a pre-drop database where 125 is still pending,
+/// this refuses unless the operator passes `--confirm-drop` (or sets
+/// `EDGEQUAKE_MIGRATION_CONFIRM_DROP=1`). Databases where 125 already applied
+/// (e.g. dev) are unaffected. One irreversible op per release (LD-07).
+#[cfg(feature = "postgres")]
+async fn run_migrate_cli(args: &[String]) -> Result<()> {
     // SAFETY: process-local flag for migrate CLI path; set before any bootstrap work.
     std::env::set_var("EDGEQUAKE_MIGRATE_CLI", "1");
     let database_url =
         std::env::var("DATABASE_URL").context("DATABASE_URL required for `edgequake migrate`")?;
     let redacted = redact_database_url(&database_url);
     migrate_console::print_banner(env!("CARGO_PKG_VERSION"), &redacted);
+    migrate_console::print_first_principles();
     info!(database = %redacted, "edgequake migrate: connecting admin pool");
 
     let bundle = match edgequake_storage::PgPoolBundle::connect(&database_url).await {
@@ -573,7 +693,124 @@ async fn run_migrate_cli() -> Result<()> {
             }
         };
     migrate_console::print_preflight(&pending);
-    println!("applying migrations + support reconcile on admin pool…");
+    let confirmed = drop_confirmed(args);
+
+    // SPEC-091 Doc 17 (LAW-C5 scope): consent for irreversible drops is
+    // required only when there is something to lose. On a FRESH install (zero
+    // applied migrations) no legacy data exists, so the drop guards are
+    // trivially green and `--confirm-drop` is not required — first-boot UX
+    // (`make dev` cold start, fresh installs) stays one visible step. Any
+    // database with applied migrations keeps the explicit gate.
+    let fresh_install = pending.is_empty()
+        || edgequake_api::state::migration_bootstrap::is_fresh_database(&bundle.admin)
+            .await
+            .unwrap_or(false);
+    let drop_gate_open = confirmed || fresh_install;
+    if fresh_install && !confirmed {
+        let irreversibles: Vec<i64> = pending
+            .iter()
+            .map(|(v, _)| *v)
+            .filter(|v| {
+                *v == migrate_console::KV_DROP_MIGRATION
+                    || *v == migrate_console::VECTOR_DROP_MIGRATION
+                    || *v == migrate_console::FLEET_VECTOR_DROP_MIGRATION
+            })
+            .collect();
+        if !irreversibles.is_empty() {
+            println!(
+                "fresh install (no applied migrations): irreversible migration(s) {irreversibles:?} \
+                 cannot destroy data — nothing legacy exists; proceeding without --confirm-drop."
+            );
+        }
+    }
+    migrate_console::print_apply_intent(&pending, drop_gate_open);
+
+    // First principles (LD-07 / LAW-C5): consent gates *destroy-data* steps only.
+    // When an irreversible drop is pending without confirm, still apply ALL
+    // expandable SAFE SCHEMA migrations (including those that sit *after* the
+    // gated drop — e.g. 132 behind 131), then soft-exit 0 so `make_dev` can boot.
+    if !drop_gate_open
+        && pending
+            .iter()
+            .any(|(v, _)| migrate_console::is_irreversible_drop(*v))
+    {
+        let expandables = migrate_console::pending_expandable_versions(&pending);
+        if !expandables.is_empty() {
+            println!(
+                "applying SAFE SCHEMA (expandable) migration(s) {expandables:?} \
+                 (DROP OLD deferred until --confirm-drop)…"
+            );
+            let report =
+                match edgequake_api::state::migration_bootstrap::run_postgres_expandable_migrations(
+                    &bundle.admin,
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        migrate_console::print_failure_hint(&e);
+                        migrate_console::print_wave_d_abort_hint(&e);
+                        return Err(e).context("partial migrate (expandables) failed");
+                    }
+                };
+            let applied: Vec<(i64, String)> = report
+                .applied_versions
+                .iter()
+                .copied()
+                .map(|v| {
+                    (
+                        v,
+                        edgequake_api::state::migration_bootstrap::migration_description(v),
+                    )
+                })
+                .collect();
+            migrate_console::print_applied_this_run(&applied);
+            migrate_console::print_post_hooks(&bundle.admin).await;
+        }
+
+        let remaining =
+            edgequake_api::state::migration_bootstrap::list_pending_migrations(&bundle.admin)
+                .await
+                .context("re-list pending after expandable apply")?;
+        let remaining_versions: Vec<i64> = remaining.iter().map(|(v, _)| *v).collect();
+        if remaining.is_empty() {
+            return Ok(());
+        }
+        if edgequake_api::state::migration_bootstrap::pending_only_irreversible_drops(
+            &remaining_versions,
+        ) {
+            match edgequake_storage::migration_engine::advisor::posture(&bundle.query).await {
+                Ok(p) => migrate_console::print_guard(&p, &p.residue),
+                Err(e) => eprintln!("  (readiness guard unavailable: {e})"),
+            }
+            migrate_console::print_irreversible_pending_soft_exit(&remaining);
+            info!(
+                remaining = ?remaining_versions,
+                "edgequake migrate: expandable train done; irreversible drop(s) deferred"
+            );
+            return Ok(());
+        }
+
+        // Irreversible is next and expandable work sits behind it — classic refuse.
+        let blocking = remaining_versions
+            .iter()
+            .copied()
+            .find(|v| migrate_console::is_irreversible_drop(*v))
+            .unwrap_or(remaining_versions[0]);
+        match edgequake_storage::migration_engine::advisor::posture(&bundle.query).await {
+            Ok(p) => migrate_console::print_guard(&p, &p.residue),
+            Err(e) => eprintln!("  (readiness guard unavailable: {e})"),
+        }
+        migrate_console::print_blocked_by_irreversible(blocking);
+        anyhow::bail!("migration {blocking} requires explicit --confirm-drop");
+    }
+
+    let pending_count = pending.len();
+    if pending_count > 0 {
+        println!("applying {pending_count} migration(s) + support reconcile on admin pool…");
+    } else {
+        println!("applying migrations + support reconcile on admin pool…");
+    }
 
     let report =
         match edgequake_api::state::migration_bootstrap::run_postgres_migrations(&bundle.admin)
@@ -582,6 +819,7 @@ async fn run_migrate_cli() -> Result<()> {
             Ok(r) => r,
             Err(e) => {
                 migrate_console::print_failure_hint(&e);
+                migrate_console::print_wave_d_abort_hint(&e);
                 return Err(e).context("migrate failed");
             }
         };
@@ -598,6 +836,12 @@ async fn run_migrate_cli() -> Result<()> {
         })
         .collect();
     migrate_console::print_applied_this_run(&applied);
+    if applied
+        .iter()
+        .any(|(v, _)| *v == migrate_console::KV_DROP_MIGRATION)
+    {
+        migrate_console::print_kv_drop_applied();
+    }
     migrate_console::print_post_hooks(&bundle.admin).await;
 
     info!(
@@ -614,9 +858,151 @@ async fn run_migrate_cli() -> Result<()> {
     Ok(())
 }
 
+/// SPEC-091 C3: was the irreversible drop explicitly confirmed? Via the
+/// `--confirm-drop` flag or the `EDGEQUAKE_MIGRATION_CONFIRM_DROP` env var.
+#[cfg(feature = "postgres")]
+fn drop_confirmed(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--confirm-drop")
+        || matches!(
+            std::env::var("EDGEQUAKE_MIGRATION_CONFIRM_DROP")
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase()
+                .as_str(),
+            "1" | "true" | "on" | "yes"
+        )
+}
+
+/// SPEC-091 P4: `edgequake migrate status` — read the migration progress
+/// ledger and print per-job state, completion, rate and ETA. Never applies
+/// migrations; safe to run against a live serving database.
+#[cfg(feature = "postgres")]
+async fn run_migrate_status_cli() -> Result<()> {
+    let database_url = std::env::var("DATABASE_URL")
+        .context("DATABASE_URL required for `edgequake migrate status`")?;
+    let redacted = redact_database_url(&database_url);
+    println!("EdgeQuake migrate status v{}", env!("CARGO_PKG_VERSION"));
+    println!("database: {redacted}");
+
+    let bundle = edgequake_storage::PgPoolBundle::connect(&database_url)
+        .await
+        .context("PgPoolBundle connect failed")?;
+
+    let job_ids: Vec<(sqlx::types::Uuid, String, String)> = match sqlx::query_as(
+        "SELECT job_id, step_id, state FROM edgequake.edgequake_migration_job \
+         ORDER BY started_at NULLS LAST, step_id",
+    )
+    .fetch_all(&bundle.query)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            println!("migration ledger unavailable (apply migration 106?): {e}");
+            return Ok(());
+        }
+    };
+
+    if job_ids.is_empty() {
+        println!("no migration jobs registered (EDGEQUAKE_MIGRATION_MODE=off?)");
+        return Ok(());
+    }
+
+    println!("migration jobs:");
+    for (job_id, step_id, _state) in job_ids {
+        match edgequake_storage::migration_engine::lease::job_detail(&bundle.query, job_id).await {
+            Ok(Some(d)) => migrate_console::print_migration_job_line(
+                &d.step_id,
+                &d.state,
+                d.processed_count,
+                d.estimated_total,
+                d.completion_pct,
+                d.rows_per_sec,
+                d.eta_seconds,
+            ),
+            Ok(None) => println!("  {step_id:<28} <vanished>"),
+            Err(e) => println!("  {step_id:<28} <error: {e}>"),
+        }
+    }
+    Ok(())
+}
+
 #[cfg(not(feature = "postgres"))]
-async fn run_migrate_cli() -> Result<()> {
+async fn run_migrate_status_cli() -> Result<()> {
+    anyhow::bail!("`edgequake migrate status` requires the postgres feature")
+}
+
+/// SPEC-091 Migration Console (doc 15 §7) — usage for the `migrate` verb family.
+const MIGRATE_USAGE: &str = "usage:
+  edgequake migrate [--confirm-drop]            apply schema migrations (+ reconcile)
+  edgequake migrate dry-run                     preview pending + posture (no writes)
+  edgequake migrate status                      raw per-job progress ledger
+  edgequake migrate console [--watch]           intelligent posture dashboard + next steps
+  edgequake migrate plan                        the ordered, live-derived runbook
+  edgequake migrate guard [--family <name>]     read-only flip/drop readiness probe
+  edgequake migrate family list                 per-family cutover posture
+  edgequake migrate family set <family> <mode> [--yes]   gated flag change (LD-07)
+  edgequake migrate pause|resume|cancel <step_id>        gated job control (LD-07)";
+
+/// Dispatch the `migrate` verb family (SPEC-091 Migration Console).
+#[cfg(feature = "postgres")]
+async fn dispatch_migrate(rest: &[String]) -> Result<()> {
+    match rest.first().map(String::as_str) {
+        // The apply path (schema owner). Flags (e.g. --confirm-drop, C3) belong to it.
+        None => run_migrate_cli(rest).await,
+        Some(s) if s.starts_with("--") => run_migrate_cli(rest).await,
+        Some("dry-run") => run_migrate_dry_run_cli().await,
+        Some("status") => run_migrate_status_cli().await,
+        Some("console") => migrate_advisor_cli::run_console(has_flag(rest, "--watch")).await,
+        Some("plan") => migrate_advisor_cli::run_plan().await,
+        Some("guard") => migrate_advisor_cli::run_guard(flag_value(rest, "--family")).await,
+        Some("family") => dispatch_migrate_family(&rest[1..]).await,
+        Some(verb @ ("pause" | "resume" | "cancel")) => {
+            let step = rest.get(1).map(String::as_str).unwrap_or("");
+            if step.is_empty() {
+                anyhow::bail!("`migrate {verb}` requires a <step_id>\n{MIGRATE_USAGE}");
+            }
+            migrate_advisor_cli::run_job_control(verb, step).await
+        }
+        Some(other) => anyhow::bail!("unknown migrate subcommand '{other}'\n{MIGRATE_USAGE}"),
+    }
+}
+
+#[cfg(feature = "postgres")]
+async fn dispatch_migrate_family(rest: &[String]) -> Result<()> {
+    match rest.first().map(String::as_str) {
+        Some("list") => migrate_advisor_cli::run_family_list().await,
+        Some("set") => {
+            let family = rest.get(1).map(String::as_str).unwrap_or("");
+            let mode = rest.get(2).map(String::as_str).unwrap_or("");
+            if family.is_empty() || mode.is_empty() {
+                anyhow::bail!(
+                    "`migrate family set` requires <family> <mode> [--yes]\n{MIGRATE_USAGE}"
+                );
+            }
+            migrate_advisor_cli::run_family_set(family, mode, has_flag(rest, "--yes")).await
+        }
+        _ => anyhow::bail!("usage: edgequake migrate family list | set <family> <mode> [--yes]"),
+    }
+}
+
+#[cfg(not(feature = "postgres"))]
+async fn dispatch_migrate(_rest: &[String]) -> Result<()> {
     anyhow::bail!("`edgequake migrate` requires the postgres feature")
+}
+
+/// Is a bare flag present (e.g. `--watch`, `--yes`)?
+#[cfg(feature = "postgres")]
+fn has_flag(rest: &[String], flag: &str) -> bool {
+    rest.iter().any(|a| a == flag)
+}
+
+/// The value after a `--flag value` pair, if present.
+#[cfg(feature = "postgres")]
+fn flag_value(rest: &[String], flag: &str) -> Option<String> {
+    rest.iter()
+        .position(|a| a == flag)
+        .and_then(|i| rest.get(i + 1))
+        .cloned()
 }
 
 fn main() -> Result<()> {
@@ -639,9 +1025,11 @@ async fn async_main() -> Result<()> {
     let _obs_guard = init_observability(ObservabilityConfig::from_env());
 
     // SPEC-090 F-090-20b: `edgequake migrate` — admin-pool migrate + reconcile ledger.
+    // SPEC-091 P4: `edgequake migrate status` — read-only progress ledger surface.
     let mut args = std::env::args().skip(1);
     if args.next().as_deref() == Some("migrate") {
-        return run_migrate_cli().await;
+        let rest: Vec<String> = args.collect();
+        return dispatch_migrate(&rest).await;
     }
 
     info!("Starting EdgeQuake v{}", env!("CARGO_PKG_VERSION"));
@@ -672,12 +1060,23 @@ async fn async_main() -> Result<()> {
 
     let redacted_database_url = redact_database_url(&database_url);
     info!("🐘 PostgreSQL storage mode using {}", redacted_database_url);
-    let mut state = AppState::new_postgres(&database_url, &api_key)
-        .await
-        .map_err(|error| anyhow::anyhow!(error.to_string()))
-        .with_context(|| {
-            format!("failed to initialize PostgreSQL storage at {redacted_database_url}")
-        })?;
+    let mut state = match AppState::new_postgres(&database_url, &api_key).await {
+        Ok(state) => state,
+        Err(error) => {
+            let message = error.to_string();
+            // SPEC-091 Doc 17 (LD-15): boot-gate refusals exit 78 (EX_CONFIG) so
+            // orchestrators can branch on "migrate required" vs "crash". Print
+            // from the sentinel on — the sqlx error wrapper is noise to operators.
+            let prefix = edgequake_api::state::migration_bootstrap::BOOT_GATE_REFUSAL_PREFIX;
+            if let Some(idx) = message.find(prefix) {
+                eprintln!("{}", &message[idx..]);
+                std::process::exit(edgequake_api::state::migration_bootstrap::BOOT_GATE_EXIT_CODE);
+            }
+            return Err(anyhow::anyhow!(message)).with_context(|| {
+                format!("failed to initialize PostgreSQL storage at {redacted_database_url}")
+            });
+        }
+    };
 
     if let Some(ref bootstrap) = state.migration_bootstrap {
         if bootstrap.migration_038.is_degraded() {
@@ -778,12 +1177,12 @@ async fn async_main() -> Result<()> {
         "Vision PDF admission control enabled"
     );
 
-    // SPEC-021 P3-01c: Wire CQRS entity dual-write sink when postgres feature is active.
-    // create_if_enabled() checks entity_sync_mode in server_config; returns NoopEntitySink
-    // when mode is "disabled" (default), so this is always safe to call.
+    // SPEC-021 P3-01c / SPEC-091: Wire CQRS entity dual-write sink.
+    // Under typed embeddings, create_for_runtime always enables PostgresEntitySink
+    // (fleet FK spine). Otherwise honors entity_sync_mode dual_write|full.
     #[cfg(feature = "postgres")]
     if let Some(ref pool) = state.pg_pool {
-        let entity_sink = PostgresEntitySink::create_if_enabled(Arc::new(pool.clone())).await;
+        let entity_sink = PostgresEntitySink::create_for_runtime(Arc::new(pool.clone())).await;
         processor = processor.with_relational_sink(entity_sink);
 
         // SPEC-032 W-08: Wire lineage sink when migration 066 has been applied.
@@ -821,8 +1220,13 @@ async fn async_main() -> Result<()> {
     // more workers than CPU cores to keep the pipeline saturated.
     // Local (Ollama) profile: clamp to 2 workers / 1 per-tenant unless
     // EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 (parity with extract clamp).
-    let (num_workers, max_tasks_per_tenant, max_lifecycle_tasks_per_tenant) =
-        resolve_worker_pool_limits();
+    let (
+        num_workers,
+        max_tasks_per_tenant,
+        max_lifecycle_tasks_per_tenant,
+        provider_budget,
+        tenant_lane_weight,
+    ) = resolve_worker_pool_limits();
 
     let worker_config = WorkerPoolConfig {
         num_workers,
@@ -857,6 +1261,11 @@ async fn async_main() -> Result<()> {
             }
             clamped
         },
+        // SPEC-091 QW3 (LAW-Q5, LD-13): local providers → weighted fair-share
+        // of the provider budget replaces the ingest hard cap; cloud → 0
+        // (legacy per-tenant lanes).
+        provider_budget,
+        tenant_lane_weight,
     };
 
     // X-24: default ON when unset (resume Interrupted work from checkpoints).
@@ -893,6 +1302,50 @@ async fn async_main() -> Result<()> {
                 json!({ "non_fatal": true }),
             );
         }
+    }
+
+    // SPEC-091 R-18: fairness-park markers are volatile scheduling state, not
+    // lifecycle state. At boot no park waiter from this process can be alive,
+    // so clear ALL markers (age 0); a periodic sweep (10 min staleness) is the
+    // replica-death backstop so a crashed replica's parks cannot starve rows.
+    {
+        let park_storage = Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>;
+        match park_storage
+            .clear_stale_fairness_parks(std::time::Duration::ZERO)
+            .await
+        {
+            Ok(n) if n > 0 => {
+                info!(
+                    cleared = n,
+                    "SPEC-091 R-18: cleared fairness park markers at boot"
+                )
+            }
+            Ok(_) => {}
+            Err(e) => ErrorEvent::log_domain_warn(
+                "startup",
+                "clear_fairness_parks",
+                &e.to_string(),
+                json!({ "non_fatal": true }),
+            ),
+        }
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                match park_storage
+                    .clear_stale_fairness_parks(std::time::Duration::from_secs(600))
+                    .await
+                {
+                    Ok(n) if n > 0 => tracing::warn!(
+                        cleared = n,
+                        "SPEC-091 R-18: swept stale fairness parks (replica-death backstop)"
+                    ),
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = %e, "stale fairness park sweep failed"),
+                }
+            }
+        });
     }
 
     // Recover orphaned documents stuck in non-terminal states (uploading, pending, etc.)
@@ -938,6 +1391,8 @@ async fn async_main() -> Result<()> {
         Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
         Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>,
         None, // startup: no workers yet → staging without Pending/Processing is orphan
+        #[cfg(feature = "postgres")]
+        state.pg_pool.as_ref(),
     )
     .await
     {
@@ -1064,6 +1519,14 @@ async fn async_main() -> Result<()> {
         Arc::clone(&state.tasks.queue) as Arc<dyn edgequake_tasks::TaskQueue>,
         Arc::clone(&state.tasks.storage) as Arc<dyn edgequake_tasks::TaskStorage>,
         processor,
+    )
+    // SPEC-091 hardening (LAW-Q5): classify each task's effective extract
+    // provider at claim time — local providers get their own fair-share lane,
+    // cloud providers bypass the local budget entirely.
+    .with_provider_classifier(
+        edgequake_api::provider_classifier::WorkspaceProviderClassifier::shared(Arc::clone(
+            &state.workspace_service,
+        )),
     );
 
     // WHY: The cancel_task API handler signals the CancellationRegistry living
@@ -1226,6 +1689,8 @@ async fn async_main() -> Result<()> {
                     Arc::clone(&kv),
                     Arc::clone(&reconcile_state.tasks.storage) as Arc<dyn TaskStorage>,
                     Some(staging_age),
+                    #[cfg(feature = "postgres")]
+                    reconcile_state.pg_pool.as_ref(),
                 )
                 .await
                 {
@@ -1308,6 +1773,33 @@ async fn async_main() -> Result<()> {
         &state.auth.config,
         &state.security,
     ));
+
+    // SPEC-095: extract + bind PDFium before accepting PDF traffic (cold-cache race).
+    // Opt out with EDGEQUAKE_SKIP_PDFIUM_PRIME=1 (dev only; PDF ingest will fail closed later).
+    let skip_pdfium_prime = std::env::var("EDGEQUAKE_SKIP_PDFIUM_PRIME")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if skip_pdfium_prime {
+        warn!(
+            target: "edgequake.pdfium",
+            "EDGEQUAKE_SKIP_PDFIUM_PRIME set — skipping PDFium prime (PDF conversion may fail on first use)"
+        );
+    } else {
+        match tokio::task::spawn_blocking(prime_pdfium).await {
+            Ok(Ok(())) => {
+                info!(target: "edgequake.pdfium", "PDFium primed (extract + bind ok)");
+            }
+            Ok(Err(e)) => {
+                anyhow::bail!(
+                    "PDFium prime failed: {e}. Fix the library / cache, or set \
+                     EDGEQUAKE_SKIP_PDFIUM_PRIME=1 to boot without PDF support."
+                );
+            }
+            Err(e) => {
+                anyhow::bail!("PDFium prime task panicked: {e}");
+            }
+        }
+    }
 
     // Run server (this blocks until shutdown) on the serving runtime.
     let listen_port = config.port;

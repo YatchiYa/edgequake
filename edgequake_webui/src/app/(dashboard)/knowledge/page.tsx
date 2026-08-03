@@ -318,10 +318,14 @@ export default function KnowledgePage() {
         </Dialog>
       </div>
 
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {/* SPEC-100: min-h grid shell so skeleton↔list does not CLS */}
+      {isLoading && !data ? (
+        <div
+          className="grid min-h-[16rem] gap-4 md:grid-cols-2 lg:grid-cols-3"
+          data-testid="spec100-knowledge-grid-skeleton"
+        >
           {[1, 2, 3].map((i) => (
-            <Card key={i}>
+            <Card key={i} className="min-h-[8rem]">
               <CardHeader>
                 <Skeleton className="h-5 w-40" />
                 <Skeleton className="h-4 w-24" />

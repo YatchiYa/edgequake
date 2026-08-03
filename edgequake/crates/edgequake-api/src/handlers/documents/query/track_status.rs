@@ -147,6 +147,22 @@ pub async fn get_track_status(
                     pdf_id: obj.get("pdf_id").and_then(|v| v.as_str()).map(String::from),
                     display_status: None,
                     ui_phase: None,
+                    progress_counts: obj
+                        .get("progress_counts")
+                        .and_then(crate::services::progress_counts_from_value)
+                        .or_else(|| {
+                            obj.get("stage_message")
+                                .and_then(|v| v.as_str())
+                                .and_then(crate::services::parse_counts_from_message)
+                        }),
+                    queue_position: None,
+                    eta_seconds: None,
+                    eta_basis: None,
+                    query_ready: None,
+                    cancelled_from_stage: obj
+                        .get("cancelled_from_stage")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
                 });
             }
         }
@@ -156,6 +172,14 @@ pub async fn get_track_status(
     crate::services::ingestion_status_mapper::enrich_document_summaries_with_cancel(
         &mut track_docs,
         &tasks.cancellation_registry,
+        tasks.storage.as_ref(),
+    )
+    .await;
+
+    // SPEC-091 IS2: queue chrome on track status docs (same projection as list).
+    crate::services::list_run_enrich::enrich_page_queue_estimates(
+        tasks.storage.as_ref(),
+        &mut track_docs,
     )
     .await;
 

@@ -15,9 +15,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { useQueryInterface } from "@/hooks/use-query-interface";
-import { getDocuments } from "@/lib/api/edgequake/documents";
 import { ImagePlus, Plus, Send, StopCircle, X } from "lucide-react";
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChatMessage } from "./chat-message";
 import { ConversationHistoryPanelV2 } from "./conversation-history-panel-v2";
@@ -30,31 +28,6 @@ import { QuerySettingsSheet } from "./query-settings-sheet";
 
 export function QueryInterface() {
   const { t } = useTranslation();
-  // SPEC-084 / GH-318: soft-gate when workspace still has active ingest.
-  const [ingestActive, setIngestActive] = useState(false);
-  const [queryAnyway, setQueryAnyway] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const res = await getDocuments({ page: 1, page_size: 1 });
-        const c = res.status_counts;
-        const active = (c?.pending ?? 0) + (c?.processing ?? 0) > 0;
-        if (!cancelled) {
-          setIngestActive(active);
-          if (!active) setQueryAnyway(false);
-        }
-      } catch {
-        /* ignore poll errors */
-      }
-    };
-    void poll();
-    const id = setInterval(poll, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
   const {
     input,
     streamingState,
@@ -215,36 +188,46 @@ export function QueryInterface() {
               aria-label={t("query.attachImages", "Attach images")}
               onChange={handleImageInputChange}
             />
-            {attachedImages.length > 0 && (
-              <div
-                className="flex flex-wrap gap-2 mb-2"
-                role="list"
-                aria-label={t("query.attachedImages", "Attached images")}
-              >
-                {attachedImages.map((img, idx) => (
-                  <div
-                    key={idx}
-                    role="listitem"
-                    className="relative group w-16 h-16 rounded border overflow-hidden flex-shrink-0"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={img.preview}
-                      alt={`Attachment ${idx + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(idx)}
-                      className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                      aria-label={t("query.removeImage", `Remove image ${idx + 1}`)}
+            {/* SPEC-100: reserve attachment row height when files are pending */}
+            <div
+              className={
+                attachedImages.length > 0
+                  ? "mb-2 min-h-16"
+                  : "mb-0 min-h-0 overflow-hidden"
+              }
+              data-testid="spec100-query-attachments-slot"
+            >
+              {attachedImages.length > 0 && (
+                <div
+                  className="flex flex-wrap gap-2"
+                  role="list"
+                  aria-label={t("query.attachedImages", "Attached images")}
+                >
+                  {attachedImages.map((img, idx) => (
+                    <div
+                      key={idx}
+                      role="listitem"
+                      className="relative group w-16 h-16 rounded border overflow-hidden flex-shrink-0"
                     >
-                      <X className="h-3 w-3 text-white" aria-hidden="true" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={img.preview}
+                        alt={`Attachment ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(idx)}
+                        className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                        aria-label={t("query.removeImage", `Remove image ${idx + 1}`)}
+                      >
+                        <X className="h-3 w-3 text-white" aria-hidden="true" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div
               className="relative"
               onDrop={handleDrop}
@@ -300,9 +283,7 @@ export function QueryInterface() {
                   <Button
                     type="submit"
                     size="sm"
-                    disabled={
-                      !input.trim() || (ingestActive && !queryAnyway)
-                    }
+                    disabled={!input.trim()}
                     className="h-8"
                     aria-label={t("query.submit", "Send message")}
                   >
@@ -311,28 +292,6 @@ export function QueryInterface() {
                 )}
               </div>
             </div>
-            {ingestActive && !queryAnyway ? (
-              <div
-                className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100 flex items-center justify-between gap-2"
-                role="status"
-              >
-                <span>
-                  {t(
-                    "query.ingestInProgress",
-                    "Documents are still uploading or processing. Answers may be incomplete.",
-                  )}
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 shrink-0"
-                  onClick={() => setQueryAnyway(true)}
-                >
-                  {t("query.queryAnyway", "Query anyway")}
-                </Button>
-              </div>
-            ) : null}
             <p
               className="text-xs text-muted-foreground mt-2 text-center"
               aria-hidden="true"

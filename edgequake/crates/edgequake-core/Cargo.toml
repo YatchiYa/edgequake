@@ -9,9 +9,11 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
-default = []
+# SPEC-096: pipeline is default so workspace language helpers share SUPPORTED_LANGUAGES.
+default = ["pipeline"]
 pipeline = ["dep:edgequake-pipeline"]
-postgres = ["edgequake-storage/postgres", "dep:sqlx"]
+# SPEC-096: postgres workspace metadata helpers share SUPPORTED_LANGUAGES via pipeline.
+postgres = ["edgequake-storage/postgres", "dep:sqlx", "pipeline"]
 
 [dependencies]
 serde = { workspace = true }

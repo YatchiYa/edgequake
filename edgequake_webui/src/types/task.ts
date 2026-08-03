@@ -34,6 +34,14 @@ export interface TaskResponse {
   metadata?: Record<string, unknown>;
 }
 
+/** SPEC-120: POST /operations/{id}/cancel accepted body. */
+export interface OperationCancelResponse {
+  /** `cancelling` while a worker drains; `cancelled` once terminal. */
+  state: string;
+  cancel_requested_at?: string | null;
+  expected_stop_by?: string | null;
+}
+
 export interface TaskListResponse {
   tasks: TaskResponse[];
   pagination: {
@@ -109,4 +117,9 @@ export interface HealthResponse {
   };
   /** Whether PDF storage is enabled */
   pdf_storage_enabled?: boolean;
+  /** Operator discovery hints (OpenAPI URLs, auth posture, serving fence). */
+  capabilities?: {
+    serving_fence_enabled?: boolean | null;
+    [key: string]: unknown;
+  };
 }

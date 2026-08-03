@@ -2,7 +2,7 @@
 title: 'Deployment Guide'
 ---
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Deployment Guide
 
@@ -52,12 +52,12 @@ EDGEQUAKE_LLM_PROVIDER=openai OPENAI_API_KEY=sk-... make stack
 
 **Pin to a specific version:**
 ```bash
-EDGEQUAKE_VERSION=0.19.0 make stack
+EDGEQUAKE_VERSION=0.23.0 make stack
 ```
 
 **Production auth** (auth is on by default; quickstart uses `EDGEQUAKE_DEV_MODE=true` for open API):
 ```bash
-EDGEQUAKE_VERSION=0.19.0 \
+EDGEQUAKE_VERSION=0.23.0 \
 EDGEQUAKE_DEV_MODE=false \
 EDGEQUAKE_AUTH_ENABLED=true \
 EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD='ChangeMe123!' \
@@ -222,7 +222,7 @@ OLLAMA_EMBEDDING_MODEL=embeddinggemma:latest
 # Server (optional)
 EDGEQUAKE_PORT=8080
 FRONTEND_PORT=3000
-EDGEQUAKE_VERSION=0.19.0
+EDGEQUAKE_VERSION=0.23.0
 
 # Auth (production — auth is ON by default; quickstart sets EDGEQUAKE_DEV_MODE=true)
 EDGEQUAKE_DEV_MODE=false
@@ -371,7 +371,7 @@ spec:
     spec:
       containers:
         - name: edgequake
-          image: ghcr.io/raphaelmansuy/edgequake:0.19.0
+          image: ghcr.io/raphaelmansuy/edgequake:0.23.0
           ports:
             - containerPort: 8080
           envFrom:
@@ -447,7 +447,7 @@ See [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md) for multi
 
 ## Auth Bootstrap (SPEC-027)
 
-Auth is **enabled by default** in v0.19.0. On a fresh PostgreSQL database, set bootstrap credentials before first boot:
+Auth is **enabled by default** in v0.23.0. On a fresh PostgreSQL database, set bootstrap credentials before first boot:
 
 ```bash
 EDGEQUAKE_AUTH_ENABLED=true

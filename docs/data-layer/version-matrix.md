@@ -4,15 +4,24 @@ title: "Version matrix (PG16 / PG17 / PG18)"
 
 # Version matrix (PG16 / PG17 / PG18)
 
-Default status after Phase 0–4 inventory: **pending live EXPLAIN capture** unless covered by existing e2e_spec061 matrix.
+**Ledger hygiene (2026-07-31, SPEC-091 RM4):** hot-path plan contract recorded in
+[`specs/091-simplify-data-layer/measurements/rm4-explain-hot-paths.md`](../../specs/091-simplify-data-layer/measurements/rm4-explain-hot-paths.md).
+Version-differential **product decisions** remain in:
 
-Stack pins: PG16/17/18 images · pgvector 0.8.5 · AGE 1.7+/1.8.0.
+- [`pg17-differential.md`](pg17-differential.md) — **closed**: no PG17-specific SQL; unified path.
+- [`pg18-adoption.md`](pg18-adoption.md) — uuidv7 via capability probe; async I/O / virtual generated columns / `RETURNING OLD/NEW` documented deferrals; AGE 1.8 jsonb↔agtype cast probe.
+
+Rows below marked `artifact` have a plan-shape contract in RM4 measurements; `pending` means no checked-in `EXPLAIN ANALYZE` dump yet (soak). CI recall fixtures remain the executable gate (100k+ soak-deferred).
+
+Stack pins (SSOT: `edgequake/docker/extension-pins.sh`): PG16/17/18 images · pgvector **0.8.5** · AGE 1.6.0 / 1.7.0 / 1.8.0.
+
+Runtime capability probes (not version-string branches): `/health` → `schema.postgres_capabilities`; see [`pg17-differential.md`](pg17-differential.md) and [`pg18-adoption.md`](pg18-adoption.md).
 
 | Ref ID | PG16 | PG17 | PG18 | Behavioral deltas |
 |---|---|---|---|---|
-| `DATA-PGVEC-VECTORS-ANN-QUERY-001` | pending | pending | pending | iterative_scan ≥0.8; PG18 async I/O may cut heap fetch latency |
-| `DATA-PGVEC-VECTORS-ANN-QUERY-FILTERED-002` | pending | pending | pending | iterative_scan ≥0.8; PG18 async I/O may cut heap fetch latency |
-| `DATA-PG-VECTORS-TEXT-SEARCH-FILTERED-003` | pending | pending | pending | PG18 skip scan may use more composite btrees |
+| `DATA-PGVEC-VECTORS-ANN-QUERY-001` | artifact | artifact | artifact | RM4: typed HNSW; iterative_scan ≥0.8; PG18 async I/O optional |
+| `DATA-PGVEC-VECTORS-ANN-QUERY-FILTERED-002` | artifact | artifact | artifact | RM4: HNSW + relaxed_order + workspace filter |
+| `DATA-PG-VECTORS-TEXT-SEARCH-FILTERED-003` | artifact | artifact | artifact | RM4: `idx_chunks_content_tsv` (mig 136) |
 | `DATA-PGVEC-VECTORS-UPSERT-BATCH-004` | pending | pending | pending | iterative_scan ≥0.8; PG18 async I/O may cut heap fetch latency |
 | `DATA-PG-VECTORS-DELETE-BY-ID-005` | pending | pending | pending |  |
 | `DATA-PG-VECTORS-DELETE-ENTITY-006` | pending | pending | pending |  |

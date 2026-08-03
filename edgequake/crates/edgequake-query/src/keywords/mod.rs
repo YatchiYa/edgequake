@@ -22,9 +22,7 @@ mod keyword_mode;
 mod llm_extractor;
 mod mock_extractor;
 
-#[cfg(feature = "postgres")]
-pub use cache::PostgresKeywordCache;
-pub use cache::{InMemoryKeywordCache, KeywordCache};
+pub use cache::{InMemoryKeywordCache, KeywordCache, TieredKeywordCache};
 pub use extractor::{ExtractedKeywords, KeywordExtractor, Keywords};
 pub use intent::QueryIntent;
 pub use keyword_mode::{

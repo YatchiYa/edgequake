@@ -38,11 +38,13 @@ mod fts;
 mod migration;
 mod search_tuning;
 mod storage_impl;
+pub mod typed_read;
 
 pub use fts::{
     fts_language_from_env, sanitize_fts_language, DEFAULT_FTS_LANGUAGE, FTS_LANGUAGE_ENV,
 };
 pub use migration::allow_vector_table_rebuild;
+pub use typed_read::{vector_backend_fallback_total, vector_backend_typed_hit_total};
 
 /// PostgreSQL vector storage using pgvector.
 ///
@@ -169,6 +171,37 @@ impl PgVectorStorage {
 
     pub(crate) fn mark_deferred_ann_ready(&self) {
         self.deferred_ann_ready.store(true, Ordering::Release);
+    }
+
+    /// SPEC-091: soft-treat missing legacy `eq_*_vectors` (42P01) as write-stop success.
+    pub(crate) fn map_legacy_mutate_err(
+        e: sqlx::Error,
+        op: &str,
+        table: &str,
+    ) -> crate::error::Result<()> {
+        if let sqlx::Error::Database(ref db) = e {
+            if db.code().as_deref() == Some("42P01") {
+                tracing::debug!(
+                    table = %table,
+                    op = %op,
+                    "SPEC-091: legacy vectors relation gone — mutate write-stop"
+                );
+                return Ok(());
+            }
+        }
+        Err(crate::error::StorageError::Database(format!(
+            "{op} failed: {e}"
+        )))
+    }
+
+    /// Contract/e2e probe for `legacy_chunk_ddl_retired` (SPEC-091 hardening).
+    pub async fn probe_legacy_chunk_ddl_retired(&self) -> bool {
+        self.legacy_chunk_ddl_retired().await
+    }
+
+    /// Contract/e2e probe for `legacy_vector_ddl_retired` (migration 131).
+    pub async fn probe_legacy_vector_ddl_retired(&self) -> bool {
+        self.legacy_vector_ddl_retired().await
     }
 }
 

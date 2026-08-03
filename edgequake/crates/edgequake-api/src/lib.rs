@@ -121,6 +121,7 @@ pub mod postgres_entity_sink;
 pub mod postgres_lineage_sink;
 pub mod processor;
 mod provider_catalog;
+pub mod provider_classifier;
 pub mod provider_types;
 pub mod provider_visibility;
 pub mod providers;

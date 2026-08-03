@@ -301,13 +301,14 @@ impl PostgresAGEGraphStorage {
               SELECT v, ord FROM unnest($1::text[]) WITH ORDINALITY AS t(v, ord)
             ),
             ids(node_id, ord) AS (
-              SELECT (to_json(v)::text)::agtype AS node_id, ord FROM input
+              -- GH-350: qualify agtype so casts survive pool search_path=public
+              SELECT (to_json(v)::text)::ag_catalog.agtype AS node_id, ord FROM input
             )
             SELECT i.node_id::text AS node_id,
                    ag_catalog.agtype_to_json(n.properties) AS properties
             FROM {}."Node" AS n
             JOIN ids i ON ag_catalog.agtype_access_operator(
-                VARIADIC ARRAY[n.properties, '"node_id"'::agtype]
+                VARIADIC ARRAY[n.properties, '"node_id"'::ag_catalog.agtype]
             ) = i.node_id
             ORDER BY i.ord
             "#,
@@ -353,13 +354,14 @@ impl PostgresAGEGraphStorage {
               SELECT v, ord FROM unnest($1::text[]) WITH ORDINALITY AS t(v, ord)
             ),
             ids(node_id, ord) AS (
-              SELECT (to_json(v)::text)::agtype AS node_id, ord FROM input
+              -- GH-350: qualify agtype so casts survive pool search_path=public
+              SELECT (to_json(v)::text)::ag_catalog.agtype AS node_id, ord FROM input
             ),
             vids AS (
               SELECT n.id AS vid, i.node_id
               FROM {}."Node" AS n
               JOIN ids i ON ag_catalog.agtype_access_operator(
-                  VARIADIC ARRAY[n.properties, '"node_id"'::agtype]
+                  VARIADIC ARRAY[n.properties, '"node_id"'::ag_catalog.agtype]
               ) = i.node_id
             )
             SELECT ag_catalog.agtype_to_json(e.properties) AS properties,
@@ -419,13 +421,14 @@ impl PostgresAGEGraphStorage {
               SELECT v, ord FROM unnest($1::text[]) WITH ORDINALITY AS t(v, ord)
             ),
             ids(node_id, ord) AS (
-              SELECT (to_json(v)::text)::agtype AS node_id, ord FROM input
+              -- GH-350: qualify agtype so casts survive pool search_path=public
+              SELECT (to_json(v)::text)::ag_catalog.agtype AS node_id, ord FROM input
             ),
             vids AS (
               SELECT n.id::text AS vid_text, i.node_id, i.ord, n.properties
               FROM {}."Node" AS n
               JOIN ids i ON ag_catalog.agtype_access_operator(
-                  VARIADIC ARRAY[n.properties, '"node_id"'::agtype]
+                  VARIADIC ARRAY[n.properties, '"node_id"'::ag_catalog.agtype]
               ) = i.node_id
             ),
             deg_out AS (

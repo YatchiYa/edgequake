@@ -146,6 +146,9 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         db-start postgres-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
+        spec091-upgrade-soak spec091-gates spec103-llm-cache-proof \
+        spec93-migration-assessment spec93-migration-assessment-pg16 \
+        spec93-migration-assessment-pg17 spec93-migration-assessment-pg18 \
         check-deps status \
         test-quality test-invariants test-timing test-count test-flaky \
         test-e2e-critical test-e2e-full test-e2e-lint test-stability-report \
@@ -251,6 +254,17 @@ EDGEQUAKE_NATIVE_GRAPH_WRITES ?= 1
 # Mix intent arm gate (default on = production). Bench001 Acc fairness uses false (LR-like 3 arms).
 # Product Smart = LightRAG mix: always local∥global∥naive (065). Acc pins false too.
 EDGEQUAKE_MIX_ARM_GATE ?= false
+# SPEC-086 E2-occ = product best Mix profile (Acc law + LightRAG identity).
+# Acc still pins these explicitly; product/dev backends inherit the same defaults.
+EDGEQUAKE_MIX_FUSION ?= round_robin
+EDGEQUAKE_HYBRID_FUSION ?= round_robin
+EDGEQUAKE_GRAPH_WALK ?= bfs
+EDGEQUAKE_ENTITY_RANK ?= retrieval
+EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT ?= 1
+EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET ?= 1
+EDGEQUAKE_L2_BM25_UNION ?= 1
+EDGEQUAKE_L2_BM25_MODE ?= fact_replace
+EDGEQUAKE_L2_BM25_MIX_TOP_K ?= 30
 # SPEC-047: skip Louvain tax in local/bench; fail-open MM for throughput.
 EDGEQUAKE_COMMUNITY_GLOBAL ?= false
 EDGEQUAKE_MULTIMODAL_FAIL_MODE ?= degraded
@@ -272,6 +286,22 @@ EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION ?= 200
 EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD ?= KEEP
 # SPEC-047 P7f: native/Cypher graph upsert chunk size (rows per UNNEST/UNWIND statement).
 EDGEQUAKE_GRAPH_UPSERT_CHUNK ?= 500
+
+# SPEC-091 W1/Wave D: chunk text is relational-authoritative. The KV store was
+# dropped by migration 125 and the backfill verified zero mismatches, so the
+# spine (public.chunks) is the SSOT. `dual`/`kv` are rollback-only settings for
+# deployments that have NOT run the drop (post-drop they hit 42P01).
+EDGEQUAKE_CHUNK_TEXT_AUTHORITY ?= relational
+EDGEQUAKE_MIGRATION_MODE ?= automatic
+EDGEQUAKE_SERVING_FENCE ?= on
+# SPEC-091 W2: dedup hash family reads the typed ingestion_dedup table in dev
+# (migration 117 backfills legacy KV rows at boot before serving).
+EDGEQUAKE_KV_FAMILY_DOC_HASH ?= relational
+EDGEQUAKE_KV_FAMILY_WSDOC ?= relational
+EDGEQUAKE_KV_FAMILY_CHECKPOINT ?= relational
+EDGEQUAKE_KV_FAMILY_ARTIFACT ?= relational
+EDGEQUAKE_KV_FAMILY_INJECTION ?= relational
+EDGEQUAKE_KV_FAMILY_METADATA ?= relational
 
 DEV_AUTH_ENABLED ?= false
 DEV_DISABLE_DEMO_LOGIN ?= false
@@ -364,15 +394,32 @@ printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY=\"$(EDGEQUAKE_MAX_SOUR
 printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION=\"$(EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD=\"$(EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_GRAPH_UPSERT_CHUNK=\"$(EDGEQUAKE_GRAPH_UPSERT_CHUNK)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_CHUNK_TEXT_AUTHORITY=\"$(EDGEQUAKE_CHUNK_TEXT_AUTHORITY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MIGRATION_MODE=\"$(EDGEQUAKE_MIGRATION_MODE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_SERVING_FENCE=\"$(EDGEQUAKE_SERVING_FENCE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_KV_FAMILY_DOC_HASH=\"$(EDGEQUAKE_KV_FAMILY_DOC_HASH)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_KV_FAMILY_WSDOC=\"$(EDGEQUAKE_KV_FAMILY_WSDOC)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_KV_FAMILY_CHECKPOINT=\"$(EDGEQUAKE_KV_FAMILY_CHECKPOINT)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_KV_FAMILY_ARTIFACT=\"$(EDGEQUAKE_KV_FAMILY_ARTIFACT)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_KV_FAMILY_INJECTION=\"$(EDGEQUAKE_KV_FAMILY_INJECTION)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_KV_FAMILY_METADATA=\"$(EDGEQUAKE_KV_FAMILY_METADATA)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_LOCAL_MAX_INFLIGHT=\"$(EDGEQUAKE_LOCAL_MAX_INFLIGHT)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_MIX_ARM_GATE=\"$(EDGEQUAKE_MIX_ARM_GATE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MIX_FUSION=\"$(EDGEQUAKE_MIX_FUSION)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_HYBRID_FUSION=\"$(EDGEQUAKE_HYBRID_FUSION)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_GRAPH_WALK=\"$(EDGEQUAKE_GRAPH_WALK)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_ENTITY_RANK=\"$(EDGEQUAKE_ENTITY_RANK)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=\"$(EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=\"$(EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_L2_BM25_UNION=\"$(EDGEQUAKE_L2_BM25_UNION)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_L2_BM25_MODE=\"$(EDGEQUAKE_L2_BM25_MODE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_L2_BM25_MIX_TOP_K=\"$(EDGEQUAKE_L2_BM25_MIX_TOP_K)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_RELATED_CHUNK_NUMBER=\"$${EDGEQUAKE_RELATED_CHUNK_NUMBER:-5}\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_ORPHAN_RETRACT_ON_RECOVER=\"$${EDGEQUAKE_ORPHAN_RETRACT_ON_RECOVER:-0}\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_ADAPTIVE_CHUNKING=\"$${EDGEQUAKE_ADAPTIVE_CHUNKING:-1}\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_CHUNK_SIZE=\"$${EDGEQUAKE_CHUNK_SIZE:-1200}\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_CHUNK_OVERLAP=\"$${EDGEQUAKE_CHUNK_OVERLAP:-100}\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export DATABASE_POOL_SIZE=\"$(DATABASE_POOL_SIZE)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_ALLOW_BOOT_MIGRATE=\"$${EDGEQUAKE_ALLOW_BOOT_MIGRATE:-1}\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export VLM_PROCESS_ENABLE=\"$(VLM_PROCESS_ENABLE)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_CHART_MODALITY_FILTER=\"true\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_MM_ANALYSIS_CACHE=\"true\"" >> /tmp/edgequake-start.sh; \
@@ -646,6 +693,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	BACKEND_PID=""; \
 	FRONTEND_PID=""; \
 	$(LOAD_EFF_DB_URL); \
+	$(VISIBLE_MIGRATE_STEP); \
 	for BPID in $$(lsof -nP -iTCP:$$BACKEND_PORT -sTCP:LISTEN -t 2>/dev/null || true); do \
 		echo "$(YELLOW)→ Freeing port $$BACKEND_PORT (PID $$BPID) before backend start$(RESET)"; \
 		kill -9 "$$BPID" 2>/dev/null || true; \
@@ -660,17 +708,17 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
-			AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
-			EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
-			VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
-			EDGEQUAKE_MULTIMODAL_FAIL_MODE="$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)" \
-			EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY="$(EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY)" \
-			EDGEQUAKE_MM_MAX_FIGURES="$(EDGEQUAKE_MM_MAX_FIGURES)" \
-			EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS)" \
-			EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS)" \
-			EDGEQUAKE_MM_IMAGE_CONCURRENCY="$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)" \
-			cargo run 2>&1 | sed 's/^/[backend] /') & \
-		BACKEND_PID=$$!; \
+		AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
+		EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
+		VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
+		EDGEQUAKE_MULTIMODAL_FAIL_MODE="$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)" \
+		EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY="$(EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY)" \
+		EDGEQUAKE_MM_MAX_FIGURES="$(EDGEQUAKE_MM_MAX_FIGURES)" \
+		EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS)" \
+		EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS)" \
+		EDGEQUAKE_MM_IMAGE_CONCURRENCY="$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)" \
+		cargo run 2>&1 | sed 's/^/[backend] /') & \
+	BACKEND_PID=$$!; \
 	else \
 		(cd $(BACKEND_DIR) && \
 			PORT="$$BACKEND_PORT" \
@@ -678,16 +726,16 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
-			AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
-			EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
-			VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
-			EDGEQUAKE_MULTIMODAL_FAIL_MODE="$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)" \
-			EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY="$(EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY)" \
-			EDGEQUAKE_MM_MAX_FIGURES="$(EDGEQUAKE_MM_MAX_FIGURES)" \
-			EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS)" \
-			EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS)" \
-			EDGEQUAKE_MM_IMAGE_CONCURRENCY="$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)" \
-			OLLAMA_HOST="http://localhost:11434" \
+		AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
+		EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
+		VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
+		EDGEQUAKE_MULTIMODAL_FAIL_MODE="$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)" \
+		EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY="$(EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY)" \
+		EDGEQUAKE_MM_MAX_FIGURES="$(EDGEQUAKE_MM_MAX_FIGURES)" \
+		EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS)" \
+		EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS)" \
+		EDGEQUAKE_MM_IMAGE_CONCURRENCY="$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)" \
+		OLLAMA_HOST="http://localhost:11434" \
 			OLLAMA_MODEL="gemma4:latest" \
 			OLLAMA_EMBEDDING_MODEL="embeddinggemma:latest" \
 			OLLAMA_CONTEXT_LENGTH="$${OLLAMA_CONTEXT_LENGTH:-8192}" \
@@ -939,6 +987,22 @@ export DATABASE_URL
 #     DATABASE_URL="$$_EFF_DB_URL" cargo run ...
 LOAD_EFF_DB_URL = _EFF_DB_URL=$$(cat /tmp/edgequake-db-url 2>/dev/null); [ -z "$$_EFF_DB_URL" ] && _EFF_DB_URL="$(DATABASE_URL)"
 
+# SPEC-091 Doc 17 (LD-15): explicit, visible schema apply before any server
+# start. The server binary never auto-migrates — boot refuses (exit 78) when
+# expandable schema is behind. Irreversible drops (125/126/131) stay human-gated:
+# `edgequake migrate` applies expandables first, then soft-exits with WARN when
+# only drops remain (so make_dev can start). Confirm with --confirm-drop when
+# drop-readiness is GREEN. A hard failure here still aborts before the server.
+VISIBLE_MIGRATE_STEP = \
+	echo "$(YELLOW)→ edgequake migrate — applying database schema (explicit step, SPEC-091 LD-15)$(RESET)"; \
+	( cd $(BACKEND_DIR) && DATABASE_URL="$$_EFF_DB_URL" cargo run -- migrate ) || { \
+		echo "$(RED)✗ edgequake migrate failed — server not started.$(RESET)"; \
+		echo "  Preview impact first: (cd $(BACKEND_DIR) && DATABASE_URL=\"$$_EFF_DB_URL\" cargo run -- migrate dry-run)"; \
+		echo "  If only an irreversible drop remains, soft-exit is expected — check WARN above."; \
+		echo "  When fleet/KV drop-readiness is GREEN: cargo run -- migrate --confirm-drop"; \
+		exit 1; \
+	}
+
 # SPEC-040 v0.4.1: pdfium is now EMBEDDED in the edgequake-pdf2md 0.4.1 binary
 # via pdfium-auto at compile time. No external libpdfium.dylib, no env vars needed.
 
@@ -948,6 +1012,7 @@ backend-dev: db-wait ## Run backend in development mode with PostgreSQL (uses .e
 		echo "$(GREEN)✓ LLM Provider: $(EDGEQUAKE_DEFAULT_LLM_PROVIDER) ($(EDGEQUAKE_DEFAULT_LLM_MODEL))$(RESET)"; \
 	fi
 	@$(LOAD_EFF_DB_URL); \
+	$(VISIBLE_MIGRATE_STEP); \
 	cd $(BACKEND_DIR) && \
 		PORT="$(BACKEND_PORT)" \
 		DATABASE_URL="$$_EFF_DB_URL" \
@@ -975,6 +1040,7 @@ backend-db: db-wait ## Run backend with PostgreSQL storage (uses .env configurat
 		echo "$(GREEN)✓ LLM Provider: $(EDGEQUAKE_DEFAULT_LLM_PROVIDER) ($(EDGEQUAKE_DEFAULT_LLM_MODEL))$(RESET)"; \
 	fi
 	@$(LOAD_EFF_DB_URL); \
+	$(VISIBLE_MIGRATE_STEP); \
 	cd $(BACKEND_DIR) && \
 		PORT="$(BACKEND_PORT)" \
 		DATABASE_URL="$$_EFF_DB_URL" \
@@ -1000,13 +1066,13 @@ backend-db: db-wait ## Run backend with PostgreSQL storage (uses .env configurat
 # This target now fails with guidance to use PostgreSQL instead.
 backend-memory: ## DEPRECATED - In-memory storage removed, use backend-dev with PostgreSQL
 	@echo "$(RED)╔══════════════════════════════════════════════════════════════════╗$(RESET)"
-	@echo "$(RED)║  ❌  ERROR: In-memory storage has been REMOVED                   ║$(RESET)"
+	@echo "$(RED)║    ERROR: In-memory storage has been REMOVED                     ║$(RESET)"
 	@echo "$(RED)║                                                                  ║$(RESET)"
-	@echo "$(RED)║  The mission directive requires PostgreSQL for all operations.  ║$(RESET)"
-	@echo "$(RED)║  Please use one of these alternatives:                          ║$(RESET)"
+	@echo "$(RED)║  The mission directive requires PostgreSQL for all operations.   ║$(RESET)"
+	@echo "$(RED)║  Please use one of these alternatives:                           ║$(RESET)"
 	@echo "$(RED)║                                                                  ║$(RESET)"
-	@echo "$(RED)║    make dev          # Full stack with PostgreSQL               ║$(RESET)"
-	@echo "$(RED)║    make backend-dev  # Backend only with PostgreSQL             ║$(RESET)"
+	@echo "$(RED)║    make dev          # Full stack with PostgreSQL                ║$(RESET)"
+	@echo "$(RED)║    make backend-dev  # Backend only with PostgreSQL              ║$(RESET)"
 	@echo "$(RED)║                                                                  ║$(RESET)"
 	@echo "$(RED)╚══════════════════════════════════════════════════════════════════╝$(RESET)"
 	@exit 1
@@ -1029,6 +1095,7 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 	@# Read the effective DATABASE_URL resolved by db-start (may differ in port
 	@# when another PostgreSQL occupies the default 5432).
 	@$(LOAD_EFF_DB_URL); \
+	$(VISIBLE_MIGRATE_STEP); \
 	set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
 	for BPID in $$(lsof -nP -iTCP:$${BACKEND_PORT:-$(BACKEND_PORT)} -sTCP:LISTEN -t 2>/dev/null || true); do \
 		echo "$(YELLOW)→ Freeing port $${BACKEND_PORT:-$(BACKEND_PORT)} (PID $$BPID) before backend-bg start$(RESET)"; \
@@ -1515,14 +1582,14 @@ db-start: ## Start PostgreSQL container
 	printf '%s' "$$EQ_POSTGRES_PROFILE" > /tmp/edgequake-postgres-profile; \
 	echo "$(GREEN)✓ Effective DATABASE_URL written to /tmp/edgequake-db-url (profile: $$EQ_POSTGRES_PROFILE)$(RESET)"
 
-postgres-image-build: ## Build and verify edgequake-postgres Docker image (pgvector 0.8.3 + AGE 1.6.0, PG16)
+postgres-image-build: ## Build and verify edgequake-postgres Docker image (pgvector 0.8.5 + AGE 1.6.0, PG16)
 	@echo "$(BLUE)Building edgequake-postgres image (PG16)...$(RESET)"
 	@cd $(DOCKER_DIR) && docker build -f Dockerfile.postgres -t edgequake-postgres:pg16 .
 	@chmod +x $(DOCKER_DIR)/verify-postgres-extensions.sh
 	@EQ_POSTGRES_PROFILE=pg16 bash $(DOCKER_DIR)/verify-postgres-extensions.sh edgequake-postgres:pg16
 	@echo "$(GREEN)✓ edgequake-postgres:pg16 ready$(RESET)"
 
-postgres-image-build-pg17: ## Build and verify edgequake-postgres PG17 image (pgvector 0.8.3 + AGE 1.7.0)
+postgres-image-build-pg17: ## Build and verify edgequake-postgres PG17 image (pgvector 0.8.5 + AGE 1.7.0)
 	@echo "$(BLUE)Building edgequake-postgres image (PG17 / SPEC-042-C)...$(RESET)"
 	@cd $(DOCKER_DIR) && docker build -f Dockerfile.postgres.pg17 -t edgequake-postgres:pg17 .
 	@chmod +x $(DOCKER_DIR)/verify-postgres-extensions.sh
@@ -1886,7 +1953,101 @@ docker-api-only: ## Start API only using prebuilt GHCR image (bring your own Pos
 
 QUICKSTART_COMPOSE := $(ROOT_DIR)/docker-compose.quickstart.yml
 
-.PHONY: stack stack-down stack-logs stack-status stack-restart stack-pull
+.PHONY: stack stack-down stack-logs stack-status stack-restart stack-pull \
+	spec091-upgrade-soak spec091-gates \
+	spec93-migration-assessment spec93-migration-assessment-pg16 \
+	spec93-migration-assessment-pg17 spec93-migration-assessment-pg18
+
+# SPEC-091: v0.22.0 GHCR → HEAD smoke soak (tiny corpus; migrations 106–141 + confirm-drop).
+# Formal realism matrix: make spec93-migration-assessment (see specs/93-migration-assessment/).
+# See docs/operations/spec091-upgrade-from-v0.22.0.md
+spec091-upgrade-soak: ## SPEC-091: smoke upgrade soak from published v0.22.0 (tiny multi-tenant)
+	@chmod +x $(ROOT_DIR)/scripts/spec091_upgrade_soak.sh
+	@SPEC93_PROFILE=smoke $(ROOT_DIR)/scripts/spec091_upgrade_soak.sh
+
+# SPEC-93: realism corpus (5×3×40) × PG16/17/18 matrix from v0.22.0 → HEAD.
+# Reports: specs/93-migration-assessment/reports/
+spec93-migration-assessment: ## SPEC-93: v0.22.0→HEAD realism soak matrix (pg16+pg17+pg18)
+	@chmod +x $(ROOT_DIR)/scripts/spec93_migration_assessment.sh
+	@$(ROOT_DIR)/scripts/spec93_migration_assessment.sh
+
+spec93-migration-assessment-pg16: ## SPEC-93: realism soak on PG16 only
+	@chmod +x $(ROOT_DIR)/scripts/spec93_migration_assessment.sh
+	@SPEC93_PG_PROFILE=pg16 $(ROOT_DIR)/scripts/spec93_migration_assessment.sh
+
+spec93-migration-assessment-pg17: ## SPEC-93: realism soak on PG17 only
+	@chmod +x $(ROOT_DIR)/scripts/spec93_migration_assessment.sh
+	@SPEC93_PG_PROFILE=pg17 $(ROOT_DIR)/scripts/spec93_migration_assessment.sh
+
+spec93-migration-assessment-pg18: ## SPEC-93: realism soak on PG18 only
+	@chmod +x $(ROOT_DIR)/scripts/spec93_migration_assessment.sh
+	@SPEC93_PG_PROFILE=pg18 $(ROOT_DIR)/scripts/spec93_migration_assessment.sh
+
+# SPEC-091 IW0–IW5 local gate (mirrors .github/workflows/spec091-data-layer.yml::spec091-data-layer).
+# Requires DATABASE_URL pointing at a Postgres with pgvector + AGE (make postgres-start).
+# Soft-skips are disabled here (EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1) so a missing DB fails loud.
+spec103-llm-cache-proof: ## SPEC-103: unit + contract LLM cache proof (MemoryKV L2)
+	@echo "$(BOLD)$(BLUE)SPEC-103 LLM cache proof$(RESET)"
+	@cd $(ROOT_DIR)/edgequake && \
+	  cargo test -p edgequake-query --lib cache::llm_response_cache -- --nocapture && \
+	  cargo test -p edgequake-query --test contract_spec103_llm_cache -- --nocapture
+	@echo "$(GREEN)SPEC-103 contract proof OK$(RESET) (optional postgres: cargo test -p edgequake-query --features postgres --test e2e_spec103_llm_cache_persist -- --ignored)"
+
+spec091-gates: ## SPEC-091: run wired data-layer e2e + contracts (serial)
+	@echo "$(BOLD)$(BLUE)SPEC-091 data-layer gates$(RESET) (serial; needs DATABASE_URL)"
+	@test -f $(ROOT_DIR)/specs/091-simplify-data-layer/measurements/rm4-explain-hot-paths.md || \
+	  (echo "$(RED)missing RM4 EXPLAIN artifact: measurements/rm4-explain-hot-paths.md$(RESET)" && exit 1)
+	@$(LOAD_EFF_DB_URL); \
+	export DATABASE_URL="$$_EFF_DB_URL"; \
+	export EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1; \
+	echo "DATABASE_URL=$$DATABASE_URL"; \
+	cd $(ROOT_DIR)/edgequake && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_wave_d -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_console -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_job_control -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_chunk_embeddings -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_vector_backfill -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_recall_parity -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_vector_backend_dual -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test contract_spec091_vector_write_stop -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_typed_only_ingest -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_vector_retire -- --test-threads=1 && \
+	  cargo test -p edgequake-api --features postgres --test contract_spec091_boot_gate -- --test-threads=1 && \
+	  cargo test -p edgequake --features postgres --test cli_migrate_console -- --test-threads=1 && \
+	  cargo test -p edgequake-api --features postgres --test contract_spec091_strict_scope_headers -- --test-threads=1 && \
+	  cargo test -p edgequake-api --features postgres --test contract_spec091_cqrs_batch_sink -- --test-threads=1 && \
+	  cargo test -p edgequake-api --features postgres --test contract_spec091_outbox_ingest -- --test-threads=1 && \
+	  cargo test -p edgequake-api --features postgres --test contract_spec091_outbox_drain -- --test-threads=1 && \
+	  cargo test -p edgequake-pipeline --lib spec091 -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test contract_spec091_chunk_fts -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test contract_spec091_age_citation_indexes -- --test-threads=1 && \
+	  cargo test -p edgequake-tasks --lib batch_estimate_ranks_pending_page -- --test-threads=1 && \
+	  cargo test -p edgequake-pipeline --lib typed_authority_skips_legacy_chunk_vector_upsert -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --lib contract_spec091_serving_fence_default_on -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test contract_spec091_get_by_ids_typed -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test contract_spec091_unknown_family_loud -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test contract_spec091_llm_cache_scope -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_ingestion_p95_budget -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_retrieval_slo_protection -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test contract_spec091_shell_batch_write -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_hnsw_policy_converged -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_fleet_recall_parity -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test contract_spec091_zero_runtime_ddl -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test contract_spec091_kv_ping_short_circuits -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_hot_path_no_missing_kv_sql -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test contract_spec091_admission_stamps_track_id -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test contract_spec091_advisor_purge_aware_residue -- --test-threads=1 && \
+	  cargo test -p edgequake-api --features postgres --test contract_spec091_health_chunk_text_ssot -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --test contract_spec091_no_kv_facade && \
+	  cargo test -p edgequake-storage --test proptest_spec091_key_grammar && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_cross_tenant_graph_leak -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_cross_tenant_ann_leak -- --test-threads=1 && \
+	  cargo test -p edgequake-storage --features postgres --test e2e_spec091_workspace_delete_zero_residue_1m -- --test-threads=1 && \
+	  cargo test -p edgequake-tasks --features postgres --test contract_spec091_provider_budget -- --test-threads=1 && \
+	  cargo test -p edgequake-tasks --test contract_spec091_fairness_release_before_materialize -- --test-threads=1 && \
+	  cargo test -p edgequake-api --test contract_spec091_cancel_gates -- --test-threads=1 && \
+	  cargo test -p edgequake-api --features postgres --test contract_spec091_checkpoint_typed_write_stop -- --test-threads=1
+	@echo "$(GREEN)✓ SPEC-091 gates complete$(RESET)"
 
 stack: ## ⚡ One command: pull all GHCR images and start API + Web UI + DB  (<30s)
 	@echo ""
@@ -2831,7 +2992,7 @@ sys.exit(1 if bad else 0)" "$$_H" \
 	    EDGEQUAKE_CHUNK_OVERLAP="$(BENCH001_EQ_CHUNK_OVERLAP)" \
 	    EDGEQUAKE_LLM_MODEL="$(BENCH001_ACC_LLM_MODEL)" \
 	    EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS="$(BENCH001_ACC_EXTRACT_CONCURRENCY)" \
-	    EDGEQUAKE_MIX_FUSION=rrf; \
+	    EDGEQUAKE_MIX_FUSION=round_robin; \
 	fi
 
 .PHONY: bench001-backend-lrlike
@@ -2910,7 +3071,8 @@ bench001-smoke-fast-acc: bench001-install bench001-acc-backend ## Acc-lift smoke
 	export EDGEQUAKE_ADAPTIVE_CHUNKING="$(BENCH001_EQ_ADAPTIVE_CHUNKING)"; \
 	export EDGEQUAKE_CHUNK_SIZE="$(BENCH001_EQ_CHUNK_SIZE)"; \
 	export EDGEQUAKE_CHUNK_OVERLAP="$(BENCH001_EQ_CHUNK_OVERLAP)"; \
-	export EDGEQUAKE_MIX_FUSION="$${EDGEQUAKE_MIX_FUSION:-rrf}"; \
+	export EDGEQUAKE_MIX_FUSION="$${EDGEQUAKE_MIX_FUSION:-round_robin}"; \
+	export BENCH001_ALLOW_ROUND_ROBIN="$${BENCH001_ALLOW_ROUND_ROBIN:-1}"; \
 	export BENCH001_INGEST_MAX_CHARS="$${BENCH001_INGEST_MAX_CHARS:-$(BENCH001_INGEST_MAX_CHARS)}"; \
 	export BENCH001_INGEST_TIMEOUT_S="$${BENCH001_INGEST_TIMEOUT_S:-$(BENCH001_INGEST_TIMEOUT_S)}"; \
 	export BENCH001_LLM_PROVIDER=mistral; \
@@ -2943,7 +3105,7 @@ bench001-smoke-fast-acc: bench001-install bench001-acc-backend ## Acc-lift smoke
 	  --eval-concurrency "$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
 	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/smoke-fast/SUMMARY.md"
 
-bench001-smoke-acc: bench001-install bench001-acc-backend ## Acc-lift smoke n=40: gold + small + LR-like Mix + fair chunk 1200
+bench001-smoke-acc: bench001-install bench001-acc-backend ## Acc-lift smoke n=40: gold + small + 086 E2-occ Mix + fair chunk 1200
 	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
 	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
 	export BENCH001_PUBLICATION=1; \
@@ -2952,8 +3114,16 @@ bench001-smoke-acc: bench001-install bench001-acc-backend ## Acc-lift smoke n=40
 	export EDGEQUAKE_ADAPTIVE_CHUNKING=0; \
 	export EDGEQUAKE_CHUNK_SIZE=1200; \
 	export EDGEQUAKE_CHUNK_OVERLAP=100; \
-	export EDGEQUAKE_MIX_FUSION=rrf; \
-	export EDGEQUAKE_HYBRID_FUSION=rrf; \
+	export EDGEQUAKE_MIX_FUSION=round_robin; \
+	export EDGEQUAKE_HYBRID_FUSION=round_robin; \
+	export BENCH001_ALLOW_ROUND_ROBIN=1; \
+	export BENCH001_EQ_ENABLE_RERANK=0; \
+	export EDGEQUAKE_GRAPH_WALK=bfs; \
+	export EDGEQUAKE_ENTITY_RANK=retrieval; \
+	export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1; \
+	export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1; \
+	export EDGEQUAKE_L2_BM25_UNION=1; \
+	export EDGEQUAKE_L2_BM25_MODE=fact_replace; \
 	export EDGEQUAKE_LLM_PROVIDER=mistral; \
 	export EDGEQUAKE_LLM_MODEL="$(BENCH001_ACC_LLM_MODEL)"; \
 	export EDGEQUAKE_VISION_PROVIDER=mistral; \
@@ -2997,12 +3167,12 @@ bench001-smoke-acc: bench001-install bench001-acc-backend ## Acc-lift smoke n=40
 	  --judge-provider mistral --judge-model "$(BENCH001_ACC_JUDGE_MODEL)" \
 	  --judge-embedding-model mistral-embed \
 	  --answer-style gold \
-	  --profile-id P0_mistral_small_mix_chunk1200_v1 \
+	  --profile-id ACC_E2OCC_086_v1 \
 	  --query-concurrency "$(BENCH001_ACC_QUERY_CONCURRENCY)" \
 	  --eval-concurrency "$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
 	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/smoke/SUMMARY.md"
 
-bench001-medical-mid: bench001-install bench001-acc-backend ## Publish Acc medical-mid n=200 (50/type; supersets smoke)
+bench001-medical-mid: bench001-install bench001-acc-backend ## Acc medical-mid n=200 (086 E2-occ Acc law; SKIP publish/latest unless ALLOW)
 	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
 	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
 	export BENCH001_PUBLICATION=1; \
@@ -3011,8 +3181,20 @@ bench001-medical-mid: bench001-install bench001-acc-backend ## Publish Acc medic
 	export EDGEQUAKE_ADAPTIVE_CHUNKING=0; \
 	export EDGEQUAKE_CHUNK_SIZE=1200; \
 	export EDGEQUAKE_CHUNK_OVERLAP=100; \
-	export EDGEQUAKE_MIX_FUSION=rrf; \
-	export EDGEQUAKE_HYBRID_FUSION=rrf; \
+	export EDGEQUAKE_MIX_FUSION=round_robin; \
+	export EDGEQUAKE_HYBRID_FUSION=round_robin; \
+	export BENCH001_ALLOW_ROUND_ROBIN=1; \
+	export BENCH001_EQ_ENABLE_RERANK=0; \
+	export EDGEQUAKE_GRAPH_WALK=bfs; \
+	export EDGEQUAKE_ENTITY_RANK=retrieval; \
+	export EDGEQUAKE_KG_CHUNK_PICK=vector; \
+	export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1; \
+	export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1; \
+	export EDGEQUAKE_BM25_RETRIEVAL=1; \
+	export EDGEQUAKE_L2_BM25_UNION=1; \
+	export EDGEQUAKE_L2_BM25_MODE=fact_replace; \
+	export EDGEQUAKE_L2_BM25_MIX_TOP_K=30; \
+	if [ "$${BENCH001_ALLOW_PUBLISH_LATEST:-0}" != "1" ]; then export BENCH001_SKIP_PUBLISH_LATEST=1; fi; \
 	export EDGEQUAKE_LLM_PROVIDER=mistral; \
 	export EDGEQUAKE_LLM_MODEL="$(BENCH001_ACC_LLM_MODEL)"; \
 	export EDGEQUAKE_VISION_PROVIDER=mistral; \
@@ -3046,8 +3228,10 @@ bench001-medical-mid: bench001-install bench001-acc-backend ## Publish Acc medic
 	export PYTHONUNBUFFERED=1; \
 	_QONLY_FLAG="--force-ingest"; \
 	if [ "$${BENCH001_QUERY_ONLY:-0}" = "1" ]; then _QONLY_FLAG="--query-only"; fi; \
-	echo "$(YELLOW)→ Acc medical-mid n=200 PUBLICATION: api=$$EDGEQUAKE_API_URL$(RESET)"; \
+	echo "$(YELLOW)→ Acc medical-mid n=200 PUBLICATION (086 E2-occ): api=$$EDGEQUAKE_API_URL$(RESET)"; \
 	echo "$(YELLOW)  llm/vision/judge=$(BENCH001_ACC_LLM_MODEL) embed=mistral-embed chunk=1200/100 corpus=FULL$(RESET)"; \
+	echo "$(YELLOW)  mix=round_robin · rerank=0 · bfs · occ_sort · LR_BUDGET · Fact L2 fact_replace$(RESET)"; \
+	if [ "$${BENCH001_SKIP_PUBLISH_LATEST:-0}" = "1" ]; then echo "$(YELLOW)  SKIP publish/latest (set BENCH001_ALLOW_PUBLISH_LATEST=1 to replace)$(RESET)"; fi; \
 	echo "$(BLUE)  monitor: make bench001-watch STAGE=medical-mid$(RESET)"; \
 	python3 -m bench001.cli medical-mid --api "$$EDGEQUAKE_API_URL" $$_QONLY_FLAG \
 	  --llm-provider mistral --llm-model "$(BENCH001_ACC_LLM_MODEL)" \
@@ -3056,17 +3240,35 @@ bench001-medical-mid: bench001-install bench001-acc-backend ## Publish Acc medic
 	  --judge-provider mistral --judge-model "$(BENCH001_ACC_JUDGE_MODEL)" \
 	  --judge-embedding-model mistral-embed \
 	  --answer-style gold \
-	  --profile-id P0_mistral_small_mix_chunk1200_v1 \
+	  --profile-id ACC_E2OCC_086_v1 \
 	  --query-concurrency "$(BENCH001_ACC_QUERY_CONCURRENCY)" \
 	  --eval-concurrency "$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
 	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/medical-mid/SUMMARY.md"
 
+# SPEC-086 Phase A: labeled medical-mid under Acc E2-occ law; never overwrite publish/latest.
+bench001-086-phase-a: ## 086 Phase A: Acc-law E2-occ medical-mid (query-only; SKIP publish/latest)
+	@set -e; \
+	if [ -z "$${BENCH001_EQ_WORKSPACE_ID:-}" ]; then \
+	  BENCH001_EQ_WORKSPACE_ID="$$(cd tools/bench001 && PYTHONPATH=. python3 -m bench001.cli resolve-warm-workspace)"; \
+	  echo "$(GREEN)086-phase-a: warm workspace $${BENCH001_EQ_WORKSPACE_ID}$(RESET)"; \
+	fi; \
+	export BENCH001_EQ_WORKSPACE_ID; \
+	export BENCH001_QUERY_ONLY=1; \
+	export BENCH001_SKIP_PUBLISH_LATEST=1; \
+	export BENCH001_PUBLISH_PEER="$${BENCH001_PUBLISH_PEER:-ACC_E2OCC_086_v1}"; \
+	export BENCH001_ALLOW_PUBLISH_LATEST=0; \
+	$(MAKE) bench001-medical-mid --no-print-directory; \
+	echo "$(GREEN)→ Phase A peer: specs/001-benchmark/e2e/artifacts/publish/peers/ACC_E2OCC_086_v1/ (if published)$(RESET)"; \
+	echo "$(GREEN)→ Gates: ctx≥0.48 · Fact ER≥0.90 · Acc CI not LR-ahead$(RESET)"
+
 # ---------------------------------------------------------------------------
 # Primary stakeholder entry: make bench
 # Fair GraphRAG-Bench Acc (EQ Mix vs LightRAG Mix, n=200 medical-mid) + business publish pack.
+# SPEC-086: skips publish/latest unless BENCH001_ALLOW_PUBLISH_LATEST=1 (Beat promote only).
 # Chain: install → Acc backend → doctor → medical-mid → BUSINESS_REPORT in publish/latest/
+# Mandatory local pre-tag gate (not in release_gates.sh / CI) — see docs/operations/release-and-cd.md
 # ---------------------------------------------------------------------------
-bench: bench001-install ## Publishable Acc dual-SUT + business report (n=200 medical-mid)
+bench: bench001-install ## Acc dual-SUT n=200 (086 E2-occ); publish/latest only if ALLOW_PUBLISH_LATEST=1
 	@echo "$(BLUE)→ make bench: Acc backend → doctor → dual-SUT Acc (n=200 medical-mid)$(RESET)"
 	@$(MAKE) bench001-acc-backend --no-print-directory
 	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \

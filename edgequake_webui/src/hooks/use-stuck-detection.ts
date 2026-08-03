@@ -13,7 +13,10 @@
  */
 "use client";
 
-import { isProcessingStatus } from "@/components/documents/status-badge";
+import {
+  isProcessingStatus,
+  normalizeStatus,
+} from "@/lib/documents/status-domain";
 import type { Document } from "@/types";
 import { useCallback, useEffect, useMemo } from "react";
 
@@ -99,7 +102,8 @@ export function useStuckDetection(
   const processingDocs = useMemo(() => {
     if (!documents) return [];
     return documents.filter(
-      (doc) => doc.track_id && isProcessingStatus(doc.status ?? "pending"),
+      (doc) =>
+        doc.track_id && isProcessingStatus(normalizeStatus(doc.status)),
     );
   }, [documents]);
 

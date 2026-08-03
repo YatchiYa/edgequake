@@ -252,6 +252,7 @@ impl DocumentTaskProcessor {
                 );
                 updated.insert("current_stage".to_string(), json!(unified_stage));
                 updated.insert("stage_message".to_string(), json!(stage_message));
+                crate::services::sync_progress_counts_from_message(&mut updated, stage_message);
 
                 apply_status_notice_fields(&mut updated, status, error_message);
 
@@ -267,6 +268,7 @@ impl DocumentTaskProcessor {
             new_metadata.insert("status".to_string(), json!(status));
             new_metadata.insert("current_stage".to_string(), json!(unified_stage));
             new_metadata.insert("stage_message".to_string(), json!(stage_message));
+            crate::services::sync_progress_counts_from_message(&mut new_metadata, stage_message);
             new_metadata.insert(
                 "created_at".to_string(),
                 json!(chrono::Utc::now().to_rfc3339()),
@@ -308,6 +310,68 @@ impl DocumentTaskProcessor {
         // soft-resume / indexing is visible (do not wait for finalize stats).
         self.touch_relational_document_status(document_id, status)
             .await;
+
+        Ok(())
+    }
+
+    /// Point document progress/cancel SSOT at the follow-on Insert after PDF convert.
+    ///
+    /// Convert tasks finish as `indexed`; leaving `metadata.track_id` on the convert
+    /// row made list enrichment paint Completed while ingest was still running.
+    pub(super) async fn retarget_document_ingest_track(
+        &self,
+        document_id: &str,
+        ingest_track_id: &str,
+    ) -> TaskResult<()> {
+        let pair =
+            crate::services::load_staging_and_final_metadata(self.kv_storage.as_ref(), document_id)
+                .await
+                .map_err(edgequake_tasks::TaskError::StorageError)?;
+        let metadata_key = pair.preferred_key_or_final();
+        if let Some((_, existing_val)) = pair.preferred() {
+            if let Some(obj) = existing_val.as_object() {
+                let current = obj.get("track_id").and_then(|v| v.as_str()).unwrap_or("");
+                if current != ingest_track_id {
+                    let mut updated = obj.clone();
+                    updated.insert("track_id".to_string(), json!(ingest_track_id));
+                    updated.insert(
+                        "updated_at".to_string(),
+                        json!(chrono::Utc::now().to_rfc3339()),
+                    );
+                    upsert_metadata_with_wsdoc_index(
+                        &self.kv_storage,
+                        &metadata_key,
+                        json!(updated),
+                    )
+                    .await?;
+                }
+            }
+        }
+
+        #[cfg(feature = "postgres")]
+        if let Some(pool) = self.pg_pool.as_ref() {
+            if let Err(e) = sqlx::query(
+                r#"
+                UPDATE public.documents
+                SET track_id = $1,
+                    updated_at = NOW()
+                WHERE id::text = $2
+                  AND (track_id IS DISTINCT FROM $1)
+                "#,
+            )
+            .bind(ingest_track_id)
+            .bind(document_id)
+            .execute(pool)
+            .await
+            {
+                tracing::warn!(
+                    document_id = %document_id,
+                    ingest_track_id = %ingest_track_id,
+                    error = %e,
+                    "Failed to retarget documents.track_id after PDF convert follow-on"
+                );
+            }
+        }
 
         Ok(())
     }

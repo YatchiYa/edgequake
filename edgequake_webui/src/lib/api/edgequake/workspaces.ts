@@ -201,6 +201,16 @@ export interface UpdateWorkspaceRequest {
   entity_types?: string[];
   /** Strict entity type enforcement (default true). */
   entity_types_strict?: boolean;
+  /**
+   * Extraction output language (SPEC-096).
+   * Pass `""` or `"none"` to clear the workspace override.
+   */
+  extraction_language?: string | null;
+  /**
+   * Custom entity-type → hex color map (SPEC-102).
+   * Empty object clears overrides.
+   */
+  entity_type_colors?: Record<string, string>;
 }
 
 /**
@@ -208,20 +218,27 @@ export interface UpdateWorkspaceRequest {
  *
  * @implements SPEC-032: Workspace-level configuration update
  *
- * Note: Backend uses PUT /workspaces/{workspace_id} (no tenant prefix)
+ * Note: Backend uses PUT /workspaces/{workspace_id} (no tenant prefix).
+ * Pass `tenantId` as X-Tenant-ID so the workspace is resolved in the correct
+ * tenant (required when creating a tenant then PATCHing its Default Workspace).
  *
- * @param _tenantId - Parent tenant ID (unused, kept for API compatibility)
+ * @param tenantId - Parent tenant ID (sent as X-Tenant-ID)
  * @param workspaceId - Workspace ID to update
  * @param data - Update request
  * @returns Updated workspace
  */
 export async function updateWorkspace(
-  _tenantId: string,
+  tenantId: string,
   workspaceId: string,
   data: UpdateWorkspaceRequest,
 ): Promise<Workspace> {
   // Backend route: PUT /api/v1/workspaces/{workspace_id}
-  return api.put<Workspace>(`/workspaces/${workspaceId}`, data);
+  return api.put<Workspace>(`/workspaces/${workspaceId}`, data, {
+    headers: {
+      "X-Tenant-ID": tenantId,
+      "X-Workspace-ID": workspaceId,
+    },
+  });
 }
 
 /**

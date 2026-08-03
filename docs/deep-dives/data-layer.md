@@ -4,7 +4,7 @@ title: 'Deep Dive: Data Layer (Postgres / AGE / pgvector / FTS)'
 
 # Data Layer — PostgreSQL, AGE, pgvector, and Text Search
 
-> **Product: v0.19.0** · Contract: [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.23.0** · Contract: [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 Where EdgeQuake stores information, how it is indexed, and how each query mode reads it. **Code is law** — physical names and SQL come from `edgequake-storage` adapters and `edgequake/migrations/`.
 
@@ -87,7 +87,7 @@ flowchart LR
 
 ```text
 +------------------------------------------------------------------+
-| EdgeQuake data layer (v0.19.0) — one PostgreSQL instance         |
+| EdgeQuake data layer (v0.23.0) — one PostgreSQL instance         |
 |                                                                  |
 |  WRITE (ingest saga)              READ (query)                   |
 |  -------------------              ------------                   |

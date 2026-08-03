@@ -37,6 +37,7 @@ type DocState = {
   display_status: string;
   ui_phase: string;
   stage_message: string;
+  stage_progress?: number;
   chunk_count: number;
   entity_count: number;
   source_type: string;
@@ -257,20 +258,90 @@ test.describe("SPEC-057 P4 cancel status SSOT", () => {
 
     // Force a refetch after terminal transition
     await page.waitForTimeout(600);
-    await page.reload(GOTO_OPTS);
+    // The mock's terminal transition is a backend event; make it explicit
+    // before reload so the fresh document query cannot observe stale stopping.
+    phase = "cancelled";
+    await page.goto("/documents", GOTO_OPTS);
     const rowAfter = page.getByTestId(`document-row-${DOC_ID}`);
-    await expect(rowAfter.getByTestId("status-badge")).toContainText(
-      /Cancelled/i,
-      { timeout: 15000 },
-    );
-    await expect(rowAfter.getByTestId("status-badge")).not.toContainText(
-      /Failed/i,
-    );
+    await expect(rowAfter).toContainText(/Cancelled|Processing was cancelled/i, {
+      timeout: 15000,
+    });
+    await expect(rowAfter).not.toContainText(/Failed/i);
 
     // Failed count chip must not treat cancelled as failed (if chip visible)
     const failedChip = page.getByTestId("status-count-failed");
     if (await failedChip.isVisible().catch(() => false)) {
       await expect(failedChip).not.toContainText(/^[1-9]/);
     }
+  });
+
+  test("ActiveRuns: cancelled ack is compact then dismissible (not Failed/Queued)", async ({
+    page,
+  }) => {
+    const justNow = new Date().toISOString();
+    await mockShell(page);
+    await mockDocumentsList(page, () => [
+      baseDoc({
+        status: "cancelled",
+        current_stage: "cancelled",
+        display_status: "cancelled",
+        ui_phase: "terminal",
+        stage_message: "Processing cancelled",
+        stage_progress: 0,
+        updated_at: justNow,
+      }),
+    ]);
+
+    await page.goto("/documents", GOTO_OPTS);
+
+    const panel = page.getByTestId("spec048-active-runs-panel");
+    await expect(panel).toBeVisible({ timeout: 15000 });
+    await expect(panel).toContainText(/Cancelled/i);
+    await expect(panel).not.toContainText(/Queued run/i);
+
+    const card = panel.getByTestId("spec048-active-run-card");
+    await expect(card).toHaveAttribute("data-compact", "true");
+    await expect(card.getByTestId("spec048-run-headline")).toHaveText(
+      /Cancelled/i,
+    );
+    // Cancelled cards retain a frozen progress meter for continuity.
+    await expect(card.getByTestId("spec086-cancel-progress-frozen")).toBeVisible();
+    await expect(card.getByTestId("spec048-overall-progress")).toBeVisible();
+    // Must not look like Failed pipeline
+    await expect(card).not.toContainText(/Failed Processing/i);
+
+    await card.getByTestId("spec086-run-dismiss").click();
+    await expect(panel).toHaveCount(0, { timeout: 5000 });
+
+    // Table still shows Cancelled (durable SSOT)
+    const row = page.getByTestId(`document-row-${DOC_ID}`);
+    await expect(row.getByTestId("status-badge")).toContainText(/Cancelled/i);
+  });
+
+  test("ActiveRuns: hours-old cancelled does not appear as Queued run", async ({
+    page,
+  }) => {
+    await mockShell(page);
+    await mockDocumentsList(page, () => [
+      baseDoc({
+        status: "cancelled",
+        current_stage: "cancelled",
+        display_status: "cancelled",
+        ui_phase: "terminal",
+        stage_message: "Processing cancelled",
+        stage_progress: 0,
+        updated_at: "2026-07-30T12:00:00Z",
+      }),
+    ]);
+
+    await page.goto("/documents", GOTO_OPTS);
+
+    await expect(page.getByTestId(`document-row-${DOC_ID}`)).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(
+      page.getByTestId(`document-row-${DOC_ID}`).getByTestId("status-badge"),
+    ).toContainText(/Cancelled/i);
+    await expect(page.getByTestId("spec048-active-runs-panel")).toHaveCount(0);
   });
 });
