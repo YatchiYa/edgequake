@@ -63,6 +63,7 @@ let mockWorkspace = {
   embedding_full_id: "ollama/embeddinggemma:latest",
   entity_types: [...ENGLISH_GENERAL_TYPES] as string[],
   entity_types_strict: true,
+  entity_type_colors: {} as Record<string, string>,
   extraction_language: null as string | null,
   is_active: true,
   created_at: "2026-01-01T00:00:00Z",
@@ -87,6 +88,19 @@ async function mockSpec096Backend(page: Page) {
   await page.route("**/live", (route) =>
     route.fulfill({ status: 200, body: "OK" }),
   );
+
+  // SPEC-101: keep the workspace page out of the first-run setup gate,
+  // including after a browser reload.
+  await page.route("**/api/v1/setup/status", async (route) => {
+    await fulfillJson(route, 200, {
+      needs_setup: false,
+      has_login_users: true,
+      tenant_count: 1,
+      workspace_count: 1,
+      auth_enabled: false,
+      bootstrap_admin_configured: true,
+    });
+  });
 
   // Prefer specific routes (Playwright last-registered wins for overlaps).
   await page.route("**/api/v1/tenants/*/workspaces**", async (route) => {
@@ -125,12 +139,20 @@ async function mockSpec096Backend(page: Page) {
     await fulfillJson(route, 200, MOCK_TENANT);
   });
 
+  await page.route(
+    `**/api/v1/tenants/${MOCK_TENANT_ID}/workspaces/by-slug/*`,
+    async (route) => {
+      await fulfillJson(route, 200, mockWorkspace);
+    },
+  );
+
   await page.route(`**/api/v1/workspaces/${MOCK_WORKSPACE_ID}*`, async (route) => {
     const method = route.request().method();
     if (method === "PUT") {
       const body = route.request().postDataJSON() as {
         extraction_language?: string | null;
         entity_types?: string[];
+        entity_type_colors?: Record<string, string>;
       };
       if (body.extraction_language !== undefined) {
         const raw = (body.extraction_language ?? "").trim();
@@ -149,6 +171,12 @@ async function mockSpec096Backend(page: Page) {
         mockWorkspace = {
           ...mockWorkspace,
           entity_types: [...body.entity_types],
+        };
+      }
+      if (body.entity_type_colors) {
+        mockWorkspace = {
+          ...mockWorkspace,
+          entity_type_colors: { ...body.entity_type_colors },
         };
       }
       await fulfillJson(route, 200, mockWorkspace);
@@ -193,6 +221,34 @@ async function mockSpec096Backend(page: Page) {
       },
     }),
   );
+  await page.route("**/api/v1/settings/provider/status**", (route) =>
+    fulfillJson(route, 200, {
+      provider: {
+        name: "ollama",
+        type: "llm",
+        status: "connected",
+        model: "gemma4:latest",
+        config: {},
+      },
+      embedding: {
+        name: "ollama",
+        type: "embedding",
+        status: "connected",
+        model: "embeddinggemma:latest",
+        dimension: 768,
+      },
+      storage: {
+        type: "postgres",
+        dimension: 768,
+        dimension_mismatch: false,
+        namespace: "default",
+      },
+      metadata: {
+        checked_at: "2026-01-01T00:00:00Z",
+        uptime_seconds: 1,
+      },
+    }),
+  );
   await page.route("**/api/v1/models**", (route) =>
     fulfillJson(route, 200, {
       default_llm_provider: "ollama",
@@ -201,6 +257,9 @@ async function mockSpec096Backend(page: Page) {
       default_embedding_model: "embeddinggemma:latest",
       providers: [],
     }),
+  );
+  await page.route("**/api/v1/models/health**", (route) =>
+    fulfillJson(route, 200, []),
   );
   await page.route("**/api/v1/providers*", (route) =>
     fulfillJson(route, 200, []),
@@ -218,6 +277,7 @@ async function seedTenantContext(page: Page) {
   await page.evaluate(
     ({ tenantId, workspaceId }) => {
       localStorage.clear();
+      sessionStorage.clear();
       const userId = crypto.randomUUID();
       localStorage.setItem("userId", userId);
       localStorage.setItem("tenantId", tenantId);
@@ -342,17 +402,30 @@ test.describe("SPEC-096 Extraction Language", () => {
     await page.getByTestId("wizard-next").click();
     await expect(page.getByTestId("wizard-step-extraction")).toBeVisible();
     await expect(page.getByTestId("entity-types-chips")).toBeVisible();
-    await expect(page.getByTestId("entity-type-chip-PERSON")).toBeVisible();
+    const entityTypeChip = (label: string) =>
+      page
+        .locator('[data-testid="entity-types-chips"] > *')
+        .filter({ hasText: new RegExp(`^${label}$`) });
+
+    // Server-default workspaces may begin with an empty custom list.
+    // Select General so LAW-L6 exercises preset remapping deterministically.
+    const generalPreset = page.getByTestId("preset-btn-general");
+    if (!(await generalPreset.isVisible())) {
+      await page.getByRole("button", { name: "Change domain" }).click();
+    }
+    await expect(generalPreset).toBeVisible();
+    await generalPreset.click();
+    await expect(entityTypeChip("PERSON")).toBeVisible();
 
     const select = page.getByTestId("create-workspace-extraction-language");
     await select.click();
     await page.getByRole("option", { name: "French" }).click();
 
-    await expect(page.getByTestId("entity-type-chip-PERSONNE")).toBeVisible({
+    await expect(entityTypeChip("PERSONNE")).toBeVisible({
       timeout: 5_000,
     });
-    await expect(page.getByTestId("entity-type-chip-ORGANISATION")).toBeVisible();
-    await expect(page.getByTestId("entity-type-chip-PERSON")).toHaveCount(0);
+    await expect(entityTypeChip("ORGANISATION")).toBeVisible();
+    await expect(entityTypeChip("PERSON")).toHaveCount(0);
     await page.getByTestId("entity-types-chips").scrollIntoViewIfNeeded();
     await capture(page, "S06-french-entity-types.png", "S06", [
       "French selected → chips show PERSONNE / ORGANISATION",
@@ -360,12 +433,12 @@ test.describe("SPEC-096 Extraction Language", () => {
     ]);
 
     await select.click();
-    await page.getByRole("option", { name: "English" }).click();
-    await expect(page.getByTestId("entity-type-chip-PERSON")).toBeVisible({
+    await page.getByRole("option", { name: "English", exact: true }).last().click();
+    await expect(entityTypeChip("PERSON")).toBeVisible({
       timeout: 5_000,
     });
-    await expect(page.getByTestId("entity-type-chip-ORGANIZATION")).toBeVisible();
-    await expect(page.getByTestId("entity-type-chip-PERSONNE")).toHaveCount(0);
+    await expect(entityTypeChip("ORGANIZATION")).toBeVisible();
+    await expect(entityTypeChip("PERSONNE")).toHaveCount(0);
     await page.getByTestId("entity-types-chips").scrollIntoViewIfNeeded();
     await capture(page, "S07-english-entity-types-restored.png", "S07", [
       "English selected → General preset English tokens restored",

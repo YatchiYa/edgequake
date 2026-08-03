@@ -21,7 +21,14 @@ test.describe("SPEC-100 api-explorer CLS", () => {
     await expect(page.getByTestId("api-explorer-scalar")).toBeVisible({
       timeout: 20_000,
     });
-    const box = await shell.boundingBox();
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(400);
+    await expect
+      .poll(
+        async () => {
+          const box = await shell.boundingBox();
+          return box?.height ?? 0;
+        },
+        { timeout: 20_000, message: "API Explorer shell should fill the main area" },
+      )
+      .toBeGreaterThanOrEqual(400);
   });
 });
