@@ -41,7 +41,7 @@ test.describe("SPEC-099 Clear All demoted", () => {
     await page.getByTestId("spec099-clear-all-menu-item").click();
 
     // Typed confirm still required
-    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("alertdialog")).toBeVisible();
     await expect(page.getByLabel(/Type DELETE ALL/i)).toBeVisible();
   });
 });

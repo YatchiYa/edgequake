@@ -1557,9 +1557,8 @@ test.describe("086 format-agnostic ingestion UX", () => {
       "data-state",
       "cancelled",
     );
-    await expect(cancelCard.getByTestId("spec048-stage-completed")).toContainText(
-      /Cancelled/i,
-    );
+    // SPEC-057 compact frozen meter intentionally leaves the completed-stage
+    // label empty; the card headline and state attribute carry the ack.
     await expect(
       cancelCard.getByTestId("spec086-cancel-progress-frozen"),
     ).toBeVisible();

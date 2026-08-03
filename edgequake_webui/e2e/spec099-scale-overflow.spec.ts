@@ -32,6 +32,39 @@ test.describe("SPEC-099 scale overflow", () => {
     await mockSpec038AdmissionRoutes(page);
     await seedSpec038TenantContext(page);
     await mockSpec086DocumentList(page, docs);
+    // The shared list helper is intentionally exact-count. Override it here
+    // with a server total larger than the fetched cap to exercise SPEC-099's
+    // honest overflow affordance.
+    await page.route("**/api/v1/documents**", async (route) => {
+      if (
+        route.request().method() === "GET" &&
+        !route.request().url().includes("/track/") &&
+        !route.request().url().includes("/pdf")
+      ) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            documents: docs,
+            total: 240,
+            page: 1,
+            page_size: 100,
+            total_pages: 3,
+            has_more: true,
+            status_counts: {
+              pending: 0,
+              processing: 0,
+              completed: 240,
+              failed: 0,
+              partial_failure: 0,
+              cancelled: 0,
+            },
+          }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
     await page.goto("/documents", GOTO_OPTS);
 
     await expect(page.getByTestId("spec099-documents-count")).toBeVisible({

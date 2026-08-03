@@ -296,6 +296,22 @@ export async function mockSpec038AdmissionRoutes(
     await route.fulfill({ status: 200, body: "OK" });
   });
 
+  // SPEC-101: keep UI-only Documents tests out of the first-run wizard.
+  await page.route("**/api/v1/setup/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        needs_setup: false,
+        has_login_users: true,
+        tenant_count: 1,
+        workspace_count: 1,
+        auth_enabled: false,
+        bootstrap_admin_configured: true,
+      }),
+    });
+  });
+
   await page.route("**/api/v1/tenants", async (route) => {
     await route.fulfill({
       status: 200,
@@ -316,6 +332,23 @@ export async function mockSpec038AdmissionRoutes(
       }),
     });
   });
+
+  await page.route(
+    new RegExp(`/api/v1/tenants/${SPEC038_MOCK_TENANT_ID}/?$`),
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: SPEC038_MOCK_TENANT_ID,
+          name: "SPEC038Tenant",
+          slug: "spec038-tenant",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        }),
+      });
+    },
+  );
 
   await page.route(`**/api/v1/tenants/${SPEC038_MOCK_TENANT_ID}/workspaces**`, async (route) => {
     const workspace: Record<string, unknown> = {
@@ -340,6 +373,24 @@ export async function mockSpec038AdmissionRoutes(
       }),
     });
   });
+
+  await page.route(
+    `**/api/v1/tenants/${SPEC038_MOCK_TENANT_ID}/workspaces/by-slug/*`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: SPEC038_MOCK_WORKSPACE_ID,
+          tenant_id: SPEC038_MOCK_TENANT_ID,
+          name: "SPEC-038 Workspace",
+          slug: "spec038-workspace",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        }),
+      });
+    },
+  );
 
   await page.route("**/api/v1/documents**", async (route) => {
     const url = route.request().url();
