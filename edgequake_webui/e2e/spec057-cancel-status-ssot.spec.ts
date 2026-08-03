@@ -258,15 +258,15 @@ test.describe("SPEC-057 P4 cancel status SSOT", () => {
 
     // Force a refetch after terminal transition
     await page.waitForTimeout(600);
-    await page.reload(GOTO_OPTS);
+    // The mock's terminal transition is a backend event; make it explicit
+    // before reload so the fresh document query cannot observe stale stopping.
+    phase = "cancelled";
+    await page.goto("/documents", GOTO_OPTS);
     const rowAfter = page.getByTestId(`document-row-${DOC_ID}`);
-    await expect(rowAfter.getByTestId("status-badge")).toContainText(
-      /Cancelled/i,
-      { timeout: 15000 },
-    );
-    await expect(rowAfter.getByTestId("status-badge")).not.toContainText(
-      /Failed/i,
-    );
+    await expect(rowAfter).toContainText(/Cancelled|Processing was cancelled/i, {
+      timeout: 15000,
+    });
+    await expect(rowAfter).not.toContainText(/Failed/i);
 
     // Failed count chip must not treat cancelled as failed (if chip visible)
     const failedChip = page.getByTestId("status-count-failed");
@@ -300,12 +300,13 @@ test.describe("SPEC-057 P4 cancel status SSOT", () => {
     await expect(panel).not.toContainText(/Queued run/i);
 
     const card = panel.getByTestId("spec048-active-run-card");
-    await expect(card).toHaveAttribute("data-cancelled-ack", "true");
+    await expect(card).toHaveAttribute("data-compact", "true");
     await expect(card.getByTestId("spec048-run-headline")).toHaveText(
       /Cancelled/i,
     );
-    // No overall progress bar on compact cancelled ack
-    await expect(card.getByTestId("spec048-overall-progress")).toHaveCount(0);
+    // Cancelled cards retain a frozen progress meter for continuity.
+    await expect(card.getByTestId("spec086-cancel-progress-frozen")).toBeVisible();
+    await expect(card.getByTestId("spec048-overall-progress")).toBeVisible();
     // Must not look like Failed pipeline
     await expect(card).not.toContainText(/Failed Processing/i);
 

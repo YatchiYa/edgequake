@@ -77,7 +77,7 @@ async function mockCoreRoutes(page: import("@playwright/test").Page) {
 }
 
 test.describe("SPEC-021 ingest resilience UI", () => {
-  test("live ok + health timeout shows busy banner, not unreachable", async ({
+  test("live ok + health timeout shows busy header, not unreachable banner", async ({
     page,
   }) => {
     await mockCoreRoutes(page);
@@ -105,9 +105,11 @@ test.describe("SPEC-021 ingest resilience UI", () => {
     await seedTenantStoreOnPage(page, MOCK_CTX, { waitForReady: false });
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    const banner = page.getByRole("status");
-    await expect(banner).toContainText(/processing documents/i, { timeout: 20_000 });
-    await expect(banner).not.toContainText(/not available/i);
+    await expect(page.getByRole("banner").getByText("Busy", { exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByText(/processing documents/i)).toHaveCount(0);
+    await expect(page.getByText(/not available/i)).toHaveCount(0);
   });
 
   test("stale workspace stats show updating badge on dashboard", async ({

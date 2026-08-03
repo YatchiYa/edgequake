@@ -484,10 +484,9 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
     await expect(page.getByTestId("pipeline-header-button")).toContainText(
       /Working/i,
     );
-    await expect(page.getByTestId("document-dropzone")).toHaveAttribute(
-      "data-quiet",
-      "true",
-    );
+    const dropzone = page.getByTestId("document-dropzone");
+    await expect(dropzone).toHaveAttribute("data-quiet", "false");
+    await expect(dropzone).toHaveAttribute("data-collapsed", "true");
     await capture(page, "S02-working-parity", [
       "ActiveRunsPanel owns working narrative (banner demoted)",
       "Headline is stage-specific (Extracting Entities)",
