@@ -1,0 +1,52 @@
+[
+  {
+    "label": "N=8 y=25 reuse=0.4",
+    "n_chunks": 8,
+    "yield_per_chunk": 25,
+    "reuse_fraction": 0.4,
+    "mentions_M": 200,
+    "unique_U": 121,
+    "m_over_u": 1.65,
+    "mode": "mock-extract"
+  },
+  {
+    "label": "N=12 y=25 reuse=0.4",
+    "n_chunks": 12,
+    "yield_per_chunk": 25,
+    "reuse_fraction": 0.4,
+    "mentions_M": 300,
+    "unique_U": 181,
+    "m_over_u": 1.66,
+    "mode": "mock-extract"
+  },
+  {
+    "label": "N=159 y=30 reuse=0.55",
+    "n_chunks": 159,
+    "yield_per_chunk": 30,
+    "reuse_fraction": 0.55,
+    "mentions_M": 4770,
+    "unique_U": 2068,
+    "m_over_u": 2.31,
+    "mode": "mock-extract"
+  },
+  {
+    "label": "N=317 y=30 reuse=0.55",
+    "n_chunks": 317,
+    "yield_per_chunk": 30,
+    "reuse_fraction": 0.55,
+    "mentions_M": 9510,
+    "unique_U": 4122,
+    "m_over_u": 2.31,
+    "mode": "mock-extract"
+  },
+  {
+    "label": "N=309 y=40 reuse=0.7",
+    "n_chunks": 309,
+    "yield_per_chunk": 40,
+    "reuse_fraction": 0.7,
+    "mentions_M": 12360,
+    "unique_U": 3709,
+    "m_over_u": 3.33,
+    "mode": "mock-extract"
+  }
+]

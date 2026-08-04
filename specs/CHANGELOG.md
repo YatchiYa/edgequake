@@ -6,6 +6,12 @@ All notable changes to the EdgeQuake specs directory are tracked here. See the r
 
 ### Added
 
+- **SPEC-108 / extraction density vs LightRAG (2026-08-04):** Partner
+  ~12k entities/relations question — first-principles pack under
+  `specs/108-extraction-compared-light-rag/` (LAW-X1..X5: M≠U count SSOT,
+  adaptive geometry, fair dual-SUT). Code compare EQ↔LR chunk/extract/merge;
+  arms A/B/C measurements; French partner reply. Docs + measurements only.
+
 - **SPEC-107 / partner prod error report (2026-08-04):** First-principles
   partner-incident pack under `specs/107-issue/` for Quantalogic prod log classes
   (workspaces.id 42703, edgequake.Node 42P01, INV-03 CRITICAL, tenants_slug 23505).
