@@ -1,0 +1,18 @@
+   Compiling edgequake-storage v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+   Compiling edgequake-api v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-api)
+   Compiling edgequake-pipeline v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-pipeline)
+   Compiling edgequake-query v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-query)
+   Compiling edgequake-core v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 32.89s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_api-612ae2914d99e4dd)
+
+running 6 tests
+test storage_inspector::spec104_tests::e2e_107_r2_source_count_bounds_ssot ... ok
+test storage_inspector::spec104_tests::require_safe_sql_ident_allowlist ... ok
+test storage_inspector::spec104_tests::e2e_104_01_extract_uuid_workspace_table ... ok
+test storage_inspector::spec104_tests::e2e_104_02_default_graph_matches_storage_naming ... ok
+test storage_inspector::spec104_tests::e2e_104_02_for_namespace_sanitizes_like_postgres_config ... ok
+test storage_inspector::spec104_tests::e2e_107_03_inv03_logonly_repair ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 1234 filtered out; finished in 0.00s
+

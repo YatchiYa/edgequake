@@ -24,7 +24,9 @@ pub(in crate::adapters::postgres::graph) const SOURCE_CHUNK_PROBE_LIMIT: usize =
 ///
 /// WHY: one query with thousands of prefixes × 256 probes saturates the pool
 /// even when each GIN probe is cheap (~7ms). Callers chunk larger lists.
-pub(in crate::adapters::postgres::graph) const SOURCE_PREFIX_BATCH_LIMIT: usize = 32;
+///
+/// Public SSOT for list analytics **and** StorageInspector INV-C (SPEC-107 R2).
+pub const SOURCE_PREFIX_BATCH_LIMIT: usize = 32;
 
 /// Server-side kill for entity-count reconcile (SPEC-089 / GH-336 / LAW-H2).
 ///
@@ -32,7 +34,9 @@ pub(in crate::adapters::postgres::graph) const SOURCE_PREFIX_BATCH_LIMIT: usize 
 /// keeps running (zombie pool holders). `SET LOCAL statement_timeout` inside
 /// a transaction cancels the statement; aligned under API `AGE_RECONCILE_TIMEOUT`
 /// (400ms).
-pub(in crate::adapters::postgres::graph) const SOURCE_COUNT_STATEMENT_TIMEOUT_MS: u32 = 300;
+///
+/// Public SSOT for list analytics **and** StorageInspector INV-C (SPEC-107 R2).
+pub const SOURCE_COUNT_STATEMENT_TIMEOUT_MS: u32 = 300;
 
 /// Server-side kill for cascade discovery GIN probes (SPEC-089 Wave 3 / F-336-08).
 ///

@@ -26,6 +26,55 @@ fn e2e_104_01_source_uses_workspace_id_not_id() {
     );
 }
 
+/// E2E-107-03 source gate: INV-03 repair arm must exist (LogOnly / residual ops).
+#[test]
+fn e2e_107_03_source_inv03_logonly_repair() {
+    let src = include_str!("../src/storage_inspector.rs");
+    assert!(
+        src.contains("repair_recommendation_for_invariant"),
+        "INV repair mapping must be a testable helper"
+    );
+    assert!(
+        src.contains("\"INV-03\""),
+        "INV-03 must have an explicit repair arm (SPEC-107)"
+    );
+    assert!(
+        src.contains("no SAFE auto-repair"),
+        "INV-03 LogOnly message must forbid SAFE auto-mutate"
+    );
+}
+
+/// E2E-107-R2-01: INV-C must chunk by SOURCE_PREFIX_BATCH_LIMIT (LAW-H1).
+#[test]
+fn e2e_107_r2_inv_c_chunks_by_batch_limit() {
+    let src = include_str!("../src/storage_inspector.rs");
+    assert!(
+        src.contains("SOURCE_PREFIX_BATCH_LIMIT"),
+        "INV-C must use public SPEC-089 batch SSOT"
+    );
+    assert!(
+        src.contains("SOURCE_COUNT_STATEMENT_TIMEOUT_MS"),
+        "INV-C must use public SPEC-089 timeout SSOT"
+    );
+    assert!(
+        src.contains("inv_c_gin_node_counts_one_batch"),
+        "INV-C must split into one_batch round-trips"
+    );
+    assert!(
+        src.contains("prefixes.chunks(batch_limit)"),
+        "INV-C must chunk prefixes (not one-shot ≤50)"
+    );
+    assert!(
+        src.contains("DATA-AGE-GRAPH-NODE-COUNTS-BY-SOURCE-PREFIXES"),
+        "INV-C SQL must keep the shared dataop marker"
+    );
+    let read = include_str!("../src/document_read_model.rs");
+    assert!(
+        read.contains("DATA-AGE-GRAPH-NODE-COUNTS-BY-SOURCE-PREFIXES"),
+        "list reconcile soft-fail must tag the dataop for 57014 greps"
+    );
+}
+
 #[test]
 fn e2e_104_02_source_graph_not_hardcoded_edgequake() {
     let src = include_str!("../src/storage_inspector.rs");
@@ -51,6 +100,14 @@ fn e2e_104_03_source_inv03_dual_presence() {
     assert!(
         src.contains("k.key LIKE d.id::text || '-chunk-%'"),
         "INV-03 harden must dual-read KV when present (EC-16)"
+    );
+    assert!(
+        src.contains("IN ('indexed', 'completed')"),
+        "INV-03 must cover terminal indexed|completed (SPEC-107)"
+    );
+    assert!(
+        src.contains("inv_c_gin_batch"),
+        "INV-C skip must emit fail-visible schema issue (SPEC-107 LAW-I2)"
     );
     assert!(
         src.contains("chunk_embeddings"),

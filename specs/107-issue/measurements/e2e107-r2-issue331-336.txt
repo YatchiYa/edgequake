@@ -1,0 +1,31 @@
+   Compiling edgequake-storage v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.91s
+     Running tests/e2e_issue331_node_counts_child_gin.rs (target/debug/deps/e2e_issue331_node_counts_child_gin-5d5a282ab961ef52)
+
+running 3 tests
+SKIP: no DATABASE_URL / POSTGRES_PASSWORD
+SKIP: no DATABASE_URL / POSTGRES_PASSWORD
+SKIP: no DATABASE_URL / POSTGRES_PASSWORD
+test issue331_node_counts_uses_child_gin_explain ... ok
+test issue331_parity_count_vs_discovery ... ok
+test issue331_concurrent_reprocess_pool_stable ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/e2e_issue336_node_counts_bounded.rs (target/debug/deps/e2e_issue336_node_counts_bounded-1a7cbe374aecebae)
+
+running 6 tests
+test iss089_source_constants_visible_in_helpers ... ok
+SKIP: no DATABASE_URL / POSTGRES_PASSWORD
+SKIP: no DATABASE_URL / POSTGRES_PASSWORD
+SKIP: no DATABASE_URL / POSTGRES_PASSWORD
+SKIP: no DATABASE_URL / POSTGRES_PASSWORD
+SKIP: no DATABASE_URL / POSTGRES_PASSWORD
+test issue336_discovery_timeout_keeps_pool_usable ... ok
+test issue336_large_prefix_batch_bounded ... ok
+test issue336_small_batch_still_gin ... ok
+test issue336_pool_coexistence_with_stats ... ok
+test iss089_phase4_single_cascade_discovery_is_one_pair ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

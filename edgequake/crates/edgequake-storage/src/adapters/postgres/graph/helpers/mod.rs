@@ -31,9 +31,11 @@ pub(in crate::adapters::postgres::graph) use eq_id_sql::{
 pub(in crate::adapters::postgres::graph) use source_lineage_sql::{
     jsonb_matches_doc_source_prefix_legacy, normalize_doc_chunk_prefix, source_count_probe_limit,
     source_ids_count_probes_cte_sql, source_ids_probes_cte_sql, SOURCE_CHUNK_PROBE_LIMIT,
-    SOURCE_COUNT_STATEMENT_TIMEOUT_MS, SOURCE_DISCOVERY_STATEMENT_TIMEOUT_MS,
-    SOURCE_PREFIX_BATCH_LIMIT, WORKSPACE_STATS_STATEMENT_TIMEOUT_MS,
+    SOURCE_DISCOVERY_STATEMENT_TIMEOUT_MS, WORKSPACE_STATS_STATEMENT_TIMEOUT_MS,
 };
+
+/// SPEC-089 / SPEC-107 R2: public SSOT for GIN node-count batch + timeout bounds.
+pub use source_lineage_sql::{SOURCE_COUNT_STATEMENT_TIMEOUT_MS, SOURCE_PREFIX_BATCH_LIMIT};
 
 #[cfg(test)]
 pub(in crate::adapters::postgres::graph) use source_lineage_sql::jsonb_matches_doc_source_prefix_modern;

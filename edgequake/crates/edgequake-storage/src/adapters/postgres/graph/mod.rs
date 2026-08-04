@@ -251,6 +251,9 @@ pub use scan_ops::SOURCE_PREFIX_DISCOVERY_CALLS;
 /// SPEC-089 Phase 4: interactive read-path PG kill budget (F-336-13).
 pub use helpers::interactive_statement_timeout_ms;
 
+/// SPEC-089 / SPEC-107 R2: GIN node-count batch size + statement_timeout SSOT.
+pub use helpers::{SOURCE_COUNT_STATEMENT_TIMEOUT_MS, SOURCE_PREFIX_BATCH_LIMIT};
+
 /// SPEC-034 IMP-01: Check whether the native SQL write path is enabled.
 ///
 /// # WHY: Feature flag for safe rollout

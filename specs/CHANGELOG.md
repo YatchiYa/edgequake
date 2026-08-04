@@ -6,6 +6,18 @@ All notable changes to the EdgeQuake specs directory are tracked here. See the r
 
 ### Added
 
+- **SPEC-107 / partner prod error report (2026-08-04):** First-principles
+  partner-incident pack under `specs/107-issue/` for Quantalogic prod log classes
+  (workspaces.id 42703, edgequake.Node 42P01, INV-03 CRITICAL, tenants_slug 23505).
+  DRY against SPEC-104 (code fixed ≥0.24.0); residual INV-03 ops runbook + French
+  reply; INV-03 `RepairAction::LogOnly` guidance in StorageInspector; E2E-107
+  absence gates via `contract_spec104_datalayer` + `e2e_107_03_inv03_logonly_repair`.
+  Post-assessment harden: INV-03 covers `indexed|completed`; INV-C skip is
+  fail-visible; [07-residual-risks.md](107-issue/07-residual-risks.md).
+  **R2 57014:** INV-C chunks via public `SOURCE_PREFIX_BATCH_LIMIT` (LAW-H1);
+  list soft-fail tags dataop; [08-r2-node-count-57014.md](107-issue/08-r2-node-count-57014.md)
+  — no timeout raise.
+
 - **SPEC-049 / P3 StructTree L0 (2026-07-12):** pdf2md **0.9.7**
   `PdfiumStructTreeProposer` (public FFI via `get_handle_from_page`); tagged
   fixture E13; telemetry `pages_with_struct_tree` / `l0_regions`. Untagged arXiv

@@ -956,11 +956,13 @@ impl StorageInspector {
                     return;
                 }
             };
+            // SPEC-107: include `completed` — persist/list treat it as terminal
+            // alongside `indexed`; indexed-only left completed orphans silent.
             format!(
                 r#"
                 SELECT d.id::text
                 FROM public.documents d
-                WHERE d.status = 'indexed'
+                WHERE d.status IN ('indexed', 'completed')
                   AND NOT EXISTS (
                       SELECT 1 FROM public.chunks c WHERE c.document_id = d.id
                   )
@@ -975,7 +977,7 @@ impl StorageInspector {
             r#"
                 SELECT d.id::text
                 FROM public.documents d
-                WHERE d.status = 'indexed'
+                WHERE d.status IN ('indexed', 'completed')
                   AND NOT EXISTS (
                       SELECT 1 FROM public.chunks c WHERE c.document_id = d.id
                   )
@@ -998,7 +1000,7 @@ impl StorageInspector {
                     invariant_id: "INV-03".to_string(),
                     severity,
                     description: format!(
-                        "{} indexed documents have no public.chunks and no KV chunk keys (SAGA failure?)",
+                        "{} terminal documents (indexed|completed) have no public.chunks and no KV chunk keys (SAGA failure?)",
                         ids.len()
                     ),
                     count: ids.len(),
@@ -1173,7 +1175,18 @@ impl StorageInspector {
         {
             Ok(r) => r,
             Err(e) => {
+                // SPEC-107 / LAW-I2: skip must be fail-visible (not silent green).
                 warn!(error = %e, "INV-C: failed to sample documents");
+                report.add_schema_issue(SchemaDriftIssue {
+                    check_name: "inv_c_sample".to_string(),
+                    severity: Severity::Warning,
+                    description: format!(
+                        "INV-C skipped — document sample query failed: {e}"
+                    ),
+                    details: Some(
+                        "Entity-count drift was not evaluated this run".to_string(),
+                    ),
+                });
                 return;
             }
         };
@@ -1205,7 +1218,19 @@ impl StorageInspector {
         {
             Ok(m) => m,
             Err(e) => {
+                // SPEC-107 / LAW-I2: timeout/42P01/etc must not masquerade as healthy.
                 warn!(error = %e, "INV-C: batched GIN entity count failed — skipping");
+                report.add_schema_issue(SchemaDriftIssue {
+                    check_name: "inv_c_gin_batch".to_string(),
+                    severity: Severity::Warning,
+                    description: format!(
+                        "INV-C skipped — batched GIN entity count failed: {e}"
+                    ),
+                    details: Some(
+                        "Often 57014 under load (SPEC-089) or missing GIN; drift not evaluated"
+                            .to_string(),
+                    ),
+                });
                 return;
             }
         };
@@ -1245,8 +1270,48 @@ impl StorageInspector {
         }
     }
 
-    /// Batched GIN `@>` entity counts for INV-C (mirrors analytics_ops / SPEC-089).
+    /// Batched GIN `@>` entity counts for INV-C (SPEC-089 / SPEC-107 R2).
+    ///
+    /// LAW-H1: prefixes are processed in chunks of
+    /// [`edgequake_storage::SOURCE_PREFIX_BATCH_LIMIT`] (same SSOT as
+    /// `analytics_ops`). Mid-batch failure keeps earlier batches (EC-07).
     async fn inv_c_gin_node_counts_by_prefixes(
+        &self,
+        prefixes: &[String],
+        probe_limit: usize,
+    ) -> Result<std::collections::HashMap<String, i64>, String> {
+        use std::collections::HashMap;
+
+        if prefixes.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let batch_limit = edgequake_storage::SOURCE_PREFIX_BATCH_LIMIT;
+        let mut out = HashMap::with_capacity(prefixes.len());
+        for (batch_index, batch) in prefixes.chunks(batch_limit).enumerate() {
+            match self
+                .inv_c_gin_node_counts_one_batch(batch, probe_limit)
+                .await
+            {
+                Ok(partial) => out.extend(partial),
+                Err(e) if !out.is_empty() => {
+                    tracing::warn!(
+                        error = %e,
+                        batch_index,
+                        kept = out.len(),
+                        batch_limit,
+                        "SPEC-107 R2: INV-C mid-batch failure — returning partial map"
+                    );
+                    return Ok(out);
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(out)
+    }
+
+    /// One ≤[`SOURCE_PREFIX_BATCH_LIMIT`] GIN count round-trip (SPEC-107 R2).
+    async fn inv_c_gin_node_counts_one_batch(
         &self,
         prefixes: &[String],
         probe_limit: usize,
@@ -1254,13 +1319,20 @@ impl StorageInspector {
         use sqlx::Acquire;
         use std::collections::HashMap;
 
+        debug_assert!(
+            prefixes.len() <= edgequake_storage::SOURCE_PREFIX_BATCH_LIMIT,
+            "INV-C one_batch must not exceed SOURCE_PREFIX_BATCH_LIMIT"
+        );
         if prefixes.is_empty() {
             return Ok(HashMap::new());
         }
-        const TIMEOUT_MS: u32 = 300;
+
+        let timeout_ms = edgequake_storage::SOURCE_COUNT_STATEMENT_TIMEOUT_MS;
         let graph = &self.config.graph_name;
+        // Keep CTE shape aligned with analytics_ops DATA-AGE-GRAPH-NODE-COUNTS-…
         let sql = format!(
             r#"
+            /* DATA-AGE-GRAPH-NODE-COUNTS-BY-SOURCE-PREFIXES */
             WITH prefixes AS MATERIALIZED (
               SELECT prefix, ord
               FROM unnest($1::text[]) WITH ORDINALITY AS t(prefix, ord)
@@ -1294,7 +1366,7 @@ impl StorageInspector {
             .begin()
             .await
             .map_err(|e| format!("INV-C begin: {e}"))?;
-        sqlx::query(&format!("SET LOCAL statement_timeout = '{TIMEOUT_MS}ms'"))
+        sqlx::query(&format!("SET LOCAL statement_timeout = '{timeout_ms}ms'"))
             .execute(&mut *tx)
             .await
             .map_err(|e| format!("INV-C statement_timeout: {e}"))?;
@@ -1570,39 +1642,7 @@ impl StorageInspector {
 
     fn build_repair_recommendations(&self, report: &mut InspectorReport) {
         for violation in &report.invariant_violations {
-            let repair = match violation.invariant_id.as_str() {
-                "INV-01" => {
-                    if violation.description.contains("chunk_embeddings") {
-                        Some(RepairAction::LogOnly {
-                            message: format!(
-                                "INV-01: {} orphaned chunk_embeddings — repair via typed backfill/delete, not legacy vector DELETE",
-                                violation.count
-                            ),
-                        })
-                    } else {
-                        Some(RepairAction::DeleteOrphanedVectors {
-                            count: violation.count,
-                            ids: violation.sample_ids.clone(),
-                        })
-                    }
-                }
-                "INV-D" => Some(RepairAction::DeleteOrphanedVectors {
-                    count: violation.count,
-                    ids: violation.sample_ids.clone(),
-                }),
-                "INV-D2" => Some(RepairAction::DeleteOrphanedWorkspaceTables {
-                    count: violation.count,
-                    tables: violation.sample_ids.clone(),
-                }),
-                "INV-04" => Some(RepairAction::ResyncEntitiesFromAge {
-                    count: violation.count,
-                }),
-                "INV-05" => Some(RepairAction::ResetStuckPdfs {
-                    count: violation.count,
-                }),
-                _ => None,
-            };
-            if let Some(r) = repair {
+            if let Some(r) = repair_recommendation_for_invariant(violation) {
                 report.recommended_repairs.push(r);
             }
         }
@@ -1724,6 +1764,62 @@ impl StorageInspector {
     }
 }
 
+/// Map an invariant violation to a repair recommendation (SPEC-021 / SPEC-107).
+///
+/// Pure helper so unit tests do not need a Postgres pool. INV-03 is **LogOnly**
+/// (ops requeue/delete) — never SAFE auto-mutate of document status.
+pub(crate) fn repair_recommendation_for_invariant(
+    violation: &InvariantViolation,
+) -> Option<RepairAction> {
+    match violation.invariant_id.as_str() {
+        "INV-01" => {
+            if violation.description.contains("chunk_embeddings") {
+                Some(RepairAction::LogOnly {
+                    message: format!(
+                        "INV-01: {} orphaned chunk_embeddings — repair via typed backfill/delete, not legacy vector DELETE",
+                        violation.count
+                    ),
+                })
+            } else {
+                Some(RepairAction::DeleteOrphanedVectors {
+                    count: violation.count,
+                    ids: violation.sample_ids.clone(),
+                })
+            }
+        }
+        "INV-03" => {
+            let samples = if violation.sample_ids.is_empty() {
+                String::from("(no sample ids)")
+            } else {
+                violation.sample_ids.join(", ")
+            };
+            Some(RepairAction::LogOnly {
+                message: format!(
+                    "INV-03: {} indexed document(s) lack public.chunks and KV chunk keys — \
+                     ops: requeue or delete sample ids [{samples}]; no SAFE auto-repair \
+                     (see specs/107-issue/04-residual-ops.md)",
+                    violation.count
+                ),
+            })
+        }
+        "INV-D" => Some(RepairAction::DeleteOrphanedVectors {
+            count: violation.count,
+            ids: violation.sample_ids.clone(),
+        }),
+        "INV-D2" => Some(RepairAction::DeleteOrphanedWorkspaceTables {
+            count: violation.count,
+            tables: violation.sample_ids.clone(),
+        }),
+        "INV-04" => Some(RepairAction::ResyncEntitiesFromAge {
+            count: violation.count,
+        }),
+        "INV-05" => Some(RepairAction::ResetStuckPdfs {
+            count: violation.count,
+        }),
+        _ => None,
+    }
+}
+
 /// Extract a UUID workspace id from `eq_<uuid>_kv` / `eq_<uuid>_vectors`.
 ///
 /// Non-UUID namespaces (e.g. `eq_custom_kv`) return `None` so INV-D2 does not
@@ -1803,5 +1899,54 @@ mod spec104_tests {
         assert!(require_safe_sql_ident("eq;drop").is_err());
         assert!(require_safe_sql_ident("1bad").is_err());
         assert!(require_safe_sql_ident("eq-default").is_err());
+    }
+
+    /// E2E-107-03: INV-03 must yield LogOnly repair guidance (not silent `_ => None`).
+    #[test]
+    fn e2e_107_03_inv03_logonly_repair() {
+        let v = InvariantViolation {
+            invariant_id: "INV-03".to_string(),
+            severity: Severity::Critical,
+            description: "20 terminal documents (indexed|completed) have no public.chunks and no KV chunk keys (SAGA failure?)"
+                .to_string(),
+            count: 20,
+            sample_ids: vec![
+                "19edb004-68af-496c-b50e-5e920fbafe15".to_string(),
+                "6a5d1bf3-9d57-4147-9196-4d68dedd4b2b".to_string(),
+            ],
+        };
+        let repair = repair_recommendation_for_invariant(&v)
+            .expect("INV-03 must produce a repair recommendation");
+        match repair {
+            RepairAction::LogOnly { message } => {
+                assert!(message.contains("INV-03"));
+                assert!(message.contains("19edb004-68af-496c-b50e-5e920fbafe15"));
+                assert!(message.contains("no SAFE auto-repair"));
+                assert!(message.contains("107-issue"));
+            }
+            other => panic!("expected LogOnly, got {other:?}"),
+        }
+        assert_eq!(
+            RepairAction::LogOnly {
+                message: "x".into()
+            }
+            .tier(),
+            RepairTier::Safe,
+            "LogOnly stays Safe-tier (apply only logs; no status mutate)"
+        );
+    }
+
+    /// E2E-107-R2-02: SPEC-089 bounds remain the public SSOT (no timeout raise).
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn e2e_107_r2_source_count_bounds_ssot() {
+        assert_eq!(edgequake_storage::SOURCE_PREFIX_BATCH_LIMIT, 32);
+        assert_eq!(edgequake_storage::SOURCE_COUNT_STATEMENT_TIMEOUT_MS, 300);
+        // 50-prefix INV-C sample needs 2 batches under LAW-H1.
+        assert!(50 > edgequake_storage::SOURCE_PREFIX_BATCH_LIMIT);
+        assert_eq!(
+            50usize.div_ceil(edgequake_storage::SOURCE_PREFIX_BATCH_LIMIT),
+            2
+        );
     }
 }

@@ -689,20 +689,33 @@ pub async fn reconcile_entity_counts_with_graph(
     {
         Ok(Ok(map)) => map,
         Ok(Err(e)) => {
+            // SPEC-107 R2: tag dataop + PG kill budget for prod greps (57014).
+            #[cfg(feature = "postgres")]
+            let pg_timeout_ms = edgequake_storage::SOURCE_COUNT_STATEMENT_TIMEOUT_MS;
+            #[cfg(not(feature = "postgres"))]
+            let pg_timeout_ms = 300u32;
             tracing::warn!(
                 error = %e,
                 candidate_count = candidates.len(),
                 probe_limit,
-                "P-A3: batched AGE entity_count fallback failed (non-fatal) — leaving counts as-is"
+                op = "DATA-AGE-GRAPH-NODE-COUNTS-BY-SOURCE-PREFIXES",
+                pg_timeout_ms,
+                "P-A3: batched AGE entity_count fallback failed (non-fatal) — leaving counts as-is (often SQLSTATE 57014 under load)"
             );
             return;
         }
         Err(_) => {
+            #[cfg(feature = "postgres")]
+            let pg_timeout_ms = edgequake_storage::SOURCE_COUNT_STATEMENT_TIMEOUT_MS;
+            #[cfg(not(feature = "postgres"))]
+            let pg_timeout_ms = 300u32;
             tracing::warn!(
                 candidate_count = candidates.len(),
                 probe_limit,
                 timeout_ms = AGE_RECONCILE_TIMEOUT.as_millis() as u64,
-                "P-A3: AGE entity_count reconcile timed out — serving KV counts"
+                op = "DATA-AGE-GRAPH-NODE-COUNTS-BY-SOURCE-PREFIXES",
+                pg_timeout_ms,
+                "P-A3: AGE entity_count reconcile timed out — serving KV counts (app 400ms / PG SET LOCAL)"
             );
             return;
         }

@@ -107,7 +107,7 @@ pub use filtered_diskann_label_policy::{
 pub use fleet_embedding_index::PgFleetEmbeddingIndex;
 pub use graph::{
     interactive_statement_timeout_ms, PostgresAGEGraphStorage, LAST_SOURCE_PREFIX_COUNT_LEN,
-    SOURCE_PREFIX_DISCOVERY_CALLS,
+    SOURCE_COUNT_STATEMENT_TIMEOUT_MS, SOURCE_PREFIX_BATCH_LIMIT, SOURCE_PREFIX_DISCOVERY_CALLS,
 };
 pub use hnsw_manifest::{check_hnsw_index_manifest, HnswIndexManifest, HnswManifestDrift};
 pub use hnsw_runtime_policy::{
