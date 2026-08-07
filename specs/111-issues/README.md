@@ -123,6 +123,24 @@
 
 Release: <https://github.com/raphaelmansuy/edgequake/releases/tag/v0.24.2>
 
-### [0.24.3] — TBD
+### [0.24.3] — 2026-08-07
 
-SPEC-112 connection-pool identity / budget / graceful close + UTF-8 truncate SSOT. Not a Cluster A re-ship. See root [`CHANGELOG.md`](../../CHANGELOG.md) and [`../112-connection-pool/`](../112-connection-pool/). Publish verify: `measurements/e2e111-v0243-publish-verify.txt` (filled at cut).
+**Shipped** (GH Release + multi-arch GHCR). SPEC-112 connection-pool identity / budget / graceful close + UTF-8 truncate SSOT. Not a Cluster A re-ship — partners on shared PG should upgrade for attribution + slot budget.
+
+| Proof | Link |
+|-------|------|
+| SPEC-112 pack | [`../112-connection-pool/`](../112-connection-pool/) |
+| Upgrade guide | [`docs/operations/upgrade-to-0.24.3.md`](../../docs/operations/upgrade-to-0.24.3.md) |
+| Multi-pool gates | [`../112-connection-pool/measurements/e2e112-gates.txt`](../112-connection-pool/measurements/e2e112-gates.txt) |
+| Acc attest | [`../112-connection-pool/measurements/e2e112-acc-attest.txt`](../112-connection-pool/measurements/e2e112-acc-attest.txt) |
+| GHCR verify | [`measurements/e2e111-v0243-publish-verify.txt`](measurements/e2e111-v0243-publish-verify.txt) |
+| Root CHANGELOG | [`CHANGELOG.md`](../../CHANGELOG.md) `[0.24.3]` |
+
+**GHCR (verified multi-arch `linux/amd64` + `linux/arm64`):**
+
+- `ghcr.io/raphaelmansuy/edgequake:0.24.3` — index digest `sha256:b4f8f40d8398eb6e4884a684fb604f5d85e2daeec392667a1f33c6bfe7005e24`
+- `ghcr.io/raphaelmansuy/edgequake-frontend:0.24.3` — index digest `sha256:621ea204de9e1d153a568400808254031887ab014df280a9b610bb13274a2a23`
+- `ghcr.io/raphaelmansuy/edgequake-postgres:0.24.3` (+ `-pg16` / `-pg17` / `-pg18`) — index digest `sha256:f4a6b1542c5251dedfc857e2b59b74a219223f97898bed601c30eef0be055992`
+
+Release: <https://github.com/raphaelmansuy/edgequake/releases/tag/v0.24.3>  
+CD: <https://github.com/raphaelmansuy/edgequake/actions/runs/31192856924>
