@@ -264,7 +264,11 @@ async fn main() -> anyhow::Result<()> {
     let results_a = tenant_a.query("What does TechCorp do?").await?;
     println!("TechCorp results:");
     for (i, result) in results_a.iter().enumerate() {
-        println!("  {}. {}", i + 1, &result[..result.len().min(100)]);
+        println!(
+            "  {}. {}",
+            i + 1,
+            edgequake_observability::utf8_prefix(result, 100)
+        );
     }
 
     println!("\n--- Querying Tenant B ---");
@@ -274,7 +278,11 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     println!("HealthPlus results:");
     for (i, result) in results_b.iter().enumerate() {
-        println!("  {}. {}", i + 1, &result[..result.len().min(100)]);
+        println!(
+            "  {}. {}",
+            i + 1,
+            edgequake_observability::utf8_prefix(result, 100)
+        );
     }
 
     // === Verify data isolation ===

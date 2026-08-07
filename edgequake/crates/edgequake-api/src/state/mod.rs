@@ -152,6 +152,10 @@ pub struct AppState {
     #[cfg(feature = "postgres")]
     pub pool_bundle: Option<edgequake_storage::PgPoolBundle>,
 
+    /// SPEC-112: boot-time shared-DB pool budget evaluation (for /health).
+    #[cfg(feature = "postgres")]
+    pub pool_budget: Option<edgequake_storage::PoolBudgetReport>,
+
     /// Server start time for uptime calculation.
     pub start_time: std::time::Instant,
 

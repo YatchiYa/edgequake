@@ -55,6 +55,7 @@ mod mm_asset_storage_impl;
 mod original_storage_impl;
 mod pdf_list_query;
 mod pdf_storage_impl;
+mod pool_budget;
 mod pool_bundle;
 mod quarantine_sink;
 pub mod rls;
@@ -93,7 +94,10 @@ pub use config::{
     hnsw_ef_construction_from_env, qualified_kv_table_name, resolve_pool_max_connections,
     PostgresConfig, VectorIndexType,
 };
-pub use connection::{with_session_hygiene, PostgresPool};
+pub use connection::{
+    apply_session_baseline, pool_idle_timeout, pool_max_lifetime, session_application_name,
+    with_session_hygiene, with_session_hygiene_labeled, PostgresPool,
+};
 pub use conversation::PostgresConversationStorage;
 pub use diskann_runtime_policy::{
     diskann_optin_recipe_statements, diskann_query_tuning_statements, diskann_rescore_for_list,
@@ -120,7 +124,13 @@ pub use kv_relation_state::{KvRelationPresence, KvRelationState};
 pub use mm_asset_storage_impl::PostgresMmAssetStorage;
 pub use original_storage_impl::PostgresOriginalStorage;
 pub use pdf_storage_impl::PostgresPdfStorage;
-pub use pool_bundle::{pool_role_max_connections, PgPoolBundle, PoolRole};
+pub use pool_budget::{
+    check_pool_budget, enforce_pool_budget, evaluate_pool_budget, pool_instance_count_from_env,
+    BudgetMode, PoolBudgetReport, DEFAULT_TOOLS_HEADROOM,
+};
+pub use pool_bundle::{
+    pool_role_max_connections, pool_role_max_connections_with_queue_floor, PgPoolBundle, PoolRole,
+};
 pub use quarantine_sink::PgQuarantineSink;
 #[allow(deprecated)]
 pub use rls::{

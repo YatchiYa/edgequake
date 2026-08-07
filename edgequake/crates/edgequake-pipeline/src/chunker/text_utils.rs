@@ -97,29 +97,19 @@ pub(super) fn take_overlap_sentences(buffer: &[String], target_tokens: usize) ->
 }
 
 /// Find the nearest valid UTF-8 char boundary at or before the given byte position.
+///
+/// Thin alias of [`str::floor_char_boundary`] — kept for chunker call sites / tests.
+#[inline]
 pub fn floor_char_boundary(s: &str, index: usize) -> usize {
-    if index >= s.len() {
-        return s.len();
-    }
-    // Walk backwards to find a valid char boundary
-    let mut i = index;
-    while i > 0 && !s.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
+    s.floor_char_boundary(index)
 }
 
 /// Find the nearest valid UTF-8 char boundary at or after the given byte position.
+///
+/// Thin alias of [`str::ceil_char_boundary`] — kept for chunker call sites / tests.
+#[inline]
 pub fn ceil_char_boundary(s: &str, index: usize) -> usize {
-    if index >= s.len() {
-        return s.len();
-    }
-    // Walk forward to find a valid char boundary
-    let mut i = index;
-    while i < s.len() && !s.is_char_boundary(i) {
-        i += 1;
-    }
-    i
+    s.ceil_char_boundary(index)
 }
 
 /// Split text into chunks with overlap, respecting separator boundaries.

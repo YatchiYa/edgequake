@@ -3156,8 +3156,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_failed"
+        "x-edgequake-v2-job-type": "reprocess_failed",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/scan": {
@@ -8980,8 +8980,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_embeddings"
+        "x-edgequake-v2-job-type": "rebuild_embeddings",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -9620,8 +9620,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     },
     "/ws/progress/{track_id}": {
@@ -22147,6 +22147,42 @@
         ],
         "example": {}
       },
+      "PoolRoleHealth": {
+        "type": "object",
+        "description": "SPEC-112 LAW-112-8: one role pool's configured max and live occupancy.",
+        "required": [
+          "role",
+          "max",
+          "size",
+          "idle"
+        ],
+        "properties": {
+          "idle": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "max": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "role": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "idle": {},
+          "max": {},
+          "role": {},
+          "size": {}
+        }
+      },
       "PopularLabel": {
         "type": "object",
         "description": "Popular label with metadata.",
@@ -26143,12 +26179,29 @@
             "type": "string",
             "description": "Authoritative chunk text location."
           },
+          "db_pools": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PoolRoleHealth"
+            },
+            "description": "SPEC-112: per-role pool max/size/idle (when PgPoolBundle is live)."
+          },
           "document_id_generator": {
             "type": [
               "string",
               "null"
             ],
             "description": "SPEC-042-E: `uuidv4` or `uuidv7` document ID generator."
+          },
+          "pool_budget_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "SPEC-112: boot-time shared-DB budget evaluation result."
           },
           "vector_metadata_ref": {
             "type": "string",
@@ -26167,7 +26220,9 @@
           "age_rls_enabled": {},
           "chunk_kv_in_persister": {},
           "chunk_text_ssot": {},
+          "db_pools": [],
           "document_id_generator": {},
+          "pool_budget_ok": {},
           "vector_metadata_ref": {},
           "vector_storage_mode": {}
         }

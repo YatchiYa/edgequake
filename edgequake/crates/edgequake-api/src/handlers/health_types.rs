@@ -176,6 +176,21 @@ pub struct StorageHealthSnapshot {
     /// SPEC-042-E: AGE COPY bulk loader available (AGE >= 1.7.0).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub age_copy_loader_enabled: Option<bool>,
+    /// SPEC-112: per-role pool max/size/idle (when PgPoolBundle is live).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub db_pools: Option<Vec<PoolRoleHealth>>,
+    /// SPEC-112: boot-time shared-DB budget evaluation result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pool_budget_ok: Option<bool>,
+}
+
+/// SPEC-112 LAW-112-8: one role pool's configured max and live occupancy.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PoolRoleHealth {
+    pub role: String,
+    pub max: u32,
+    pub size: u32,
+    pub idle: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

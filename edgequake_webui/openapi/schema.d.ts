@@ -9916,6 +9916,24 @@ export interface components {
          */
         PipelinePhase: "upload" | "pdf_conversion" | "chunking" | "embedding" | "extraction" | "graph_storage";
         /**
+         * @description SPEC-112 LAW-112-8: one role pool's configured max and live occupancy.
+         * @example {
+         *       "idle": {},
+         *       "max": {},
+         *       "role": {},
+         *       "size": {}
+         *     }
+         */
+        PoolRoleHealth: {
+            /** Format: int32 */
+            idle: number;
+            /** Format: int32 */
+            max: number;
+            role: string;
+            /** Format: int32 */
+            size: number;
+        };
+        /**
          * @description Popular label with metadata.
          * @example {
          *       "degree": {},
@@ -12022,7 +12040,9 @@ export interface components {
          *       "age_rls_enabled": {},
          *       "chunk_kv_in_persister": {},
          *       "chunk_text_ssot": {},
+         *       "db_pools": [],
          *       "document_id_generator": {},
+         *       "pool_budget_ok": {},
          *       "vector_metadata_ref": {},
          *       "vector_storage_mode": {}
          *     }
@@ -12036,8 +12056,12 @@ export interface components {
             chunk_kv_in_persister: boolean;
             /** @description Authoritative chunk text location. */
             chunk_text_ssot: string;
+            /** @description SPEC-112: per-role pool max/size/idle (when PgPoolBundle is live). */
+            db_pools?: components["schemas"]["PoolRoleHealth"][] | null;
             /** @description SPEC-042-E: `uuidv4` or `uuidv7` document ID generator. */
             document_id_generator?: string | null;
+            /** @description SPEC-112: boot-time shared-DB budget evaluation result. */
+            pool_budget_ok?: boolean | null;
             /** @description Vector row metadata references chunk id instead of inline body. */
             vector_metadata_ref: string;
             /** @description SPEC-042-E: `full` or `halfvec` (`EDGEQUAKE_VECTOR_STORAGE`). */

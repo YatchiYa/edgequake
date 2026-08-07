@@ -57,11 +57,11 @@ pub async fn search_documents(
     // Hard cap on page_size to prevent abuse
     let page_size = params.page_size.min(50);
 
-    // Normalise and cap the query string
+    // Normalise and cap the query string (UTF-8–safe byte cap)
     let query_lower: Option<String> = params
         .q
         .as_deref()
-        .map(|q| q[..q.len().min(200)].to_lowercase())
+        .map(|q| edgequake_observability::utf8_prefix(q, 200).to_lowercase())
         .filter(|q| !q.is_empty());
 
     let require_completed = params.status.as_deref() != Some("all");

@@ -93,7 +93,7 @@ fn test_chunker_overlap() {
     // With overlap, consecutive chunks should share some content
     if chunks.len() > 1 {
         let first_end = &chunks[0].content[chunks[0].content.len().saturating_sub(20)..];
-        let second_start = &chunks[1].content[..20.min(chunks[1].content.len())];
+        let second_start = edgequake_observability::utf8_prefix(&chunks[1].content, 20);
         // Overlap exists if there's any shared content
         assert!(
             !first_end.is_empty() || !second_start.is_empty(),

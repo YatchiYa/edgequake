@@ -385,7 +385,7 @@ where
                 chunk_id = %chunk.id,
                 attempt = attempt,
                 response_len = response.content.len(),
-                response_preview = %&response.content[..response.content.len().min(500)],
+                response_preview = %edgequake_observability::utf8_prefix(&response.content, 500),
                 finish_reason = ?response.finish_reason,
                 "Raw LLM response received"
             );
@@ -553,7 +553,7 @@ where
                         chunk_id = %chunk.id,
                         is_json_truncation = is_json_truncation,
                         current_max_tokens = current_max_tokens,
-                        response_preview = %&response.content[..response.content.len().min(200)],
+                        response_preview = %edgequake_observability::utf8_prefix(&response.content, 200),
                         "Parsing failed - malformed LLM response"
                     );
 

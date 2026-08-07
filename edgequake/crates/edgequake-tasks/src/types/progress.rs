@@ -101,7 +101,8 @@ impl ChunkProgress {
     ) {
         self.processed_chunks = chunk_index + 1;
         self.current_chunk_index = chunk_index;
-        self.current_chunk_preview = truncate_preview(chunk_preview, 80);
+        self.current_chunk_preview =
+            edgequake_observability::utf8_prefix_ellipsis(chunk_preview, 80);
         self.tokens_in += input_tokens;
         self.tokens_out += output_tokens;
         self.cost_usd += chunk_cost;
@@ -129,19 +130,5 @@ impl ChunkProgress {
             return 0;
         }
         ((self.processed_chunks as f64 / self.total_chunks as f64) * 100.0) as u8
-    }
-}
-
-/// Truncate a string to max_len characters, adding "..." if truncated.
-fn truncate_preview(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        // Find a safe UTF-8 boundary
-        let mut end = max_len.saturating_sub(3);
-        while !s.is_char_boundary(end) && end > 0 {
-            end -= 1;
-        }
-        format!("{}...", &s[..end])
     }
 }

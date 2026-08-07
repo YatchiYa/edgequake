@@ -78,15 +78,14 @@ where
 }
 
 /// Pure helper: truncate query text for span attributes (PII-safe preview).
+///
+/// Domain policy lives here (OTEL-friendly `…` ellipsis + byte budget naming).
+/// Byte-boundary safety is SSOT in [`crate::utf8_prefix`].
 pub fn query_preview(query: &str, max_chars: usize) -> String {
     if query.len() <= max_chars {
         return query.to_string();
     }
-    let mut end = max_chars;
-    while end > 0 && !query.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}…", &query[..end])
+    format!("{}…", crate::utf8_prefix(query, max_chars))
 }
 
 #[cfg(test)]

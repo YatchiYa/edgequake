@@ -17,6 +17,10 @@ fn strip_nul_bytes(text: String) -> String {
     sanitized
 }
 
+/// Cap for `ensure_document_record` markdown preview (not full content).
+#[cfg(feature = "postgres")]
+const PDF_DOCUMENT_MARKDOWN_PREVIEW_BYTES: usize = 65_536;
+
 #[cfg(feature = "postgres")]
 fn task_error_to_vision_failure(
     error: &edgequake_tasks::TaskError,
@@ -283,20 +287,18 @@ impl DocumentTaskProcessor {
             .await;
 
         if let Ok(document_uuid) = uuid::Uuid::parse_str(early_doc_id) {
-            let truncate_at = markdown.len().min(65_536);
-            let safe_truncate = markdown[..truncate_at]
-                .char_indices()
-                .map(|(i, _)| i)
-                .take_while(|&i| i <= 65_536)
-                .last()
-                .unwrap_or(0);
+            // Preview only — must floor to a UTF-8 boundary (en-dash etc. are 3 bytes).
+            let preview = edgequake_observability::utf8_prefix(
+                &markdown,
+                PDF_DOCUMENT_MARKDOWN_PREVIEW_BYTES,
+            );
             let _ = pdf_storage
                 .ensure_document_record(
                     &document_uuid,
                     &data.workspace_id,
                     Some(&data.tenant_id),
                     filename,
-                    &markdown[..safe_truncate],
+                    preview,
                     "processing",
                 )
                 .await;
@@ -1407,6 +1409,26 @@ mod tests {
     use std::sync::Arc;
     use tokio_util::sync::CancellationToken;
     use uuid::Uuid;
+
+    #[test]
+    fn utf8_byte_prefix_does_not_split_en_dash_at_65536() {
+        // Reproduce production panic: byte 65536 landed inside U+2013 EN DASH.
+        let mut s = String::with_capacity(65_540);
+        s.push_str(&"a".repeat(65_534));
+        s.push('–'); // 3-byte UTF-8 at indices 65534..65537
+        s.push_str("tail");
+        assert_eq!(s.len(), 65_534 + 3 + 4);
+        assert!(!s.is_char_boundary(65_536));
+
+        let prefix = edgequake_observability::utf8_prefix(&s, PDF_DOCUMENT_MARKDOWN_PREVIEW_BYTES);
+        assert!(prefix.is_char_boundary(prefix.len()));
+        assert_eq!(prefix.len(), 65_534);
+        assert!(!prefix.contains('–'));
+        assert_eq!(
+            edgequake_observability::utf8_prefix("short", 65_536),
+            "short"
+        );
+    }
 
     #[test]
     fn vision_timeouts_trigger_edgeparse_fallback_when_implicit() {

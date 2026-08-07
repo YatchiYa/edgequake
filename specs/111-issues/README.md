@@ -3,7 +3,7 @@
 > **Trigger:** Partner bugs #360/#366 Clear All, #361 bulk upload, #362 KV-residue advisor, #363 iw2 join miss, #364 vector drop readiness.  
 > **Method:** First principles — **code is law** — source proof on current HEAD + last published tag **v0.24.1**; no speculative RCAs.  
 > **Audience:** Engineering (fix train) + partners (honest status on each thread).  
-> **Ship vehicle (proposed):** **v0.24.2** for Cluster A (#362–364) + Clear All LAW-111-9 (#366/#360); #361 measure-only.
+> **Ship vehicle:** **v0.24.2 shipped** (Cluster A #362–364 + Clear All LAW-111-9 #366/#360); #361 measure-only. Follow-on pool harden is **v0.24.3** ([SPEC-112](../112-connection-pool/)), not Cluster A.
 
 ## One-screen verdict
 
@@ -18,10 +18,11 @@
 │    #366/#360  FIXED on HEAD — LAW-111-9 authoritative empty + wipe KV purge  │
 │    #361  OUT OF SCOPE — capacity/LLM; measure only (no concurrency code)     │
 │                                                                              │
-│  RELEASE — v0.24.2 = ship-with-runbook (not blind upgrade)                   │
+│  RELEASE — v0.24.2 SHIPPED (ship-with-runbook; not blind upgrade)            │
 │    Also: SPEC-091/098 fleet-mirror parse for `->` in entity names            │
-│    Gates: measurements/e2e111-release-safety-gates.txt                       │
+│    Gates: measurements/e2e111-v0242-publish-verify.txt                       │
 │    Ops: 09-ops-runbook.md + docs/operations/upgrade-to-0.24.2.md             │
+│  FOLLOW-ON — v0.24.3 = SPEC-112 connection-pool (identity/budget/close)      │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -36,7 +37,7 @@
 | [#361](https://github.com/raphaelmansuy/edgequake/issues/361) | Bulk upload slow | Expected load | Older report | P3 / capacity | Measure only (no concurrency code) |
 | [#360](https://github.com/raphaelmansuy/edgequake/issues/360) | Clear All leaves docs | Same as #366 | **Yes** (clarified) | P1 UX | **Done** — duplicate of #366 |
 
-**Ship vehicle:** Unreleased / **v0.24.2** (with SPEC-110).
+**Ship vehicle:** **Shipped on v0.24.2** (with SPEC-110). Pool / shared-PG harden ships on **v0.24.3** ([SPEC-112](../112-connection-pool/)).
 
 **Residual harden (LAW-C3):** fleet drop = **provenance-only** (`legacy_vector_id`); see [`09-ops-runbook.md`](09-ops-runbook.md) and [`measurements/BRUTAL-HONESTY.md`](measurements/BRUTAL-HONESTY.md).
 
@@ -97,3 +98,31 @@
 - Auto `--confirm-drop` / auto dual-legacy residue delete
 - #361 concurrency code (measure-only)
 - Full SPEC-120 mark-and-supersede delete saga (cancel/purge soft-fail is scoped)
+
+## CHANGELOG
+
+### [0.24.2] — 2026-08-07
+
+**Shipped** (GH Release + multi-arch GHCR). Cluster A (#362–364) + Clear All LAW-111-9 (#366/#360) + SPEC-110 migrate 118/121 + SPEC-109 reasoning effort + fleet-mirror `->` parse. Ship-with-runbook — not blind upgrade.
+
+| Proof | Link |
+|-------|------|
+| Partner cutover | [`11-release-partner-notes.md`](11-release-partner-notes.md) |
+| Ops runbook | [`09-ops-runbook.md`](09-ops-runbook.md) |
+| Upgrade guide | [`docs/operations/upgrade-to-0.24.2.md`](../../docs/operations/upgrade-to-0.24.2.md) |
+| Release-safety gates | [`measurements/e2e111-release-safety-gates.txt`](measurements/e2e111-release-safety-gates.txt) |
+| GHCR + Acc verify | [`measurements/e2e111-v0242-publish-verify.txt`](measurements/e2e111-v0242-publish-verify.txt) |
+| CD workflow log | [`measurements/e2e111-v0242-ghcr-run.txt`](measurements/e2e111-v0242-ghcr-run.txt) |
+| Root CHANGELOG | [`CHANGELOG.md`](../../CHANGELOG.md) `[0.24.2]` |
+
+**GHCR (verified multi-arch `linux/amd64` + `linux/arm64`):**
+
+- `ghcr.io/raphaelmansuy/edgequake:0.24.2` — index digest `sha256:678d6c8e1f18274585d1d3018550aa161ae0f9874392bff7b8ef99dc65c1d17c`
+- `ghcr.io/raphaelmansuy/edgequake-frontend:0.24.2` — index digest `sha256:796ba2b99634402c132b4936e004921329be0381bb8690e2b948846fe946f80b`
+- `ghcr.io/raphaelmansuy/edgequake-postgres:0.24.2` (+ `-pg16` / `-pg17` / `-pg18`) — index digest `sha256:b5b1678cdb03a875d87a8eccedc7432f0df93f90b9bc91421013f7f95290cc78`
+
+Release: <https://github.com/raphaelmansuy/edgequake/releases/tag/v0.24.2>
+
+### [0.24.3] — TBD
+
+SPEC-112 connection-pool identity / budget / graceful close + UTF-8 truncate SSOT. Not a Cluster A re-ship. See root [`CHANGELOG.md`](../../CHANGELOG.md) and [`../112-connection-pool/`](../112-connection-pool/). Publish verify: `measurements/e2e111-v0243-publish-verify.txt` (filled at cut).

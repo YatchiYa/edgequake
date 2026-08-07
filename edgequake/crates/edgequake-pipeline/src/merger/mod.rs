@@ -1310,21 +1310,11 @@ fn merge_descriptions(existing: &str, new: &str, max_length: usize) -> String {
 }
 
 /// Truncate a description to a maximum length at sentence boundaries.
+///
+/// Delegates to [`description_merge::truncate_at_boundary`] (SSOT).
 #[allow(dead_code)]
 fn truncate_description(text: &str, max_length: usize) -> String {
-    if text.len() <= max_length {
-        return text.to_string();
-    }
-
-    // Try to truncate at a sentence boundary
-    let mut end = max_length;
-    for (i, c) in text.char_indices().take(max_length) {
-        if c == '.' || c == '!' || c == '?' {
-            end = i + 1;
-        }
-    }
-
-    text[..end].to_string()
+    description_merge::truncate_at_boundary(text, max_length)
 }
 
 #[cfg(test)]

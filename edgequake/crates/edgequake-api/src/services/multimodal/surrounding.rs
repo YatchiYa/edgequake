@@ -627,15 +627,16 @@ pub fn build_surrounding(
     counter: SurroundingTokenCounter,
 ) -> super::context::SurroundingContext {
     let (start, end) = span;
+    let (start, end) = edgequake_observability::utf8_clamp_span(block_content, start, end);
     let leading = build_leading(
-        &block_content[..start.min(block_content.len())],
+        &block_content[..start],
         kind,
         leading_max_tokens,
         separators,
         counter,
     );
     let trailing = build_trailing(
-        &block_content[end.min(block_content.len())..],
+        &block_content[end..],
         kind,
         trailing_max_tokens,
         separators,

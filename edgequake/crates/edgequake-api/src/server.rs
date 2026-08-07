@@ -228,7 +228,7 @@ impl Server {
             }
         });
 
-        tokio::select! {
+        let result = tokio::select! {
             result = serve => result,
             _ = async {
                 cancel.cancelled().await;
@@ -240,6 +240,29 @@ impl Server {
                 );
                 Ok(())
             }
+        };
+
+        // SPEC-112 LAW-112-5: close DB pools after HTTP drain (extend SPEC-083).
+        self.close_db_pools().await;
+
+        result
+    }
+
+    /// SPEC-112: release PostgreSQL backends promptly on graceful shutdown.
+    async fn close_db_pools(&self) {
+        #[cfg(feature = "postgres")]
+        {
+            if let Some(ref bundle) = self.state.pool_bundle {
+                info!("SPEC-112: closing PgPoolBundle after HTTP drain");
+                bundle.close().await;
+            } else if let Some(ref pool) = self.state.pg_pool {
+                info!("SPEC-112: closing pg_pool after HTTP drain");
+                pool.close().await;
+            }
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            let _ = &self.state;
         }
     }
 

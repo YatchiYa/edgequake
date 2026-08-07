@@ -1,0 +1,50 @@
+"datid","datname","pid","leader_pid","usesysid","usename","application_name","client_addr","client_hostname","client_port","backend_start","xact_start","query_start","state_change","wait_event_type","wait_event","state","backend_xid","backend_xmin","query_id","query","backend_type"
+16395,edgequake,520598,,16388,edgequake,"","10.79.1.84",,45868,2026-08-07 11:02:03.887 +0200,,2026-08-07 11:10:09.545 +0200,2026-08-07 11:10:09.545 +0200,Client,ClientRead,idle,,,,SET search_path TO public,client backend
+16395,edgequake,520599,,16388,edgequake,"","10.79.1.84",,45884,2026-08-07 11:02:03.890 +0200,,2026-08-07 11:10:09.545 +0200,2026-08-07 11:10:09.545 +0200,Client,ClientRead,idle,,,,SET search_path TO public,client backend
+16395,edgequake,520600,,16388,edgequake,"","10.79.1.84",,45896,2026-08-07 11:02:03.892 +0200,,2026-08-07 11:10:09.545 +0200,2026-08-07 11:10:09.546 +0200,Client,ClientRead,idle,,,,SET search_path TO public,client backend
+16395,edgequake,520604,,16388,edgequake,"","10.79.1.84",,45916,2026-08-07 11:02:04.156 +0200,,2026-08-07 11:10:12.141 +0200,2026-08-07 11:10:12.141 +0200,Client,ClientRead,idle,,,,SET search_path TO public,client backend
+16395,edgequake,520601,,16388,edgequake,"","10.79.1.84",,45898,2026-08-07 11:02:04.141 +0200,,2026-08-07 11:10:12.140 +0200,2026-08-07 11:10:12.141 +0200,Client,ClientRead,idle,,,,SET search_path TO public,client backend
+16395,edgequake,520602,,16388,edgequake,"","10.79.1.84",,45900,2026-08-07 11:02:04.148 +0200,,2026-08-07 11:10:12.142 +0200,2026-08-07 11:10:12.142 +0200,Client,ClientRead,idle,,,,SET search_path TO public,client backend
+16395,edgequake,520603,,16388,edgequake,"","10.79.1.84",,45914,2026-08-07 11:02:04.153 +0200,,2026-08-07 11:10:12.142 +0200,2026-08-07 11:10:12.142 +0200,Client,ClientRead,idle,,,,SET search_path TO public,client backend
+16395,edgequake,520608,,16388,edgequake,"","10.79.1.84",,45930,2026-08-07 11:02:04.379 +0200,,2026-08-07 11:10:09.546 +0200,2026-08-07 11:10:09.547 +0200,Client,ClientRead,idle,,,,SET search_path TO public,client backend
+333373,ppd_quantalogic_db,520639,,16392,quantadbu,"","10.79.0.255",,34166,2026-08-07 11:02:07.305 +0200,,2026-08-07 11:02:07.334 +0200,2026-08-07 11:02:07.334 +0200,Client,ClientRead,idle,,,-184371433182977480,LISTEN ql_tasks_changes,client backend
+333373,ppd_quantalogic_db,520638,,16392,quantadbu,"","10.79.0.255",,34162,2026-08-07 11:02:07.305 +0200,,2026-08-07 11:02:07.339 +0200,2026-08-07 11:02:07.339 +0200,Client,ClientRead,idle,,,-184371433182977480,LISTEN ql_tasks_changes,client backend
+333373,ppd_quantalogic_db,520654,,16391,quanta_monitor,"","10.79.3.189",,44536,2026-08-07 11:02:25.654 +0200,,2026-08-07 11:10:10.667 +0200,2026-08-07 11:10:10.667 +0200,Client,ClientRead,idle,,,6283515987245508499,SELECT * FROM pg_stat_database_conflicts;,client backend
+16395,edgequake,520655,,16388,edgequake,"","10.79.1.84",,36616,2026-08-07 11:02:26.060 +0200,,2026-08-07 11:02:26.196 +0200,2026-08-07 11:02:26.196 +0200,Client,ClientRead,idle,,,5861477816100520253,SET search_path TO public,client backend
+333373,ppd_quantalogic_db,520658,,16392,quantadbu,f9a8e6a2-b9a6-4dc4-970d-5ede56fcac8f,"10.79.0.255",,37154,2026-08-07 11:02:41.896 +0200,,2026-08-07 11:02:41.999 +0200,2026-08-07 11:02:42.000 +0200,Client,ClientRead,idle,,,-6819477229469848952,"SELECT ""public"".""organizations"".""id"", ""public"".""organizations"".""name"", ""public"".""organizations"".""email"", ""public"".""organizations"".""created_at"", ""public"".""organizations"".""updated_at"", ""public"".""organizations"".""owner_id"", ""public"".""organizations"".""max_members"", ""public"".""organizations"".""imageUrl"", ""public"".""organizations"".""available_models"", ""public"".""organizations"".""authorize_models"", ""public"".""organizations"".""is_root_orga"", ""public"".""organizations"".""is_enterprise"", ""public"".""organizations"".""infisical_project_id"" FROM ""public"".""organizations"" WHERE (""public"".""organizations"".""id"" = $1 AND ""public"".""organizations"".""is_root_orga"" = $2) LIMIT $3 OFFSET $4",client backend
+333373,ppd_quantalogic_db,520659,,16392,quantadbu,"","10.79.2.43",,24932,2026-08-07 11:02:42.077 +0200,,2026-08-07 11:02:42.192 +0200,2026-08-07 11:02:42.192 +0200,Client,ClientRead,idle,,,-7676915344437841334,ROLLBACK;,client backend
+333373,ppd_quantalogic_db,520661,,16392,quantadbu,"","10.79.1.131",,37938,2026-08-07 11:02:44.619 +0200,,2026-08-07 11:07:13.041 +0200,2026-08-07 11:07:13.041 +0200,Client,ClientRead,idle,,,-7676915344437841334,ROLLBACK,client backend
+16395,edgequake,520668,,16388,edgequake,"","10.79.1.84",,50042,2026-08-07 11:03:12.841 +0200,,2026-08-07 11:03:12.988 +0200,2026-08-07 11:03:12.988 +0200,Client,ClientRead,idle,,,5861477816100520253,SET search_path TO public,client backend
+5,postgres,520669,,10,postgres,psql,"10.79.3.189",,49196,2026-08-07 11:03:19.563 +0200,,2026-08-07 11:03:48.171 +0200,2026-08-07 11:03:48.176 +0200,Client,ClientRead,idle,,,3357101031789950628,"SELECT usename, application_name, client_addr, state, count(*)
+FROM pg_stat_activity
+GROUP BY 1,2,3,4
+ORDER BY count(*) DESC;",client backend
+5,postgres,520678,,10,postgres,DBeaver 25.2.2 - Main <postgres>,"10.79.2.137",,35556,2026-08-07 11:04:00.204 +0200,,2026-08-07 11:04:00.407 +0200,2026-08-07 11:04:00.407 +0200,Client,ClientRead,idle,,,-3434563810949349424,SHOW search_path,client backend
+5,postgres,520679,,10,postgres,DBeaver 25.2.2 - Metadata <postgres>,"10.79.2.137",,35562,2026-08-07 11:04:00.437 +0200,,2026-08-07 11:05:40.017 +0200,2026-08-07 11:05:40.019 +0200,Client,ClientRead,idle,,,-4259738102079502561,"SELECT c.relname,a.*,pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid
+FROM pg_catalog.pg_attribute a
+INNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid)
+LEFT OUTER JOIN pg_catalog.pg_attrdef ad ON (a.attrelid=ad.adrelid AND a.attnum = ad.adnum)
+LEFT OUTER JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid)
+LEFT OUTER JOIN pg_depend dep on dep.refobjid = a.attrelid AND dep.deptype = 'i' and dep.refobjsubid = a.attnum and dep.classid = dep.refclassid
+WHERE NOT a.attisdropped AND c.relkind not in ('i','I','c') AND c.oid=$1
+ORDER BY a.attnum",client backend
+333373,ppd_quantalogic_db,520681,,10,postgres,DBeaver 25.2.2 - SQLEditor <Script-37.sql>,"10.79.2.137",,58254,2026-08-07 11:04:04.470 +0200,,2026-08-07 11:09:31.931 +0200,2026-08-07 11:09:31.931 +0200,Client,ClientRead,idle,,,-6597334445012107321,"SELECT typinput='pg_catalog.array_in'::regproc as is_array, typtype, typname, pg_type.oid   FROM pg_catalog.pg_type   LEFT JOIN (select ns.oid as nspoid, ns.nspname, r.r           from pg_namespace as ns           join ( select s.r, (current_schemas(false))[s.r] as nspname                    from generate_series(1, array_upper(current_schemas(false), 1)) as s(r) ) as r          using ( nspname )        ) as sp     ON sp.nspoid = typnamespace  WHERE pg_type.oid = $1  ORDER BY sp.r, pg_type.oid DESC",client backend
+333373,ppd_quantalogic_db,520682,,10,postgres,DBeaver 25.2.2 - Main <ppd_quantalogic_db>,"10.79.2.137",,58258,2026-08-07 11:04:04.620 +0200,,2026-08-07 11:05:39.806 +0200,2026-08-07 11:05:39.806 +0200,Client,ClientRead,idle,,,5861477816100520253,"SET search_path = public,public,""$user""",client backend
+333373,ppd_quantalogic_db,520683,,10,postgres,DBeaver 25.2.2 - Metadata <ppd_quantalogic_db>,"10.79.2.137",,58262,2026-08-07 11:04:04.837 +0200,,2026-08-07 11:04:09.309 +0200,2026-08-07 11:04:09.310 +0200,Client,ClientRead,idle,,,-4259738102079502561,"SELECT c.relname,a.*,pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid
+FROM pg_catalog.pg_attribute a
+INNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid)
+LEFT OUTER JOIN pg_catalog.pg_attrdef ad ON (a.attrelid=ad.adrelid AND a.attnum = ad.adnum)
+LEFT OUTER JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid)
+LEFT OUTER JOIN pg_depend dep on dep.refobjid = a.attrelid AND dep.deptype = 'i' and dep.refobjsubid = a.attnum and dep.classid = dep.refclassid
+WHERE NOT a.attisdropped AND c.relkind not in ('i','I','c') AND c.oid=$1
+ORDER BY a.attnum",client backend
+333373,ppd_quantalogic_db,520751,,10,postgres,DBeaver 25.2.2 - Data transfer producer,"10.79.2.137",,37260,2026-08-07 11:10:11.927 +0200,2026-08-07 11:10:12.166 +0200,2026-08-07 11:10:12.172 +0200,2026-08-07 11:10:12.172 +0200,,,active,,"413591",2550534456213761723,"SELECT COUNT(*) FROM (select * from pg_stat_activity
+) dbvrcnt",client backend
+,,520592,,,,"",,,,2026-08-07 11:02:02.549 +0200,,,,Activity,AutovacuumMain,,,,,"",autovacuum launcher
+,,520593,,10,postgres,"",,,,2026-08-07 11:02:02.550 +0200,,,,Activity,LogicalLauncherMain,,,,,"",logical replication launcher
+,,520585,,,,"",,,,2026-08-07 11:02:02.531 +0200,,,,Activity,IoWorkerMain,,,,,"",io worker
+,,520586,,,,"",,,,2026-08-07 11:02:02.532 +0200,,,,Activity,IoWorkerMain,,,,,"",io worker
+,,520587,,,,"",,,,2026-08-07 11:02:02.532 +0200,,,,Activity,IoWorkerMain,,,,,"",io worker
+,,520588,,,,"",,,,2026-08-07 11:02:02.532 +0200,,,,Activity,CheckpointerMain,,,,,"",checkpointer
+,,520589,,,,"",,,,2026-08-07 11:02:02.533 +0200,,,,Activity,BgwriterHibernate,,,,,"",background writer
+,,520591,,,,"",,,,2026-08-07 11:02:02.549 +0200,,,,Activity,WalWriterMain,,,,,"",walwriter

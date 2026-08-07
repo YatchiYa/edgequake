@@ -289,11 +289,8 @@ fn parse_utoipa_handlers(src: &str) -> Vec<(String, String)> {
 }
 
 fn safe_prefix(s: &str, max_bytes: usize) -> &str {
-    let mut end = max_bytes.min(s.len());
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
+    // Build-script local copy of utf8_prefix (no crate dep available here).
+    &s[..s.floor_char_boundary(max_bytes)]
 }
 
 fn extract_quoted_after(haystack: &str, needle: &str) -> Option<String> {

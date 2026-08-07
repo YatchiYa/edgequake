@@ -18,39 +18,113 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 
-use sqlx::postgres::{PgPool, PgPoolOptions};
+use sqlx::postgres::{PgConnection, PgPool, PgPoolOptions};
 use sqlx::Row;
 
-use super::config::resolve_pool_max_connections;
-use super::config::PostgresConfig;
+use super::config::{db_pool_role_from_env, resolve_pool_max_connections, PostgresConfig};
 use crate::error::{Result, StorageError};
 
-/// SPEC-090 F-090-07 / LAW-P4: pin `search_path` on connect and reset session
-/// state on release so DDL/reconcile GUCs cannot leak across pooled checkouts.
-pub fn with_session_hygiene(options: PgPoolOptions) -> PgPoolOptions {
+/// Default idle-in-transaction timeout (SPEC-112 / OLTP safety net).
+pub const DEFAULT_IDLE_IN_XACT_TIMEOUT_SECS: u64 = 60;
+
+/// Default sqlx idle reaping (matches `PostgresConfig` idle_timeout).
+pub const DEFAULT_POOL_IDLE_TIMEOUT_SECS: u64 = 600;
+
+/// Default sqlx max connection lifetime (sqlx-like 30m).
+pub const DEFAULT_POOL_MAX_LIFETIME_SECS: u64 = 1800;
+
+/// SPEC-112 LAW-112-4: `edgequake:<role>` for `pg_stat_activity` attribution.
+pub fn session_application_name(role: Option<&str>) -> &'static str {
+    match role.map(|r| r.to_ascii_lowercase()).as_deref() {
+        Some("query") => "edgequake:query",
+        Some("ingest") => "edgequake:ingest",
+        Some("queue") => "edgequake:queue",
+        Some("admin") => "edgequake:admin",
+        _ => "edgequake:default",
+    }
+}
+
+/// `EDGEQUAKE_DB_IDLE_IN_XACT_TIMEOUT_SECS` (default 60; clamp 5..=3600).
+pub fn idle_in_xact_timeout_secs() -> u64 {
+    std::env::var("EDGEQUAKE_DB_IDLE_IN_XACT_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_IDLE_IN_XACT_TIMEOUT_SECS)
+        .clamp(5, 3600)
+}
+
+/// `EDGEQUAKE_DB_POOL_IDLE_TIMEOUT_SECS` (default 600; clamp 30..=86400).
+pub fn pool_idle_timeout() -> Duration {
+    let secs = std::env::var("EDGEQUAKE_DB_POOL_IDLE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_POOL_IDLE_TIMEOUT_SECS)
+        .clamp(30, 86_400);
+    Duration::from_secs(secs)
+}
+
+/// `EDGEQUAKE_DB_POOL_MAX_LIFETIME_SECS` (default 1800; clamp 60..=86400).
+pub fn pool_max_lifetime() -> Duration {
+    let secs = std::env::var("EDGEQUAKE_DB_POOL_MAX_LIFETIME_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_POOL_MAX_LIFETIME_SECS)
+        .clamp(60, 86_400);
+    Duration::from_secs(secs)
+}
+
+/// SPEC-112: pin application_name + search_path + idle_in_transaction after connect/reset.
+///
+/// `app_name` must be a trusted static from [`session_application_name`] (no user input).
+/// Statements are issued separately — sqlx extended protocol rejects multi-statement strings.
+pub async fn apply_session_baseline(
+    conn: &mut PgConnection,
+    app_name: &str,
+) -> std::result::Result<(), sqlx::Error> {
+    debug_assert!(
+        app_name.starts_with("edgequake:")
+            && app_name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b':' || b == b'_'),
+        "application_name must be a trusted edgequake:* label"
+    );
+    let idle_secs = idle_in_xact_timeout_secs();
+    sqlx::query(&format!("SET application_name = '{app_name}'"))
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query("SET search_path TO public")
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query(&format!(
+        "SET idle_in_transaction_session_timeout = '{idle_secs}s'"
+    ))
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
+}
+
+/// SPEC-090 F-090-07 / LAW-P4 + SPEC-112: labeled session hygiene.
+///
+/// `after_release` runs `RESET ALL` then **re-applies** the baseline so
+/// `application_name` / idle-in-xact timeout survive pool reuse (LAW-112-4/7).
+pub fn with_session_hygiene_labeled(
+    options: PgPoolOptions,
+    app_name: &'static str,
+) -> PgPoolOptions {
     options
-        // WHY: Force search_path=public on every connection.
-        // After migration 001 creates the 'edgequake' schema, PostgreSQL's
-        // default search_path "$user",public resolves "$user"="edgequake" to
-        // that schema first. Unqualified table references in storage queries
-        // (e.g. INSERT INTO documents) could resolve to edgequake views instead
-        // of the actual public tables. Pinning search_path to public ensures
-        // consistent, correct table resolution on all pool connections.
-        .after_connect(|conn, _| {
+        .after_connect(move |conn, _| {
             Box::pin(async move {
-                sqlx::query("SET search_path TO public")
-                    .execute(conn)
-                    .await
-                    .map(|_| ())
+                apply_session_baseline(conn, app_name).await?;
+                Ok(())
             })
         })
-        .after_release(|conn, _meta| {
+        .after_release(move |conn, _meta| {
             Box::pin(async move {
-                // RESET ALL clears session GUCs leaked by DDL/reconcile (statement_timeout,
-                // maintenance_work_mem, search_path) without discarding sqlx prepared statements.
-                // Must not run inside an open transaction (sqlx releases after end).
+                // RESET ALL clears session GUCs leaked by DDL/reconcile without
+                // discarding sqlx prepared statements. Must not run inside a txn.
                 if let Err(e) = sqlx::query("RESET ALL").execute(&mut *conn).await {
                     tracing::warn!(
                         error = %e,
@@ -58,19 +132,25 @@ pub fn with_session_hygiene(options: PgPoolOptions) -> PgPoolOptions {
                     );
                     return Ok(false);
                 }
-                if let Err(e) = sqlx::query("SET search_path TO public")
-                    .execute(&mut *conn)
-                    .await
-                {
+                if let Err(e) = apply_session_baseline(conn, app_name).await {
                     tracing::warn!(
                         error = %e,
-                        "SPEC-090: after_release search_path pin failed; dropping connection"
+                        app_name,
+                        "SPEC-112: after_release baseline re-pin failed; dropping connection"
                     );
                     return Ok(false);
                 }
                 Ok(true)
             })
         })
+}
+
+/// SPEC-090 F-090-07 / LAW-P4: default-label hygiene (single-pool / tests).
+///
+/// Uses `EDGEQUAKE_DB_POOL_ROLE` when set, otherwise `edgequake:default`.
+pub fn with_session_hygiene(options: PgPoolOptions) -> PgPoolOptions {
+    let label = session_application_name(db_pool_role_from_env().as_deref());
+    with_session_hygiene_labeled(options, label)
 }
 
 /// PostgreSQL connection pool wrapper.
@@ -142,7 +222,8 @@ impl PostgresPool {
                 .max_connections(max_connections)
                 .min_connections(self.config.min_connections)
                 .acquire_timeout(self.config.connect_timeout)
-                .idle_timeout(Some(self.config.idle_timeout)),
+                .idle_timeout(Some(self.config.idle_timeout))
+                .max_lifetime(Some(pool_max_lifetime())),
         )
         .connect(&self.config.connection_url())
         .await

@@ -1,0 +1,8 @@
+SPEC-112 / v0.24.3 Acc attest
+Date: 2026-08-07
+Decision: reuse publish/latest Acc pack (valid=true) — ops/pool + UTF-8 truncate cut; no Acc pin/profile change.
+scorecard: /Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/publish/latest/scorecard.json
+valid: True
+profile_id: ACC_E2OCC_086_v1_lrlike_arms_v2
+task_name: GraphRAG-Bench/EQ-vs-LR
+stage: medical-mid

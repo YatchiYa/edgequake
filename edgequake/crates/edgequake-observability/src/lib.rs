@@ -10,6 +10,7 @@ pub mod propagation;
 pub mod rag_span;
 pub mod request_context;
 pub mod subscriber;
+pub mod utf8_truncate;
 
 #[cfg(feature = "otel")]
 pub mod trace_context;
@@ -25,6 +26,9 @@ pub use query_guard::{QueryFailureGuard, QueryOutcomeGuard};
 pub use rag_span::{
     query_preview, record_rag_retrieval_outcome, with_rag_generation_span, with_rag_retrieval_span,
     RagRetrievalAttrs,
+};
+pub use utf8_truncate::{
+    utf8_clamp_span, utf8_prefix, utf8_prefix_at_sentence, utf8_prefix_ellipsis,
 };
 
 pub use propagation::{harvest_propagation_headers, PropagationHeaders};

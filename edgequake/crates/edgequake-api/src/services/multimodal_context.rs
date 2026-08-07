@@ -10,7 +10,8 @@ pub fn surrounding_context(
     end: usize,
     max_chars: usize,
 ) -> (String, String) {
-    let leading = markdown[..start.min(markdown.len())]
+    let (start, end) = edgequake_observability::utf8_clamp_span(markdown, start, end);
+    let leading = markdown[..start]
         .chars()
         .rev()
         .take(max_chars)
@@ -18,10 +19,7 @@ pub fn surrounding_context(
         .chars()
         .rev()
         .collect::<String>();
-    let trailing = markdown[end.min(markdown.len())..]
-        .chars()
-        .take(max_chars)
-        .collect::<String>();
+    let trailing = markdown[end..].chars().take(max_chars).collect::<String>();
     (leading.trim().to_string(), trailing.trim().to_string())
 }
 
@@ -38,5 +36,15 @@ mod tests {
         let (lead, trail) = surrounding_context(md, start, end, 32);
         assert!(lead.contains("Before"));
         assert!(trail.contains("After"));
+    }
+
+    #[test]
+    fn surrounding_context_tolerates_mid_char_offsets() {
+        let md = format!("{}–{}", "a".repeat(10), "b".repeat(10));
+        // En-dash occupies bytes 10..13; pass an interior offset.
+        let (lead, trail) = surrounding_context(&md, 11, 12, 8);
+        assert!(lead.is_char_boundary(lead.len()));
+        assert!(trail.is_char_boundary(trail.len()));
+        assert!(!lead.contains('\u{FFFD}'));
     }
 }

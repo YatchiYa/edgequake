@@ -194,6 +194,20 @@ mod tests {
     }
 
     #[test]
+    fn test_lineage_to_csv_utf8_preview_does_not_panic() {
+        // 99 ASCII bytes + en-dash (3 bytes) would panic on naive &content[..100].
+        let mut content = "a".repeat(99);
+        content.push('–');
+        content.push_str("tail");
+        let lineage = serde_json::json!({
+            "chunks": [{ "chunk_index": 0, "content": content, "tokens": 1 }]
+        });
+        let csv = lineage_to_csv("doc-utf8", &lineage);
+        assert!(csv.contains("doc-utf8"));
+        assert!(std::str::from_utf8(csv.as_bytes()).is_ok());
+    }
+
+    #[test]
     fn test_lineage_to_csv_empty_chunks() {
         let lineage = serde_json::json!({ "chunks": [] });
         let csv = lineage_to_csv("doc-empty", &lineage);

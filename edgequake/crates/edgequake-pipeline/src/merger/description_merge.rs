@@ -142,23 +142,12 @@ pub fn join_description_fragments(fragments: &[String], max_len: usize) -> Strin
     truncate_at_boundary(&joined, max_len)
 }
 
-fn truncate_at_boundary(text: &str, max_length: usize) -> String {
-    if text.len() <= max_length {
-        return text.to_string();
-    }
-    let mut end = max_length;
-    for (i, c) in text.char_indices().take(max_length) {
-        if c == '.' || c == '!' || c == '?' {
-            end = i + 1;
-        }
-    }
-    // Prefer not to cut mid-separator if possible.
-    if let Some(sep_at) = text[..end].rfind(GRAPH_FIELD_SEP) {
-        if sep_at > max_length / 4 {
-            return text[..sep_at].to_string();
-        }
-    }
-    text[..end].to_string()
+/// Truncate to `max_length` bytes at a sentence boundary (UTF-8 safe).
+///
+/// Prefer cutting before the last [`GRAPH_FIELD_SEP`] when it sits past
+/// `max_length / 4`. SSOT: [`edgequake_observability::utf8_prefix_at_sentence`].
+pub(crate) fn truncate_at_boundary(text: &str, max_length: usize) -> String {
+    edgequake_observability::utf8_prefix_at_sentence(text, max_length, Some(GRAPH_FIELD_SEP))
 }
 
 fn keep_longer(a: &str, b: &str) -> String {
@@ -230,6 +219,19 @@ mod tests {
 
     fn policy(force: usize, use_llm: bool) -> DescriptionMergePolicy {
         DescriptionMergePolicy::from_parts(use_llm, force, 1200, 0.85, 4096)
+    }
+
+    #[test]
+    fn truncate_at_boundary_does_not_split_en_dash() {
+        let mut s = String::new();
+        s.push_str(&"a".repeat(20));
+        s.push('–');
+        s.push_str(&"b".repeat(20));
+        // max_length lands inside the en-dash (byte 21 of a 3-byte char at 20..23)
+        let out = truncate_at_boundary(&s, 21);
+        assert!(out.is_char_boundary(out.len()));
+        assert_eq!(out.len(), 20);
+        assert!(!out.contains('–'));
     }
 
     #[test]

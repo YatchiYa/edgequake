@@ -307,14 +307,10 @@ pub async fn get_chunk_lineage(
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    // WHY: Truncate content to 200 chars for the preview field. The full content
+    // WHY: Truncate content to ~200 bytes for the preview field. The full content
     // is available via the chunk detail endpoint. This keeps lineage responses
     // compact for dashboard/tree views where only a preview is needed.
-    let content_preview = if content.len() > 200 {
-        format!("{}...", &content[..200])
-    } else {
-        content.to_string()
-    };
+    let content_preview = edgequake_observability::utf8_prefix_ellipsis(content, 200);
 
     let index = chunk_data
         .get("index")

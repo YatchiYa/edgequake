@@ -142,12 +142,54 @@ impl AppState {
 
         // SPEC-090 F-090-28: role-split pools (query/ingest/queue/admin).
         // Optional DATABASE_READ_URL feeds the query pool (F-090-31).
-        let pool_bundle = edgequake_storage::PgPoolBundle::connect(&database_url).await?;
+        // SPEC-112: floor queue pool to resolved worker count so claim_next
+        // cannot stampede a 4-conn pool when WORKER_THREADS is larger.
+        let worker_floor = edgequake_pipeline::resolve_worker_pool_limits().num_workers as u32;
+        let pool_bundle = edgequake_storage::PgPoolBundle::connect_with_queue_floor(
+            &database_url,
+            Some(worker_floor.max(1)),
+        )
+        .await?;
         let pool = pool_bundle.ingest.clone();
         let admin_pool = pool_bundle.admin.clone();
         let queue_pool = pool_bundle.queue.clone();
         let query_pool = pool_bundle.query.clone();
         let _db_pool_size = pool_bundle.total_max_connections();
+        tracing::info!(
+            worker_floor,
+            queue_max = pool_bundle.queue_max,
+            "SPEC-112: task queue pool sized for claim_next workers"
+        );
+
+        // SPEC-112 LAW-112-3: shared-DB slot budget (warn default; fail if env set).
+        let pool_budget = match edgequake_storage::check_pool_budget(
+            &admin_pool,
+            pool_bundle.total_max_connections(),
+        )
+        .await
+        {
+            Ok(report) => {
+                tracing::info!(
+                    need = report.need,
+                    limit = report.limit,
+                    instances = report.instances,
+                    total_pool_max = report.total_pool_max,
+                    pg_max = report.pg_max,
+                    ok = report.ok,
+                    "SPEC-112: pool budget check"
+                );
+                edgequake_storage::enforce_pool_budget(&report)?;
+                Some(report)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "SPEC-112: pool budget probe failed — continuing without gate"
+                );
+                None
+            }
+        };
+
         let pg_config = edgequake_storage::adapters::postgres::PostgresConfig::new(
             host, port, database, user, password,
         )
@@ -620,6 +662,7 @@ impl AppState {
             rate_limiter: RateLimiter::new(TokenBucketConfig::default()),
             pg_pool: Some(pool.clone()),
             pool_bundle: Some(pool_bundle),
+            pool_budget,
             start_time: std::time::Instant::now(),
             path_validation_config: Self::load_path_validation_config(),
             audit_logger: Some(audit_logger),

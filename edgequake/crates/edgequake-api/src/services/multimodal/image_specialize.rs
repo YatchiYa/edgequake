@@ -305,12 +305,16 @@ pub(crate) fn pass_a_numeric_dump_from_context(ctx: &PromptContext) -> Option<St
     let lower = blob.to_ascii_lowercase();
     if let Some(idx) = lower.find("**key values:**") {
         let slice = &blob[idx..];
-        let end = slice.find("\n\n**").unwrap_or(slice.len().min(800));
+        let end = slice
+            .find("\n\n**")
+            .unwrap_or_else(|| edgequake_observability::utf8_prefix(slice, 800).len());
         parts.push(slice[..end].trim().to_string());
     }
     if let Some(idx) = lower.find("**data table:**") {
         let slice = &blob[idx..];
-        let end = slice.find("\n\n**").unwrap_or(slice.len().min(1200));
+        let end = slice
+            .find("\n\n**")
+            .unwrap_or_else(|| edgequake_observability::utf8_prefix(slice, 1200).len());
         parts.push(slice[..end].trim().to_string());
     }
     if parts.is_empty() {

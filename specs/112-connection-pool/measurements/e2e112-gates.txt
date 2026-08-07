@@ -1,0 +1,15 @@
+   Compiling edgequake-storage v0.24.2 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.60s
+     Running tests/e2e_spec090_multi_pool.rs (target/debug/deps/e2e_spec090_multi_pool-cd4a81ce03ee140f)
+
+running 7 tests
+test unit_spec112_budget_formula ... ok
+test e2e_spec090_multi_pool_contract_source ... ok
+test e2e_spec112_budget_fail_mode ... ok
+test e2e_spec112_close_releases_backends ... ok
+test e2e_spec112_application_name_and_idle_in_xact ... ok
+test e2e_spec090_multi_pool_sizes_and_isolation ... ok
+test e2e_spec112_stress_ingest_queue_saturate_query_ok ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.25s
+

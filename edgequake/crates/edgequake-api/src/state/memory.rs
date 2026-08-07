@@ -118,6 +118,8 @@ impl AppState {
             pg_pool: None,
             #[cfg(feature = "postgres")]
             pool_bundle: None,
+            #[cfg(feature = "postgres")]
+            pool_budget: None,
             start_time: std::time::Instant::now(),
             path_validation_config: crate::path_validation::PathValidationConfig::default(),
             audit_logger: None,
@@ -272,6 +274,8 @@ impl AppState {
             pg_pool: None,
             #[cfg(feature = "postgres")]
             pool_bundle: None,
+            #[cfg(feature = "postgres")]
+            pool_budget: None,
             start_time: std::time::Instant::now(),
             path_validation_config: crate::path_validation::PathValidationConfig {
                 allow_any_path: true,
@@ -390,6 +394,8 @@ impl AppState {
             pg_pool: None,
             #[cfg(feature = "postgres")]
             pool_bundle: None,
+            #[cfg(feature = "postgres")]
+            pool_budget: None,
             start_time: std::time::Instant::now(),
             path_validation_config: crate::path_validation::PathValidationConfig {
                 allow_any_path: true,

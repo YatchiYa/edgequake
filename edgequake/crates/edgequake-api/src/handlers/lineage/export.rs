@@ -135,11 +135,7 @@ pub(super) fn lineage_to_csv(document_id: &str, lineage: &serde_json::Value) -> 
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
             let content = chunk.get("content").and_then(|v| v.as_str()).unwrap_or("");
-            let preview = if content.len() > 100 {
-                &content[..100]
-            } else {
-                content
-            };
+            let preview = edgequake_observability::utf8_prefix(content, 100);
             // WHY: Escape CSV fields — wrap in quotes and double any internal quotes
             let escaped_preview = preview.replace('"', "\"\"").replace('\n', " ");
             let tokens = chunk.get("tokens").and_then(|v| v.as_u64()).unwrap_or(0);

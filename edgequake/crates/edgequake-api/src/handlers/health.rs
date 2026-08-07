@@ -36,9 +36,9 @@ use crate::state::AppState;
 pub use crate::handlers::health_types::{
     ApiCapabilities, BuildInfo, ComponentHealth, EmbeddingProviderHealth, HealthResponse,
     IngestionHealthSnapshot, LlmProviderHealth, MigrationHealthSnapshot,
-    ObservabilityHealthSnapshot, OperationalHealth, PostgresCapabilityHealth, ProvidersHealth,
-    QueryEngineHealthSnapshot, ReadModelHealthSnapshot, SchemaHealth, SourceIdsIndexHealth,
-    StorageHealthSnapshot, TaskQueueHealthSnapshot,
+    ObservabilityHealthSnapshot, OperationalHealth, PoolRoleHealth, PostgresCapabilityHealth,
+    ProvidersHealth, QueryEngineHealthSnapshot, ReadModelHealthSnapshot, SchemaHealth,
+    SourceIdsIndexHealth, StorageHealthSnapshot, TaskQueueHealthSnapshot,
 };
 
 /// Deep health check with component status.
@@ -331,12 +331,32 @@ fn build_storage_health_snapshot(state: &AppState) -> StorageHealthSnapshot {
         document_id_generator: None,
         age_rls_enabled: None,
         age_copy_loader_enabled: None,
+        db_pools: None,
+        pool_budget_ok: state.pool_budget.as_ref().map(|r| r.ok),
     };
     if let Some(caps) = state.postgres_capabilities.as_ref() {
         snap.vector_storage_mode = Some(caps.vector_storage_mode.as_str().to_string());
         snap.document_id_generator = Some(caps.document_id_generator.as_str().to_string());
         snap.age_rls_enabled = Some(caps.age_rls_effective);
         snap.age_copy_loader_enabled = Some(caps.age_copy_loader_effective);
+    }
+    if let Some(ref bundle) = state.pool_bundle {
+        snap.db_pools = Some(
+            [
+                ("query", &bundle.query, bundle.query_max),
+                ("ingest", &bundle.ingest, bundle.ingest_max),
+                ("queue", &bundle.queue, bundle.queue_max),
+                ("admin", &bundle.admin, bundle.admin_max),
+            ]
+            .into_iter()
+            .map(|(role, pool, max)| PoolRoleHealth {
+                role: role.to_string(),
+                max,
+                size: pool.size(),
+                idle: pool.num_idle().min(u32::MAX as usize) as u32,
+            })
+            .collect(),
+        );
     }
     snap
 }
@@ -361,6 +381,8 @@ fn build_storage_health_snapshot(_state: &AppState) -> StorageHealthSnapshot {
         document_id_generator: None,
         age_rls_enabled: None,
         age_copy_loader_enabled: None,
+        db_pools: None,
+        pool_budget_ok: None,
     }
 }
 

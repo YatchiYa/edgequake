@@ -304,6 +304,7 @@ pub fn init_metrics() {
         gauge!(DB_POOL_CONNECTIONS, "state" => "total").set(0.0);
         gauge!(DB_POOL_CONNECTIONS, "state" => "idle").set(0.0);
         gauge!(DB_POOL_CONNECTIONS, "state" => "active").set(0.0);
+        gauge!(DB_POOL_CONNECTIONS, "state" => "max").set(0.0);
         gauge!(TASK_QUEUE_PENDING).set(0.0);
         gauge!(TASK_QUEUE_PROCESSING).set(0.0);
         gauge!(TASK_QUEUE_FAILED).set(0.0);
@@ -366,17 +367,19 @@ pub fn record_task_queue_stats(pending: u64, processing: u64, failed: u64) {
 
 /// Update DB pool gauges (call before Prometheus scrape when pool is available).
 pub fn record_db_pool_stats(size: u32, idle: u32) {
-    record_db_pool_stats_for_role("primary", size, idle);
+    record_db_pool_stats_for_role("primary", size, idle, 0);
 }
 
-/// Per-role pool gauges (SPEC-090 F-090-28): `role` ∈ query|ingest|queue|admin.
-pub fn record_db_pool_stats_for_role(role: &str, size: u32, idle: u32) {
+/// Per-role pool gauges (SPEC-090 F-090-28 / SPEC-112): `role` ∈ query|ingest|queue|admin.
+/// `max` is the configured pool ceiling (LAW-112-8).
+pub fn record_db_pool_stats_for_role(role: &str, size: u32, idle: u32, max: u32) {
     init_metrics();
     let active = size.saturating_sub(idle);
     let role = role.to_string();
     gauge!(DB_POOL_CONNECTIONS, "state" => "total", "role" => role.clone()).set(size as f64);
     gauge!(DB_POOL_CONNECTIONS, "state" => "idle", "role" => role.clone()).set(idle as f64);
-    gauge!(DB_POOL_CONNECTIONS, "state" => "active", "role" => role).set(active as f64);
+    gauge!(DB_POOL_CONNECTIONS, "state" => "active", "role" => role.clone()).set(active as f64);
+    gauge!(DB_POOL_CONNECTIONS, "state" => "max", "role" => role).set(max as f64);
 }
 
 /// SPEC-091 P2: migration job progress gauges (sampled on /metrics scrape from
@@ -728,6 +731,16 @@ mod tests {
         let p = "/api/v1/workspaces/550e8400-e29b-41d4-a716-446655440000/documents";
         let n = normalize_route(p);
         assert!(n.contains(":id"));
+    }
+
+    #[test]
+    fn scrape_includes_db_pool_max_state_after_record() {
+        record_db_pool_stats_for_role("query", 3, 1, 8);
+        let body = render_prometheus_metrics();
+        assert!(
+            body.contains(DB_POOL_CONNECTIONS) && body.contains("max"),
+            "SPEC-112: pool scrape should expose state=max: {body:?}"
+        );
     }
 
     #[test]

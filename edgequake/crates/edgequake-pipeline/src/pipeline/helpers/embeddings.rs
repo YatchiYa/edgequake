@@ -50,16 +50,10 @@ fn embed_max_chars(max_tokens: usize) -> usize {
 }
 
 /// Truncate `s` to at most `max_bytes`, preserving UTF-8 character boundaries.
+#[inline]
 fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-    let mut end = max_bytes;
-    // Walk back to the nearest valid UTF-8 boundary.
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
+    // Local name kept for embed-guard call sites / unit tests; SSOT is utf8_prefix.
+    edgequake_observability::utf8_prefix(s, max_bytes)
 }
 
 /// Policy when an embedding input exceeds the provider-safe character cap (OPS-P1.7).

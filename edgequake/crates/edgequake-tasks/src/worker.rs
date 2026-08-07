@@ -515,6 +515,9 @@ impl WorkerPool {
                                     error.message = %e,
                                     "Failed to claim next task"
                                 );
+                                // SPEC-112: dampen reconnect storms after pool
+                                // timeout / Postgres restart (SSLRequest failures).
+                                tokio::time::sleep(Duration::from_secs(1)).await;
                                 break;
                             }
                         };

@@ -22,16 +22,17 @@ async fn refresh_runtime_gauges(state: &AppState) {
     #[cfg(feature = "postgres")]
     {
         if let Some(ref bundle) = state.pool_bundle {
-            for (role, pool) in [
-                ("query", &bundle.query),
-                ("ingest", &bundle.ingest),
-                ("queue", &bundle.queue),
-                ("admin", &bundle.admin),
+            for (role, pool, max) in [
+                ("query", &bundle.query, bundle.query_max),
+                ("ingest", &bundle.ingest, bundle.ingest_max),
+                ("queue", &bundle.queue, bundle.queue_max),
+                ("admin", &bundle.admin, bundle.admin_max),
             ] {
                 edgequake_observability::record_db_pool_stats_for_role(
                     role,
                     pool.size(),
                     pool.num_idle().min(u32::MAX as usize) as u32,
+                    max,
                 );
             }
         } else if let Some(ref pool) = state.pg_pool {

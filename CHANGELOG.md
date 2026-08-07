@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.24.3] — 2026-08-07
+
+Patch: SPEC-112 shared-PostgreSQL connection-pool harden + UTF-8 truncate SSOT.
+
+### Fixed
+- **SPEC-112 — connection pool identity, reaping, budget, shutdown** — Role pools set `application_name=edgequake:<role>` for `pg_stat_activity` attribution; explicit sqlx `idle_timeout` / `max_lifetime` (env overrides); startup fleet slot budget check (`EDGEQUAKE_DB_POOL_INSTANCE_COUNT` × pool sum vs `max_connections − reserve − headroom`, `warn`/`fail`); graceful `PgPoolBundle::close` after HTTP drain; `/health` exposes per-role `db_pools` util. Shared-DB sizing guidance in ops config — product fix is app budget, not raising `max_connections` to 400. Spec: [`specs/112-connection-pool/`](specs/112-connection-pool/). Upgrade: [`docs/operations/upgrade-to-0.24.3.md`](docs/operations/upgrade-to-0.24.3.md).
+- **UTF-8 truncate SSOT** — Panic-safe prefix / span / sentence clamp centralized in `edgequake_observability::utf8_truncate`; pipeline / merger / multimodal / RAG span / progress / build.rs call sites aligned (no mid-codepoint slices on LLM/span previews).
+
+### Added
+- **SPEC-112 pool budget + e2e** — `pool_budget` module; multi-pool e2e covers application_name, idle-in-xact, budget fail mode, close releases backends, ingest/queue stress with query pool OK.
+
 ## [0.24.2] — 2026-08-07
 
 Patch: SPEC-111 Cluster A + Clear All, SPEC-110 migrate 118/121, SPEC-109 reasoning effort,

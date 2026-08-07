@@ -70,6 +70,37 @@ DATABASE_URL="postgresql://edgequake:pass@db.example.com:5432/edgequake?sslmode=
 DATABASE_URL="postgresql://edgequake:pass@pgbouncer:6432/edgequake"
 ```
 
+#### Connection pool (SPEC-112)
+
+Serving uses a four-role `PgPoolBundle` (query / ingest / queue / admin). Idle backends are **held capacity** on shared PostgreSQL — size for co-tenants. See [`specs/112-connection-pool/07-ops-runbook.md`](../../specs/112-connection-pool/07-ops-runbook.md).
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `EDGEQUAKE_DB_POOL_SIZE_QUERY` | `16` | Query pool max (clamp 1–128) |
+| `EDGEQUAKE_DB_POOL_SIZE_INGEST` | `12` | Ingest pool max |
+| `EDGEQUAKE_DB_POOL_SIZE_QUEUE` | `4` | Queue pool max (boot floors to resolved `WORKER_THREADS` so `claim_next` cannot stampede) |
+| `EDGEQUAKE_DB_POOL_SIZE_ADMIN` | `2` | Admin/migrate pool max |
+| `EDGEQUAKE_DB_POOL_INSTANCE_COUNT` | `1` | Replica count for startup budget math (use peak overlap during rollouts) |
+| `EDGEQUAKE_DB_POOL_BUDGET_MODE` | `warn` | `warn` or `fail` when `instances × pool_sum` exceeds `max_connections − reserve − 10` |
+| `EDGEQUAKE_DB_POOL_IDLE_TIMEOUT_SECS` | `600` | sqlx idle reap |
+| `EDGEQUAKE_DB_POOL_MAX_LIFETIME_SECS` | `1800` | sqlx max connection lifetime |
+| `EDGEQUAKE_DB_IDLE_IN_XACT_TIMEOUT_SECS` | `60` | Session `idle_in_transaction_session_timeout` |
+| `DATABASE_READ_URL` | unset | Optional read replica URL for the query pool |
+
+Backends set `application_name=edgequake:<role>` for `pg_stat_activity` attribution. Graceful shutdown closes all role pools after HTTP drain.
+
+**Queue vs workers:** `claim_next` uses the queue pool only. At boot, queue max becomes `max(EDGEQUAKE_DB_POOL_SIZE_QUEUE, resolved_worker_count)`. If logs show `pool timed out` on `claim_next` followed by `SSLRequest: 0x00`, Postgres likely restarted — wait until PG is healthy, then restart the API so pools re-form.
+
+**Shared-DB starting point (co-tenant with QL):**
+
+```bash
+export EDGEQUAKE_DB_POOL_SIZE_QUERY=8
+export EDGEQUAKE_DB_POOL_SIZE_INGEST=6
+export EDGEQUAKE_DB_POOL_SIZE_QUEUE=2
+export EDGEQUAKE_DB_POOL_SIZE_ADMIN=1
+# sum = 17 per process
+```
+
 ### LLM Providers
 
 #### OpenAI
