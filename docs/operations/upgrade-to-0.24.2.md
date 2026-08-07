@@ -24,7 +24,7 @@ containing `->`. Confirm-drop remains consent-gated.
 1. Backup (pg_dump -Fc / snapshot)
 2. Deploy v0.24.2 images (API + frontend; postgres image if you pin it)
 3. edgequake migrate
-   - expandable path includes 143
+   - expandable path includes 143–144 (workspace-scoped legacy_vector_id unique)
 4. If checksum drift on 125/131 (or 118/121 after SPEC-110 body repair):
    EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=125,131,118,121 DATABASE_URL=… edgequake migrate
    (local `make_dev` migrate already passes the allowlist)

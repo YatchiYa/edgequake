@@ -3,7 +3,7 @@
 > EQ mix vs LR mix on GraphRAG-Bench (mistral/mistral-small-latest + mistral/mistral-embed) — publishable dual-SUT under matched top-k + L2 retrieval metrics. Not UltraDomain win-rates; Acc is not paper Table-2 comparable unless P0_paper ablation pins are used.
 
 - **valid:** `True`
-- **profile:** `P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2`
+- **profile:** `ACC_E2OCC_086_v1_lrlike_arms_v2`
 - **judge:** `generation_eval`
 - **fixture:** `medical_publish_question_ids_v1` (n=200)
 - **dataset revision:** `dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546`
@@ -22,54 +22,54 @@
 
 | SUT | Acc | F1 | cos |
 |-----|-----|----|-----|
-| EdgeQuake mix | 0.8068 | 0.7535 | 0.9666 |
-| LightRAG mix | 0.7793 | 0.7169 | 0.9663 |
-| Δ (EQ − LR) | +0.0275 | 0.0366 | 0.0003 |
+| EdgeQuake mix | 0.7784 | 0.7164 | 0.9643 |
+| LightRAG mix | 0.7881 | 0.7287 | 0.9663 |
+| Δ (EQ − LR) | -0.0097 | -0.0123 | -0.0020 |
 
-- **Δ Acc 95% CI (bootstrap):** [-0.0050, +0.0586] (n=200)
+- **Δ Acc 95% CI (bootstrap):** [-0.0444, +0.0236] (n=200)
 
 ## Retrieval (L2)
 
 | SUT | evidence_recall | context_relevancy |
 |-----|-----------------|-------------------|
-| EdgeQuake | 0.9091 | 0.4200 |
-| LightRAG | 0.9583 | 0.4987 |
+| EdgeQuake | 0.9062 | 0.4250 |
+| LightRAG | 0.9436 | 0.4987 |
 
 ## By question_type (EQ Acc)
 
-- **Fact Retrieval:** 0.7890
-- **Complex Reasoning:** 0.7929
-- **Contextual Summarize:** 0.8334
-- **Creative Generation:** 0.8119
+- **Fact Retrieval:** 0.7954
+- **Complex Reasoning:** 0.7699
+- **Contextual Summarize:** 0.7847
+- **Creative Generation:** 0.7635
 
 ## By question_type (LR Acc)
 
-- **Fact Retrieval:** 0.7490
-- **Complex Reasoning:** 0.7768
-- **Contextual Summarize:** 0.8298
-- **Creative Generation:** 0.7615
+- **Fact Retrieval:** 0.7757
+- **Complex Reasoning:** 0.7667
+- **Contextual Summarize:** 0.8210
+- **Creative Generation:** 0.7890
 
 ## Ops
 
-- EQ empty-answer rate: 0.000
+- EQ empty-answer rate: 0.010
 - LR empty-answer rate: 0.000
 - EQ empty-context rate: 0.000
 - LR empty-context rate: 0.000
-- EQ query p50/p95 ms: 4650 / 11012
-- LR query p50/p95 ms: 647 / 1126
-- ingest wall s: 0.0
-- EQ/LR p50 ratio: 7.187 (SLO ≤1.5×: FAIL/WAIVE)
-- EQ stage p50 ms: keyword=1089, embed=999, retrieve=458, rerank=82, generate=2044
+- EQ query p50/p95 ms: 9642 / 16348
+- LR query p50/p95 ms: 4654 / 7655
+- ingest wall s: 1393.6
+- EQ/LR p50 ratio: 2.072 (SLO ≤1.5×: FAIL/WAIVE)
+- EQ stage p50 ms: keyword=1975, embed=1785, retrieve=964, generate=2437
 
 ## Pins
 
 ```json
 {
-  "edgequake_git_sha": "b9f188de8",
+  "edgequake_git_sha": "91c982a14",
   "dataset_id": "GraphRAG-Bench/GraphRAG-Bench",
   "dataset_revision": "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546",
   "fixture_id": "medical_publish_question_ids_v1",
-  "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
+  "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
   "llm_provider": "mistral",
   "llm_model": "mistral-small-latest",
   "vision_provider": "mistral",
@@ -106,19 +106,19 @@
   "lr_enable_llm_cache": true,
   "eq_max_results": 30,
   "eq_rerank_top_k": 30,
-  "eq_enable_rerank": true,
-  "graph_walk": "ppr",
+  "eq_enable_rerank": false,
+  "graph_walk": "bfs",
   "kg_chunk_pick": "vector",
   "l2_retrieval_required": true,
   "mix_arm_gate": false,
   "eq_mix_arm_gate_env": "false",
-  "mix_fusion": "rrf",
+  "mix_fusion": "round_robin",
   "rr_order": "local_first",
   "related_chunk_number": 5,
-  "kg_chunk_occurrence_sort": false,
+  "kg_chunk_occurrence_sort": true,
   "bm25_retrieval": true,
   "kg_chunk_pick_timing": "per_arm",
-  "kg_chunk_pick_lr_budget": false,
+  "kg_chunk_pick_lr_budget": true,
   "mix_relevancy_prune": false,
   "mix_relevancy_keep": 12,
   "mix_relevancy_score": "rrf",
@@ -129,7 +129,7 @@
   "path_prune_orphan_entities": false,
   "rerank_protect_first": 0,
   "min_rerank_score": 0.1,
-  "entity_rank": "degree",
+  "entity_rank": "retrieval",
   "relation_select": "default",
   "mix_local_weight": 1.0,
   "mix_global_weight": 1.0,
@@ -147,6 +147,8 @@
   "keyword_mode": "llm",
   "keyword_llm_provider": null,
   "keyword_llm_model": null,
+  "extract_llm_provider": null,
+  "extract_llm_model": null,
   "fact_protect_bm25": false,
   "coverage_protect_first": 0,
   "topic_entity_admit": false,
@@ -158,9 +160,9 @@
   "topic_materialize_content": false,
   "topic_materialize_types": "",
   "intent_rerank": false,
-  "l2_bm25_union": false,
+  "l2_bm25_union": true,
   "l2_bm25_mix_top_k": 30,
-  "l2_bm25_mode": "union",
+  "l2_bm25_mode": "fact_replace",
   "mix_intent_weights": false,
   "intent_factual_bias": false,
   "answer_prompt": "default",
@@ -174,7 +176,7 @@
   "ingest_max_chars": null,
   "eq_query_concurrency": 4,
   "lr_query_concurrency_effective": 1,
-  "fairness_note": "Matched top-k=30 budgets; LR rerank off (no model); L2 Evidence Recall + Context Relevancy required for valid smoke+; EQ Mix arm gate off (LR-like always-on local+global+naive) unless EDGEQUAKE_MIX_ARM_GATE=true on the server; optional EDGEQUAKE_MIX_FUSION=round_robin ablation (default rrf); Acc PATH_PRUNE=0 (022 P0; soft path only with CE+protect); Phase-1 EDGEQUAKE_MIX_RELEVANCY_PRUNE Acc default off; fair Acc ingest: adaptive_chunking off + chunk_token_size=1200 (LightRAG CHUNK_SIZE parity) unless explicitly ablated; smoke-fast Acc may set BENCH001_INGEST_MAX_CHARS for fast force-ingest (full corpus = 0)",
+  "fairness_note": "Matched top-k=30 budgets; LR rerank off (no model); L2 Evidence Recall + Context Relevancy required for valid smoke+; EQ Mix arm gate off (LR-like always-on local+global+naive) unless EDGEQUAKE_MIX_ARM_GATE=true on the server; Mix fusion default round_robin (SPEC-086 E2-occ; rrf is labeled ablation); Acc PATH_PRUNE=0 (022 P0; soft path only with CE+protect); Phase-1 EDGEQUAKE_MIX_RELEVANCY_PRUNE Acc default off; fair Acc ingest: adaptive_chunking off + chunk_token_size=1200 (LightRAG CHUNK_SIZE parity) unless explicitly ablated; smoke-fast Acc may set BENCH001_INGEST_MAX_CHARS for fast force-ingest (full corpus = 0)",
   "eq_query_mode": "mix",
   "lr_query_mode": "mix",
   "chunk_size": 1200,

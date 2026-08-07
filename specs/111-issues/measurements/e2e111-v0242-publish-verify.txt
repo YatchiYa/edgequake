@@ -1,0 +1,124 @@
+=== gh release view ===
+title:	EdgeQuake v0.24.2
+tag:	v0.24.2
+draft:	false
+prerelease:	false
+immutable:	false
+author:	github-actions[bot]
+created:	2026-08-07T08:19:26Z
+published:	2026-08-07T08:53:53Z
+url:	https://github.com/raphaelmansuy/edgequake/releases/tag/v0.24.2
+--
+## Docker Quickstart
+
+```bash
+# Interactive one-command install (Docker only, no git clone)
+curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/quickstart.sh | sh
+```
+
+Or with plain Docker Compose:
+```bash
+curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/docker-compose.quickstart.yml \
+  -o docker-compose.quickstart.yml
+docker compose -f docker-compose.quickstart.yml up -d
+# → Web UI:  http://localhost:3000
+# → API:     http://localhost:8080
+# → Swagger: http://localhost:8080/swagger-ui
+```
+
+Or with the Makefile:
+```bash
+make stack           # start all three services (pulls from GHCR)
+make stack-down      # stop and remove containers
+make stack-logs      # tail logs
+```
+
+## Images (v0.24.2)
+
+| Image | Architecture |
+|-------|-------------|
+| `ghcr.io/raphaelmansuy/edgequake:0.24.2` | linux/amd64, linux/arm64 |
+| `ghcr.io/raphaelmansuy/edgequake-frontend:0.24.2` | linux/amd64, linux/arm64 |
+| `ghcr.io/raphaelmansuy/edgequake-postgres:0.24.2` | linux/amd64, linux/arm64 | **PG18** (recommended default) |
+| `ghcr.io/raphaelmansuy/edgequake-postgres:0.24.2-pg16` | linux/amd64, linux/arm64 | PG16 legacy (AGE 1.6.0) |
+| `ghcr.io/raphaelmansuy/edgequake-postgres:0.24.2-pg17` | linux/amd64, linux/arm64 | PG17 modern (AGE 1.7.0) |
+| `ghcr.io/raphaelmansuy/edgequake-postgres:0.24.2-pg18` | linux/amd64, linux/arm64 | PG18 explicit tag |
+
+Full CHANGELOG: https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/CHANGELOG.md
+=== imagetools ===
+Name:      ghcr.io/raphaelmansuy/edgequake:0.24.2
+MediaType: application/vnd.oci.image.index.v1+json
+Digest:    sha256:678d6c8e1f18274585d1d3018550aa161ae0f9874392bff7b8ef99dc65c1d17c
+           
+Manifests: 
+  Name:        ghcr.io/raphaelmansuy/edgequake:0.24.2@sha256:f609cac82b70bdf034f55b69395e44d68627fd17dcba9308a15c2d3dcd121bce
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    linux/amd64
+               
+  Name:        ghcr.io/raphaelmansuy/edgequake:0.24.2@sha256:26aa8088edb137e0212f46706919e1f1f04d48206667edd9a28b0df421f24e24
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    unknown/unknown
+  Annotations: 
+    vnd.docker.reference.digest: sha256:f609cac82b70bdf034f55b69395e44d68627fd17dcba9308a15c2d3dcd121bce
+    vnd.docker.reference.type:   attestation-manifest
+               
+  Name:        ghcr.io/raphaelmansuy/edgequake:0.24.2@sha256:4b6e33b73ecfb9a1c6e1bcb3aa895977e3975f7fdad48d07ce41e6821b7ba742
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    linux/arm64
+               
+  Name:        ghcr.io/raphaelmansuy/edgequake:0.24.2@sha256:f658ff1f3ae91dbb205284788ad083f4959edc155852fddfc227b39bcb10294a
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    unknown/unknown
+  Annotations: 
+    vnd.docker.reference.digest: sha256:4b6e33b73ecfb9a1c6e1bcb3aa895977e3975f7fdad48d07ce41e6821b7ba742
+=== frontend ===
+Name:      ghcr.io/raphaelmansuy/edgequake-frontend:0.24.2
+MediaType: application/vnd.oci.image.index.v1+json
+Digest:    sha256:796ba2b99634402c132b4936e004921329be0381bb8690e2b948846fe946f80b
+           
+Manifests: 
+  Name:        ghcr.io/raphaelmansuy/edgequake-frontend:0.24.2@sha256:8cdcb0823b57326f6d74fd56db2df77df0638fcfcc3121596814d695a883d42a
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    linux/amd64
+               
+  Name:        ghcr.io/raphaelmansuy/edgequake-frontend:0.24.2@sha256:8359a19eca518c2907e21346c7abd2aca41d344bb3a9359e2547cbfc5133513d
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    unknown/unknown
+  Annotations: 
+    vnd.docker.reference.type:   attestation-manifest
+    vnd.docker.reference.digest: sha256:8cdcb0823b57326f6d74fd56db2df77df0638fcfcc3121596814d695a883d42a
+=== postgres ===
+Name:      ghcr.io/raphaelmansuy/edgequake-postgres:0.24.2
+MediaType: application/vnd.oci.image.index.v1+json
+Digest:    sha256:b5b1678cdb03a875d87a8eccedc7432f0df93f90b9bc91421013f7f95290cc78
+           
+Manifests: 
+  Name:        ghcr.io/raphaelmansuy/edgequake-postgres:0.24.2@sha256:6e465ab199f1e7f38578b10e249421bb41153c90549f66164748d783ed289ef0
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    linux/amd64
+               
+  Name:        ghcr.io/raphaelmansuy/edgequake-postgres:0.24.2@sha256:4b38ca545646ce5f9673adbffed09dc80331bc80e894dc0ae7f26c9bfbae9325
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    unknown/unknown
+  Annotations: 
+    vnd.docker.reference.digest: sha256:6e465ab199f1e7f38578b10e249421bb41153c90549f66164748d783ed289ef0
+    vnd.docker.reference.type:   attestation-manifest
+[2m2026-08-07T08:55:43.759999Z[0m [32m INFO[0m [2medgequake_observability::subscriber[0m[2m:[0m Observability initialized [3mlog_format[0m[2m=[0mPlain [3motel_enabled[0m[2m=[0mfalse [3motel_endpoint[0m[2m=[0mNone [3mservice_name[0m[2m=[0medgequake-api [3mlog_span_events[0m[2m=[0mfalse
+[2m2026-08-07T08:55:43.760036Z[0m [32m INFO[0m [2medgequake[0m[2m:[0m Starting EdgeQuake v0.24.2
+Error: DATABASE_URL is required; start PostgreSQL and rerun make dev or make dev-auth
+
+Caused by:
+
+=== Acc (medical-mid-20260807T081848Z) ===
+EdgeQuake vs LightRAG — GraphRAG-Bench Acc (EXEC SUMMARY)
+Verdict: STATISTICAL TIE on answer quality
+Sample: n=200 medical (publish mid)
+Acc: EQ 0.778 · LR 0.788
+Context cleanliness (ctx_rel): EQ 0.425 · LR 0.499
+Evidence coverage (recall): EQ 0.906 · LR 0.944
+Query p50 ms: EQ 9642 · LR 4654 · ratio 2.072×
+Publishable claim: peer / statistical tie with LightRAG on Acc — not SOTA win.
+Not paper Table-2 / UltraDomain; Mistral Acc pins. HippoRAG2 = aspirational retrieval SOTA.
+Reproduce: make bench  (n=200 medical-mid)
+Publish: specs/001-benchmark/e2e/artifacts/publish/latest/
+Valid: True · 2026-08-07T08:18:48Z
