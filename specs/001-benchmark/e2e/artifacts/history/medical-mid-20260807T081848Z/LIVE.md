@@ -1,12 +1,12 @@
 # bench001 LIVE — `medical-mid`
 
-- **updated:** `2026-08-07T08:18:48Z`
+- **updated:** `2026-08-07T08:18:47Z`
 - **started:** `2026-08-07T08:15:51Z`
-- **run elapsed:** `36m02s`
-- **phase:** `report` (done)
+- **run elapsed:** `36m01s`
+- **phase:** `score_parallel` (done)
 - **progress:** `50/50`
 - **ETA (phase):** `0s`
-- **detail:** valid=True archive=medical-mid-20260807T081848Z
+- **detail:** elapsed=4m16s
 
 ## Corpus / chunking
 
@@ -18,7 +18,7 @@
 
 ## Pipeline
 
-○ prepare → ○ ingest_eq → ○ query_parallel → ✓ score_parallel → ✓ report
+○ prepare → ○ ingest_eq → ○ query_parallel → ✓ score_parallel → ○ report
 
 ## Recent ticks
 
@@ -26,7 +26,6 @@
 |----------|-------|--------|--------|-----|-----|
 | 2026-08-07T08:18:47Z | score_parallel | running | EQ=done LR=done eval∥=24 | — | 36m01s |
 | 2026-08-07T08:18:47Z | score_parallel | done | elapsed=4m16s | — | 36m01s |
-| 2026-08-07T08:18:48Z | report | done | valid=True archive=medical-mid-20260807T081848Z | — | 36m02s |
 
 ## Monitor
 
