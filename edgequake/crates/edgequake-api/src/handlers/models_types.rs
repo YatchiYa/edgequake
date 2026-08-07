@@ -140,6 +140,20 @@ pub struct ModelCapabilitiesResponse {
 
     /// Embedding dimension (0 for non-embedding models).
     pub embedding_dimension: usize,
+
+    /// SPEC-109: reasoning-effort capability (omit when model is non-reasoning).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<ReasoningEffortCapabilityResponse>,
+}
+
+/// SPEC-109: exposed reasoning-effort options for UI filters.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ReasoningEffortCapabilityResponse {
+    /// Allowed effort strings for this model.
+    pub supported: Vec<String>,
+    /// Lowest effort suitable for structured extract/summary/vlm roles.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lowest_structured: Option<String>,
 }
 
 /// Model cost information.

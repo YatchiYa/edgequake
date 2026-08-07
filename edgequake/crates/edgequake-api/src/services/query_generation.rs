@@ -101,6 +101,7 @@ mod tests {
             workspace_id: None,
             llm_provider: None,
             llm_model: None,
+            reasoning_effort: None,
         };
         assert!(!params.context_only);
     }

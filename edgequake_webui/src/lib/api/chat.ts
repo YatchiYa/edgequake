@@ -60,6 +60,10 @@ export interface ChatCompletionRequest {
    */
   model?: string;
   /**
+   * SPEC-109: reasoning effort override (`none`/`minimal`/`low`/…). Omit = Auto.
+   */
+  reasoning_effort?: string;
+  /**
    * Preferred response language (ISO 639-1 code, e.g., "en", "zh", "fr").
    * When provided, the backend instructs the LLM to respond in this language
    * regardless of the query language. Falls back to query language detection

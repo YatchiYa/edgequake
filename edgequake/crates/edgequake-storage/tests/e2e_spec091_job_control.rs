@@ -126,6 +126,7 @@ async fn e2e_spec091_batch_progress_does_not_resurrect_paused() {
         "e2e-owner",
         60,
         50,
+        0,
         &serde_json::json!({"k": 50}),
         100,
         None,

@@ -47,6 +47,7 @@ import {
   getWorkspacePdfParserBackend,
 } from '@/lib/workspace/drafts';
 import { useTenantStore } from '@/stores/use-tenant-store';
+import type { Workspace } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -111,10 +112,15 @@ export default function WorkspacePage() {
   const documentCount = stats?.document_count ?? workspace?.document_count ?? 0;
 
   const handleReconfigureApplied = (result: {
+    workspace: Workspace;
     pendingRebuild: WorkspaceRebuildHints | null;
     extractionLanguageChanged: boolean;
   }) => {
     toast.success(t('workspace.updateSuccess', 'Workspace updated successfully'));
+    queryClient.setQueryData(
+      ['workspace', selectedTenantId, selectedWorkspaceId],
+      result.workspace,
+    );
     queryClient.invalidateQueries({
       queryKey: ['workspace', selectedTenantId, selectedWorkspaceId],
     });

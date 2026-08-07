@@ -39,8 +39,13 @@ pub fn vector_backend_reads_typed(mode: VectorBackend) -> bool {
     matches!(mode, VectorBackend::TypedEmbeddings)
 }
 
-/// SPEC-091: when typed is authority, legacy `eq_*_vectors` mutates must no-op
-/// (write-stop). Shared gate for upsert/delete/clear paths.
+/// SPEC-091: when typed is authority, legacy `eq_*_vectors` **serving writes**
+/// (INSERT / UPSERT / CREATE) must no-op.
+///
+/// Lifecycle **DELETE** / `clear_workspace` / `delete_by_document` still run when
+/// the relation exists (wipe / document retract must not leave orphan fleet
+/// rows that poison iw2 / provenance-stamp verify). Missing relation (42P01)
+/// remains soft-success via `map_legacy_mutate_err`.
 pub fn legacy_vector_writes_stopped() -> bool {
     vector_backend_reads_typed(vector_backend_from_env())
 }

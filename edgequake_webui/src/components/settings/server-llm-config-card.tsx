@@ -15,8 +15,13 @@ import { Separator } from "@/components/ui/separator";
 import { apiClient, ApiRequestError } from "@/lib/api/client";
 import { formatModelFullId } from "@/components/models/model-picker-panel";
 import { Database, Info, Loader2, Save, Server } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ReasoningEffortSelect } from "@/components/settings/reasoning-effort-select";
+import { useLlmModels } from "@/hooks/use-providers";
+import { supportedReasoningEffortsForModel, effectiveEffortWhenAuto } from "@/lib/settings/reasoning-effort-supported";
+
+const ROLE_EFFORT_KEYS = ["extract", "query", "vlm"] as const;
 
 interface LlmDefaultsEffective {
   llm_provider: string;
@@ -34,6 +39,8 @@ interface SavedLlmDefaults {
   embedding_model?: string | null;
   vision_provider?: string | null;
   vision_model?: string | null;
+  reasoning_effort?: string | null;
+  reasoning_by_role?: Record<string, string>;
 }
 
 interface LlmDefaultsResponse {
@@ -72,6 +79,40 @@ export function ServerLlmConfigCard() {
   const [llm, setLlm] = useState<LLMSelection | undefined>();
   const [embedding, setEmbedding] = useState<EmbeddingSelection | undefined>();
   const [vision, setVision] = useState<LLMSelection | undefined>();
+  const [reasoningEffort, setReasoningEffort] = useState<string | undefined>();
+  const [reasoningByRole, setReasoningByRole] = useState<Record<string, string>>(
+    {},
+  );
+  const { data: llmCatalog } = useLlmModels();
+  const fleetSupported = useMemo(
+    () =>
+      supportedReasoningEffortsForModel(
+        llmCatalog?.models,
+        llm?.provider,
+        llm?.model,
+      ),
+    [llmCatalog?.models, llm?.provider, llm?.model],
+  );
+  const fleetEffectiveAuto = useMemo(
+    () =>
+      effectiveEffortWhenAuto(
+        llmCatalog?.models,
+        llm?.provider,
+        llm?.model,
+        "fleet",
+      ),
+    [llmCatalog?.models, llm?.provider, llm?.model],
+  );
+  const queryEffectiveAuto = useMemo(
+    () =>
+      effectiveEffortWhenAuto(
+        llmCatalog?.models,
+        llm?.provider,
+        llm?.model,
+        "query",
+      ),
+    [llmCatalog?.models, llm?.provider, llm?.model],
+  );
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -87,6 +128,8 @@ export function ServerLlmConfigCard() {
         toEmbeddingSelection(resp.saved.embedding_provider, resp.saved.embedding_model),
       );
       setVision(toLlmSelection(resp.saved.vision_provider, resp.saved.vision_model));
+      setReasoningEffort(resp.saved.reasoning_effort ?? undefined);
+      setReasoningByRole(resp.saved.reasoning_by_role ?? {});
     } catch (e) {
       if (e instanceof ApiRequestError && e.status === 404) {
         setLoadError(
@@ -118,6 +161,8 @@ export function ServerLlmConfigCard() {
           embedding_model: embedding?.model ?? null,
           vision_provider: vision?.provider ?? null,
           vision_model: vision?.model ?? null,
+          reasoning_effort: reasoningEffort ?? null,
+          reasoning_by_role: reasoningByRole,
           priority_mode: priorityMode,
         }),
       });
@@ -239,6 +284,47 @@ export function ServerLlmConfigCard() {
                 <p className="text-[11px] text-muted-foreground">
                   Leave unset to inherit from LLM server defaults.
                 </p>
+              </div>
+
+              <ReasoningEffortSelect
+                value={reasoningEffort}
+                onChange={setReasoningEffort}
+                supported={fleetSupported}
+                effectiveWhenAuto={fleetEffectiveAuto}
+                label="Default reasoning effort (fleet)"
+              />
+
+              <div
+                className="rounded-lg border p-3 space-y-3 bg-muted/20"
+                data-testid="server-reasoning-by-role"
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Per-role overrides
+                </p>
+                {ROLE_EFFORT_KEYS.map((role) => (
+                  <ReasoningEffortSelect
+                    key={role}
+                    id={`reasoning-role-${role}`}
+                    data-testid={`reasoning-role-${role}`}
+                    label={`${role} role`}
+                    value={reasoningByRole[role]}
+                    supported={fleetSupported}
+                    effectiveWhenAuto={
+                      role === "query" ? queryEffectiveAuto : fleetEffectiveAuto
+                    }
+                    onChange={(v) => {
+                      setReasoningByRole((prev) => {
+                        const next = { ...prev };
+                        if (!v) {
+                          delete next[role];
+                        } else {
+                          next[role] = v;
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                ))}
               </div>
             </div>
 

@@ -65,6 +65,8 @@ pub struct VisionConversionConfig {
     pub status_hook: Option<VisionStatusHook>,
     /// Optional page selection forwarded to pdf2md (SPEC-094).
     pub pages: Option<edgequake_pdf2md::PageSelection>,
+    /// SPEC-109: desired vision reasoning effort (clamped at provider wrap).
+    pub reasoning_effort: Option<String>,
 }
 
 impl std::fmt::Debug for VisionConversionConfig {
@@ -85,6 +87,7 @@ impl std::fmt::Debug for VisionConversionConfig {
                 &self.status_hook.as_ref().map(|_| "<status_hook>"),
             )
             .field("pages", &self.pages)
+            .field("reasoning_effort", &self.reasoning_effort)
             .finish()
     }
 }

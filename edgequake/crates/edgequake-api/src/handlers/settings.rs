@@ -60,12 +60,26 @@ pub struct EffectiveConfigResponse {
     pub embedding: ConfigAreaResponse,
     /// Vision/PDF configuration chain.
     pub vision: ConfigAreaResponse,
+    /// SPEC-109: per-role reasoning effort resolution (fleet defaults; workspace overlay separate).
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub reasoning_roles: std::collections::HashMap<String, ReasoningEffortExplain>,
     /// Priority rule explanation shown to the user.
     pub priority_rule: String,
     /// Active priority mode: `server` or `env`.
     pub priority_mode: String,
     /// Whether PostgreSQL server_config persistence is available.
     pub server_config_available: bool,
+}
+
+/// SPEC-109: explainable reasoning effort for one LLM role.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ReasoningEffortExplain {
+    pub desired: Option<String>,
+    pub effective: Option<String>,
+    pub source: String,
+    pub clamped: bool,
+    pub provider: String,
+    pub model: String,
 }
 
 // ── Resolution helpers ────────────────────────────────────────────────────

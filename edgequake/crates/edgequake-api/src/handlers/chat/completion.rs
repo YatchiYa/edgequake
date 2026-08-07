@@ -275,6 +275,24 @@ pub async fn chat_completion(
         (llm_override, used_provider, used_model)
     };
 
+    let provider_for_effort = used_provider
+        .as_deref()
+        .or_else(|| workspace.as_ref().map(|w| w.llm_provider.as_str()))
+        .unwrap_or("openai");
+    let model_for_effort = used_model
+        .as_deref()
+        .or_else(|| workspace.as_ref().map(|w| w.llm_model.as_str()))
+        .unwrap_or("");
+    if let Some(effort) = crate::services::resolve_query_reasoning_effort(
+        workspace.as_ref(),
+        provider_for_effort,
+        model_for_effort,
+        request.reasoning_effort.as_deref(),
+        None,
+    ) {
+        engine_request = engine_request.with_reasoning_effort(effort);
+    }
+
     // OADA-228: Resolve workspace-specific embedding/vector for query execution.
     let workspace_id_str = workspace_id.as_ref().map(|id| id.to_string());
     let resources = resolve_workspace_query_resources(&state, workspace_id_str.as_deref()).await?;

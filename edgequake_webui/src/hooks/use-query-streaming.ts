@@ -122,6 +122,7 @@ export function useQueryStreaming({
           stream: true,
           provider: querySettings.provider,
           model: querySettings.model,
+          reasoning_effort: querySettings.reasoningEffort || undefined,
           language: i18n.language,
           system_prompt: querySettings.systemPrompt || undefined,
           // SPEC-031: merge scopedDocumentIds + documentFilter into unified filter
@@ -335,6 +336,7 @@ export function useQueryStreaming({
           stream: false,
           provider: querySettings.provider,
           model: querySettings.model,
+          reasoning_effort: querySettings.reasoningEffort || undefined,
           language: i18n.language,
           system_prompt: querySettings.systemPrompt || undefined,
           // SPEC-031: merge scopedDocumentIds + documentFilter into unified filter

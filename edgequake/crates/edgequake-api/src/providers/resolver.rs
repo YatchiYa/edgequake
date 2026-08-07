@@ -664,6 +664,8 @@ mod tests {
                 entity_types_strict: None,
                 extraction_language: None,
                 entity_type_colors: None,
+                default_reasoning_effort: None,
+                llm_roles: None,
             };
 
             let workspace = service

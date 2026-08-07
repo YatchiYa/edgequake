@@ -59,6 +59,8 @@ export interface UseFileUploadOptions {
   onUploadStart?: () => void;
   /** Optional per-upload PDF parser backend override. */
   pdfParserBackend?: "vision" | "edgeparse";
+  /** SPEC-109: vision convert reasoning effort (multipart). */
+  visionReasoningEffort?: string;
   /**
    * SPEC-099 LAW-099-6: when true, skip persistent "Uploading N…" loading toast
    * because the feedback zone owns the upload session narrative.
@@ -74,7 +76,10 @@ export interface UseFileUploadReturn {
   /** Upload files handler */
   handleFilesUpload: (
     files: File[],
-    uploadOptions?: { pdfParserBackend?: "vision" | "edgeparse" },
+    uploadOptions?: {
+      pdfParserBackend?: "vision" | "edgeparse";
+      visionReasoningEffort?: string;
+    },
   ) => Promise<void>;
   /** Remove a file from upload list */
   removeUploadingFile: (index: number) => void;
@@ -109,7 +114,8 @@ export function useFileUpload(
   options: UseFileUploadOptions = {},
 ): UseFileUploadReturn {
   const { tenantId, workspaceId, onUploadStart } = options;
-  const { pdfParserBackend, demoteLoadingToast = true } = options;
+  const { pdfParserBackend, visionReasoningEffort, demoteLoadingToast = true } =
+    options;
 
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [activeBatchCount, setActiveBatchCount] = useState(0);
@@ -149,7 +155,10 @@ export function useFileUpload(
   const handleFilesUpload = useCallback(
     async (
       files: File[],
-      uploadOptions?: { pdfParserBackend?: "vision" | "edgeparse" },
+      uploadOptions?: {
+        pdfParserBackend?: "vision" | "edgeparse";
+        visionReasoningEffort?: string;
+      },
     ) => {
       if (files.length === 0) return;
 
@@ -288,6 +297,8 @@ export function useFileUpload(
                 batchTrackId,
                 pdfParserBackend:
                   uploadOptions?.pdfParserBackend ?? pdfParserBackend,
+                visionReasoningEffort:
+                  uploadOptions?.visionReasoningEffort ?? visionReasoningEffort,
                 onUploadProgress: applyUploadProgress,
               });
               response = {
@@ -576,6 +587,7 @@ export function useFileUpload(
     [
       onUploadStart,
       pdfParserBackend,
+      visionReasoningEffort,
       queryClient,
       router,
       t,

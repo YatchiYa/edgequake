@@ -28,6 +28,8 @@ pub struct QueryExecutionParams {
     pub workspace_id: Option<String>,
     pub llm_provider: Option<String>,
     pub llm_model: Option<String>,
+    /// SPEC-109: effective reasoning effort (post-clamp) for answer generation.
+    pub reasoning_effort: Option<String>,
 }
 
 impl QueryExecutionParams {
@@ -106,6 +108,9 @@ pub fn build_engine_request(params: &QueryExecutionParams) -> EngineQueryRequest
     if let Some(ref model) = params.llm_model {
         engine_request = engine_request.with_llm_model(model);
     }
+    if let Some(ref effort) = params.reasoning_effort {
+        engine_request = engine_request.with_reasoning_effort(effort);
+    }
     if let Some(history) = &params.conversation_history {
         let engine_history: Vec<edgequake_query::ConversationMessage> = history
             .iter()
@@ -161,6 +166,7 @@ mod tests {
             workspace_id: None,
             llm_provider: None,
             llm_model: None,
+            reasoning_effort: None,
         };
         let req = build_engine_request(&params);
         assert!(req.context_only);
@@ -188,6 +194,7 @@ mod tests {
             workspace_id: None,
             llm_provider: None,
             llm_model: None,
+            reasoning_effort: None,
         };
         let req = build_engine_request(&params);
         assert_eq!(req.question_type(), Some("Complex Reasoning"));
@@ -215,6 +222,7 @@ mod tests {
             workspace_id: None,
             llm_provider: None,
             llm_model: None,
+            reasoning_effort: None,
         };
         let req = build_engine_request(&params);
         assert!(req.has_keyword_override());

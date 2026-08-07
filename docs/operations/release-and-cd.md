@@ -4,7 +4,9 @@ title: "Release & CD Cycle"
 
 # Release & CD Cycle
 
-> **Product: v0.24.1** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.24.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>
+> Upgrade: [upgrade-to-0.24.2.md](upgrade-to-0.24.2.md) (SPEC-111 + fleet-mirror arrow-key + SPEC-110/109).
 
 This document describes how to cut a release, run quality gates, and verify the published Docker images.
 

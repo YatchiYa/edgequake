@@ -70,6 +70,10 @@ pub struct Tenant {
     /// Workspaces inherit this if not explicitly configured.
     /// Falls back automatically when workspace has no vision LLM set.
     pub default_vision_llm_model: Option<String>,
+
+    /// SPEC-109: default reasoning effort seeded into new workspaces.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_reasoning_effort: Option<String>,
 }
 
 impl Tenant {
@@ -106,6 +110,7 @@ impl Tenant {
             default_embedding_dimension,
             default_vision_llm_provider: None,
             default_vision_llm_model: None,
+            default_reasoning_effort: None,
         }
     }
 

@@ -13,7 +13,9 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::{resolve_workspace_uuid, TenantContext};
-use crate::services::document_metadata_scan::load_scoped_document_metadata_entries;
+use crate::services::document_metadata_scan::{
+    load_scoped_document_metadata_entries, plan_workspace_document_kv_deletion,
+};
 use crate::services::document_task_cleanup::purge_workspace_tasks_except;
 use crate::state::AppState;
 
@@ -71,7 +73,9 @@ async fn clear_vectors_fail_closed(state: &AppState, workspace_uuid: Uuid) -> Ap
             ))
         })?;
 
-    // SPEC-091: under typed authority, also clear typed SSOT (legacy clear is write-stopped).
+    // SPEC-091: under typed authority, also clear typed SSOT.
+    // Legacy `clear_workspace` still DELETEs residual eq_*_vectors rows when the
+    // relation exists (write-stop is upsert/CREATE only — SPEC-111 orphan fix).
     let mut typed_n = 0usize;
     #[cfg(feature = "postgres")]
     if edgequake_storage::legacy_vector_writes_stopped() {
@@ -196,17 +200,17 @@ pub async fn run_workspace_wipe_phases(
                     vectors_cleared = vectors,
                     "Workspace wipe cleared vectors once"
                 );
-                // SPEC-091 RM1: skip O(docs) KV purge — typed set-delete in ClearingRelational.
+                // Typed set-delete + residual KV list-surface purge in ClearingRelational.
                 data.cursor_metadata_key = None;
                 data.phase = WorkspaceWipePhase::ClearingRelational;
                 persist_wipe_checkpoint(state, task, &data).await?;
             }
             WorkspaceWipePhase::PurgingDocumentKv => {
-                // Legacy phase retained for in-flight wipe task checkpoints only.
-                // Post-125 / RM1: no per-doc KV loops — jump to set-based relational clear.
+                // Legacy phase: resume into ClearingRelational (set-based typed +
+                // residual KV list-surface purge — SPEC-111 / #366).
                 tracing::info!(
                     workspace_id = %workspace_uuid,
-                    "SPEC-091 RM1: skipping PurgingDocumentKv (typed set-delete)"
+                    "Workspace wipe resuming PurgingDocumentKv → ClearingRelational"
                 );
                 data.cursor_metadata_key = None;
                 data.phase = WorkspaceWipePhase::ClearingRelational;
@@ -238,6 +242,36 @@ pub async fn run_workspace_wipe_phases(
                         );
                     }
                 }
+
+                // SPEC-111 / #366: after typed rows are gone, purge residual
+                // dual-write KV list surfaces (metadata/content/wsdoc/chunks).
+                // Planner intentionally suffix-scans when membership is empty.
+                // Post-125 Absent KV relation → empty plan / no-op.
+                let kv_plan = plan_workspace_document_kv_deletion(
+                    state.storage.kv_storage.as_ref(),
+                    &data.workspace_id,
+                )
+                .await?;
+                if !kv_plan.keys.is_empty() {
+                    let n = kv_plan.keys.len();
+                    state
+                        .storage
+                        .kv_storage
+                        .delete(&kv_plan.keys)
+                        .await
+                        .map_err(|e| {
+                            ApiError::Internal(format!(
+                                "workspace wipe residual KV list-surface purge failed: {e}"
+                            ))
+                        })?;
+                    tracing::info!(
+                        workspace_id = %workspace_uuid,
+                        kv_keys_deleted = n,
+                        kv_documents = kv_plan.documents,
+                        "Workspace wipe purged residual KV list surfaces"
+                    );
+                }
+
                 data.phase = WorkspaceWipePhase::Completed;
                 persist_wipe_checkpoint(state, task, &data).await?;
             }

@@ -134,6 +134,7 @@
       "pdfParserHint": "Choose a PDF parser override for this upload, or keep the workspace default.",
       "pdfParser": "Parser for this upload",
       "pdfParserDefault": "Workspace Default",
+      "pdfParserDefaultWithValue": "Workspace Default ({{value}})",
       "pdfParserVision": "Vision",
       "pdfParserEdgeParse": "EdgeParse"
     },
@@ -903,7 +904,7 @@
     "discardConfirm": "Discard",
     "uploadDocuments": "Upload documents",
     "customModels": "Custom model selection",
-    "customModelsHint": "Pick LLM, embedding, and vision. Provider filters stay hidden.",
+    "customModelsHint": "Choose a provider, then a model.",
     "backToServerDefaults": "Use server defaults",
     "usingServerDefaults": "Using server defaults",
     "serverDefaultsMissing": "Server defaults not fully configured",

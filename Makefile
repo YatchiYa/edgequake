@@ -147,6 +147,8 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         spec091-upgrade-soak spec091-gates spec103-llm-cache-proof \
+        spec109-reasoning-effort-proof \
+        spec110-migrate-118-proof \
         spec93-migration-assessment spec93-migration-assessment-pg16 \
         spec93-migration-assessment-pg17 spec93-migration-assessment-pg18 \
         check-deps status \
@@ -706,7 +708,6 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			DATABASE_URL="$$_EFF_DB_URL" \
 			OPENAI_API_KEY="$(OPENAI_API_KEY)" \
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
-			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 		AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 		EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
@@ -723,7 +724,6 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 		(cd $(BACKEND_DIR) && \
 			PORT="$$BACKEND_PORT" \
 			DATABASE_URL="$$_EFF_DB_URL" \
-			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 		AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
@@ -987,17 +987,31 @@ export DATABASE_URL
 #     DATABASE_URL="$$_EFF_DB_URL" cargo run ...
 LOAD_EFF_DB_URL = _EFF_DB_URL=$$(cat /tmp/edgequake-db-url 2>/dev/null); [ -z "$$_EFF_DB_URL" ] && _EFF_DB_URL="$(DATABASE_URL)"
 
+# LAW-MIG / SPEC-111: versions with known broken→fixed checksum repair modules.
+# Twin of `KNOWN_CHECKSUM_REPAIR_VERSIONS` in migration_bootstrap/checksum_repair.rs.
+# Scoped allowlist so local migrate works even when DEV_AUTH_ENABLED=true (DEV_MODE=false).
+KNOWN_CHECKSUM_REPAIR_VERSIONS := 71,78,118,121,125,131
+
 # SPEC-091 Doc 17 (LD-15): explicit, visible schema apply before any server
 # start. The server binary never auto-migrates — boot refuses (exit 78) when
 # expandable schema is behind. Irreversible drops (125/126/131) stay human-gated:
 # `edgequake migrate` applies expandables first, then soft-exits with WARN when
 # only drops remain (so make_dev can start). Confirm with --confirm-drop when
 # drop-readiness is GREEN. A hard failure here still aborts before the server.
+#
+# LAW-MIG-3: pass scoped checksum-repair allowlist (+ DEV_MODE for local friction).
+# Production images leave both unset and fail loud (X-02).
 VISIBLE_MIGRATE_STEP = \
 	echo "$(YELLOW)→ edgequake migrate — applying database schema (explicit step, SPEC-091 LD-15)$(RESET)"; \
-	( cd $(BACKEND_DIR) && DATABASE_URL="$$_EFF_DB_URL" cargo run -- migrate ) || { \
+	( cd $(BACKEND_DIR) && \
+		DATABASE_URL="$$_EFF_DB_URL" \
+		EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
+		EDGEQUAKE_ALLOW_CHECKSUM_REPAIR="$(KNOWN_CHECKSUM_REPAIR_VERSIONS)" \
+		cargo run -- migrate ) || { \
 		echo "$(RED)✗ edgequake migrate failed — server not started.$(RESET)"; \
 		echo "  Preview impact first: (cd $(BACKEND_DIR) && DATABASE_URL=\"$$_EFF_DB_URL\" cargo run -- migrate dry-run)"; \
+		echo "  If checksum drift: EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=$(KNOWN_CHECKSUM_REPAIR_VERSIONS) cargo run -- migrate"; \
+		echo "  Spec: specs/111-issues/10-migration-immutability.md"; \
 		echo "  If only an irreversible drop remains, soft-exit is expected — check WARN above."; \
 		echo "  When fleet/KV drop-readiness is GREEN: cargo run -- migrate --confirm-drop"; \
 		exit 1; \
@@ -1992,6 +2006,53 @@ spec103-llm-cache-proof: ## SPEC-103: unit + contract LLM cache proof (MemoryKV 
 	  cargo test -p edgequake-query --lib cache::llm_response_cache -- --nocapture && \
 	  cargo test -p edgequake-query --test contract_spec103_llm_cache -- --nocapture
 	@echo "$(GREEN)SPEC-103 contract proof OK$(RESET) (optional postgres: cargo test -p edgequake-query --features postgres --test e2e_spec103_llm_cache_persist -- --ignored)"
+
+spec109-reasoning-effort-proof: ## SPEC-109: reasoning effort clamp + API contract proof
+	@echo "$(BOLD)$(BLUE)SPEC-109 reasoning effort proof$(RESET)"
+	@cd $(ROOT_DIR)/../edgequake-llm && \
+	  cargo test reasoning_capabilities --lib -- --nocapture && \
+	  cargo test test_reasoning_effort --lib -- --nocapture && \
+	  cargo test test_apply_reasoning_effort --lib -- --nocapture
+	@cd $(ROOT_DIR)/edgequake && \
+	  cargo test -p edgequake-core --lib llm_roles:: -- --nocapture && \
+	  cargo test -p edgequake-pipeline --lib completion_options:: -- --nocapture && \
+	  cargo test -p edgequake-query --lib cache::llm_response_cache::tests::hash_query_prompt_includes_effort -- --nocapture && \
+	  cargo test -p edgequake-api --test contract_spec109_reasoning_effort -- --nocapture
+	@echo "$(GREEN)SPEC-109 contract proof OK$(RESET)"
+
+spec110-migrate-118-proof: ## SPEC-110: wsdoc/injection ON CONFLICT dedup + checksum repair proof
+	@echo "$(BOLD)$(BLUE)SPEC-110 migrate 118 proof$(RESET)"
+	@chmod +x $(ROOT_DIR)/scripts/spec110_migrate_118_proof.sh
+	@$(ROOT_DIR)/scripts/spec110_migrate_118_proof.sh
+	@echo "$(GREEN)SPEC-110 proof OK$(RESET) — see specs/110-migration-issue/measurements/"
+
+spec109-e2e: dev-bg ## SPEC-109 reasoning effort UI E2E + measurement screenshots
+	@echo "$(BLUE)SPEC-109 E2E → frontend $(FRONTEND_URL) backend $(BACKEND_URL)$(RESET)"
+	@i=0; while [ $$i -lt 60 ]; do \
+		if curl -sf "$(BACKEND_URL)/health" >/dev/null \
+			&& curl -sf "$(BACKEND_URL)/api/v1/tenants" >/dev/null \
+			&& curl -sf "$(FRONTEND_URL)/" 2>/dev/null | grep -qi 'EdgeQuake'; then \
+			break; \
+		fi; \
+		i=$$((i+1)); sleep 2; \
+	done
+	@curl -sf "$(BACKEND_URL)/health" >/dev/null || { \
+		echo "$(RED)✗ EdgeQuake backend not healthy at $(BACKEND_URL)$(RESET)"; exit 1; \
+	}
+	@curl -sf "$(BACKEND_URL)/api/v1/tenants" >/dev/null || { \
+		echo "$(RED)✗ Tenants API not ready at $(BACKEND_URL)/api/v1/tenants$(RESET)"; exit 1; \
+	}
+	@curl -sf "$(FRONTEND_URL)/" 2>/dev/null | grep -qi 'EdgeQuake' || { \
+		echo "$(RED)✗ Frontend not EdgeQuake at $(FRONTEND_URL)$(RESET)"; exit 1; \
+	}
+	@# Extra settle: Next.js first compile can still be blank for a few seconds
+	@sleep 8
+	@mkdir -p $(ROOT_DIR)/specs/109-configurable-reasoning-effort/measurements/e2e/screenshots
+	@cd $(FRONTEND_DIR) && EQ_BACKEND_URL="$(BACKEND_URL)" E2E_BACKEND_URL="$(BACKEND_URL)" \
+		EDGEQUAKE_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_API_URL="$(BACKEND_URL)" \
+		E2E_LIVE_STACK=1 PLAYWRIGHT_SKIP_STACK_CHECK=1 PLAYWRIGHT_BASE_URL="$(FRONTEND_URL)" \
+		pnpm exec playwright test e2e/spec109-reasoning-effort.spec.ts --project=chromium --reporter=line
+	@echo "$(GREEN)SPEC-109 E2E screenshots → specs/109-configurable-reasoning-effort/measurements/e2e/screenshots/$(RESET)"
 
 spec091-gates: ## SPEC-091: run wired data-layer e2e + contracts (serial)
 	@echo "$(BOLD)$(BLUE)SPEC-091 data-layer gates$(RESET) (serial; needs DATABASE_URL)"

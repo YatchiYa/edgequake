@@ -675,6 +675,8 @@ make backend-bg
 | `EDGEQUAKE_LLM_CACHE`          | Optional | Master keywords+answer LLM cache (SPEC-103; default **on**) | `0` / `false` disables both; Acc pins `0` |
 | `EDGEQUAKE_KEYWORD_CACHE`      | Optional | Keyword extract cache override (SPEC-103) | `0` disables keywords only |
 | `EDGEQUAKE_QUERY_ANSWER_CACHE` | Optional | Answer cache override (SPEC-103; unset follows master) | `0` / `1` |
+| `EDGEQUAKE_REASONING_EFFORT`   | Optional | Fleet default reasoning effort (SPEC-109); role env overrides | `none`, `minimal`, `low`, … |
+| `EDGEQUAKE_EXTRACT_REASONING_EFFORT` | Optional | Extract-role effort override (SPEC-109) | `minimal` |
 | `EDGEQUAKE_EXTRACTION_LANGUAGE`| Optional | Fleet default KG extraction NL language (SPEC-096); workspace metadata overrides | `English`, `Chinese`, `French`, … |
 | `OLLAMA_HOST`                  | Optional | Ollama server URL               | `http://localhost:11434`                             |
 | `OLLAMA_EMBEDDING_MODEL`       | Optional | Ollama embedding model          | `embeddinggemma:latest`                              |

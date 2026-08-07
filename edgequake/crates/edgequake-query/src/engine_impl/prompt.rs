@@ -7,10 +7,37 @@ use crate::context::QueryContext;
 use crate::conversation_context::{self, DEFAULT_CONVERSATION_TURN_LIMIT};
 use crate::error::Result;
 use crate::types::ConversationMessage;
-use edgequake_llm::traits::{ChatMessage, ImageData};
+use edgequake_llm::traits::{ChatMessage, CompletionOptions, ImageData, LLMProvider, LLMResponse};
 
 use super::QueryEngine;
 use super::TokenStream;
+
+fn answer_completion_options(reasoning_effort: Option<&str>) -> Option<CompletionOptions> {
+    reasoning_effort
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|effort| CompletionOptions {
+            reasoning_effort: Some(effort.to_string()),
+            ..Default::default()
+        })
+}
+
+async fn complete_with_optional_effort(
+    provider: &dyn LLMProvider,
+    prompt: &str,
+    opts: Option<&CompletionOptions>,
+) -> Result<LLMResponse> {
+    match opts {
+        Some(o) => provider
+            .complete_with_options(prompt, o)
+            .await
+            .map_err(crate::error::QueryError::from),
+        None => provider
+            .complete(prompt)
+            .await
+            .map_err(crate::error::QueryError::from),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AnswerPromptStyle {
@@ -522,6 +549,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         conversation_history: &[ConversationMessage],
         question_type: Option<&str>,
         response_type: Option<&str>,
+        reasoning_effort: Option<&str>,
     ) -> Result<(String, usize)> {
         if context.is_empty() {
             return Ok((
@@ -531,6 +559,8 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         }
 
         let provider = llm_override.unwrap_or(&self.llm_provider);
+        let completion_opts = answer_completion_options(reasoning_effort);
+        let opts_ref = completion_opts.as_ref();
 
         // FEAT0203: Two distinct call paths based on whether images are attached.
         //
@@ -570,25 +600,25 @@ Generate a comprehensive, well-structured answer that integrates observations fr
                 ChatMessage::system(&system_text),
                 ChatMessage::user_with_images(&user_text, imgs.to_vec()),
             ];
-            match provider.chat(&messages, None).await {
+            match provider.chat(&messages, opts_ref).await {
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!(error = %e, "Vision chat failed; retrying as text-only query");
-                    provider.complete(&prompt).await?
+                    complete_with_optional_effort(provider.as_ref(), &prompt, opts_ref).await?
                 }
             }
         } else if use_complete_blob {
-            provider.complete(&prompt).await?
+            complete_with_optional_effort(provider.as_ref(), &prompt, opts_ref).await?
         } else {
             let messages = vec![ChatMessage::system(&system_text), ChatMessage::user(query)];
-            match provider.chat(&messages, None).await {
+            match provider.chat(&messages, opts_ref).await {
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!(
                         error = %e,
                         "083 chat generate failed; falling back to complete blob"
                     );
-                    provider.complete(&prompt).await?
+                    complete_with_optional_effort(provider.as_ref(), &prompt, opts_ref).await?
                 }
             }
         };
@@ -600,12 +630,14 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         if content.is_empty() {
             tracing::warn!("080 empty LLM answer with non-empty context — retry once");
             let retry = if use_complete_blob {
-                provider.complete(&prompt).await?
+                complete_with_optional_effort(provider.as_ref(), &prompt, opts_ref).await?
             } else {
                 let messages = vec![ChatMessage::system(&system_text), ChatMessage::user(query)];
-                match provider.chat(&messages, None).await {
+                match provider.chat(&messages, opts_ref).await {
                     Ok(r) => r,
-                    Err(_) => provider.complete(&prompt).await?,
+                    Err(_) => {
+                        complete_with_optional_effort(provider.as_ref(), &prompt, opts_ref).await?
+                    }
                 }
             };
             let retry_content = retry.content.trim().to_string();
@@ -661,29 +693,6 @@ then elaborate. Do not invent facts outside Context.\n"
             finalize_answer_text(content, gold_compat),
             response.completion_tokens,
         ))
-    }
-
-    /// Generate answer using the default LLM.
-    pub(super) async fn generate_answer(
-        &self,
-        query: &str,
-        context: &QueryContext,
-        system_prompt_extension: Option<&str>,
-        conversation_history: &[ConversationMessage],
-        question_type: Option<&str>,
-        response_type: Option<&str>,
-    ) -> Result<(String, usize)> {
-        self.generate_answer_with_provider(
-            query,
-            context,
-            None,
-            system_prompt_extension,
-            None,
-            conversation_history,
-            question_type,
-            response_type,
-        )
-        .await
     }
 
     /// Generate a *direct* LLM answer with no retrieval context (P-G8 / RC-13).

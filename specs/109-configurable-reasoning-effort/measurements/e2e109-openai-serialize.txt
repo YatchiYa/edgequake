@@ -1,0 +1,14 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.15s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_llm-9781bfeef9c1ab6b)
+
+running 7 tests
+test providers::xai::tests::test_filter_for_reasoning_preserves_reasoning_effort ... ok
+test providers::ollama::tests::test_resolve_think_reasoning_effort_levels ... ok
+test providers::openai_compatible::tests::test_chat_request_reasoning_effort_omitted_when_none ... ok
+test providers::openai_compatible::tests::test_chat_request_reasoning_effort_serialized ... ok
+test providers::openai_compatible::tests::test_chat_request_with_tools_reasoning_effort_serialized ... ok
+test providers::openai::tests::test_apply_reasoning_effort_clamps_gpt5_mini_none ... ok
+test providers::openai::tests::test_reasoning_effort_in_request_serialization ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 1515 filtered out; finished in 0.01s
+

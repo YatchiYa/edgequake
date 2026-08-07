@@ -343,6 +343,31 @@ async fn contract_spec091_advisor_matches_126_guard() {
         .await
         .expect("126 guard passes once every chunk is covered");
 
+    // SPEC-111: pre-drop retirable must be true while legacy rows still exist.
+    let posture_pre = advisor::posture(&pool).await.expect("posture pre-drop");
+    assert_eq!(
+        posture_pre.vector.uncovered_chunk_rows, 0,
+        "coverage complete ⇒ uncovered_chunk_rows == 0"
+    );
+    assert!(
+        posture_pre.vector.legacy_chunk_rows > 0,
+        "legacy rows still present before DROP (emptiness is post-condition)"
+    );
+    assert!(
+        posture_pre.vector.retirable(),
+        "advisor must report retirable pre-drop when coverage is complete \
+         (got uncovered={}, legacy={}, backend={})",
+        posture_pre.vector.uncovered_chunk_rows,
+        posture_pre.vector.legacy_chunk_rows,
+        posture_pre.vector.backend
+    );
+    assert!(
+        advisor::derive_actions(&posture_pre)
+            .iter()
+            .any(|a| a.verb == "drop" && a.target == "vector-legacy" && a.enabled),
+        "drop vector-legacy must be enabled when retirable pre-drop"
+    );
+
     // After the full drop, legacy chunk rows are 0 → retirable flips true.
     sqlx::raw_sql(MIGRATION_126)
         .execute(&pool)
@@ -350,11 +375,13 @@ async fn contract_spec091_advisor_matches_126_guard() {
         .expect("migration 126 applies");
     let posture = advisor::posture(&pool).await.expect("posture post-drop");
     assert_eq!(posture.vector.legacy_chunk_rows, 0);
+    assert_eq!(posture.vector.uncovered_chunk_rows, 0);
     // Fleet fully dropped → posture reports dropped (terminal, idempotent).
     assert!(
         posture.vector.dropped || posture.vector.retirable(),
-        "post-drop fleet is dropped or retirable (got legacy={}, dropped={})",
+        "post-drop fleet is dropped or retirable (got legacy={}, uncovered={}, dropped={})",
         posture.vector.legacy_chunk_rows,
+        posture.vector.uncovered_chunk_rows,
         posture.vector.dropped
     );
 

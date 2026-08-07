@@ -135,6 +135,7 @@ export function FirstRunWizard({ surface = 'dashboard' }: FirstRunWizardProps) {
         llm,
         embedding,
         vision,
+        reasoningEffort: draft.reasoningEffort,
       });
       const result = await initializeSetup({
         admin_username: includeAdmin ? draft.adminUsername.trim() : undefined,

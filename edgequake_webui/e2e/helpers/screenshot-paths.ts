@@ -99,6 +99,19 @@ export function spec043Screenshot(fileName: string): string {
   );
 }
 
+/** `specs/109-configurable-reasoning-effort/measurements/e2e/screenshots/<fileName>` */
+export function spec109Screenshot(fileName: string): string {
+  return path.join(
+    ensureDir(
+      path.join(
+        REPO_ROOT,
+        "specs/109-configurable-reasoning-effort/measurements/e2e/screenshots",
+      ),
+    ),
+    fileName,
+  );
+}
+
 /** `specs/037-query-option-full-chunk/e2e/screenshots/<fileName>` */
 export function spec037Screenshot(fileName: string): string {
   return path.join(

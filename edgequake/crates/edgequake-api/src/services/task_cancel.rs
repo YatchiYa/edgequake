@@ -56,10 +56,11 @@ pub async fn apply_task_row_cancel(
     let was_running = registry.cancel(track_id).await;
 
     let Some(mut task) = existing else {
+        // Row already purged (Clear All / delete) — cancel intent recorded; done.
         return Ok(TaskCancelApplyResult {
             track_id: track_id.to_string(),
             was_running,
-            cancelled: false,
+            cancelled: true,
             conflict_indexed: false,
             task: None,
         });
@@ -67,10 +68,23 @@ pub async fn apply_task_row_cancel(
 
     if task.status != TaskStatus::Cancelled {
         task.mark_cancelled();
-        storage
-            .update_task(&task)
-            .await
-            .map_err(|e| format!("Failed to persist cancelled task: {e}"))?;
+        match storage.update_task(&task).await {
+            Ok(()) => {}
+            // Concurrent purge already removed the row — cancel intent + registry
+            // signal still applied; desired end state is "gone or cancelled".
+            Err(edgequake_tasks::TaskError::TaskNotFound(_)) => {
+                return Ok(TaskCancelApplyResult {
+                    track_id: track_id.to_string(),
+                    was_running,
+                    cancelled: true,
+                    conflict_indexed: false,
+                    task: None,
+                });
+            }
+            Err(e) => {
+                return Err(format!("Failed to persist cancelled task: {e}"));
+            }
+        }
     }
 
     Ok(TaskCancelApplyResult {
@@ -158,6 +172,46 @@ mod tests {
 
         let stored = storage.get_task(&track_id).await.unwrap().unwrap();
         assert_eq!(stored.status, TaskStatus::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn apply_cancel_ok_when_row_already_purged() {
+        let storage: SharedTaskStorage = Arc::new(MemoryTaskStorage::new());
+        let registry = CancellationRegistry::new();
+        let track_id = format!("insert-{}", Uuid::new_v4());
+        let result = apply_task_row_cancel(&storage, &registry, &track_id)
+            .await
+            .unwrap();
+        assert!(
+            result.cancelled,
+            "missing row after purge is terminal cancel"
+        );
+        assert!(result.task.is_none());
+        assert!(registry.has_cancel_intent(&track_id).await);
+    }
+
+    #[tokio::test]
+    async fn apply_cancel_idempotent_after_purge_following_cancel() {
+        let storage: SharedTaskStorage = Arc::new(MemoryTaskStorage::new());
+        let registry = CancellationRegistry::new();
+        let task = Task::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        let track_id = task.track_id.clone();
+        storage.create_task(&task).await.unwrap();
+        let first = apply_task_row_cancel(&storage, &registry, &track_id)
+            .await
+            .unwrap();
+        assert!(first.cancelled);
+        storage.delete_task(&track_id).await.unwrap();
+        let second = apply_task_row_cancel(&storage, &registry, &track_id)
+            .await
+            .unwrap();
+        assert!(second.cancelled);
+        assert!(second.task.is_none());
     }
 
     #[tokio::test]

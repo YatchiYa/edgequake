@@ -102,6 +102,23 @@ pub fn apply_doc_failed_fields(metadata: &mut Map<String, Value>, message: &str)
     apply_doc_terminal_fields(metadata, DocTerminalKind::Failed, message);
 }
 
+/// SSOT completion copy for ingest finalize + completed-orphan heal (DRY).
+pub fn format_ingest_completion_stage_message(
+    chunk_count: u64,
+    entity_count: u64,
+    relationship_count: u64,
+) -> String {
+    format!(
+        "Processed {chunk_count} chunks, extracted {entity_count} entities and {relationship_count} relationships"
+    )
+}
+
+/// Detect stale completion `stage_message` left under mid-pipeline status.
+pub fn is_ingest_completion_stage_message(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("processed") && lower.contains("chunk") && lower.contains("extracted")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +197,18 @@ mod tests {
     #[test]
     fn pdf_cancel_status_is_cancelled() {
         assert_eq!(pdf_status_for_cancel(), PdfProcessingStatus::Cancelled);
+    }
+
+    #[test]
+    fn ingest_completion_stage_message_roundtrip() {
+        let msg = format_ingest_completion_stage_message(22, 658, 381);
+        assert_eq!(
+            msg,
+            "Processed 22 chunks, extracted 658 entities and 381 relationships"
+        );
+        assert!(is_ingest_completion_stage_message(&msg));
+        assert!(!is_ingest_completion_stage_message(
+            "Converting PDF to Markdown (0/9 pages)"
+        ));
     }
 }

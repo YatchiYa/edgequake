@@ -983,15 +983,15 @@ export function GraphViewer() {
       
       {/* Mobile Entity Browser Drawer */}
       <Sheet open={mobileEntityDrawerOpen} onOpenChange={setMobileEntityDrawerOpen}>
-        <SheetContent side="left" className="w-75 p-0">
-          <SheetHeader className="px-4 py-3 border-b">
+        <SheetContent side="left" size="sm" className="w-[300px] p-0">
+          <SheetHeader className="border-b">
             <SheetTitle className="text-sm flex items-center gap-2">
               <Network className="h-4 w-4" />
               Entity Browser
             </SheetTitle>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-60px)]">
-            <div className="p-4">
+            <div className="px-5 py-4 sm:px-6">
               <EntityBrowserPanel className="w-full border-none" />
             </div>
           </ScrollArea>
@@ -1000,15 +1000,15 @@ export function GraphViewer() {
       
       {/* Mobile Details/Filters Drawer */}
       <Sheet open={mobileDetailsDrawerOpen} onOpenChange={setMobileDetailsDrawerOpen}>
-        <SheetContent side="right" className="w-75 p-0">
-          <SheetHeader className="px-4 py-3 border-b">
+        <SheetContent side="right" size="sm" className="w-[300px] p-0">
+          <SheetHeader className="border-b">
             <SheetTitle className="text-sm flex items-center gap-2">
               <Filter className="h-4 w-4" />
               Details & Filters
             </SheetTitle>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-60px)]">
-            <div className="p-4 space-y-4">
+            <div className="px-5 py-4 space-y-4 sm:px-6">
               {/* Node Details - Primary content when selected */}
               {selectedNode && showNodeDetails && (
                 <NodeDetails node={selectedNode} />

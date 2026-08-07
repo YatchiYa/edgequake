@@ -446,13 +446,13 @@ pub fn derive_actions(posture: &MigrationPosture) -> Vec<GuardedAction> {
                     "cannot drop vector-legacy: backend is '{}' (flip to typed_embeddings first)",
                     v.backend
                 )
-            } else if v.legacy_chunk_rows > 0 {
+            } else if v.uncovered_chunk_rows > 0 {
                 format!(
-                    "cannot drop vector-legacy: {} legacy chunk rows un-migrated",
-                    v.legacy_chunk_rows
+                    "cannot drop vector-legacy: {} legacy chunk rows uncovered in typed SSOT",
+                    v.uncovered_chunk_rows
                 )
-            } else if !v.verify.map(|x| x.passes()).unwrap_or(false) {
-                "cannot drop vector-legacy: verify not passing".to_string()
+            } else if !v.verify_chunk.map(|x| x.passes()).unwrap_or(false) {
+                "cannot drop vector-legacy: chunk verify not passing".to_string()
             } else {
                 "cannot drop vector-legacy: not ready".to_string()
             };
@@ -471,18 +471,28 @@ pub fn derive_actions(posture: &MigrationPosture) -> Vec<GuardedAction> {
                     "cannot drop vector-fleet: backend is '{}' (flip to typed_embeddings first)",
                     v.backend
                 )
-            } else if v.legacy_fleet_rows > 0 {
+            } else if v.uncovered_fleet_rows > 0 {
+                let stall_hint = if v.provenance_stall_rows > 0 {
+                    format!(
+                        " ({} dual-legacy stall(s): typed row already holds a different \
+                         legacy_vector_id — inspect/delete alias residue; no auto-delete)",
+                        v.provenance_stall_rows
+                    )
+                } else {
+                    String::new()
+                };
                 format!(
-                    "cannot drop vector-fleet: {} legacy fleet rows un-migrated",
-                    v.legacy_fleet_rows
+                    "cannot drop vector-fleet: {} legacy fleet rows lack legacy_vector_id provenance \
+                     — run iw2-fleet-embedding-backfill or iw2-fleet-provenance-stamp{}",
+                    v.uncovered_fleet_rows, stall_hint
                 )
-            } else if v.legacy_chunk_rows > 0 {
+            } else if v.uncovered_chunk_rows > 0 {
                 format!(
-                    "cannot drop vector-fleet: {} legacy chunk rows remain (migration 126 first)",
-                    v.legacy_chunk_rows
+                    "cannot drop vector-fleet: {} legacy chunk rows uncovered (migration 126 first)",
+                    v.uncovered_chunk_rows
                 )
-            } else if !v.verify.map(|x| x.passes()).unwrap_or(false) {
-                "cannot drop vector-fleet: verify not passing".to_string()
+            } else if !v.verify_fleet.map(|x| x.passes()).unwrap_or(false) {
+                "cannot drop vector-fleet: fleet verify not passing".to_string()
             } else {
                 "cannot drop vector-fleet: not ready".to_string()
             };
@@ -491,6 +501,10 @@ pub fn derive_actions(posture: &MigrationPosture) -> Vec<GuardedAction> {
         fleet_drop.requires_confirmation = true;
         fleet_drop.irreversible = true;
         actions.push(fleet_drop);
+
+        if v.uncovered_fleet_rows > 0 {
+            actions.push(GuardedAction::enabled("run", "iw2-fleet-provenance-stamp"));
+        }
     }
 
     actions
@@ -568,13 +582,18 @@ mod tests {
                 backend: "legacy_tables".to_string(),
                 backfill: None,
                 fleet_backfill: None,
+                verify_chunk: None,
+                verify_fleet: None,
                 verify: None,
+                provenance_stall_rows: 0,
                 typed_rows: 0,
                 typed_entity_rows: 0,
                 typed_relationship_rows: 0,
                 typed_report_rows: 0,
                 legacy_chunk_rows: 0,
                 legacy_fleet_rows: 0,
+                uncovered_chunk_rows: 0,
+                uncovered_fleet_rows: 0,
                 chunk_fleet_dropped: false,
                 dropped: false,
             },

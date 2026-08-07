@@ -81,6 +81,10 @@ pub struct CreateTenantRequest {
     /// If not provided, auto-detected from model name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_vision_llm_provider: Option<String>,
+
+    /// SPEC-109: default reasoning effort seed for new workspaces (`none`/`minimal`/`low`/…).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_reasoning_effort: Option<String>,
 }
 
 /// Request to update a tenant.
@@ -195,6 +199,14 @@ pub struct CreateWorkspaceApiRequest {
     /// Keys UPPERCASE; values `#RGB` / `#RRGGBB`. Empty object clears.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
+
+    /// SPEC-109: seed workspace `default_reasoning_effort` metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_reasoning_effort: Option<String>,
+
+    /// SPEC-109: initial `llm_roles` metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_roles: Option<serde_json::Value>,
 }
 
 /// Request to update a workspace.
@@ -270,4 +282,12 @@ pub struct UpdateWorkspaceApiRequest {
     /// empty object clears the workspace override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
+
+    /// SPEC-109: set/clear workspace default reasoning effort.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_reasoning_effort: Option<String>,
+
+    /// SPEC-109: merge into workspace `llm_roles` metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_roles: Option<serde_json::Value>,
 }

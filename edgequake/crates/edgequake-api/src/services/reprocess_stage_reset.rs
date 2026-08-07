@@ -90,6 +90,20 @@ pub fn apply_reprocess_stage_reset(obj: &mut Map<String, Value>, mode: Reprocess
     write_processing_stage(obj, stage, message, mode);
 }
 
+/// Force PDF re-index / convert restart: honest converting stage, no stale completion.
+///
+/// WHY: Partial patches that only flip `status`/`current_stage`/`stage_progress`
+/// leave `Processed N chunks, extracted…` + entity counts painted under Prepare,
+/// and Active Runs nests a PDF meter that 404s once the old task is purged.
+pub fn apply_pdf_convert_restart_admit(obj: &mut Map<String, Value>, stage_message: Option<&str>) {
+    let message = stage_message
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Converting PDF to Markdown…");
+    write_processing_stage(obj, "converting", message, ReprocessMode::Full);
+    clear_stale_completion_fields(obj);
+}
+
 fn write_processing_stage(
     obj: &mut Map<String, Value>,
     stage: &str,
@@ -123,6 +137,7 @@ fn write_processing_stage(
     obj.remove("error_message");
 }
 
+/// Zero/remove graph + cost leftovers that lie about a finished run.
 fn clear_stale_count_fields(obj: &mut Map<String, Value>) {
     for key in [
         "entity_count",
@@ -136,6 +151,22 @@ fn clear_stale_count_fields(obj: &mut Map<String, Value>) {
         if obj.contains_key(key) {
             obj.insert(key.to_string(), Value::Number(0.into()));
         }
+    }
+}
+
+/// Full convert-restart cleanup: counts + completion timestamps/tokens.
+fn clear_stale_completion_fields(obj: &mut Map<String, Value>) {
+    clear_stale_count_fields(obj);
+    for key in [
+        "processed_at",
+        "processing_duration_ms",
+        "chunk_count",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "progress_counts",
+    ] {
+        obj.remove(key);
     }
 }
 
@@ -258,6 +289,49 @@ mod tests {
         assert_eq!(
             v.get("current_stage").and_then(|x| x.as_str()),
             Some("merging")
+        );
+    }
+
+    #[test]
+    fn pdf_convert_restart_clears_stale_completion_message_and_counts() {
+        let mut v = json!({
+            "status": "completed",
+            "current_stage": "completed",
+            "stage_message": "Processed 22 chunks, extracted 658 entities and 381 relationships",
+            "stage_progress": 1.0,
+            "processed_at": "2026-08-06T10:15:12Z",
+            "entity_count": 658,
+            "chunk_count": 22,
+            "relationship_count": 381,
+            "cost_usd": 0.04,
+            "error_message": "old",
+            "track_id": "insert-old",
+        });
+        apply_pdf_convert_restart_admit(
+            v.as_object_mut().unwrap(),
+            Some("Converting PDF to Markdown (0/9 pages)"),
+        );
+        assert_eq!(v.get("status").and_then(|x| x.as_str()), Some("processing"));
+        assert_eq!(
+            v.get("current_stage").and_then(|x| x.as_str()),
+            Some("converting")
+        );
+        assert_eq!(
+            v.get("stage_message").and_then(|x| x.as_str()),
+            Some("Converting PDF to Markdown (0/9 pages)")
+        );
+        assert_eq!(v.get("stage_progress").and_then(|x| x.as_f64()), Some(0.0));
+        assert_eq!(v.get("entity_count").and_then(|x| x.as_u64()), Some(0));
+        assert_eq!(
+            v.get("relationship_count").and_then(|x| x.as_u64()),
+            Some(0)
+        );
+        assert_eq!(v.get("cost_usd").and_then(|x| x.as_u64()), Some(0));
+        assert!(v.get("processed_at").is_none());
+        assert!(v.get("chunk_count").is_none());
+        assert!(
+            v.get("error_message").is_none(),
+            "error_message must be cleared by write_processing_stage"
         );
     }
 }

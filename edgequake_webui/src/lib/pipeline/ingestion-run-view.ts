@@ -296,15 +296,28 @@ export function resolveProgressCounts(
 }
 
 /**
+ * True when track_id is a PDF convert progress key (not insert follow-on).
+ * DRY gate for nesting PdfUploadProgress under Active Runs.
+ */
+export function isPdfConvertProgressTrackId(
+  trackId: string | null | undefined,
+): boolean {
+  const track = (trackId || "").trim().toLowerCase();
+  if (!track) return false;
+  return track.startsWith("pdf-") || track.startsWith("pdf_processing-");
+}
+
+/**
  * LAW-IS2: nest PDF page meter only when list SSOT lacks page/figure counts.
  * PDF-only; never for markdown/text/image.
+ * Never nest for insert-* tracks (ingest follow-on) — PDF progress API 404s.
  */
 export function shouldNestPdfPageMeter(
-  run: Pick<IngestionRunView, "sourceType" | "stage" | "counts">,
+  run: Pick<IngestionRunView, "sourceType" | "stage" | "counts" | "trackId">,
 ): boolean {
   if (run.sourceType !== "pdf" || run.stage !== "converting") return false;
   if (run.counts && run.counts.total > 0) return false;
-  return true;
+  return isPdfConvertProgressTrackId(run.trackId);
 }
 
 /** LAW-IS2: show overall bar only when stage has no determinate N/M. */

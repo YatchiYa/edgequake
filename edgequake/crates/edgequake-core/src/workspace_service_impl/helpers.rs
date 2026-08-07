@@ -80,6 +80,82 @@ pub(crate) fn apply_extraction_language_metadata(
 }
 
 /// @implements SPEC-085: Custom entity configuration normalization
+/// Apply SPEC-109 default reasoning effort to workspace metadata.
+pub(crate) fn apply_default_reasoning_effort_metadata(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    effort: Option<String>,
+) {
+    let Some(raw) = effort else {
+        return;
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty()
+        || trimmed.eq_ignore_ascii_case("none")
+        || trimmed.eq_ignore_ascii_case("auto")
+    {
+        metadata.remove("default_reasoning_effort");
+    } else {
+        metadata.insert(
+            "default_reasoning_effort".to_string(),
+            serde_json::json!(trimmed),
+        );
+    }
+}
+
+/// Merge SPEC-109 `llm_roles` object into workspace metadata (shallow role merge).
+pub(crate) fn apply_llm_roles_metadata(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    roles: Option<serde_json::Value>,
+) {
+    let Some(incoming) = roles else {
+        return;
+    };
+    if incoming.is_null() {
+        metadata.remove("llm_roles");
+        return;
+    }
+    let Some(incoming_obj) = incoming.as_object() else {
+        return;
+    };
+    if incoming_obj.is_empty() {
+        metadata.remove("llm_roles");
+        return;
+    }
+    let mut base = metadata
+        .get("llm_roles")
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+    for (role, cfg) in incoming_obj {
+        if cfg.is_null() {
+            base.remove(role);
+            continue;
+        }
+        let Some(cfg_obj) = cfg.as_object() else {
+            continue;
+        };
+        let entry = base
+            .entry(role.clone())
+            .or_insert_with(|| serde_json::json!({}));
+        if let Some(existing) = entry.as_object_mut() {
+            for (k, v) in cfg_obj {
+                if v.is_null() {
+                    existing.remove(k);
+                } else {
+                    existing.insert(k.clone(), v.clone());
+                }
+            }
+            if existing.is_empty() {
+                base.remove(role);
+            }
+        }
+    }
+    if base.is_empty() {
+        metadata.remove("llm_roles");
+    } else {
+        metadata.insert("llm_roles".to_string(), serde_json::Value::Object(base));
+    }
+}
+
 pub(crate) fn normalize_entity_types(types: &[String]) -> Vec<String> {
     const MAX_ENTITY_TYPES: usize = 50;
 

@@ -261,17 +261,17 @@ export function MobileHistoryPanel({ className }: MobileHistoryPanelProps) {
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-full sm:w-96 p-0">
+      <SheetContent side="left" size="md" className="w-full sm:w-96 p-0 flex flex-col">
         {/* Header */}
-        <SheetHeader className="px-4 py-3 border-b bg-muted/20">
-          <div className="flex items-center justify-between">
+        <SheetHeader className="border-b bg-muted/20">
+          <div className="flex items-center justify-between gap-2">
             <SheetTitle className="text-base">
               {t("query.history.title", "Conversations")}
             </SheetTitle>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 shrink-0"
               onClick={handleNewConversation}
               aria-label={t("query.history.newConversation", "New conversation")}
             >
@@ -281,7 +281,7 @@ export function MobileHistoryPanel({ className }: MobileHistoryPanelProps) {
         </SheetHeader>
 
         {/* Search */}
-        <div className="p-3 border-b">
+        <div className="px-5 py-3 border-b sm:px-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -294,7 +294,7 @@ export function MobileHistoryPanel({ className }: MobileHistoryPanelProps) {
         </div>
 
         {/* Folders */}
-        <div className="p-3 border-b">
+        <div className="px-5 py-3 border-b sm:px-6">
           <FolderSidebar />
         </div>
 

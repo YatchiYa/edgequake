@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.24.2] — 2026-08-07
+
+Patch: SPEC-111 Cluster A + Clear All, SPEC-110 migrate 118/121, SPEC-109 reasoning effort,
+SPEC-091/098 fleet-mirror relationship-key parse, cancel/purge persist race, in-memory create metadata stamp.
+
+### Fixed
+- **SPEC-111 — `legacy_vector_id` unique scope** — Migration **143** unique index was global on `legacy_vector_id`, but hot-path ids are `entity:NAME` (shared across workspaces). Multi-workspace / Acc ingest failed with `idx_entity_embeddings_legacy_vector_id` duplicate key during entity vector upsert. Migration **144** scopes uniqueness to `(workspace_id, legacy_vector_id)`.
+- **In-memory workspace create — LLM/embedding metadata stamp** — Create applied provider/model on struct fields but omitted `metadata.llm_*` / `embedding_*` keys. `get_workspace` then ran `resolve_inherited_model_fields` and overwrote explicit create overrides with tenant/server defaults (broke classifier + mock pipeline unit tests; create response looked correct, GET did not).
+- **SPEC-091 / SPEC-098 — relationship fleet-mirror key parse (`->` in entity names)** — Legacy id `{source}->{target}:{rel}` was parsed with `split_once("->")` (first arrow). Source names containing `->` (e.g. `27_->_25_STRENGTHENING->CLAIM_FRONTIER:STRENGTHENS`) mis-split → typed fleet mirror `999/1000` FK miss and fail-closed KG persist. Fix: `rsplit_once("->")` after `rsplit_once(':')`. Unit + `contract_spec091_fleet_mirror_arrow_in_source_name`. Residual: target names that also contain `->` remain ambiguous.
+- **Task worker persist after Clear All / delete** — Lifecycle purge cancels the in-flight token and deletes the task row; the worker then drained with `Cancelled` and logged `ERROR persist_task_result … Task not found`. Persist now treats `TaskNotFound` as an expected lifecycle race (debug), and skip-after-claim treats a missing row as terminal. Sibling harden: `update_task_progress` / admission document-id persist / `apply_task_row_cancel` / lease-refresh log also tolerate purge races.
+- **SPEC-111 provenance-stamp reliability** — Typed write-stop no longer skips lifecycle `clear_workspace`/`delete_*` (wipe was leaving orphan `eq_*_vectors` that failed verify with `expected=N actual=0`). Stamp verify is stampable-only; iw2 ensures entity/relationship spine when metadata has extract signals.
+- **LAW-MIG migration immutability** — Prefer **new** migrations over editing applied SQL. Scoped `EDGEQUAKE_ALLOW_CHECKSUM_REPAIR` (shared helper) + `make_dev` migrate passes the allowlist so checksum drift cannot block LD-15. Spec: [`specs/111-issues/10-migration-immutability.md`](specs/111-issues/10-migration-immutability.md).
+- **SPEC-111 Cluster A + residual harden + honesty closeout (LAW-C3)** — Drop readiness uses **coverage** (`uncovered_* == 0`), not legacy emptiness. Fleet drop is **provenance-only** (`legacy_vector_id`; advisor ≡ migration **131** ≡ `verify_fleet`); split `verify_chunk`/`verify_fleet`; dual-legacy stall reporting; `iw2-fleet-provenance-stamp` + mirror INSERT stamp; dead verify normalize fallback removed; E2E-111-11 asserts `fleet_retirable`, E2E-111-16/17 dataful 131 DROP/ABORT; iw2 normalize join + honest `failed_count`; KV residue / **125** cast key → `uuid`; DEV_MODE checksum repair **125**/**131**. Ops: [`specs/111-issues/09-ops-runbook.md`](specs/111-issues/09-ops-runbook.md). Upgrade: [`docs/operations/upgrade-to-0.24.2.md`](docs/operations/upgrade-to-0.24.2.md).
+- **SPEC-111 / #366 Clear All ghosts (LAW-111-9)** — After wipe emptied typed `documents`, list treated empty membership as “no index” and fell back to a global KV `-metadata` suffix scan, resurrecting dual-write residue (partner repro on **v0.24.1**, also #360). Fix: membership returns `WorkspaceMetadataKeyList.authoritative` — authoritative empty is terminal for reads; wipe purges residual KV list surfaces via `plan_workspace_document_kv_deletion`. E2E plants raw `eq_*_kv` ghosts and asserts list stays 0. Spec: [`specs/111-issues/issue-366-clear-all.md`](specs/111-issues/issue-366-clear-all.md).
+- **SPEC-110 — migrate 118/121 ON CONFLICT cardinality** — Migration **118** (`wsdoc` backfill) used `SELECT DISTINCT` + `ON CONFLICT (id) DO UPDATE`, which fails with Postgres `21000` when the same `document_id` appears under multiple workspace membership keys (`wsdoc:{ws}:{doc}`). Fix: `DISTINCT ON (doc_id)` (+ harden **121** injection backfill). Update `checksums.lock`; M078-style DEV_MODE-gated checksum repair for fleets that already applied the v0.24.1 bodies. Proof: `make spec110-migrate-118-proof`. Spec: [`specs/110-migration-issue/`](specs/110-migration-issue/).
+
+### Added
+- **SPEC-109 configurable reasoning effort** — capability registry + clamp in `edgequake-llm` 0.10.4; native OpenAI/Azure forward `reasoning_effort`; role resolve hierarchy (request → workspace → tenant → server → env → compiled); API fields on query/chat/PDF/LLM defaults/effective config/models catalog; WebUI select on query settings + server LLM card + explainability; answer-cache hash includes effort. Proof: `make spec109-reasoning-effort-proof`. Spec: [`specs/109-configurable-reasoning-effort/`](specs/109-configurable-reasoning-effort/).
+
 ## [0.24.1] — 2026-08-03
 
 Patch: KG persist AGE `graphid` operator fix (SPEC-106 / #356).
@@ -1776,6 +1795,8 @@ Pin to a specific release: `EDGEQUAKE_VERSION=0.9.3 make docker-prebuilt`
 - `make docker-prebuilt` now performs `docker compose pull` before `up -d` so re-running the command always fetches the latest published images without needing `--pull always`.
 
 ## [Unreleased]
+### Fixed
+- **SPEC-111 provenance-stamp reliability** — Typed write-stop no longer skips lifecycle `clear_workspace`/`delete_*` (wipe was leaving orphan `eq_*_vectors` that failed verify with `expected=N actual=0`). Stamp verify is stampable-only; iw2 ensures entity/relationship spine when metadata has extract signals.
 
 ### Added — Docker CI/CD, Prebuilt Deployment & Multi-Provider Support
 

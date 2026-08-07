@@ -16,6 +16,7 @@ use sha2::{Digest, Sha384};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
+use super::coverage::{list_vector_tables, list_vector_tables_ex};
 use super::runner::{BackfillJob, BatchOutcome, VerifyReport};
 use crate::error::StorageError;
 use crate::kv_key_schema::kv_keys;
@@ -26,25 +27,6 @@ const DESCRIPTOR_DEF: &str = concat!(
     "join=chunks(document_id,chunk_index);insert=unnest+on_conflict(model_id,chunk_id);",
     "verify=coverage+sampled_vector_equality_fleet"
 );
-
-/// List every remaining legacy chunk-vector relation, sorted for deterministic
-/// fleet traversal. Shared (`eq_{prefix}_vectors`) and per-workspace
-/// (`eq_{ns}_ws_{uuid}_vectors`) tables both match the `eq_%_vectors` pattern.
-async fn list_vector_tables<'e, E>(ex: E) -> Result<Vec<String>, StorageError>
-where
-    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
-{
-    let mut tables: Vec<String> = sqlx::query_scalar(
-        "SELECT table_name FROM information_schema.tables \
-         WHERE table_schema = 'public' AND table_name LIKE 'eq\\_%\\_vectors' \
-         ORDER BY table_name",
-    )
-    .fetch_all(ex)
-    .await
-    .map_err(|e| StorageError::Database(format!("w3 fleet list failed: {e}")))?;
-    tables.retain(|t| t.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
-    Ok(tables)
-}
 
 /// Count chunk rows in one legacy table (42P01-safe → 0).
 async fn count_table_chunks(pool: &PgPool, table: &str) -> Result<i64, StorageError> {
@@ -126,11 +108,12 @@ impl BackfillJob for ChunkEmbeddingBackfillJob {
     ) -> Result<BatchOutcome, StorageError> {
         // Fleet table list is re-derived per batch so tables dropped mid-run are
         // skipped and newly-appearing ones are picked up on the next pass.
-        let tables = list_vector_tables(&mut **tx).await?;
+        let tables = list_vector_tables_ex(&mut **tx).await?;
         if tables.is_empty() {
             return Ok(BatchOutcome {
                 scanned: 0,
                 written: 0,
+                failed: 0,
                 next_cursor: None,
             });
         }
@@ -158,6 +141,7 @@ impl BackfillJob for ChunkEmbeddingBackfillJob {
                         return Ok(BatchOutcome {
                             scanned: 0,
                             written: 0,
+                            failed: 0,
                             next_cursor: None,
                         })
                     }
@@ -188,6 +172,7 @@ impl BackfillJob for ChunkEmbeddingBackfillJob {
                 return Ok(BatchOutcome {
                     scanned: 0,
                     written: 0,
+                    failed: 0,
                     next_cursor: Some(json!({ "table": table, "last_id": "" })),
                 });
             }
@@ -205,12 +190,14 @@ impl BackfillJob for ChunkEmbeddingBackfillJob {
                 Ok(BatchOutcome {
                     scanned: 0,
                     written: 0,
+                    failed: 0,
                     next_cursor: Some(json!({ "table": tables[active_idx + 1], "last_id": "" })),
                 })
             } else {
                 Ok(BatchOutcome {
                     scanned: 0,
                     written: 0,
+                    failed: 0,
                     next_cursor: None,
                 })
             };
@@ -239,6 +226,7 @@ impl BackfillJob for ChunkEmbeddingBackfillJob {
             return Ok(BatchOutcome {
                 scanned,
                 written: 0,
+                failed: 0,
                 next_cursor: Some(json!({ "table": table, "last_id": next_id })),
             });
         }
@@ -265,6 +253,7 @@ impl BackfillJob for ChunkEmbeddingBackfillJob {
             return Ok(BatchOutcome {
                 scanned,
                 written: 0,
+                failed: 0,
                 next_cursor: Some(json!({ "table": table, "last_id": next_id })),
             });
         }
@@ -327,6 +316,7 @@ impl BackfillJob for ChunkEmbeddingBackfillJob {
         Ok(BatchOutcome {
             scanned,
             written,
+            failed: 0,
             next_cursor: Some(json!({ "table": table, "last_id": next_id })),
         })
     }

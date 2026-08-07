@@ -106,6 +106,12 @@ impl TenantRow {
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
+        let default_reasoning_effort = self
+            .metadata
+            .get("default_reasoning_effort")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
 
         Tenant {
             tenant_id: self.tenant_id,
@@ -126,6 +132,7 @@ impl TenantRow {
             default_embedding_dimension,
             default_vision_llm_provider,
             default_vision_llm_model,
+            default_reasoning_effort,
         }
     }
 }

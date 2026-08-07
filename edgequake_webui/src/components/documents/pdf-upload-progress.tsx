@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { ErrorBanner } from "./error-banner";
+import { presentPdfProgressError } from "@/lib/pipeline/pdf-progress-error";
 
 // ============================================================================
 // Types
@@ -519,33 +520,36 @@ export function PdfUploadProgress({
   }
 
   if (error) {
-    const msg = error.message ?? "";
-    const isTaskGone = /task not found/i.test(msg);
-    // Progress is in-memory; after a backend restart the first polls can 404
-    // until the worker reseeds. Prefer reconnecting only while still fetching.
-    const isProgressMiss = /progress not found/i.test(msg);
-    if (isProgressMiss && (isLoading || isPolling)) {
+    const view = presentPdfProgressError(error.message ?? "", {
+      nested,
+      isLoading,
+      isPolling,
+    });
+    if (view.kind === "reconnecting") {
       return (
         <Card className={cn("border-muted bg-muted/30", className)}>
           <CardContent className="flex items-center gap-4 py-4">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">
-              Reconnecting to progress…
-            </span>
+            <span className="text-sm text-muted-foreground">{view.message}</span>
           </CardContent>
         </Card>
       );
     }
-    const terminalMessage = isTaskGone
-      ? "Task ended — progress is no longer available. Refresh the document list or retry."
-      : isProgressMiss
-        ? "Progress unavailable — upload may have completed or the task ended."
-        : `Failed to load progress: ${msg}`;
+    if (view.kind === "nested_ended") {
+      return (
+        <div
+          className={cn("text-[10px] text-muted-foreground", className)}
+          data-testid="spec086-pdf-progress-ended"
+        >
+          {view.message}
+        </div>
+      );
+    }
     return (
       <Card className={cn("border-red-200 bg-red-50/50", className)}>
         <CardContent className="flex items-center gap-4 py-4">
           <AlertCircle className="h-5 w-5 text-red-500" />
-          <span className="text-sm text-red-600">{terminalMessage}</span>
+          <span className="text-sm text-red-600">{view.message}</span>
         </CardContent>
       </Card>
     );

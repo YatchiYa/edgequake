@@ -143,6 +143,7 @@ mod tests {
             default_embedding_full_id: "openai/text-embedding-3-small".to_string(),
             default_vision_llm_model: None,
             default_vision_llm_provider: None,
+            default_reasoning_effort: None,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         };

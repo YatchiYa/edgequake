@@ -58,7 +58,11 @@ export interface DocumentToolbarSectionProps {
   openFileDialog: () => void;
   pdfParserBackend: 'default' | 'vision' | 'edgeparse';
   onPdfParserBackendChange: (value: 'default' | 'vision' | 'edgeparse') => void;
-  
+  /** Workspace inherit label — Vision / EdgeParse resolved default. */
+  workspacePdfParserBackend?: DocumentDropzoneProps['workspacePdfParserBackend'];
+  visionReasoningEffort?: string;
+  onVisionReasoningEffortChange?: (value: string | undefined) => void;
+
   // Bulk actions
   selectedCount: number;
   onBulkReprocess: () => void;
@@ -90,6 +94,9 @@ export function DocumentToolbarSection({
   openFileDialog,
   pdfParserBackend,
   onPdfParserBackendChange,
+  workspacePdfParserBackend,
+  visionReasoningEffort,
+  onVisionReasoningEffortChange,
   selectedCount,
   onBulkReprocess,
   onBulkDelete,
@@ -192,6 +199,9 @@ export function DocumentToolbarSection({
         openFileDialog={openFileDialog}
         pdfParserBackend={pdfParserBackend}
         onPdfParserBackendChange={onPdfParserBackendChange}
+        workspacePdfParserBackend={workspacePdfParserBackend}
+        visionReasoningEffort={visionReasoningEffort}
+        onVisionReasoningEffortChange={onVisionReasoningEffortChange}
         quiet={quietDropzone && !collapseUploadSlot}
         collapsed={collapseUploadSlot}
       />

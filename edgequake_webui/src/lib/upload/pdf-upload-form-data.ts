@@ -40,6 +40,12 @@ export function buildPdfUploadFormData(
   } else if (options?.analyze_inline_images ?? true) {
     formData.append("process_options", "i");
   }
+  if (options?.vision_reasoning_effort?.trim()) {
+    formData.append(
+      "vision_reasoning_effort",
+      options.vision_reasoning_effort.trim(),
+    );
+  }
 
   return formData;
 }

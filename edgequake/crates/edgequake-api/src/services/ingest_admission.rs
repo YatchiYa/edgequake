@@ -240,17 +240,28 @@ pub async fn persist_pdf_task_document_id(
     }
 
     if let Some(storage) = task_storage {
-        storage.update_task(task).await.map_err(|e| {
-            edgequake_tasks::TaskError::Storage(format!(
-                "Failed to persist document_id on task {}: {e}",
-                task.track_id
-            ))
-        })?;
-        debug!(
-            track_id = %task.track_id,
-            document_id = %document_id,
-            "Persisted PDF ingest document_id on task row"
-        );
+        match storage.update_task(task).await {
+            Ok(()) => {
+                debug!(
+                    track_id = %task.track_id,
+                    document_id = %document_id,
+                    "Persisted PDF ingest document_id on task row"
+                );
+            }
+            Err(edgequake_tasks::TaskError::TaskNotFound(_)) => {
+                // Clear All / delete purged the row after claim — unwind as cancel.
+                return Err(edgequake_tasks::TaskError::Cancelled(format!(
+                    "Task row removed during admission (lifecycle purge): {}",
+                    task.track_id
+                )));
+            }
+            Err(e) => {
+                return Err(edgequake_tasks::TaskError::Storage(format!(
+                    "Failed to persist document_id on task {}: {e}",
+                    task.track_id
+                )));
+            }
+        }
     }
 
     Ok(())
@@ -405,6 +416,22 @@ mod tests {
                 .get("existing_document_id")
                 .and_then(|v| v.as_str()),
             Some("doc-abc")
+        );
+    }
+
+    #[tokio::test]
+    async fn persist_pdf_task_document_id_cancelled_when_row_purged() {
+        let storage: SharedTaskStorage = Arc::new(MemoryTaskStorage::new());
+        let mut task = pdf_task(Uuid::new_v4(), Uuid::new_v4(), TaskStatus::Processing);
+        storage.create_task(&task).await.unwrap();
+        storage.delete_task(&task.track_id).await.unwrap();
+
+        let err = persist_pdf_task_document_id(&mut task, "doc-gone", Some(&storage))
+            .await
+            .expect_err("must surface lifecycle purge as cancel");
+        assert!(
+            matches!(err, edgequake_tasks::TaskError::Cancelled(_)),
+            "got {err:?}"
         );
     }
 }

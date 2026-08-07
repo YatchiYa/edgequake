@@ -3,7 +3,8 @@
 //! Installed at API startup from PostgreSQL; used by [`crate::Workspace`] resolution
 //! and explainability endpoints.
 
-use std::sync::RwLock;
+use std::collections::HashMap;
+use std::sync::{LazyLock, RwLock};
 
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +17,12 @@ pub struct ServerLlmDefaults {
     pub embedding_model: Option<String>,
     pub vision_provider: Option<String>,
     pub vision_model: Option<String>,
+    /// SPEC-109: fleet-wide default reasoning effort.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    /// SPEC-109: per-role overrides (`extract`, `query`, …).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub reasoning_by_role: HashMap<String, String>,
 }
 
 /// Which source wins when both env vars and server DB define a value.
@@ -50,16 +57,11 @@ struct StoredConfig {
     priority: ConfigPriorityMode,
 }
 
-static STORE: RwLock<StoredConfig> = RwLock::new(StoredConfig {
-    defaults: ServerLlmDefaults {
-        llm_provider: None,
-        llm_model: None,
-        embedding_provider: None,
-        embedding_model: None,
-        vision_provider: None,
-        vision_model: None,
-    },
-    priority: ConfigPriorityMode::ServerFirst,
+static STORE: LazyLock<RwLock<StoredConfig>> = LazyLock::new(|| {
+    RwLock::new(StoredConfig {
+        defaults: ServerLlmDefaults::default(),
+        priority: ConfigPriorityMode::ServerFirst,
+    })
 });
 
 /// Install or replace server defaults for this process (startup / PATCH).

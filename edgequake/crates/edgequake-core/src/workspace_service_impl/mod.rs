@@ -156,6 +156,10 @@ impl WorkspaceServiceImpl {
         if let Some(ref vision_model) = tenant.default_vision_llm_model {
             map["default_vision_llm_model"] = serde_json::json!(vision_model);
         }
+        // SPEC-109: Persist default reasoning effort seed
+        if let Some(ref effort) = tenant.default_reasoning_effort {
+            map["default_reasoning_effort"] = serde_json::json!(effort);
+        }
         map
     }
 }

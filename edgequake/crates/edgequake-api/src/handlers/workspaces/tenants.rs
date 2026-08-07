@@ -113,6 +113,16 @@ pub async fn create_tenant(
         tenant = tenant.with_vision_config(model, provider);
     }
 
+    // SPEC-109: seed default reasoning effort for new workspaces.
+    if let Some(effort) = request
+        .default_reasoning_effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        tenant.default_reasoning_effort = Some(effort.to_string());
+    }
+
     // Store tenant via workspace service (SPEC-104 A+: conflict enforced in core).
     let requested_id = tenant.tenant_id;
     let created_tenant = state
@@ -192,6 +202,7 @@ pub async fn create_tenant(
         ),
         default_vision_llm_model: created_tenant.default_vision_llm_model.clone(),
         default_vision_llm_provider: created_tenant.default_vision_llm_provider.clone(),
+        default_reasoning_effort: created_tenant.default_reasoning_effort.clone(),
         created_at: created_tenant.created_at.to_rfc3339(),
         updated_at: created_tenant.updated_at.to_rfc3339(),
     };
@@ -257,6 +268,7 @@ pub async fn list_tenants(
                 ),
                 default_vision_llm_model: t.default_vision_llm_model.clone(),
                 default_vision_llm_provider: t.default_vision_llm_provider.clone(),
+                default_reasoning_effort: t.default_reasoning_effort.clone(),
                 created_at: t.created_at.to_rfc3339(),
                 updated_at: t.updated_at.to_rfc3339(),
             })
@@ -322,6 +334,7 @@ pub async fn get_tenant(
         ),
         default_vision_llm_model: tenant.default_vision_llm_model.clone(),
         default_vision_llm_provider: tenant.default_vision_llm_provider.clone(),
+        default_reasoning_effort: tenant.default_reasoning_effort.clone(),
         created_at: tenant.created_at.to_rfc3339(),
         updated_at: tenant.updated_at.to_rfc3339(),
     };
@@ -402,6 +415,7 @@ pub async fn update_tenant(
         ),
         default_vision_llm_model: updated.default_vision_llm_model.clone(),
         default_vision_llm_provider: updated.default_vision_llm_provider.clone(),
+        default_reasoning_effort: updated.default_reasoning_effort.clone(),
         created_at: updated.created_at.to_rfc3339(),
         updated_at: updated.updated_at.to_rfc3339(),
     };

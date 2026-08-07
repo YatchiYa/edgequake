@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   formatServerDefaultPdfParserLabel,
+  formatWorkspaceDefaultPdfParserLabel,
   getServerDefaultPdfParserBackend,
   pdfParserBackendDisplayName,
   resolvePdfParserBackend,
@@ -59,6 +60,26 @@ describe("resolvePdfParserBackend", () => {
     );
     expect(label).toBe("Server Default (Vision)");
     expect(label).not.toBe("Server Default");
+  });
+
+  it("never-silent workspace default label uses workspace backend", () => {
+    const t = (_key: string, defaultValue: string) => defaultValue;
+    expect(formatWorkspaceDefaultPdfParserLabel(t, "vision")).toBe(
+      "Workspace Default (Vision)",
+    );
+    expect(formatWorkspaceDefaultPdfParserLabel(t, "edgeparse")).toBe(
+      "Workspace Default (EdgeParse)",
+    );
+  });
+
+  it("workspace default label falls back to server when workspace unset", () => {
+    const t = (_key: string, defaultValue: string) => defaultValue;
+    expect(
+      formatWorkspaceDefaultPdfParserLabel(t, null, "edgeparse"),
+    ).toBe("Workspace Default (EdgeParse)");
+    expect(
+      formatWorkspaceDefaultPdfParserLabel(t, undefined, "vision"),
+    ).toBe("Workspace Default (Vision)");
   });
 });
 

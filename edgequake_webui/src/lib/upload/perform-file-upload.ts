@@ -21,6 +21,8 @@ export interface PerformFileUploadOptions {
   pdfParserBackend?: PdfUploadOptions["pdf_parser_backend"];
   /** Enable inline image VLM analysis on PDF markdown (LightRAG `process_options=i`). */
   analyzeInlineImages?: boolean;
+  /** SPEC-109: vision reasoning effort for VLM PDF convert. */
+  visionReasoningEffort?: string;
   onUploadProgress?: (progress: MultipartUploadProgress) => void;
 }
 
@@ -65,6 +67,7 @@ export async function performFileUpload(
       track_id: options.batchTrackId,
       pdf_parser_backend: options.pdfParserBackend,
       analyze_inline_images: options.analyzeInlineImages ?? true,
+      vision_reasoning_effort: options.visionReasoningEffort,
       onUploadProgress: options.onUploadProgress,
       metadata: options.expectedBatchCount
         ? { expected_batch_count: options.expectedBatchCount }

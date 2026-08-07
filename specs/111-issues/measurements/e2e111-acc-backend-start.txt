@@ -1,0 +1,1 @@
+acc_backend: healthy pid=27753 url=http://127.0.0.1:8090/health llm=mistral/mistral-small-latest embed=mistral/mistral-embed

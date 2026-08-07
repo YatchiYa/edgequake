@@ -106,6 +106,12 @@ pub(super) fn workspace_to_response(workspace: &Workspace) -> WorkspaceResponse 
         entity_type_colors: workspace.metadata.get("entity_type_colors").and_then(|v| {
             serde_json::from_value::<std::collections::HashMap<String, String>>(v.clone()).ok()
         }),
+        default_reasoning_effort: workspace
+            .metadata
+            .get("default_reasoning_effort")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        llm_roles: workspace.metadata.get("llm_roles").cloned(),
         created_at: workspace.created_at.to_rfc3339(),
         updated_at: workspace.updated_at.to_rfc3339(),
     }

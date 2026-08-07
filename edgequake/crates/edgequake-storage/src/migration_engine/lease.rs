@@ -108,6 +108,7 @@ pub async fn record_batch_progress<'e, E>(
     owner: &str,
     ttl_secs: i64,
     scanned: i64,
+    failed: i64,
     cursor: &Value,
     batch_size: i32,
     throttle_reason: Option<&str>,
@@ -120,6 +121,7 @@ where
         UPDATE edgequake.edgequake_migration_job
         SET state = CASE WHEN state IN ('paused', 'cancelled') THEN state ELSE 'running' END,
             processed_count = processed_count + $2,
+            failed_count = failed_count + $8,
             cursor_position = $3,
             batch_size = $4,
             throttle_reason = $5,
@@ -135,6 +137,7 @@ where
     .bind(throttle_reason)
     .bind(ttl_secs)
     .bind(owner)
+    .bind(failed)
     .execute(executor)
     .await
     .map_err(|e| StorageError::Database(format!("migration record_batch_progress failed: {e}")))?;

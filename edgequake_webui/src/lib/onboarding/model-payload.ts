@@ -22,6 +22,8 @@ export interface TenantModelPayload {
   default_embedding_dimension?: number;
   default_vision_llm_model?: string;
   default_vision_llm_provider?: string;
+  /** SPEC-109: seed fleet/workspace default reasoning effort */
+  default_reasoning_effort?: string;
 }
 
 export interface WorkspaceModelPayload {
@@ -32,6 +34,8 @@ export interface WorkspaceModelPayload {
   embedding_dimension?: number;
   vision_llm_model?: string;
   vision_llm_provider?: string;
+  /** SPEC-109: workspace metadata default_reasoning_effort */
+  default_reasoning_effort?: string;
 }
 
 export function buildTenantModelPayload(args: {
@@ -39,6 +43,7 @@ export function buildTenantModelPayload(args: {
   llm?: ModelSelectionSlash;
   embedding?: ModelSelectionSlash;
   vision?: ModelSelectionSlash;
+  reasoningEffort?: string;
 }): TenantModelPayload {
   if (args.useServerDefaults) {
     return {};
@@ -59,6 +64,9 @@ export function buildTenantModelPayload(args: {
     payload.default_vision_llm_provider = args.vision.provider;
     payload.default_vision_llm_model = args.vision.model;
   }
+  if (args.reasoningEffort?.trim()) {
+    payload.default_reasoning_effort = args.reasoningEffort.trim();
+  }
   return payload;
 }
 
@@ -67,6 +75,7 @@ export function buildWorkspaceModelPayload(args: {
   llm?: ModelSelectionSlash;
   embedding?: ModelSelectionSlash;
   vision?: ModelSelectionSlash;
+  reasoningEffort?: string;
 }): WorkspaceModelPayload {
   if (args.useServerDefaults) {
     return {};
@@ -87,6 +96,9 @@ export function buildWorkspaceModelPayload(args: {
     payload.vision_llm_provider = args.vision.provider;
     payload.vision_llm_model = args.vision.model;
   }
+  if (args.reasoningEffort?.trim()) {
+    payload.default_reasoning_effort = args.reasoningEffort.trim();
+  }
   return payload;
 }
 
@@ -104,6 +116,7 @@ export function buildWorkspaceUpdatePayload(args: {
   entityTypes: string[];
   entityTypesStrict: boolean;
   entityTypeColors?: Record<string, string>;
+  reasoningEffort?: string;
 }): {
   llm_model: string;
   llm_provider: string;
@@ -117,8 +130,13 @@ export function buildWorkspaceUpdatePayload(args: {
   entity_types_strict: boolean;
   extraction_language: string;
   entity_type_colors: Record<string, string>;
+  default_reasoning_effort?: string;
 } {
   const entity_type_colors = args.entityTypeColors ?? {};
+  const effort =
+    args.reasoningEffort?.trim() && args.reasoningEffort.trim().length > 0
+      ? args.reasoningEffort.trim()
+      : undefined;
   if (args.useServerDefaults) {
     return {
       llm_model: '',
@@ -133,6 +151,7 @@ export function buildWorkspaceUpdatePayload(args: {
       entity_types_strict: args.entityTypesStrict,
       extraction_language: extractionLanguageToUpdatePayload(args.extractionLanguage),
       entity_type_colors,
+      ...(effort ? { default_reasoning_effort: effort } : {}),
     };
   }
 
@@ -150,6 +169,7 @@ export function buildWorkspaceUpdatePayload(args: {
     entity_types_strict: args.entityTypesStrict,
     extraction_language: extractionLanguageToUpdatePayload(args.extractionLanguage),
     entity_type_colors,
+    ...(effort ? { default_reasoning_effort: effort } : {}),
   };
 }
 

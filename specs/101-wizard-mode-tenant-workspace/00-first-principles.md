@@ -16,7 +16,7 @@
 |-----|-----------|
 | **LAW-101-1** | One wizard shell — Create Tenant, Create Workspace, First-run share `WizardShell` + steps; no third dialog implementation. |
 | **LAW-101-2** | Server defaults are always explicit — `ServerDefaultsCard` shows LLM · Embedding · Vision as `provider/model` (or “not configured”) before any override. |
-| **LAW-101-3** | Happy-path model step has zero provider chip bars — `showProviderFilters=false` / density simple until Advanced. |
+| **LAW-101-3** | Happy-path model step has zero pickers / chip bars; Advanced uses **two-step** Provider select → Model select (`model-picker-provider-trigger`). |
 | **LAW-101-4** | Fresh setup is atomic and idempotent — `POST /setup/initialize` creates admin+tenant+workspace+membership in one transaction; repeat → 409. |
 | **LAW-101-5** | Inheritance ladder unchanged — Request → Workspace → Tenant → `server_config.llm_defaults` → Env → compiled; UI only discloses it. |
 | **LAW-101-6** | CI is proof — every F-101-* has a unit, Playwright, or Rust gate; inherit issue-233 / spec032 / issue-288 green. |

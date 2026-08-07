@@ -23,6 +23,16 @@ Do **not** re-run or “fix” 002 expecting a PK change. Fresh installs inherit
 
 Bootstrap calls `SELECT create_next_audit_log_partition()` so month+1 inserts do not fail after the initial 12-month window.
 
-## Checksum drift (X-02)
+## Checksum drift (X-02 / LAW-MIG)
 
-Known M071/M078 checksum repairs run **only** when `EDGEQUAKE_DEV_MODE=true`. In production, drift fails loud with a runbook message — see `migration_bootstrap/reconcile/m071.rs` / `m078.rs`.
+**Default rule: never edit applied / shipped migration SQL.** Fix with a **new** migration.  
+Full decision tree: [`specs/111-issues/10-migration-immutability.md`](../../specs/111-issues/10-migration-immutability.md).
+
+Known broken→fixed checksum repairs (071/078/118/121/125/131) rewrite `_sqlx_migrations.checksum` only when authorized:
+
+| Auth | Use |
+|------|-----|
+| `EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=71,78,…` | **Preferred** — scoped; set by `make_dev` migrate |
+| `EDGEQUAKE_DEV_MODE=true` | Broad (also affects auth); legacy / local |
+
+Production leaves both unset → fail loud. Modules: `migration_bootstrap/reconcile/mNNN.rs` + shared `checksum_repair.rs`.

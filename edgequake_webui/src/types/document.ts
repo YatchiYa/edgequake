@@ -388,6 +388,8 @@ export interface PdfUploadOptions {
   process_options?: string;
   /** When true, sends `process_options=i` on PDF upload (inline image VLM). */
   analyze_inline_images?: boolean;
+  /** SPEC-109: vision/VLM reasoning effort for this upload. */
+  vision_reasoning_effort?: string;
 }
 
 export interface PdfMetadata {

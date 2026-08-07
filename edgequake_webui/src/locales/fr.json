@@ -812,7 +812,7 @@
     "entityTypesHeading": "Types d'entités à extraire",
     "entityTypesHint": "Choisissez les types d'entités à extraire dans le graphe de connaissances.",
     "overriddenDefaults": "Remplacé",
-    "customModelsHint": "Choisissez LLM, embedding et vision. Les filtres de fournisseur restent masqués.",
+    "customModelsHint": "Choisissez un fournisseur, puis un modèle.",
     "adminSection": "Admin",
     "modelsSection": "Modèles",
     "modelsMode": "Mode",

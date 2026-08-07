@@ -130,6 +130,14 @@ pub fn hash_query_prompt(prompt: &str) -> String {
     compute_args_hash(&[prompt])
 }
 
+/// SPEC-109: include effective reasoning effort when set so effort changes bust cache.
+pub fn hash_query_prompt_with_effort(prompt: &str, reasoning_effort: Option<&str>) -> String {
+    match reasoning_effort.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(effort) => compute_args_hash(&[prompt, effort]),
+        None => hash_query_prompt(prompt),
+    }
+}
+
 /// Legacy helper used by answer_cache module — SHA of prompt.
 pub fn answer_cache_key(prompt: &str) -> String {
     llm_cache_storage_key("mix", LlmCacheType::Query, &hash_query_prompt(prompt))
@@ -348,6 +356,18 @@ mod tests {
         let qk = answer_cache_key("full prompt with context");
         assert!(qk.contains(":query:"));
         assert!(qk.ends_with("-cache"));
+    }
+
+    #[test]
+    fn hash_query_prompt_includes_effort_when_set() {
+        let base = hash_query_prompt("prompt");
+        assert_eq!(hash_query_prompt_with_effort("prompt", None), base);
+        assert_eq!(hash_query_prompt_with_effort("prompt", Some("")), base);
+        assert_ne!(
+            hash_query_prompt_with_effort("prompt", Some("low")),
+            hash_query_prompt_with_effort("prompt", Some("high"))
+        );
+        assert_ne!(hash_query_prompt_with_effort("prompt", Some("low")), base);
     }
 
     #[test]

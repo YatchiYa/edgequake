@@ -1,5 +1,5 @@
 /**
- * Embedding model selector for workspace configuration (SPEC-043 unified picker).
+ * Embedding model selector for workspace configuration (SPEC-043 two-step picker).
  */
 'use client';
 
@@ -8,7 +8,6 @@ import { mergePickerOptions } from '@/components/models/model-picker-options';
 import {
   ModelPickerPanel,
   type ModelPickerValue,
-  parseModelFullId,
 } from '@/components/models/model-picker-panel';
 import { useEmbeddingModels } from '@/hooks/use-providers';
 import { cn } from '@/lib/utils';
@@ -25,7 +24,7 @@ interface EmbeddingModelSelectorProps {
   onChange?: (selection: EmbeddingSelection | undefined) => void;
   disabled?: boolean;
   className?: string;
-  /** SPEC-101: hide provider chip bar on simple density. */
+  /** @deprecated Ignored — provider is a dedicated select. */
   showProviderFilters?: boolean;
 }
 
@@ -34,7 +33,6 @@ export function EmbeddingModelSelector({
   onChange,
   disabled,
   className,
-  showProviderFilters = true,
 }: EmbeddingModelSelectorProps) {
   const { data: embeddingData, isLoading, error } = useEmbeddingModels();
 
@@ -84,13 +82,16 @@ export function EmbeddingModelSelector({
     const match = embeddingData.models.find(
       (m) => m.provider === v.provider && m.name === v.model,
     );
-    if (match) {
-      onChange?.({
-        provider: v.provider,
-        model: v.model,
-        dimension: match.dimension,
-      });
-    }
+    // Always emit — live catalog hits may not be in the static list (SPEC reconfigure persist).
+    const dimension =
+      match?.dimension ??
+      options.find((o) => o.fullId === v.fullId)?.dimension ??
+      0;
+    onChange?.({
+      provider: v.provider,
+      model: v.model,
+      dimension,
+    });
   };
 
   return (
@@ -101,7 +102,6 @@ export function EmbeddingModelSelector({
         value={pickerValue}
         onChange={handleChange}
         disabled={disabled}
-        showProviderFilters={showProviderFilters}
         serverDefaultLabel={defaultLabel}
         placeholder="Search embedding models…"
         testId="embedding-model-picker-panel"

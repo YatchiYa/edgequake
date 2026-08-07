@@ -577,9 +577,10 @@ impl DocumentTaskProcessor {
             updated.insert("stage_progress".to_string(), json!(1.0)); // 100% complete
 
             // SPEC-002: Informative completion message with stats
-            let stage_message = format!(
-                "Processed {} chunks, extracted {} entities and {} relationships",
-                stats.chunk_count, stats.entity_count, stats.relationship_count
+            let stage_message = crate::services::format_ingest_completion_stage_message(
+                stats.chunk_count as u64,
+                stats.entity_count as u64,
+                stats.relationship_count as u64,
             );
             updated.insert("stage_message".to_string(), json!(stage_message));
 

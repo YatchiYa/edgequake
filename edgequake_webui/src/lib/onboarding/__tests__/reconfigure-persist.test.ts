@@ -1,0 +1,105 @@
+import { describe, expect, it } from 'vitest';
+import {
+  prefillReconfigureFromWorkspace,
+  resolveHydratedUseServerDefaults,
+} from '../reconfigure-from-workspace';
+import { buildWorkspaceUpdatePayload } from '../model-payload';
+import type { Workspace } from '@/types';
+
+function baseWorkspace(overrides: Partial<Workspace> = {}): Workspace {
+  return {
+    id: 'ws-1',
+    tenant_id: 't-1',
+    name: 'Demo',
+    slug: 'demo',
+    description: null,
+    is_active: true,
+    created_at: '',
+    updated_at: '',
+    llm_provider: 'ollama',
+    llm_model: 'gemma4:latest',
+    llm_full_id: 'ollama/gemma4:latest',
+    embedding_provider: 'ollama',
+    embedding_model: 'embeddinggemma',
+    embedding_dimension: 768,
+    ...overrides,
+  } as Workspace;
+}
+
+describe('resolveHydratedUseServerDefaults', () => {
+  it('forces false when workspace has overrides (draft flag trap)', () => {
+    expect(
+      resolveHydratedUseServerDefaults({
+        prefillAdvancedOpen: true,
+        prefillUseServerDefaults: false,
+        hasPrefillPicks: true,
+        storedUseServerDefaults: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('keeps stored true when workspace truly uses defaults', () => {
+    expect(
+      resolveHydratedUseServerDefaults({
+        prefillAdvancedOpen: false,
+        prefillUseServerDefaults: true,
+        hasPrefillPicks: false,
+        storedUseServerDefaults: true,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('reconfigure persist payload', () => {
+  it('sends mistral overrides when useServerDefaults is false after picker', () => {
+    const payload = buildWorkspaceUpdatePayload({
+      useServerDefaults: false,
+      llm: { provider: 'mistral', model: 'mistral-small-latest' },
+      embedding: {
+        provider: 'mistral',
+        model: 'mistral-embed',
+        dimension: 1024,
+      },
+      vision: undefined,
+      pdfParserBackend: 'none',
+      extractionLanguage: null,
+      entityTypes: ['PERSON'],
+      entityTypesStrict: true,
+    });
+    expect(payload).toMatchObject({
+      llm_provider: 'mistral',
+      llm_model: 'mistral-small-latest',
+      embedding_provider: 'mistral',
+      embedding_model: 'mistral-embed',
+      embedding_dimension: 1024,
+    });
+    expect(payload.llm_model).not.toBe('');
+  });
+
+  it('prefill opens Advanced when workspace has concrete LLM picks', () => {
+    const prefill = prefillReconfigureFromWorkspace(baseWorkspace());
+    expect(prefill.advancedOpen).toBe(true);
+    expect(prefill.draft.useServerDefaults).toBe(false);
+    expect(prefill.llm?.provider).toBe('ollama');
+  });
+});
+
+describe('embedding live catalog onChange contract', () => {
+  it('buildWorkspaceUpdatePayload accepts dimension 0 from live catalog miss', () => {
+    const payload = buildWorkspaceUpdatePayload({
+      useServerDefaults: false,
+      llm: { provider: 'mistral', model: 'mistral-small-latest' },
+      embedding: {
+        provider: 'mistral',
+        model: 'mistral-embed-live',
+        dimension: 0,
+      },
+      pdfParserBackend: 'none',
+      extractionLanguage: null,
+      entityTypes: [],
+      entityTypesStrict: true,
+    });
+    expect(payload.embedding_model).toBe('mistral-embed-live');
+    expect(payload.embedding_dimension).toBe(0);
+  });
+});

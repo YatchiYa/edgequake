@@ -968,6 +968,7 @@ impl DocumentTaskProcessor {
                     progress_callback: Some(wrapped_progress),
                     status_hook: Some(status_hook),
                     pages: None,
+                    reasoning_effort: data.vision_reasoning_effort.clone(),
                 }
             }),
         };
@@ -1643,6 +1644,7 @@ mod tests {
             restart_from_scratch: false,
             reprocess_mode: None,
             multimodal_process_options: None,
+            vision_reasoning_effort: None,
         };
         let mut task = Task::new(
             tenant_id,

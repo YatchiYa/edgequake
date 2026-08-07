@@ -14,6 +14,11 @@ on PG **16 / 17 / 18** (portable SQL).
    `ON CONFLICT DO UPDATE command cannot affect row a second time`.
 3. When `EDGEQUAKE_NATIVE_GRAPH_WRITES=0` (debug), Cypher MERGE also keys edges
    on `(source_id, target_id, relation_type)` — same multigraph semantics.
+4. **Near-complete mirror misses (`999/1000`)** — If SPEC-098 miss samples look like
+   `NAME_WITH_->_ARROW->OTHER:REL`, the fail is usually legacy-key parse (first `->`),
+   not a missing spine. Parser uses the **last** `->` as source/target separator
+   (`parse_relationship_legacy_key`). Reprocess after upgrade; do not re-run 139/140
+   solely for this class. Residual: **target** names that also contain `->` stay ambiguous.
 
 ## Manual re-run
 

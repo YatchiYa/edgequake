@@ -794,7 +794,10 @@ impl QueryEngine {
             let cache_key = crate::cache::llm_cache_storage_key(
                 mode_str,
                 crate::cache::LlmCacheType::Query,
-                &crate::cache::hash_query_prompt(&prompt),
+                &crate::cache::hash_query_prompt_with_effort(
+                    &prompt,
+                    request.reasoning_effort.as_deref(),
+                ),
             );
 
             // SPEC-103 answer cache. Active when explicitly wired or env allows.
@@ -862,6 +865,7 @@ impl QueryEngine {
         };
 
         stats.generated_tokens = generated_tokens;
+        stats.reasoning_effort = request.reasoning_effort.clone();
         stats.total_time_ms = pipeline_start.elapsed().as_millis() as u64;
 
         // SPEC-046 OPS-P3.22: optional LLM-judge faithfulness (opt-in).
@@ -936,16 +940,20 @@ impl QueryEngine {
                 &request.conversation_history,
                 question_type,
                 response_type,
+                request.reasoning_effort.as_deref(),
             )
             .await
         } else {
-            self.generate_answer(
+            self.generate_answer_with_provider(
                 &request.query,
                 context,
+                None,
                 request.system_prompt.as_deref(),
+                request.images.as_deref(),
                 &request.conversation_history,
                 question_type,
                 response_type,
+                request.reasoning_effort.as_deref(),
             )
             .await
         }

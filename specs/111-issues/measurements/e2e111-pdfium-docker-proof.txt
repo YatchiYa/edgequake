@@ -1,0 +1,18 @@
+-rwxr-xr-x 1 edgequake edgequake 82785936 Aug  7 06:46 /usr/local/bin/edgequake
+[2m2026-08-07T06:47:18.176262Z[0m [32m INFO[0m [2medgequake_observability::subscriber[0m[2m:[0m Observability initialized [3mlog_format[0m[2m=[0mPlain [3motel_enabled[0m[2m=[0mfalse [3motel_endpoint[0m[2m=[0mNone [3mservice_name[0m[2m=[0medgequake-api [3mlog_span_events[0m[2m=[0mfalse
+[2m2026-08-07T06:47:18.176333Z[0m [32m INFO[0m [2medgequake[0m[2m:[0m Starting EdgeQuake v0.24.1
+Error: DATABASE_URL is required; start PostgreSQL and rerun make dev or make dev-auth
+
+Caused by:
+    environment variable not found
+[2m2026-08-07T06:47:18.180008Z[0m [32m INFO[0m [2medgequake_observability::subscriber[0m[2m:[0m Observability initialized [3mlog_format[0m[2m=[0mPlain [3motel_enabled[0m[2m=[0mfalse [3motel_endpoint[0m[2m=[0mNone [3mservice_name[0m[2m=[0medgequake-api [3mlog_span_events[0m[2m=[0mfalse
+[2m2026-08-07T06:47:18.180021Z[0m [32m INFO[0m [2medgequake[0m[2m:[0m Starting EdgeQuake v0.24.1
+Error: DATABASE_URL is required; start PostgreSQL and rerun make dev or make dev-auth
+
+Caused by:
+PDFIUM_ENV=
+	linux-vdso.so.1 (0x0000ffffbab4c000)
+	libssl.so.3 => /lib/aarch64-linux-gnu/libssl.so.3 (0x0000ffffb6960000)
+	libcrypto.so.3 => /lib/aarch64-linux-gnu/libcrypto.so.3 (0x0000ffffb6500000)
+	libgcc_s.so.1 => /lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000ffffb64c0000)
+	libm.so.6 => /lib/aarch64-linux-gnu/libm.so.6 (0x0000ffffb6410000)

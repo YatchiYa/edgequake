@@ -75,6 +75,32 @@ test.describe("SPEC-091 ingestion surface (progress_counts + single meter)", () 
     );
   });
 
+  test("pdf converting with insert-* track: never nests PDF page meter", async ({
+    page,
+  }) => {
+    const doc = makeSpec086ListDoc({
+      id: "doc-091-insert-track",
+      file_name: "paper.pdf",
+      status: "processing",
+      current_stage: "converting",
+      stage_message:
+        "Processed 22 chunks, extracted 658 entities and 381 relationships",
+      stage_progress: 0,
+      source_type: "pdf",
+      track_id: "insert-f1d3c215-2042-4a33-b284-518a90e020ff",
+      admission_staging: false,
+    });
+    await gotoDocuments(page, [doc]);
+
+    const card = page.getByTestId("spec048-active-run-card").first();
+    await expect(card).toBeVisible();
+    await expect(page.getByTestId("spec086-pdf-page-detail")).toHaveCount(0);
+    await expect(page.getByTestId("spec086-pdf-progress-ended")).toHaveCount(0);
+    await expect(
+      page.getByText(/Task ended — progress is no longer available/i),
+    ).toHaveCount(0);
+  });
+
   test("markdown chunking: converting omitted; counts drive stage meter", async ({
     page,
   }) => {

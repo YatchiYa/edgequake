@@ -1,0 +1,12 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.15s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_pipeline-d34169bf8d5bdb82)
+
+running 5 tests
+test extractor::completion_options::tests::large_omits_reasoning_effort ... ok
+test extractor::completion_options::tests::desired_low_preserved_when_supported ... ok
+test extractor::completion_options::tests::gpt54_nano_floor_is_none ... ok
+test extractor::completion_options::tests::small_sets_reasoning_floor_none ... ok
+test extractor::completion_options::tests::gpt5_nano_floor_is_minimal ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 390 filtered out; finished in 0.00s
+

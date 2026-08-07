@@ -27,6 +27,7 @@ describe("IngestionRunCard PDF nest gate (LAW-IS2 / ux086_v_one_presenter)", () 
       shouldNestPdfPageMeter({
         sourceType: "pdf",
         stage: "converting",
+        trackId: "pdf-abc-123",
       }),
     ).toBe(true);
   });
@@ -36,6 +37,7 @@ describe("IngestionRunCard PDF nest gate (LAW-IS2 / ux086_v_one_presenter)", () 
       shouldNestPdfPageMeter({
         sourceType: "pdf",
         stage: "converting",
+        trackId: "pdf-abc-123",
         counts: { current: 4, total: 9, unit: "pages" },
       }),
     ).toBe(false);
@@ -46,14 +48,49 @@ describe("IngestionRunCard PDF nest gate (LAW-IS2 / ux086_v_one_presenter)", () 
       shouldNestPdfPageMeter({
         sourceType: "markdown",
         stage: "converting",
+        trackId: "pdf-abc-123",
       }),
     ).toBe(false);
   });
 
   it("hides nest for pdf after converting (chunking)", () => {
     expect(
-      shouldNestPdfPageMeter({ sourceType: "pdf", stage: "chunking" }),
+      shouldNestPdfPageMeter({
+        sourceType: "pdf",
+        stage: "chunking",
+        trackId: "pdf-abc-123",
+      }),
     ).toBe(false);
+  });
+
+  it("hides nest for insert-* track ids (ingest follow-on, not PDF progress)", () => {
+    expect(
+      shouldNestPdfPageMeter({
+        sourceType: "pdf",
+        stage: "converting",
+        trackId: "insert-f1d3c215-2042-4a33-b284-518a90e020ff",
+      }),
+    ).toBe(false);
+  });
+
+  it("hides nest when trackId is missing", () => {
+    expect(
+      shouldNestPdfPageMeter({
+        sourceType: "pdf",
+        stage: "converting",
+        trackId: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts pdf_processing- prefix as convert track", () => {
+    expect(
+      shouldNestPdfPageMeter({
+        sourceType: "pdf",
+        stage: "converting",
+        trackId: "pdf_processing-36145d10-18a9-4fe3-9ffa-4d09cc39cf58",
+      }),
+    ).toBe(true);
   });
 });
 

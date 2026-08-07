@@ -113,6 +113,7 @@ impl ResolvedParseOptions {
                 progress_callback,
                 status_hook: None,
                 pages: self.pages.clone(),
+                reasoning_effort: None,
             })
         } else {
             None

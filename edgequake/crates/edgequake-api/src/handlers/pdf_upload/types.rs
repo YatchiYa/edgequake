@@ -36,6 +36,8 @@ pub struct PdfUploadOptions {
     pub pdf_parser_backend: Option<PdfParserBackend>,
     /// Multimodal process options (LightRAG `i`/`t`/`e` flags), e.g. `"i"` or `"ite"`.
     pub process_options: Option<String>,
+    /// SPEC-109: vision/VLM reasoning effort override for this upload.
+    pub vision_reasoning_effort: Option<String>,
 }
 
 impl PdfUploadOptions {

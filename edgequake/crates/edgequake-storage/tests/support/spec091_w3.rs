@@ -126,6 +126,28 @@ pub async fn create_vectors_table(pool: &PgPool, ns: &str) -> String {
     table
 }
 
+/// Drop every `eq_%_vectors` relation except `keep` so global advisor posture
+/// sees a sole fixture table (SPEC-111 honesty closeout / E2E-111-11+).
+pub async fn drop_all_vector_tables_except(pool: &PgPool, keep: &str) {
+    let tables: Vec<String> = sqlx::query_scalar(
+        "SELECT c.relname FROM pg_class c \
+         JOIN pg_namespace n ON n.oid = c.relnamespace \
+         WHERE n.nspname = 'public' AND c.relkind = 'r' \
+           AND c.relname LIKE 'eq\\_%\\_vectors' ESCAPE '\\'",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    for t in tables {
+        if t == keep {
+            continue;
+        }
+        let _ = sqlx::query(&format!("DROP TABLE IF EXISTS public.{t} CASCADE"))
+            .execute(pool)
+            .await;
+    }
+}
+
 /// Seed a legacy chunk vector row (`{doc}-chunk-{i}`) into `table`.
 pub async fn seed_legacy_chunk_vector(
     pool: &PgPool,

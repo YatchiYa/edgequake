@@ -33,7 +33,7 @@ export interface WorkspaceCreateModelSectionProps {
 
 /**
  * Collapsible model configuration for workspace creation.
- * SPEC-101: uses ServerDefaultsCard (LAW-101-2); Advanced hides chip storm.
+ * SPEC-101: uses ServerDefaultsCard (LAW-101-2); Advanced uses two-step provider→model.
  */
 export function WorkspaceCreateModelSection({
   llm,
@@ -107,7 +107,6 @@ export function WorkspaceCreateModelSection({
               <LLMModelSelector
                 value={llm}
                 onChange={onLlmChange}
-                showProviderFilters={false}
                 showCapabilityFilters={false}
               />
             </div>
@@ -119,7 +118,6 @@ export function WorkspaceCreateModelSection({
               <EmbeddingModelSelector
                 value={embedding}
                 onChange={onEmbeddingChange}
-                showProviderFilters={false}
               />
             </div>
             <div className="grid gap-2 sm:col-span-2">
@@ -131,7 +129,6 @@ export function WorkspaceCreateModelSection({
                 value={vision}
                 onChange={onVisionChange}
                 filterVision
-                showProviderFilters={false}
                 showCapabilityFilters={false}
               />
             </div>

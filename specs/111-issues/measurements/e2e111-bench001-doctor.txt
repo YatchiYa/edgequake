@@ -1,0 +1,22 @@
+
+[notice] A new release of pip is available: 26.0.1 -> 26.2.1
+[notice] To update, run: pip install --upgrade pip
+\033[32m✓ bench001 installed\033[0m
+bench001 0.1.0
+fixtures: smoke_n=40 fast_n=8 publish_n=200 core_n=2162
+medical questions cached: True (/Users/raphaelmansuy/.cache/edgequake/bench001/graphrag-bench/Datasets/Questions/medical_questions.json)
+medical corpus cached: True
+EQ health @ http://127.0.0.1:8090: status=healthy storage=postgresql
+EQ providers: llm=ollama/gemma4:latest embed=ollama
+EQ mix_fusion=round_robin (Acc law 086 wants round_robin)
+profile: ACC_E2OCC_086_v1_lrlike_arms_v2
+  sut_llm: mistral/mistral-small-latest
+  sut_vision: ollama/gemma4:latest
+  sut_embed: mistral/mistral-embed@1024d
+  judge_llm: mistral/mistral-small-latest
+  judge_metric_embed: mistral-embed
+  llm_base_url: https://api.mistral.ai/v1
+  judge_base_url: https://api.mistral.ai/v1
+SUT API key present: True
+LightRAG repo: /Users/raphaelmansuy/Github/03-working/LightRAG
+LightRAG importable: True

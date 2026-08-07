@@ -120,6 +120,8 @@ pub async fn create_workspace(
         extraction_language: request.extraction_language.clone(),
         // SPEC-102: entity type colors for graph visualization
         entity_type_colors: request.entity_type_colors.clone(),
+        default_reasoning_effort: request.default_reasoning_effort.clone(),
+        llm_roles: request.llm_roles.clone(),
     };
 
     // Store workspace via workspace service
@@ -325,6 +327,8 @@ pub async fn update_workspace(
         entity_types_strict: request.entity_types_strict,
         extraction_language: request.extraction_language,
         entity_type_colors: request.entity_type_colors,
+        default_reasoning_effort: request.default_reasoning_effort,
+        llm_roles: request.llm_roles,
     };
 
     let workspace = state

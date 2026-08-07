@@ -33,6 +33,10 @@ pub struct SavedLlmDefaults {
     pub embedding_model: Option<String>,
     pub vision_provider: Option<String>,
     pub vision_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub reasoning_by_role: std::collections::HashMap<String, String>,
 }
 
 impl From<ServerLlmDefaults> for SavedLlmDefaults {
@@ -44,6 +48,8 @@ impl From<ServerLlmDefaults> for SavedLlmDefaults {
             embedding_model: v.embedding_model,
             vision_provider: v.vision_provider,
             vision_model: v.vision_model,
+            reasoning_effort: v.reasoning_effort,
+            reasoning_by_role: v.reasoning_by_role,
         }
     }
 }
@@ -67,6 +73,10 @@ pub struct UpdateLlmDefaultsRequest {
     pub embedding_model: Option<String>,
     pub vision_provider: Option<String>,
     pub vision_model: Option<String>,
+    /// SPEC-109: fleet default reasoning effort.
+    pub reasoning_effort: Option<String>,
+    /// SPEC-109: per-role reasoning effort map.
+    pub reasoning_by_role: Option<std::collections::HashMap<String, String>>,
     /// `server` (DB wins) or `env` (env wins). Optional — keeps current when omitted.
     pub priority_mode: Option<String>,
 }
@@ -174,6 +184,15 @@ pub async fn update_llm_defaults(
         }
         if let Some(v) = request.vision_model {
             saved.vision_model = empty_to_none(Some(v));
+        }
+        if let Some(v) = request.reasoning_effort {
+            saved.reasoning_effort = empty_to_none(Some(v));
+        }
+        if let Some(map) = request.reasoning_by_role {
+            saved.reasoning_by_role = map
+                .into_iter()
+                .filter(|(k, v)| !k.trim().is_empty() && !v.trim().is_empty())
+                .collect();
         }
 
         let priority = request

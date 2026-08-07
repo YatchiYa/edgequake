@@ -546,32 +546,47 @@ pub(crate) async fn run_reprocess_failed(
                     }
 
                     // Look up workspace to get vision provider/model settings
-                    let (vision_provider, vision_model, pdf_parser_backend) = if let Ok(ws_uuid) =
-                        uuid::Uuid::parse_str(&workspace_id)
-                    {
-                        if let Ok(Some(ws)) = state.workspace_service.get_workspace(ws_uuid).await {
-                            let vp = ws
-                                .vision_llm_provider
-                                .as_deref()
-                                .filter(|p| !p.is_empty())
-                                .unwrap_or("ollama")
-                                .to_string();
-                            let vm = ws.vision_llm_model.clone().filter(|m| !m.is_empty());
-                            (vp, vm, ws.resolved_pdf_parser_backend())
+                    let (vision_provider, vision_model, pdf_parser_backend, vision_ws) =
+                        if let Ok(ws_uuid) = uuid::Uuid::parse_str(&workspace_id) {
+                            if let Ok(Some(ws)) =
+                                state.workspace_service.get_workspace(ws_uuid).await
+                            {
+                                let vp = ws
+                                    .vision_llm_provider
+                                    .as_deref()
+                                    .filter(|p| !p.is_empty())
+                                    .unwrap_or("ollama")
+                                    .to_string();
+                                let vm = ws.vision_llm_model.clone().filter(|m| !m.is_empty());
+                                let backend = ws.resolved_pdf_parser_backend();
+                                (vp, vm, backend, Some(ws))
+                            } else {
+                                (
+                                    "ollama".to_string(),
+                                    None,
+                                    PdfParserBackend::from_env().unwrap_or_default(),
+                                    None,
+                                )
+                            }
                         } else {
                             (
                                 "ollama".to_string(),
                                 None,
                                 PdfParserBackend::from_env().unwrap_or_default(),
+                                None,
                             )
-                        }
-                    } else {
-                        (
-                            "ollama".to_string(),
-                            None,
-                            PdfParserBackend::from_env().unwrap_or_default(),
-                        )
-                    };
+                        };
+
+                    let vision_model_for_resolve = vision_model.clone().unwrap_or_else(|| {
+                        crate::vision_env::default_vision_model_for_provider(&vision_provider)
+                    });
+                    let vision_reasoning_effort = crate::services::resolve_vlm_reasoning_effort(
+                        vision_ws.as_ref(),
+                        &vision_provider,
+                        &vision_model_for_resolve,
+                        None,
+                        None,
+                    );
 
                     use edgequake_tasks::{PdfProcessingData, Task, TaskType};
 
@@ -618,6 +633,7 @@ pub(crate) async fn run_reprocess_failed(
                         restart_from_scratch,
                         reprocess_mode: Some(reprocess_mode),
                         multimodal_process_options,
+                        vision_reasoning_effort,
                     };
 
                     // SPEC-054: create task first so document.track_id == progress key.
@@ -837,7 +853,7 @@ pub(crate) async fn run_reprocess_failed(
                 // env-var resolution, ignoring workspace-level overrides. Only
                 // pdf_parser_backend was read from the workspace. Now all three
                 // come from the same workspace.get_workspace() call (DRY).
-                let (vision_provider, vision_model, pdf_parser_backend) = match state
+                let (vision_provider, vision_model, pdf_parser_backend, vision_ws) = match state
                     .workspace_service
                     .get_workspace(pdf.workspace_id)
                     .await
@@ -851,7 +867,7 @@ pub(crate) async fn run_reprocess_failed(
                             .to_string();
                         let vm = ws.vision_llm_model.clone().filter(|m| !m.is_empty());
                         let backend = ws.resolved_pdf_parser_backend();
-                        (vp, vm, backend)
+                        (vp, vm, backend, Some(ws))
                     }
                     Ok(None) | Err(_) => {
                         // Fallback: env-var defaults (same as upload path default).
@@ -859,9 +875,20 @@ pub(crate) async fn run_reprocess_failed(
                         let vp = opts.resolved_vision_provider();
                         let vm = Some(opts.vision_model());
                         let backend = PdfParserBackend::from_env().unwrap_or_default();
-                        (vp, vm, backend)
+                        (vp, vm, backend, None)
                     }
                 };
+
+                let vision_model_for_resolve = vision_model.clone().unwrap_or_else(|| {
+                    crate::vision_env::default_vision_model_for_provider(&vision_provider)
+                });
+                let vision_reasoning_effort = crate::services::resolve_vlm_reasoning_effort(
+                    vision_ws.as_ref(),
+                    &vision_provider,
+                    &vision_model_for_resolve,
+                    None,
+                    None,
+                );
 
                 // Edge case: empty-markdown fallback for failed PDFs.
                 // WHY: A failed PDF typically has no/partial markdown. EntitiesOnly
@@ -935,6 +962,7 @@ pub(crate) async fn run_reprocess_failed(
                     restart_from_scratch,
                     reprocess_mode: Some(reprocess_mode),
                     multimodal_process_options,
+                    vision_reasoning_effort,
                 };
 
                 let track_id = format!("pdf-{}", Uuid::new_v4());

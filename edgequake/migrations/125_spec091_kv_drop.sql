@@ -134,25 +134,25 @@ BEGIN
               OR ((k.key LIKE '%%-metadata' OR k.key LIKE '%%-content')
                  AND NOT EXISTS (
                         SELECT 1 FROM public.documents d
-                        WHERE d.id::text = substring(k.key from '%s')))
+                        WHERE d.id = NULLIF(substring(k.key from '%s'), '')::uuid))
               -- lineage: durable unless the artifact exists
               OR (k.key LIKE '%%-lineage'
                  AND NOT EXISTS (
                         SELECT 1 FROM public.document_artifacts a
                         WHERE a.kind = 'lineage'
-                          AND a.document_id::text = substring(k.key from '%s')))
+                          AND a.document_id = NULLIF(substring(k.key from '%s'), '')::uuid))
               -- multimodal manifest
               OR (k.key LIKE '%%-multimodal-manifest'
                  AND NOT EXISTS (
                         SELECT 1 FROM public.document_artifacts a
                         WHERE a.kind = 'multimodal-manifest'
-                          AND a.document_id::text = substring(k.key from '%s')))
+                          AND a.document_id = NULLIF(substring(k.key from '%s'), '')::uuid))
               -- multimodal chunk dump
               OR (k.key LIKE '%%-multimodal-chunks'
                  AND NOT EXISTS (
                         SELECT 1 FROM public.document_artifacts a
                         WHERE a.kind = 'multimodal-chunks'
-                          AND a.document_id::text = substring(k.key from '%s')))
+                          AND a.document_id = NULLIF(substring(k.key from '%s'), '')::uuid))
               -- conservative presence: dedup / wsdoc / injection (post-purge)
               OR k.key LIKE 'doc:hash:%%'
               OR k.key LIKE 'staging:hash:%%'

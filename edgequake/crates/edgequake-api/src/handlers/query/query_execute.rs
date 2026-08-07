@@ -130,6 +130,24 @@ pub async fn execute_query(
             Err(e) => return Err(ApiError::from(e)),
         };
 
+    let provider_for_effort = request
+        .llm_provider
+        .as_deref()
+        .or_else(|| workspace.as_ref().map(|w| w.llm_provider.as_str()))
+        .unwrap_or("openai");
+    let model_for_effort = request
+        .llm_model
+        .as_deref()
+        .or_else(|| workspace.as_ref().map(|w| w.llm_model.as_str()))
+        .unwrap_or("");
+    let reasoning_effort = crate::services::resolve_query_reasoning_effort(
+        workspace.as_ref(),
+        provider_for_effort,
+        model_for_effort,
+        request.reasoning_effort.as_deref(),
+        None,
+    );
+
     let params = QueryExecutionParams {
         query: request.query.clone(),
         mode,
@@ -150,6 +168,7 @@ pub async fn execute_query(
         workspace_id: tenant_ctx.workspace_id.clone(),
         llm_provider: request.llm_provider.clone(),
         llm_model: request.llm_model.clone(),
+        reasoning_effort,
     };
 
     let engine_request = build_engine_request(&params);

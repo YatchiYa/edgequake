@@ -60,12 +60,13 @@ async fn e2e_spec091_fleet_recall_parity_entity_typed_vs_exact() {
         .expect("seed entity");
         let emb = w3::make_embedding(DIM, 700 + i as u32);
         let legacy_id = format!("entity:{name}");
-        corpus.push((legacy_id, emb.clone()));
+        corpus.push((legacy_id.clone(), emb.clone()));
         rows.push(FleetEmbeddingRow {
             key: FleetEmbeddingKey::Entity(eid),
             workspace_id: WorkspaceId(ws),
             dimensions: DIM as i32,
             embedding: emb,
+            legacy_vector_id: Some(legacy_id),
         });
     }
     index

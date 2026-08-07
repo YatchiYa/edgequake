@@ -16,6 +16,7 @@ import { updateWorkspace } from '@/lib/api/edgequake';
 import { buildWorkspaceUpdatePayload } from '@/lib/onboarding/model-payload';
 import {
   prefillReconfigureFromWorkspace,
+  resolveHydratedUseServerDefaults,
   snapshotFromWizardState,
 } from '@/lib/onboarding/reconfigure-from-workspace';
 import { useWizardDraftPersistence } from '@/lib/onboarding/use-wizard-draft-persistence';
@@ -83,6 +84,12 @@ export function ReconfigureWorkspaceWizard({
   const inherited = useInheritedModelDefaults(tenantId);
   const { hasConfiguredDefaults } = inherited;
   const prefilledForId = useRef<string | null>(null);
+  const llmRef = useRef(llm);
+  const embeddingRef = useRef(embedding);
+  const visionRef = useRef(vision);
+  llmRef.current = llm;
+  embeddingRef.current = embedding;
+  visionRef.current = vision;
 
   const { clearDraft } = useWizardDraftPersistence(
     'reconfigure-workspace',
@@ -108,13 +115,27 @@ export function ReconfigureWorkspaceWizard({
     baselineSnapshotRef.current = prefill.snapshot;
     const stored = loadWizardDraft('reconfigure-workspace', workspace.id);
     if (stored) {
-      setDraft(hydrateWizardDraft(prefill.draft, stored));
+      const hydrated = hydrateWizardDraft(prefill.draft, stored);
+      // Never keep useServerDefaults=true while Advanced is open / picks exist —
+      // that makes Apply clear overrides and drop picker selections.
+      const advanced =
+        prefill.advancedOpen ||
+        !prefill.draft.useServerDefaults ||
+        Boolean(prefill.llm || prefill.embedding || prefill.vision);
+      setDraft({
+        ...hydrated,
+        useServerDefaults: resolveHydratedUseServerDefaults({
+          prefillAdvancedOpen: prefill.advancedOpen,
+          prefillUseServerDefaults: prefill.draft.useServerDefaults,
+          hasPrefillPicks: Boolean(prefill.llm || prefill.embedding || prefill.vision),
+          storedUseServerDefaults: hydrated.useServerDefaults,
+        }),
+      });
       setStepIndex(clampStepIndex(stored.stepIndex, steps.length));
-      // Keep model picks from workspace baseline; Advanced mirrors overrides.
       setLlm(prefill.llm);
       setEmbedding(prefill.embedding);
       setVision(prefill.vision);
-      setAdvancedOpen(prefill.advancedOpen || !prefill.draft.useServerDefaults);
+      setAdvancedOpen(advanced);
     } else {
       setDraft(prefill.draft);
       setLlm(prefill.llm);
@@ -134,6 +155,40 @@ export function ReconfigureWorkspaceWizard({
 
   const patchDraft = useCallback((patch: Partial<WizardDraft>) => {
     setDraft((d) => ({ ...d, ...patch }));
+  }, []);
+
+  /** Concrete model pick → Apply must send overrides (never clear-all). */
+  const commitLlm = useCallback((next: LLMSelection | undefined) => {
+    setLlm(next);
+    llmRef.current = next;
+    if (next?.provider && next?.model) {
+      setDraft((d) => ({ ...d, useServerDefaults: false }));
+      setAdvancedOpen(true);
+    } else if (!next && !embeddingRef.current && !visionRef.current) {
+      setDraft((d) => ({ ...d, useServerDefaults: true }));
+    }
+  }, []);
+
+  const commitEmbedding = useCallback((next: EmbeddingSelection | undefined) => {
+    setEmbedding(next);
+    embeddingRef.current = next;
+    if (next?.provider && next?.model) {
+      setDraft((d) => ({ ...d, useServerDefaults: false }));
+      setAdvancedOpen(true);
+    } else if (!llmRef.current && !next && !visionRef.current) {
+      setDraft((d) => ({ ...d, useServerDefaults: true }));
+    }
+  }, []);
+
+  const commitVision = useCallback((next: LLMSelection | undefined) => {
+    setVision(next);
+    visionRef.current = next;
+    if (next?.provider && next?.model) {
+      setDraft((d) => ({ ...d, useServerDefaults: false }));
+      setAdvancedOpen(true);
+    } else if (!llmRef.current && !embeddingRef.current && !next) {
+      setDraft((d) => ({ ...d, useServerDefaults: true }));
+    }
   }, []);
 
   const currentSnapshot = useMemo(
@@ -158,7 +213,13 @@ export function ReconfigureWorkspaceWizard({
   }, [currentSnapshot, documentCount]);
 
   // Vision optional on reconfigure (empty clears override → server default).
-  const advancedValid = Boolean(llm?.provider && embedding?.provider);
+  // LLM + embedding require both provider and model (two-step picker).
+  const advancedValid = Boolean(
+    llm?.provider &&
+      llm?.model &&
+      embedding?.provider &&
+      embedding?.model,
+  );
   const canGoNext = canProceed(stepId, draft, {
     hasConfiguredDefaults,
     advancedModelsValid: advancedValid,
@@ -215,6 +276,7 @@ export function ReconfigureWorkspaceWizard({
         entityTypes: draft.entityTypes,
         entityTypesStrict: draft.entityTypesStrict,
         entityTypeColors: draft.entityTypeColors,
+        reasoningEffort: draft.reasoningEffort,
       });
       const updated = await updateWorkspace(tenantId, workspace.id, payload);
       const pendingRebuild = toPendingRebuild(impact.rebuildHints);
@@ -259,9 +321,9 @@ export function ReconfigureWorkspaceWizard({
             llm={llm}
             embedding={embedding}
             vision={vision}
-            onLlmChange={setLlm}
-            onEmbeddingChange={setEmbedding}
-            onVisionChange={setVision}
+            onLlmChange={commitLlm}
+            onEmbeddingChange={commitEmbedding}
+            onVisionChange={commitVision}
             advancedOpen={advancedOpen}
             onAdvancedOpenChange={setAdvancedOpen}
           />

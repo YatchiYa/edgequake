@@ -38,6 +38,8 @@ export interface WizardDraft {
   entityTypesStrict: boolean;
   /** SPEC-102 — entity type → hex color overrides. */
   entityTypeColors: Record<string, string>;
+  /** SPEC-109 — seed default reasoning effort. */
+  reasoningEffort?: string;
 }
 
 export const EMPTY_WIZARD_DRAFT: WizardDraft = {
@@ -56,6 +58,7 @@ export const EMPTY_WIZARD_DRAFT: WizardDraft = {
   pdfParserBackend: 'none',
   entityTypesStrict: true,
   entityTypeColors: {},
+  reasoningEffort: undefined,
 };
 
 export function stepsForWizard(

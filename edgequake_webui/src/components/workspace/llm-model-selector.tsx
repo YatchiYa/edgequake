@@ -1,5 +1,5 @@
 /**
- * LLM model selector for workspace configuration (SPEC-043 unified picker).
+ * LLM model selector for workspace configuration (SPEC-043 two-step picker).
  */
 'use client';
 
@@ -26,7 +26,7 @@ interface LLMModelSelectorProps {
   className?: string;
   showUsageHint?: boolean;
   filterVision?: boolean;
-  /** SPEC-101: hide provider chip bar on simple density. */
+  /** @deprecated Ignored — provider is a dedicated select. */
   showProviderFilters?: boolean;
   showCapabilityFilters?: boolean;
 }
@@ -38,7 +38,6 @@ export function LLMModelSelector({
   className,
   showUsageHint = true,
   filterVision = false,
-  showProviderFilters = true,
   showCapabilityFilters,
 }: LLMModelSelectorProps) {
   const { data: llmData, isLoading, error } = useLlmModels();
@@ -87,12 +86,11 @@ export function LLMModelSelector({
         }
         disabled={disabled}
         filterVision={filterVision}
-        showProviderFilters={showProviderFilters}
         showCapabilityFilters={
           showCapabilityFilters !== undefined ? showCapabilityFilters : !filterVision
         }
         serverDefaultLabel={defaultLabel}
-        placeholder="Search LLM models…"
+        placeholder="Search models…"
       />
       {showUsageHint && (
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

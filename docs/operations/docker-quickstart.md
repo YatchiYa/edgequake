@@ -2,7 +2,7 @@
 title: 'Docker Quickstart'
 ---
 
-> **Product: v0.24.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.24.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Docker Quickstart — Full Stack in One Command
 
@@ -59,7 +59,7 @@ make stack
 
 ```bash
 # Download a specific version's compose file
-EDGEQUAKE_VERSION=0.24.0
+EDGEQUAKE_VERSION=0.24.2
 curl -fsSL "https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/docker-compose.quickstart.yml" \
   -o docker-compose.quickstart.yml
 
@@ -125,7 +125,7 @@ OPENAI_BASE_URL=http://localhost:1234/v1 \
 | `OPENAI_BASE_URL`              | _(empty)_                           | Override OpenAI base URL               |
 | `OLLAMA_HOST`                  | `http://host.docker.internal:11434` | Ollama server address                  |
 | `EDGEQUAKE_VERSION`            | `latest`                            | Pin to a specific release tag          |
-| `EDGEQUAKE_POSTGRES_TAG`       | same as `EDGEQUAKE_VERSION`         | PG image tag (`0.24.0-pg16\|pg17\|pg18`) |
+| `EDGEQUAKE_POSTGRES_TAG`       | same as `EDGEQUAKE_VERSION`         | PG image tag (`0.24.2-pg16\|pg17\|pg18`) |
 | `EDGEQUAKE_DEV_MODE`           | `true` (quickstart)                 | Open API without login — not for prod  |
 | `EDGEQUAKE_PORT`               | `8080`                              | API port                               |
 | `FRONTEND_PORT`                | `3000`                              | Web UI port                            |
@@ -182,30 +182,30 @@ All images are multi-arch (`linux/amd64`, `linux/arm64`) and published to GitHub
 
 | Image                                      | Tag                                      | Description                        |
 | ------------------------------------------ | ---------------------------------------- | ---------------------------------- |
-| `ghcr.io/raphaelmansuy/edgequake`          | `latest` / `0.24.0`                      | Rust API server                    |
-| `ghcr.io/raphaelmansuy/edgequake-frontend` | `latest` / `0.24.0`                      | Next.js Web UI                     |
-| `ghcr.io/raphaelmansuy/edgequake-postgres` | `latest` / `0.24.0` / `0.24.0-pg16\|pg17\|pg18` | PostgreSQL + pgvector + Apache AGE |
+| `ghcr.io/raphaelmansuy/edgequake`          | `latest` / `0.24.2`                      | Rust API server                    |
+| `ghcr.io/raphaelmansuy/edgequake-frontend` | `latest` / `0.24.2`                      | Next.js Web UI                     |
+| `ghcr.io/raphaelmansuy/edgequake-postgres` | `latest` / `0.24.2` / `0.24.2-pg16\|pg17\|pg18` | PostgreSQL + pgvector + Apache AGE |
 
 **PostgreSQL major tags** (extension pins: pgvector **0.8.3**, AGE **1.6.0** on PG16 / **1.7.0** on PG17+):
 
 | Tag | PostgreSQL |
 | --- | ---------- |
-| `0.24.0` / `latest` / `0.24.0-pg18` / `latest-pg18` | PG18 (default) |
-| `0.24.0-pg17` / `latest-pg17` | PG17 |
-| `0.24.0-pg16` / `latest-pg16` | PG16 |
+| `0.24.2` / `latest` / `0.24.2-pg18` / `latest-pg18` | PG18 (default) |
+| `0.24.2-pg17` / `latest-pg17` | PG17 |
+| `0.24.2-pg16` / `latest-pg16` | PG16 |
 
 Pin PostgreSQL major when starting:
 
 ```bash
-EDGEQUAKE_VERSION=0.24.0 EDGEQUAKE_POSTGRES_TAG=0.24.0-pg16 \
+EDGEQUAKE_VERSION=0.24.2 EDGEQUAKE_POSTGRES_TAG=0.24.2-pg16 \
   docker compose -f docker-compose.quickstart.yml up -d
 ```
 
 Pull an image manually:
 ```bash
-docker pull ghcr.io/raphaelmansuy/edgequake:0.24.0
-docker pull ghcr.io/raphaelmansuy/edgequake-frontend:0.24.0
-docker pull ghcr.io/raphaelmansuy/edgequake-postgres:0.24.0
+docker pull ghcr.io/raphaelmansuy/edgequake:0.24.2
+docker pull ghcr.io/raphaelmansuy/edgequake-frontend:0.24.2
+docker pull ghcr.io/raphaelmansuy/edgequake-postgres:0.24.2
 ```
 
 ---

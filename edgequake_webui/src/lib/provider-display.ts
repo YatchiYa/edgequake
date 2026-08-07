@@ -26,6 +26,22 @@ export function getProviderDisplayName(providerId: string): string {
   return PROVIDER_DISPLAY_NAMES[providerId.toLowerCase()] || providerId;
 }
 
+/** Short subtitle clarifying gateway vs local vs cloud API (two-step picker UX). */
+const PROVIDER_SUBTITLES: Record<string, string> = {
+  openrouter: "Multi-model gateway",
+  ollama: "Local",
+  lmstudio: "Local",
+  "vscode-copilot": "IDE gateway",
+  azure: "Azure-hosted OpenAI",
+  vertexai: "Google Cloud",
+  bedrock: "AWS-hosted",
+  mock: "Development only",
+};
+
+export function getProviderSubtitle(providerId: string): string | null {
+  return PROVIDER_SUBTITLES[providerId.toLowerCase()] ?? null;
+}
+
 /** Human label for provider auth model (SPEC-043 §011). */
 export function getProviderAuthLabel(
   providerId: string,

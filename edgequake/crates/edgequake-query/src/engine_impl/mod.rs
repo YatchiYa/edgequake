@@ -1103,13 +1103,16 @@ mod tests {
             };
             let context = test_context();
             let (answer, _) = engine
-                .generate_answer(
+                .generate_answer_with_provider(
                     "What is Rust?",
                     &context,
+                    None,
+                    None,
                     None,
                     &[],
                     None,
                     Some("Multiple Paragraphs"),
+                    None,
                 )
                 .await
                 .unwrap();

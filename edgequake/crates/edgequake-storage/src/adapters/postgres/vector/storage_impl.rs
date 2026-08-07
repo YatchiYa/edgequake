@@ -379,12 +379,7 @@ impl VectorStorage for PgVectorStorage {
             return Ok(());
         }
 
-        // SPEC-091: typed write-stop — legacy table may be absent; compensate
-        // must not 42P01 after a typed-only ingest.
-        if crate::legacy_vector_writes_stopped() {
-            return Ok(());
-        }
-
+        // Lifecycle DELETE runs under typed authority (wipe/retract). 42P01 soft.
         let pool = self.pool.get().await?;
 
         let sql = format!("DELETE FROM {} WHERE id = ANY($1)", self.table_name);
@@ -396,9 +391,6 @@ impl VectorStorage for PgVectorStorage {
     }
 
     async fn delete_entity(&self, entity_name: &str) -> Result<()> {
-        if crate::legacy_vector_writes_stopped() {
-            return Ok(());
-        }
         let pool = self.pool.get().await?;
 
         let sql = format!(
@@ -414,9 +406,6 @@ impl VectorStorage for PgVectorStorage {
 
     async fn delete_entities_batch(&self, entity_names: &[String]) -> Result<usize> {
         if entity_names.is_empty() {
-            return Ok(0);
-        }
-        if crate::legacy_vector_writes_stopped() {
             return Ok(0);
         }
         let mut unique = entity_names.to_vec();
@@ -437,9 +426,6 @@ impl VectorStorage for PgVectorStorage {
     }
 
     async fn delete_entity_relations(&self, entity_name: &str) -> Result<()> {
-        if crate::legacy_vector_writes_stopped() {
-            return Ok(());
-        }
         let pool = self.pool.get().await?;
         // SPEC-090 F-090-09b: UNION ctid arms — avoid non-sargable OR across JSONB keys.
         let sql = format!(
@@ -576,9 +562,7 @@ impl VectorStorage for PgVectorStorage {
     }
 
     async fn clear(&self) -> Result<()> {
-        if crate::legacy_vector_writes_stopped() {
-            return Ok(());
-        }
+        // Lifecycle clear: run DELETE when relation exists (42P01 soft).
         let pool = self.pool.get().await?;
 
         let sql = format!("DELETE FROM {}", self.table_name);
@@ -593,10 +577,11 @@ impl VectorStorage for PgVectorStorage {
     ///
     /// QW6 / SPEC-090 F-090-09: sargable delete arms — indexed `workspace_id`
     /// column first, then JSONB-only legacy rows via UNION ctid (no bare OR).
+    ///
+    /// LAW-MIG / SPEC-111: under typed authority this still DELETEs residual
+    /// legacy rows (write-stop blocks upsert/CREATE only). Wipe must not leave
+    /// orphan fleet keys that fail iw2 / provenance-stamp verify forever.
     async fn clear_workspace(&self, workspace_id: &uuid::Uuid) -> Result<usize> {
-        if crate::legacy_vector_writes_stopped() {
-            return Ok(0);
-        }
         let pool = self.pool.get().await?;
         let ws = workspace_id.to_string();
 
@@ -630,9 +615,7 @@ impl VectorStorage for PgVectorStorage {
         if document_id.is_empty() {
             return Ok(0);
         }
-        if crate::legacy_vector_writes_stopped() {
-            return Ok(0);
-        }
+        // Lifecycle delete: purge residual legacy rows even under typed authority.
         let pool = self.pool.get().await?;
         let chunk_prefix = format!("{document_id}-chunk-%");
         let sql = format!(

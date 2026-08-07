@@ -70,13 +70,13 @@ export function PdfParserBackendField({
   }
 
   return (
-    <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+    <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg min-h-[3.75rem]">
       {value === 'vision' || (value === 'none' && serverBackend === 'vision') ? (
-        <Eye className="h-4 w-4 text-orange-600" />
+        <Eye className="h-4 w-4 text-orange-600 shrink-0" />
       ) : (
-        <Gauge className="h-4 w-4 text-amber-600" />
+        <Gauge className="h-4 w-4 text-amber-600 shrink-0" />
       )}
-      <div>
+      <div className="min-w-0 flex-1">
         <div className="font-medium" data-testid="pdf-parser-backend-label">
           {backendLabel(value, t)}
         </div>
@@ -98,7 +98,7 @@ export function PdfParserBackendField({
                 )}
         </div>
       </div>
-      <Badge variant="outline" className="ml-auto">
+      <Badge variant="outline" className="ml-auto shrink-0">
         {value === 'none'
           ? t('settings.pdfParser.resolvesTo', 'Resolves to {{value}}', {
               value: resolvedName,

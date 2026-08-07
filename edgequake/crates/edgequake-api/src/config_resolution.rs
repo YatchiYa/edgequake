@@ -455,16 +455,60 @@ pub fn priority_rule(snapshot: &ServerConfigSnapshot) -> String {
 }
 
 pub fn build_effective_config(snapshot: &ServerConfigSnapshot) -> EffectiveConfigResponse {
-    use crate::handlers::settings::build_config_area;
+    use crate::handlers::settings::{build_config_area, ReasoningEffortExplain};
+    use edgequake_core::{resolve_role_reasoning_effort, LlmRole};
 
     let (llm_levels, llm_provider, llm_model) = resolve_llm_chain(snapshot);
     let (emb_levels, emb_provider, emb_model) = resolve_embedding_chain(snapshot);
     let (vis_levels, vis_provider, vis_model) = resolve_vision_chain(snapshot);
 
+    let mut empty_ws = Workspace::new(uuid::Uuid::nil(), "fleet", "fleet");
+    empty_ws.llm_provider = llm_provider.clone();
+    empty_ws.llm_model = llm_model.clone();
+    empty_ws.embedding_provider = emb_provider.clone();
+    empty_ws.embedding_model = emb_model.clone();
+    empty_ws.vision_llm_provider = Some(vis_provider.clone());
+    empty_ws.vision_llm_model = Some(vis_model.clone());
+
+    let mut reasoning_roles = std::collections::HashMap::new();
+    for role in LlmRole::all() {
+        let (provider, model) = match role {
+            LlmRole::Vlm => (vis_provider.as_str(), vis_model.as_str()),
+            _ => (llm_provider.as_str(), llm_model.as_str()),
+        };
+        let server_by_role = snapshot
+            .llm_defaults
+            .reasoning_by_role
+            .get(role.as_str())
+            .map(String::as_str);
+        let resolved = resolve_role_reasoning_effort(
+            *role,
+            provider,
+            model,
+            &empty_ws,
+            None,
+            None,
+            snapshot.llm_defaults.reasoning_effort.as_deref(),
+            server_by_role,
+        );
+        reasoning_roles.insert(
+            role.as_str().to_string(),
+            ReasoningEffortExplain {
+                desired: resolved.desired,
+                effective: resolved.effective,
+                source: resolved.source,
+                clamped: resolved.clamped,
+                provider: provider.to_string(),
+                model: model.to_string(),
+            },
+        );
+    }
+
     EffectiveConfigResponse {
         llm: build_config_area(llm_levels, llm_provider, llm_model),
         embedding: build_config_area(emb_levels, emb_provider, emb_model),
         vision: build_config_area(vis_levels, vis_provider, vis_model),
+        reasoning_roles,
         priority_rule: priority_rule(snapshot),
         priority_mode: snapshot.priority_mode.as_str().to_string(),
         server_config_available: snapshot.postgres_available,

@@ -5,7 +5,7 @@ Paths under `edgequake_webui/` unless noted.
 | Finding | Code | Test | Law |
 |---------|------|------|-----|
 | F-101-01 | `components/onboarding/{wizard-shell,create-*-wizard}.tsx`; thin `header-tenant-selector` / `tenant-guard` | Playwright `spec101-create-wizards` | LAW-101-1 |
-| F-101-02 | `steps/model-defaults-step.tsx`; `showProviderFilters=false` | Playwright `spec101-no-chip-storm` | LAW-101-3 |
+| F-101-02 | `steps/model-defaults-step.tsx`; two-step provider→model (no chip bars) | Playwright `spec101-no-chip-storm` | LAW-101-3 |
 | F-101-03 | `server-defaults-card.tsx`; `use-server-model-defaults` (+ vision) | Playwright `spec101-server-defaults-explicit` · `issue-233-*` | LAW-101-2 |
 | F-101-04 | `edgequake-api` `handlers/setup.rs`; gate `ensure_defaults` | Rust setup · Playwright `spec101-first-run` | LAW-101-4/7 |
 | F-101-05 | `use-setup-status.ts` → `setNeedsOnboarding` | unit + first-run | LAW-101-1 |

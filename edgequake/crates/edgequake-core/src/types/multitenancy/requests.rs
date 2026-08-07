@@ -104,6 +104,12 @@ pub struct CreateWorkspaceRequest {
     /// Custom entity-type → hex color map for graph visualization (SPEC-102).
     /// Keys normalized UPPERCASE; values `#RGB` / `#RRGGBB`. Empty map clears.
     pub entity_type_colors: Option<HashMap<String, String>>,
+
+    /// SPEC-109: workspace metadata `default_reasoning_effort`.
+    pub default_reasoning_effort: Option<String>,
+
+    /// SPEC-109: merge into workspace metadata `llm_roles` (role → config).
+    pub llm_roles: Option<serde_json::Value>,
 }
 
 impl CreateWorkspaceRequest {
@@ -316,6 +322,13 @@ pub struct UpdateWorkspaceRequest {
     /// Custom entity-type → hex color map (SPEC-102). Omit = leave unchanged;
     /// empty map clears metadata key.
     pub entity_type_colors: Option<HashMap<String, String>>,
+
+    /// SPEC-109: set/clear workspace `default_reasoning_effort` metadata.
+    /// Empty string / `"none"` / `"auto"` clears.
+    pub default_reasoning_effort: Option<String>,
+
+    /// SPEC-109: merge role effort overrides into metadata `llm_roles`.
+    pub llm_roles: Option<serde_json::Value>,
 }
 
 /// Statistics for a workspace.

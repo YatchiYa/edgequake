@@ -1,0 +1,21 @@
+{
+  "note": "Illustrative shape from GET /api/v1/config/effective after SPEC-109",
+  "reasoning_roles": {
+    "extract": {
+      "desired": null,
+      "effective": "minimal",
+      "source": "compiled_default",
+      "clamped": false,
+      "provider": "openai",
+      "model": "gpt-5-mini"
+    },
+    "query": {
+      "desired": null,
+      "effective": null,
+      "source": "compiled_default",
+      "clamped": false,
+      "provider": "openai",
+      "model": "gpt-5-mini"
+    }
+  }
+}

@@ -232,21 +232,20 @@ fn parse_vector_text_for_verify(raw: &str) -> Option<Vec<f32>> {
 
 /// SPEC-091 IW2 verification: coverage + sampled vector equality for one fleet
 /// family in one legacy table. 42P01-safe when the legacy source is gone.
+///
+/// SPEC-111 honesty closeout: `actual` is **provenance-only** coverage
+/// (`legacy_vector_id` match; reports also allow `report_id`). Normalize is
+/// write/stamp SSOT only — never used as verify coverage. Pre-143 schema
+/// (missing column) fail-closes entity/rel `actual = 0`.
 pub async fn verify_fleet_embedding_backfill(
     pool: &PgPool,
     vectors_table: &str,
     family: crate::embedding_family::EmbeddingFamily,
     model_name: &str,
 ) -> Result<VerifyReport, StorageError> {
-    use crate::embedding_family::{
-        entity_name_from_legacy_id, parse_relationship_legacy_key, EmbeddingFamily,
-    };
+    use crate::embedding_family::EmbeddingFamily;
 
     let typed_table = family.typed_table();
-    let typed = sqlx::query_scalar::<_, i64>(&format!("SELECT COUNT(*) FROM {typed_table}"))
-        .fetch_one(pool)
-        .await
-        .map_err(|e| StorageError::Database(format!("iw2 verify typed count failed: {e}")))?;
 
     let legacy_filter = match family {
         EmbeddingFamily::Entity => {
@@ -270,7 +269,7 @@ pub async fn verify_fleet_embedding_backfill(
             return Ok(VerifyReport {
                 metric: format!("{typed_table}_coverage+vector"),
                 expected: 0,
-                actual: typed,
+                actual: 0,
                 sampled: 0,
                 mismatches: 0,
             });
@@ -278,6 +277,62 @@ pub async fn verify_fleet_embedding_backfill(
         Err(e) => {
             return Err(StorageError::Database(format!(
                 "iw2 verify legacy count failed: {e}"
+            )))
+        }
+    };
+
+    // Provenance-only coverage (≡ migration 131 / LAW-C3).
+    let covered_sql = match family {
+        EmbeddingFamily::Entity => format!(
+            "SELECT COUNT(*) FROM {vectors_table} v \
+             WHERE v.id LIKE 'entity:%' \
+               AND EXISTS (SELECT 1 FROM public.entity_embeddings ee \
+                           WHERE ee.legacy_vector_id = v.id)"
+        ),
+        EmbeddingFamily::Relationship => format!(
+            "SELECT COUNT(*) FROM {vectors_table} v \
+             WHERE v.id LIKE '%->%:%' AND v.id NOT LIKE 'entity:%' \
+               AND v.id NOT LIKE 'community_report:%' \
+               AND EXISTS (SELECT 1 FROM public.relationship_embeddings re \
+                           WHERE re.legacy_vector_id = v.id)"
+        ),
+        EmbeddingFamily::Report => format!(
+            "SELECT COUNT(*) FROM {vectors_table} v \
+             WHERE v.id LIKE 'community_report:%' \
+               AND (EXISTS (SELECT 1 FROM public.report_embeddings re \
+                            WHERE re.legacy_vector_id = v.id) \
+                    OR EXISTS (SELECT 1 FROM public.report_embeddings re \
+                               WHERE re.report_id = v.id))"
+        ),
+    };
+
+    let covered = match sqlx::query_scalar::<_, i64>(&covered_sql)
+        .fetch_one(pool)
+        .await
+    {
+        Ok(n) => n,
+        Err(sqlx::Error::Database(db))
+            if db.code().as_deref() == Some("42703")
+                || db.message().contains("legacy_vector_id") =>
+        {
+            // Pre-143: entity/rel cannot be provenance-covered → fail closed.
+            // Reports still allow report_id (matches migration 131).
+            match family {
+                EmbeddingFamily::Entity | EmbeddingFamily::Relationship => 0,
+                EmbeddingFamily::Report => sqlx::query_scalar::<_, i64>(&format!(
+                    "SELECT COUNT(*) FROM {vectors_table} v \
+                     WHERE v.id LIKE 'community_report:%' \
+                       AND EXISTS (SELECT 1 FROM public.report_embeddings re \
+                                   WHERE re.report_id = v.id)"
+                ))
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            }
+        }
+        Err(e) => {
+            return Err(StorageError::Database(format!(
+                "iw2 verify coverage count failed: {e}"
             )))
         }
     };
@@ -312,49 +367,32 @@ pub async fn verify_fleet_embedding_backfill(
             continue;
         };
         sampled += 1;
+        // Prefer provenance lookup (normalize-safe).
         let typed_emb: Option<String> = match family {
-            EmbeddingFamily::Entity => {
-                let Some(name) = entity_name_from_legacy_id(&id) else {
-                    mismatches += 1;
-                    continue;
-                };
-                sqlx::query_scalar(
-                    "SELECT ee.embedding::text FROM entity_embeddings ee \
-                     JOIN entities e ON e.id = ee.entity_id \
-                     JOIN embedding_models em ON em.id = ee.model_id AND em.name = $2 \
-                     WHERE e.name = $1 LIMIT 1",
-                )
-                .bind(name)
-                .bind(model_name)
-                .fetch_optional(pool)
-                .await
-                .map_err(|e| StorageError::Database(format!("iw2 verify entity fetch: {e}")))?
-            }
-            EmbeddingFamily::Relationship => {
-                let Some((src, tgt, rel_type)) = parse_relationship_legacy_key(&id) else {
-                    mismatches += 1;
-                    continue;
-                };
-                sqlx::query_scalar(
-                    "SELECT re.embedding::text FROM relationship_embeddings re \
-                     JOIN relationships r ON r.id = re.relationship_id \
-                     JOIN entities es ON es.id = r.source_id \
-                     JOIN entities et ON et.id = r.target_id \
-                     JOIN embedding_models em ON em.id = re.model_id AND em.name = $4 \
-                     WHERE es.name = $1 AND et.name = $2 AND r.relation_type = $3 LIMIT 1",
-                )
-                .bind(&src)
-                .bind(&tgt)
-                .bind(&rel_type)
-                .bind(model_name)
-                .fetch_optional(pool)
-                .await
-                .map_err(|e| StorageError::Database(format!("iw2 verify rel fetch: {e}")))?
-            }
+            EmbeddingFamily::Entity => sqlx::query_scalar(
+                "SELECT ee.embedding::text FROM entity_embeddings ee \
+                 JOIN embedding_models em ON em.id = ee.model_id AND em.name = $2 \
+                 WHERE ee.legacy_vector_id = $1 LIMIT 1",
+            )
+            .bind(&id)
+            .bind(model_name)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None),
+            EmbeddingFamily::Relationship => sqlx::query_scalar(
+                "SELECT re.embedding::text FROM relationship_embeddings re \
+                 JOIN embedding_models em ON em.id = re.model_id AND em.name = $2 \
+                 WHERE re.legacy_vector_id = $1 LIMIT 1",
+            )
+            .bind(&id)
+            .bind(model_name)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None),
             EmbeddingFamily::Report => sqlx::query_scalar(
                 "SELECT re.embedding::text FROM report_embeddings re \
                  JOIN embedding_models em ON em.id = re.model_id AND em.name = $2 \
-                 WHERE re.report_id = $1 LIMIT 1",
+                 WHERE re.legacy_vector_id = $1 OR re.report_id = $1 LIMIT 1",
             )
             .bind(&id)
             .bind(model_name)
@@ -376,7 +414,7 @@ pub async fn verify_fleet_embedding_backfill(
     Ok(VerifyReport {
         metric: format!("{typed_table}_coverage+vector"),
         expected: legacy_rows,
-        actual: typed,
+        actual: covered,
         sampled,
         mismatches,
     })

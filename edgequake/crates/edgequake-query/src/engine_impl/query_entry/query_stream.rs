@@ -178,7 +178,10 @@ impl QueryEngine {
         let cache_key = crate::cache::llm_cache_storage_key(
             mode_str,
             crate::cache::LlmCacheType::Query,
-            &crate::cache::hash_query_prompt(&prompt),
+            &crate::cache::hash_query_prompt_with_effort(
+                &prompt,
+                request.reasoning_effort.as_deref(),
+            ),
         );
         let answer_cache_on =
             self.answer_cache.is_some() || crate::cache::answer_cache_enabled_from_env();
@@ -213,12 +216,21 @@ impl QueryEngine {
         // 083: prefer system/user chat when not COMPLETE_BLOB (even for stream entry —
         // token stream API is one-blob; chat preserves LR roles as a one-shot stream).
         let stream = if !use_complete_blob {
-            use edgequake_llm::traits::ChatMessage;
+            use edgequake_llm::traits::{ChatMessage, CompletionOptions};
             let messages = vec![
                 ChatMessage::system(&system_text),
                 ChatMessage::user(&request.query),
             ];
-            match llm.chat(&messages, None).await {
+            let completion_opts = request
+                .reasoning_effort
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|effort| CompletionOptions {
+                    reasoning_effort: Some(effort.to_string()),
+                    ..Default::default()
+                });
+            match llm.chat(&messages, completion_opts.as_ref()).await {
                 Ok(response) => {
                     if context_nonempty && !response.content.is_empty() {
                         if let Some(cache) = llm_cache.as_ref() {

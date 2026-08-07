@@ -1,0 +1,90 @@
+=== SPEC-111 residual harden gates 2026-08-07T00:12:48Z ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_storage-75f116dc3c268ef5)
+
+running 4 tests
+test migration_engine::coverage::tests::resolve_display_name_to_normalized_legacy_key ... ok
+test migration_engine::coverage::tests::resolve_already_normalized_spine ... ok
+test migration_engine::coverage::tests::resolve_empty_or_opaque_unresolved ... ok
+test migration_engine::coverage::tests::resolve_workspace_prefixed_spine_name ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 388 filtered out; finished in 0.00s
+
+   Compiling edgequake-storage v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.31s
+     Running tests/contract_spec111_residue_cast.rs (target/debug/deps/contract_spec111_residue_cast-39d92282c09b2ecc)
+
+running 3 tests
+test contract_spec111_fleet_mirror_uses_normalize_index ... ok
+test contract_spec111_retirable_uses_uncovered_not_emptiness ... ok
+test contract_spec111_residue_cast_direction ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/e2e_spec091_vector_retire.rs (target/debug/deps/e2e_spec091_vector_retire-c3976f63f131f8f0)
+
+running 5 tests
+test e2e_spec091_retire_keeps_entity_vectors_in_shared_table ... ok
+test e2e_spec091_retire_fleet_spans_multiple_legacy_tables ... ok
+test contract_spec091_advisor_matches_126_guard ... ok
+test e2e_spec091_retire_guard_aborts_on_uncovered_chunk ... ok
+test e2e_spec091_retire_drops_covered_chunk_rows_and_dedicated_table ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s
+
+     Running tests/e2e_spec111_iw2_normalize.rs (target/debug/deps/e2e_spec111_iw2_normalize-8a06558b27ac6394)
+
+running 3 tests
+test contract_spec111_entity_name_index_unit ... ok
+test e2e_spec111_iw2_normalize_join_writes_with_provenance ... ok
+test e2e_spec111_iw2_unresolved_increments_failed ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running tests/e2e_spec111_provenance_parity.rs (target/debug/deps/e2e_spec111_provenance_parity-0df8c5dfdafb537b)
+
+running 6 tests
+test e2e_spec111_15_chunk_vs_fleet_retirable_distinct ... ok
+test e2e_spec111_11_stamp_makes_fleet_retirable ... ok
+test e2e_spec111_14_dual_legacy_second_uncovered ... ok
+test e2e_spec111_10_no_provenance_not_fleet_retirable ... ok
+test e2e_spec111_12_mirror_stamps_provenance ... ok
+test e2e_spec111_13_missing_workspace_uncovered ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.74s
+
+   Compiling edgequake-storage v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.32s
+     Running tests/e2e_spec091_console.rs (target/debug/deps/e2e_spec091_console-2ca79bf6101bbbde)
+
+running 1 test
+test contract_spec091_advisor_matches_125_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.39s
+
+   Compiling edgequake-storage v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+   Compiling edgequake-api v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-api)
+   Compiling edgequake-pipeline v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-pipeline)
+   Compiling edgequake-query v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-query)
+warning: method `generate_answer` is never used
+   --> crates/edgequake-query/src/engine_impl/prompt.rs:699:25
+    |
+110 | impl QueryEngine {
+    | ---------------- method in this implementation
+...
+699 |     pub(super) async fn generate_answer(
+    |                         ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling edgequake-core v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-core)
+warning: `edgequake-query` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 39.74s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_api-338ddf6dd0c14158)
+
+running 2 tests
+test state::migration_bootstrap::reconcile::m131::tests::broken_and_fixed_checksums_are_distinct ... ok
+test state::migration_bootstrap::reconcile::m131::tests::contract_checksum_drift_fails_loud_without_dev_mode ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 1251 filtered out; finished in 0.00s
+

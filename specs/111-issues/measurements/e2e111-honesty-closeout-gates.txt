@@ -1,0 +1,45 @@
+   Compiling edgequake-storage v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.17s
+     Running tests/contract_spec111_residue_cast.rs (target/debug/deps/contract_spec111_residue_cast-39d92282c09b2ecc)
+
+running 3 tests
+test contract_spec111_fleet_mirror_uses_normalize_index ... ok
+test contract_spec111_retirable_uses_uncovered_not_emptiness ... ok
+test contract_spec111_residue_cast_direction ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/e2e_spec091_vector_retire.rs (target/debug/deps/e2e_spec091_vector_retire-c3976f63f131f8f0)
+
+running 5 tests
+test e2e_spec091_retire_guard_aborts_on_uncovered_chunk ... ok
+test e2e_spec091_retire_keeps_entity_vectors_in_shared_table ... ok
+test e2e_spec091_retire_drops_covered_chunk_rows_and_dedicated_table ... ok
+test contract_spec091_advisor_matches_126_guard ... ok
+test e2e_spec091_retire_fleet_spans_multiple_legacy_tables ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.98s
+
+     Running tests/e2e_spec111_iw2_normalize.rs (target/debug/deps/e2e_spec111_iw2_normalize-8a06558b27ac6394)
+
+running 3 tests
+test contract_spec111_entity_name_index_unit ... ok
+test e2e_spec111_iw2_unresolved_increments_failed ... ok
+test e2e_spec111_iw2_normalize_join_writes_with_provenance ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+     Running tests/e2e_spec111_provenance_parity.rs (target/debug/deps/e2e_spec111_provenance_parity-0df8c5dfdafb537b)
+
+running 8 tests
+test e2e_spec111_15_chunk_vs_fleet_retirable_distinct ... ok
+test e2e_spec111_14_dual_legacy_second_uncovered ... ok
+test e2e_spec111_13_missing_workspace_uncovered ... ok
+test e2e_spec111_11_stamp_makes_fleet_retirable ... ok
+test e2e_spec111_16_confirm_drop_fleet_after_provenance ... ok
+test e2e_spec111_12_mirror_stamps_provenance ... ok
+test e2e_spec111_10_no_provenance_not_fleet_retirable ... ok
+test e2e_spec111_17_abort_without_provenance ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s
+

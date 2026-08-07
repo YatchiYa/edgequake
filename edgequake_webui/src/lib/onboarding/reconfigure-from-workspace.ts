@@ -90,3 +90,20 @@ export function snapshotFromWizardState(args: {
     entityTypeColors: { ...(args.draft.entityTypeColors ?? {}) },
   };
 }
+
+/**
+ * When restoring a session draft, never keep useServerDefaults=true while Advanced
+ * is open or the workspace already has concrete picks — Apply would clear overrides.
+ */
+export function resolveHydratedUseServerDefaults(args: {
+  prefillAdvancedOpen: boolean;
+  prefillUseServerDefaults: boolean;
+  hasPrefillPicks: boolean;
+  storedUseServerDefaults: boolean;
+}): boolean {
+  const advanced =
+    args.prefillAdvancedOpen ||
+    !args.prefillUseServerDefaults ||
+    args.hasPrefillPicks;
+  return advanced ? false : args.storedUseServerDefaults;
+}

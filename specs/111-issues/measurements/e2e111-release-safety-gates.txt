@@ -1,0 +1,461 @@
+=== SPEC-111 release-safety gates 2026-08-07T05:39:27Z ===
+DATABASE_URL host=localhost:5432/edgequake
+
+=== fmt/clippy ===
+fmt: OK (cargo fmt --check)
+clippy: workspace --all-targets -D warnings (see prior CLIPPY_EXIT)
+
+=== storage honesty closeout ===
+   Compiling edgequake-storage v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.41s
+     Running tests/contract_spec111_residue_cast.rs (target/debug/deps/contract_spec111_residue_cast-39d92282c09b2ecc)
+
+running 3 tests
+test contract_spec111_fleet_mirror_uses_normalize_index ... ok
+test contract_spec111_retirable_uses_uncovered_not_emptiness ... ok
+test contract_spec111_residue_cast_direction ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/e2e_spec091_vector_retire.rs (target/debug/deps/e2e_spec091_vector_retire-c3976f63f131f8f0)
+
+running 5 tests
+test e2e_spec091_retire_keeps_entity_vectors_in_shared_table ... ok
+test e2e_spec091_retire_drops_covered_chunk_rows_and_dedicated_table ... ok
+test contract_spec091_advisor_matches_126_guard ... ok
+test e2e_spec091_retire_guard_aborts_on_uncovered_chunk ... ok
+test e2e_spec091_retire_fleet_spans_multiple_legacy_tables ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.82s
+
+     Running tests/e2e_spec111_iw2_normalize.rs (target/debug/deps/e2e_spec111_iw2_normalize-8a06558b27ac6394)
+
+running 3 tests
+test contract_spec111_entity_name_index_unit ... ok
+test e2e_spec111_iw2_normalize_join_writes_with_provenance ... ok
+test e2e_spec111_iw2_unresolved_increments_failed ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+     Running tests/e2e_spec111_provenance_parity.rs (target/debug/deps/e2e_spec111_provenance_parity-0df8c5dfdafb537b)
+
+running 8 tests
+test e2e_spec111_15_chunk_vs_fleet_retirable_distinct ... ok
+test e2e_spec111_13_missing_workspace_uncovered ... ok
+test e2e_spec111_17_abort_without_provenance ... ok
+test e2e_spec111_11_stamp_makes_fleet_retirable ... ok
+test e2e_spec111_14_dual_legacy_second_uncovered ... ok
+test e2e_spec111_12_mirror_stamps_provenance ... ok
+test e2e_spec111_16_confirm_drop_fleet_after_provenance ... ok
+test e2e_spec111_10_no_provenance_not_fleet_retirable ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.08s
+
+STORAGE_EXIT:0
+
+=== api clear-all + checksum wiring ===
+   Compiling edgequake-storage v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+   Compiling edgequake-tasks v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-tasks)
+   Compiling edgequake-api v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-api)
+   Compiling edgequake-pipeline v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-pipeline)
+   Compiling edgequake-query v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-query)
+   Compiling edgequake-core v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 41.60s
+     Running tests/e2e_document_deletion_postgres.rs (target/debug/deps/e2e_document_deletion_postgres-a75d440f45b71e84)
+
+running 1 test
+✅ SPEC-111 clear-all list empty + #366 no-KV-resurrect (PostgreSQL): PASSED
+test e2e_spec111_clear_all_list_empty_pg ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 4.09s
+
+CLEAR_ALL_EXIT:0
+   Compiling edgequake-api v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-api)
+warning: unused import: `std::sync::Arc`
+ --> crates/edgequake-api/src/handlers/documents/recovery/chunks.rs:7:5
+  |
+7 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `info` and `warn`
+ --> crates/edgequake-api/src/handlers/documents/recovery/chunks.rs:8:22
+  |
+8 | use tracing::{debug, info, warn};
+  |                      ^^^^  ^^^^
+
+warning: unused import: `FailedChunkInsert`
+  --> crates/edgequake-api/src/handlers/documents/recovery/chunks.rs:14:34
+   |
+14 | use edgequake_storage::{kv_keys, FailedChunkInsert, FailedChunkRecord};
+   |                                  ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ConfigPriorityMode`
+ --> crates/edgequake-api/src/handlers/llm_defaults.rs:4:22
+  |
+4 | use edgequake_core::{ConfigPriorityMode, ServerLlmDefaults};
+  |                      ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `helpers::extract_page_count`
+  --> crates/edgequake-api/src/handlers/pdf_upload/mod.rs:27:16
+   |
+27 | pub(crate) use helpers::extract_page_count;
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+  --> crates/edgequake-api/src/handlers/setup.rs:10:5
+   |
+10 | use uuid::Uuid;
+   |     ^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+ --> crates/edgequake-api/src/services/artifact_retrieval.rs:6:5
+  |
+6 | use uuid::Uuid;
+  |     ^^^^^^^^^^
+
+warning: unused import: `ContextArtifactPdf`
+  --> crates/edgequake-api/src/services/artifact_retrieval.rs:11:5
+   |
+11 |     ContextArtifactPdf, ContextArtifactResponse,
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `edgequake_storage::PdfProcessingStatus`
+  --> crates/edgequake-api/src/services/artifact_retrieval.rs:18:5
+   |
+18 | use edgequake_storage::PdfProcessingStatus;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+ --> crates/edgequake-api/src/services/document_body_loader.rs:8:5
+  |
+8 | use uuid::Uuid;
+  |     ^^^^^^^^^^
+
+warning: unused import: `tracing::info`
+  --> crates/edgequake-api/src/services/include_pdf_assets.rs:15:5
+   |
+15 | use tracing::info;
+   |     ^^^^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+ --> crates/edgequake-api/src/services/session_storage.rs:7:5
+  |
+7 | use uuid::Uuid;
+  |     ^^^^^^^^^^
+
+warning: unused import: `crate::services::identity_storage::IdentityPolicy`
+  --> crates/edgequake-api/src/services/session_storage.rs:11:5
+   |
+11 | use crate::services::identity_storage::IdentityPolicy;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+  --> crates/edgequake-api/src/services/task_document_sync.rs:15:5
+   |
+15 | use uuid::Uuid;
+   |     ^^^^^^^^^^
+
+warning: unused imports: `KV_FAMILY_WSDOC`, `KvFamilyMode`, and `kv_family_mode_from_env`
+  --> crates/edgequake-api/src/services/workspace_document_index.rs:13:5
+   |
+13 |     kv_family_mode_from_env, KvFamilyMode, KV_FAMILY_WSDOC,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^  ^^^^^^^^^^^^^^^
+
+warning: unreachable expression
+  --> crates/edgequake-api/src/handlers/app_attribution.rs:75:5
+   |
+70 | /         return Err(ApiError::BadRequest(
+71 | |             "Application attribution persistence requires PostgreSQL storage.".into(),
+72 | |         ));
+   | |__________- any code following this expression is unreachable
+...
+75 | /     Err(ApiError::BadRequest(
+76 | |         "Application attribution persistence requires PostgreSQL storage.".into(),
+77 | |     ))
+   | |______^ unreachable expression
+   |
+   = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/edgequake-api/src/services/workspace_document_wipe.rs:79:9
+   |
+79 |     let mut typed_n = 0usize;
+   |         ----^^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `storage`
+   --> crates/edgequake-api/src/handlers/auth/mod.rs:146:5
+    |
+146 |     storage: &StorageRuntime,
+    |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_storage`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `login`
+   --> crates/edgequake-api/src/handlers/auth/mod.rs:149:5
+    |
+149 |     login: &str,
+    |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_login`
+
+warning: unused variable: `storage`
+   --> crates/edgequake-api/src/handlers/auth/mod.rs:182:5
+    |
+182 |     storage: &StorageRuntime,
+    |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_storage`
+
+warning: unused variable: `storage`
+   --> crates/edgequake-api/src/handlers/auth/user_management.rs:199:11
+    |
+199 |     State(storage): State<StorageRuntime>,
+    |           ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_storage`
+
+warning: unused variable: `pg_runtime`
+   --> crates/edgequake-api/src/handlers/auth/user_management.rs:200:11
+    |
+200 |     State(pg_runtime): State<PostgresRuntime>,
+    |           ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_pg_runtime`
+
+warning: unused variable: `security`
+   --> crates/edgequake-api/src/handlers/auth/user_management.rs:201:11
+    |
+201 |     State(security): State<ApiSecurityConfig>,
+    |           ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_security`
+
+warning: unused variable: `policy`
+   --> crates/edgequake-api/src/handlers/auth/user_management.rs:367:9
+    |
+367 |     let policy = crate::services::identity_storage::IdentityPolicy::resolve(
+    |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_policy`
+
+warning: unused variable: `email_lower`
+   --> crates/edgequake-api/src/handlers/auth/user_management.rs:395:13
+    |
+395 |         let email_lower = email.to_lowercase();
+    |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_email_lower`
+
+warning: unused variable: `pg_runtime`
+  --> crates/edgequake-api/src/handlers/documents/query/detail.rs:58:5
+   |
+58 |     pg_runtime: PostgresRuntime,
+   |     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_pg_runtime`
+
+warning: unused variable: `security`
+  --> crates/edgequake-api/src/handlers/documents/query/detail.rs:59:5
+   |
+59 |     security: ApiSecurityConfig,
+   |     ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_security`
+
+warning: unused variable: `pg_isolation_scope`
+   --> crates/edgequake-api/src/handlers/documents/query/detail.rs:136:9
+    |
+136 |     let pg_isolation_scope = PgIsolationScope::from_tenant_context(&tenant_ctx, None);
+    |         ^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_pg_isolation_scope`
+
+warning: unused variable: `mime_type`
+   --> crates/edgequake-api/src/handlers/documents/upload/batch_upload.rs:146:9
+    |
+146 |     let mime_type = resolved.mime_type.clone();
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_mime_type`
+
+warning: unused variable: `source_type`
+   --> crates/edgequake-api/src/handlers/documents/upload/batch_upload.rs:147:9
+    |
+147 |     let source_type = resolved.meta.source_type;
+    |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_source_type`
+
+warning: unused variable: `tenant_id`
+  --> crates/edgequake-api/src/services/ingestion_dedup_store.rs:88:5
+   |
+88 |     tenant_id: Option<&str>,
+   |     ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_tenant_id`
+
+warning: unused variable: `mime_type`
+  --> crates/edgequake-api/src/handlers/documents/upload/file_upload.rs:89:9
+   |
+89 |     let mime_type = resolved.mime_type.clone();
+   |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_mime_type`
+
+warning: unused variable: `tenant_ctx`
+   --> crates/edgequake-api/src/services/document_graph_lineage.rs:137:5
+    |
+137 |     tenant_ctx: &TenantContext,
+    |     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_tenant_ctx`
+
+warning: unused variable: `document_id`
+   --> crates/edgequake-api/src/services/document_graph_lineage.rs:138:5
+    |
+138 |     document_id: &str,
+    |     ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_document_id`
+
+warning: unused variable: `graph`
+   --> crates/edgequake-api/src/services/document_graph_lineage.rs:139:5
+    |
+139 |     graph: &Arc<dyn GraphStorage>,
+    |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_graph`
+
+warning: unused variable: `tenant_ctx`
+   --> crates/edgequake-api/src/services/workspace_document_wipe.rs:144:9
+    |
+144 |     let tenant_ctx = TenantContext {
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_tenant_ctx`
+
+warning: function `record_to_info` is never used
+  --> crates/edgequake-api/src/handlers/documents/recovery/chunks.rs:16:4
+   |
+16 | fn record_to_info(r: FailedChunkRecord) -> FailedChunkInfo {
+   |    ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `text_chunk_from_kv` is never used
+  --> crates/edgequake-api/src/handlers/documents/recovery/chunks.rs:72:4
+   |
+72 | fn text_chunk_from_kv(document_id: &str, idx: usize, content: String) -> TextChunk {
+   |    ^^^^^^^^^^^^^^^^^^
+
+warning: function `empty_to_none` is never used
+   --> crates/edgequake-api/src/handlers/llm_defaults.rs:103:4
+    |
+103 | fn empty_to_none(s: Option<String>) -> Option<String> {
+    |    ^^^^^^^^^^^^^
+
+warning: method `retarget_document_ingest_track` is never used
+   --> crates/edgequake-api/src/processor/status_updates.rs:321:25
+    |
+204 | impl DocumentTaskProcessor {
+    | -------------------------- method in this implementation
+...
+321 |     pub(super) async fn retarget_document_ingest_track(
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `users`, `username_index`, and `email_index` are never read
+  --> crates/edgequake-api/src/services/auth_memory_store.rs:17:5
+   |
+16 | struct AuthMemoryState {
+   |        --------------- fields in this struct
+17 |     users: HashMap<String, UserRecord>,
+   |     ^^^^^
+18 |     username_index: HashMap<String, String>,
+   |     ^^^^^^^^^^^^^^
+19 |     email_index: HashMap<String, String>,
+   |     ^^^^^^^^^^^
+
+warning: function `get_user_record_by_id` is never used
+  --> crates/edgequake-api/src/services/auth_memory_store.rs:39:21
+   |
+39 | pub(crate) async fn get_user_record_by_id(
+   |                     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `find_user_record_by_login` is never used
+  --> crates/edgequake-api/src/services/auth_memory_store.rs:46:21
+   |
+46 | pub(crate) async fn find_user_record_by_login(
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `persist_user_record` is never used
+  --> crates/edgequake-api/src/services/auth_memory_store.rs:61:21
+   |
+61 | pub(crate) async fn persist_user_record(
+   |                     ^^^^^^^^^^^^^^^^^^^
+
+warning: function `delete_user_record` is never used
+  --> crates/edgequake-api/src/services/auth_memory_store.rs:76:21
+   |
+76 | pub(crate) async fn delete_user_record(
+   |                     ^^^^^^^^^^^^^^^^^^
+
+warning: function `list_user_records` is never used
+  --> crates/edgequake-api/src/services/auth_memory_store.rs:89:21
+   |
+89 | pub(crate) async fn list_user_records(
+   |                     ^^^^^^^^^^^^^^^^^
+
+warning: function `update_email_index` is never used
+  --> crates/edgequake-api/src/services/auth_memory_store.rs:95:21
+   |
+95 | pub(crate) async fn update_email_index(
+   |                     ^^^^^^^^^^^^^^^^^^
+
+warning: function `reads_relational` is never used
+  --> crates/edgequake-api/src/services/ingestion_dedup_store.rs:22:4
+   |
+22 | fn reads_relational() -> bool {
+   |    ^^^^^^^^^^^^^^^^
+
+warning: function `doc_status` is never used
+  --> crates/edgequake-api/src/services/injection_relational.rs:25:4
+   |
+25 | fn doc_status(injection_status: &str) -> &'static str {
+   |    ^^^^^^^^^^
+
+warning: function `refresh_token_lookup_hash` is never used
+  --> crates/edgequake-api/src/services/session_storage.rs:15:15
+   |
+15 | pub(crate) fn refresh_token_lookup_hash(token: &str) -> String {
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `require_safe_sql_ident` is never used
+  --> crates/edgequake-api/src/storage_inspector.rs:94:15
+   |
+94 | pub(crate) fn require_safe_sql_ident(name: &str) -> Result<&str, String> {
+   |               ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `repair_recommendation_for_invariant` is never used
+    --> crates/edgequake-api/src/storage_inspector.rs:1765:15
+     |
+1765 | pub(crate) fn repair_recommendation_for_invariant(
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `extract_uuid_workspace_id_from_storage_table` is never used
+    --> crates/edgequake-api/src/storage_inspector.rs:1821:15
+     |
+1821 | pub(crate) fn extract_uuid_workspace_id_from_storage_table(table: &str) -> Option<&str> {
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `edgequake-api` (lib) generated 53 warnings (run `cargo fix --lib -p edgequake-api` to apply 35 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 23.72s
+     Running tests/contract_spec111_checksum_repair_wiring.rs (target/debug/deps/contract_spec111_checksum_repair_wiring-46430040f9159b45)
+
+running 4 tests
+test immutability_spec_exists ... ok
+test rust_known_versions_match_makefile_list ... ok
+test all_repair_modules_call_shared_allow_helper ... ok
+test makefile_migrate_passes_scoped_checksum_repair_allowlist ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+CHECKSUM_WIRING_EXIT:0
+
+=== worker purge race units ===
+error: unexpected argument 'progress_update_after_purge_is_idempotent' found
+
+Usage: cargo test [OPTIONS] [TESTNAME] [-- [ARGS]...]
+
+For more information, try '--help'.
+WORKER_EXIT:1
+
+=== worker purge race units (retry) ===
+   Compiling edgequake-tasks v0.24.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-tasks)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.14s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_tasks-b041f16827c360b2)
+
+running 2 tests
+test worker::tests::progress_update_after_purge_is_idempotent ... ok
+test worker::tests::persist_after_lifecycle_purge_is_idempotent ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 166 filtered out; finished in 0.00s
+
+WORKER_EXIT:0
+
+=== SUMMARY ===
+fmt: OK
+clippy: CLIPPY_EXIT:0
+STORAGE_EXIT:0 CLEAR_ALL_EXIT:0 CHECKSUM_WIRING_EXIT:0
+
+ALL_GATES_GREEN: yes
+WORKER_EXIT:0 (retry with filter purge)

@@ -149,6 +149,10 @@ pub struct PdfProcessingData {
     /// inline placeholders and enriched via VLM where enabled.
     #[serde(default)]
     pub multimodal_process_options: Option<String>,
+
+    /// SPEC-109: optional vision/VLM reasoning effort override for this PDF task.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vision_reasoning_effort: Option<String>,
 }
 
 /// Text insert task payload

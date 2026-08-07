@@ -237,9 +237,8 @@ impl TaskStorage for PostgresTaskStorage {
         .execute(&*self.pool)
         .await
         .map_err(|e| TaskError::StorageError(format!("Failed to update task progress: {e}")))?;
-        if result.rows_affected() == 0 {
-            return Err(TaskError::TaskNotFound(track_id.to_string()));
-        }
+        // 0 rows: lifecycle purge deleted the row mid-heartbeat — idempotent.
+        let _ = result.rows_affected();
         Ok(())
     }
 

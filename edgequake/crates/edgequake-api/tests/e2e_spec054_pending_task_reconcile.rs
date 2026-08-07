@@ -654,6 +654,66 @@ async fn mid_pipeline_orphan_without_task_fail_closed() {
     );
 }
 
+/// Mid-pipeline converting with completion evidence and no live task must
+/// promote to completed (not re-convert / not fail-closed).
+#[tokio::test]
+async fn mid_pipeline_completed_looking_orphan_heals_to_completed() {
+    let state = AppState::test_state();
+    let doc_id = "zombie-converting-completed-looking";
+    let metadata = json!({
+        "id": doc_id,
+        "title": "llm_2608.03382v1.pdf",
+        "file_name": "llm_2608.03382v1.pdf",
+        "status": "processing",
+        "current_stage": "converting",
+        "stage_progress": 0.0,
+        "stage_message": "Processed 22 chunks, extracted 658 entities and 381 relationships",
+        "entity_count": 658,
+        "chunk_count": 22,
+        "relationship_count": 381,
+        "processed_at": "2026-08-06T10:15:12Z",
+        "track_id": "pdf-ff99bd9c-missing",
+        "tenant_id": TEST_TENANT_ID,
+        "workspace_id": TEST_WORKSPACE_ID,
+        "source_type": "pdf",
+        "pdf_id": "1c1f97df-4124-4c14-8d45-28a57f453a29",
+    });
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(format!("{doc_id}-metadata"), metadata)])
+        .await
+        .expect("seed completed-looking zombie metadata");
+
+    let report = reconcile_pending_documents_missing_tasks(&state, 10, "zombie_completed_heal")
+        .await
+        .expect("reconcile");
+
+    assert!(
+        report.completed_synced >= 1,
+        "completed-looking orphan must heal to completed, report={report:?}"
+    );
+    assert_eq!(
+        report.enqueued, 0,
+        "must not re-enqueue PDF convert for completed-looking orphan"
+    );
+
+    let stored = state
+        .storage
+        .kv_storage
+        .get_by_id(&format!("{doc_id}-metadata"))
+        .await
+        .unwrap()
+        .expect("metadata after reconcile");
+    assert_eq!(
+        stored["status"].as_str(),
+        Some("completed"),
+        "zombie must become completed"
+    );
+    assert_eq!(stored["current_stage"].as_str(), Some("completed"));
+    assert_eq!(stored["entity_count"].as_u64(), Some(658));
+}
+
 /// KV mid-pipeline + cancelled task (no active work) must sync cancelled, not re-enqueue.
 #[tokio::test]
 async fn mid_pipeline_orphan_with_cancelled_task_syncs_cancelled() {

@@ -7,7 +7,8 @@ use edgequake_storage::traits::KVStorage;
 use crate::error::ApiResult;
 use crate::middleware::TenantContext;
 use crate::services::workspace_document_index::{
-    list_workspace_metadata_keys, list_workspace_metadata_keys_limited,
+    list_workspace_metadata_keys, list_workspace_metadata_keys_detailed,
+    list_workspace_metadata_keys_limited_detailed,
 };
 use crate::workspace_scope::metadata_matches_tenant_context;
 
@@ -26,9 +27,18 @@ pub async fn load_workspace_metadata_values(
     kv_storage: &(dyn KVStorage + Send + Sync),
     workspace_id: &str,
 ) -> ApiResult<Vec<serde_json::Value>> {
-    let indexed = load_workspace_metadata_entries_by_index(kv_storage, workspace_id).await?;
-    if !indexed.is_empty() {
-        return Ok(indexed.into_iter().map(|(_, v)| v).collect());
+    let listed = list_workspace_metadata_keys_detailed(kv_storage, workspace_id).await?;
+    // LAW-111-9: authoritative empty = empty workspace (no global suffix resurrect).
+    if listed.authoritative {
+        if listed.keys.is_empty() {
+            return Ok(vec![]);
+        }
+        let values = kv_storage.get_by_ids_ordered(&listed.keys).await?;
+        return Ok(values.into_iter().flatten().collect());
+    }
+    if !listed.keys.is_empty() {
+        let values = kv_storage.get_by_ids_ordered(&listed.keys).await?;
+        return Ok(values.into_iter().flatten().collect());
     }
 
     Ok(load_all_document_metadata(kv_storage)
@@ -137,10 +147,12 @@ pub async fn load_scoped_document_metadata_entries(
     tenant_ctx: &TenantContext,
 ) -> ApiResult<Vec<(String, serde_json::Value)>> {
     if let Some(workspace_id) = tenant_ctx.workspace_id.as_deref() {
-        let metadata_keys = list_workspace_metadata_keys(kv_storage, workspace_id).await?;
-        if !metadata_keys.is_empty() {
+        let listed = list_workspace_metadata_keys_detailed(kv_storage, workspace_id).await?;
+        // LAW-111-9: authoritative empty membership = empty workspace.
+        // Do not resurrect dual-write KV residue via global suffix scan (#366).
+        if listed.authoritative || !listed.keys.is_empty() {
             return Ok(
-                fetch_scoped_entries(kv_storage, tenant_ctx, metadata_keys, false)
+                fetch_scoped_entries(kv_storage, tenant_ctx, listed.keys, listed.truncated)
                     .await?
                     .entries,
             );
@@ -167,10 +179,13 @@ pub async fn load_scoped_document_metadata_entries_limited(
     let max_entries = max_entries.max(1);
 
     if let Some(workspace_id) = tenant_ctx.workspace_id.as_deref() {
-        let (metadata_keys, truncated) =
-            list_workspace_metadata_keys_limited(kv_storage, workspace_id, max_entries).await?;
-        if !metadata_keys.is_empty() {
-            return fetch_scoped_entries(kv_storage, tenant_ctx, metadata_keys, truncated).await;
+        let listed =
+            list_workspace_metadata_keys_limited_detailed(kv_storage, workspace_id, max_entries)
+                .await?;
+        // LAW-111-9: authoritative empty membership = empty workspace (#366).
+        if listed.authoritative || !listed.keys.is_empty() {
+            return fetch_scoped_entries(kv_storage, tenant_ctx, listed.keys, listed.truncated)
+                .await;
         }
     }
 
@@ -384,19 +399,29 @@ pub struct WorkspaceDocumentDeletePlan {
 }
 
 /// Plan workspace document KV deletion using workspace index with suffix-scan fallback.
+///
+/// Unlike list reads (LAW-111-9), wipe/delete planners **intentionally** fall
+/// back to a workspace-filtered suffix scan when membership is empty — that is
+/// how residual dual-write KV keys are discovered after typed rows are gone.
 pub async fn plan_workspace_document_kv_deletion(
     kv_storage: &(dyn KVStorage + Send + Sync),
     workspace_id: &str,
 ) -> ApiResult<WorkspaceDocumentDeletePlan> {
-    let doc_ids = crate::services::workspace_document_index::list_workspace_document_ids(
+    let listed = crate::services::workspace_document_index::list_workspace_metadata_keys_detailed(
         kv_storage,
         workspace_id,
     )
     .await?;
-    if !doc_ids.is_empty() {
+    if !listed.keys.is_empty() {
+        let doc_ids: Vec<String> = listed
+            .keys
+            .iter()
+            .filter_map(|k| document_id_from_metadata_key(k))
+            .collect();
         return build_delete_plan_for_doc_ids(kv_storage, workspace_id, doc_ids).await;
     }
 
+    // Empty membership (authoritative or not): still scan residual KV for wipe.
     plan_workspace_document_kv_deletion_suffix_fallback(kv_storage, workspace_id).await
 }
 
@@ -510,12 +535,25 @@ pub async fn load_workspace_documents(
 
     // Index path: O(workspace docs) when wsdoc pointers exist (post migration 047 / write hooks).
     if workspace_slug != "default" {
-        let entries =
-            load_workspace_metadata_entries_by_index(kv_storage, &workspace_id_str).await?;
-        if !entries.is_empty() {
-            return Ok(entries
+        let listed = list_workspace_metadata_keys_detailed(kv_storage, &workspace_id_str).await?;
+        // LAW-111-9: authoritative empty = empty workspace (#366).
+        if listed.authoritative {
+            if listed.keys.is_empty() {
+                return Ok(vec![]);
+            }
+            let values = kv_storage.get_by_ids_ordered(&listed.keys).await?;
+            return Ok(values
                 .into_iter()
-                .filter_map(|(_, value)| parse_workspace_document_record(&value))
+                .flatten()
+                .filter_map(|value| parse_workspace_document_record(&value))
+                .collect());
+        }
+        if !listed.keys.is_empty() {
+            let values = kv_storage.get_by_ids_ordered(&listed.keys).await?;
+            return Ok(values
+                .into_iter()
+                .flatten()
+                .filter_map(|value| parse_workspace_document_record(&value))
                 .collect());
         }
     }

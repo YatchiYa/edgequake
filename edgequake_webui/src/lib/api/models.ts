@@ -20,6 +20,11 @@ import { apiClient } from "./client";
 /**
  * Model capabilities information.
  */
+export interface ReasoningEffortCapability {
+  supported: string[];
+  lowest_structured?: string | null;
+}
+
 export interface ModelCapabilities {
   context_length: number;
   max_output_tokens: number;
@@ -29,6 +34,8 @@ export interface ModelCapabilities {
   supports_streaming: boolean;
   supports_system_message: boolean;
   embedding_dimension: number;
+  /** SPEC-109: when present, UI filters reasoning-effort options. */
+  reasoning_effort?: ReasoningEffortCapability | null;
 }
 
 /**
@@ -118,7 +125,7 @@ export interface LlmModelItem {
   provider_display_name: string;
   name: string;
   display_name: string;
-  model_type: string;
+  model_type: "llm" | "embedding" | "multimodal";
   description: string;
   deprecated: boolean;
   replacement?: string;
@@ -147,7 +154,7 @@ export interface EmbeddingModelItem {
   dimension: number;
   name: string;
   display_name: string;
-  model_type: string;
+  model_type: "llm" | "embedding" | "multimodal";
   description: string;
   deprecated: boolean;
   replacement?: string;

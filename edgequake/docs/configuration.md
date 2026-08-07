@@ -97,6 +97,21 @@ Configuration for the language model and embedding providers.
 | -                           | `llm.timeout_secs`    | u64     | `60`                     | Request timeout            |
 | -                           | `llm.max_retries`     | u32     | `3`                      | Retry count for failures   |
 
+### Reasoning effort (SPEC-109)
+
+Single wire field: `CompletionOptions.reasoning_effort`. Hierarchy (request → workspace `llm_roles` → workspace/tenant default → server → env → compiled floor). Capability SSOT lives in `edgequake-llm::reasoning_capabilities` (illegal values are clamped, never sent).
+
+| Variable | Role | Description |
+| -------- | ---- | ----------- |
+| `EDGEQUAKE_REASONING_EFFORT` | all | Fleet-wide desired effort when role-specific unset |
+| `EDGEQUAKE_EXTRACT_REASONING_EFFORT` | extract | Override for entity extraction |
+| `EDGEQUAKE_QUERY_REASONING_EFFORT` | query | Override for answer generation |
+| `EDGEQUAKE_SUMMARY_REASONING_EFFORT` | summary | Override for summarization |
+| `EDGEQUAKE_VLM_REASONING_EFFORT` | vlm | Override for PDF/vision |
+| `EDGEQUAKE_KEYWORD_REASONING_EFFORT` | keyword | Override for keyword extraction |
+
+Structured roles (extract/summary/keyword/vlm) default to the **lowest supported** effort for the model (`minimal` for `gpt-5-mini`, `none` for `gpt-5.4-nano`). Query/chat omit the field (Auto) unless overridden. API fields: `QueryRequest.reasoning_effort`, chat completions `reasoning_effort`, PDF form `vision_reasoning_effort`, server `PATCH /settings/llm-defaults`, tenant `default_reasoning_effort`.
+
 ### Supported Providers
 
 | Provider     | Value      | Auth model   | Notes                                                    |

@@ -146,6 +146,7 @@ export function CreateWorkspaceWizard({
         llm,
         embedding,
         vision,
+        reasoningEffort: draft.reasoningEffort,
       });
       const workspace = await createWorkspace(tenantId, {
         name: draft.workspaceName.trim(),

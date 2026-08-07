@@ -269,37 +269,67 @@ impl WorkspaceService for InMemoryWorkspaceService {
             workspace = workspace.with_max_documents(max_docs);
         }
 
-        // SPEC-032: Apply LLM configuration from request
-        // Uses auto-detection for provider if not specified
+        // SPEC-032: Apply LLM/embedding from request and stamp metadata overrides.
+        // Without metadata keys, get_workspace → resolve_inherited_model_fields
+        // would overwrite struct fields with tenant/server defaults (classifier / mock
+        // create tests + "Use tenant defaults" honesty).
+        let llm_requested = request.llm_model.is_some() || request.llm_provider.is_some();
+        let emb_requested = request.embedding_model.is_some()
+            || request.embedding_provider.is_some()
+            || request.embedding_dimension.is_some();
         if let Some(model) = request.llm_model {
             workspace = workspace.with_llm_model(&model);
-            // Explicit provider overrides auto-detection
             if let Some(provider) = request.llm_provider {
                 workspace = workspace.with_llm_provider(&provider);
             }
         } else if let Some(provider) = request.llm_provider {
-            // Provider specified without model - use default model for provider
             workspace = workspace.with_llm_provider(&provider);
         }
-
-        // SPEC-032: Apply embedding configuration from request
-        // Uses auto-detection for provider/dimension if not specified
         if let Some(model) = request.embedding_model {
             workspace = workspace.with_embedding_model(&model);
-            // Auto-detect provider if not specified
             if let Some(provider) = request.embedding_provider {
                 workspace = workspace.with_embedding_provider(&provider);
             } else {
                 let detected = Workspace::detect_provider_from_model(&model);
                 workspace = workspace.with_embedding_provider(detected);
             }
-            // Auto-detect dimension if not specified
             if let Some(dim) = request.embedding_dimension {
                 workspace = workspace.with_embedding_dimension(dim);
             } else {
                 let detected = Workspace::detect_dimension_from_model(&model);
                 workspace = workspace.with_embedding_dimension(detected);
             }
+        } else if let Some(provider) = request.embedding_provider {
+            workspace = workspace.with_embedding_provider(&provider);
+            if let Some(dim) = request.embedding_dimension {
+                workspace = workspace.with_embedding_dimension(dim);
+            }
+        } else if let Some(dim) = request.embedding_dimension {
+            workspace = workspace.with_embedding_dimension(dim);
+        }
+        if llm_requested {
+            workspace.metadata.insert(
+                "llm_model".to_string(),
+                serde_json::json!(workspace.llm_model.clone()),
+            );
+            workspace.metadata.insert(
+                "llm_provider".to_string(),
+                serde_json::json!(workspace.llm_provider.clone()),
+            );
+        }
+        if emb_requested {
+            workspace.metadata.insert(
+                "embedding_model".to_string(),
+                serde_json::json!(workspace.embedding_model.clone()),
+            );
+            workspace.metadata.insert(
+                "embedding_provider".to_string(),
+                serde_json::json!(workspace.embedding_provider.clone()),
+            );
+            workspace.metadata.insert(
+                "embedding_dimension".to_string(),
+                serde_json::json!(workspace.embedding_dimension),
+            );
         }
 
         // Persist vision by default when omitted (mirrors postgres create path).
@@ -354,6 +384,27 @@ impl WorkspaceService for InMemoryWorkspaceService {
             request.entity_type_colors,
         )
         .map_err(Error::validation)?;
+        if let Some(effort) = request.default_reasoning_effort {
+            let trimmed = effort.trim();
+            if trimmed.is_empty()
+                || trimmed.eq_ignore_ascii_case("none")
+                || trimmed.eq_ignore_ascii_case("auto")
+            {
+                workspace.metadata.remove("default_reasoning_effort");
+            } else {
+                workspace.metadata.insert(
+                    "default_reasoning_effort".to_string(),
+                    serde_json::json!(trimmed),
+                );
+            }
+        }
+        if let Some(roles) = request.llm_roles {
+            if roles.is_null() || roles.as_object().map(|o| o.is_empty()).unwrap_or(false) {
+                workspace.metadata.remove("llm_roles");
+            } else {
+                workspace.metadata.insert("llm_roles".to_string(), roles);
+            }
+        }
 
         let mut workspaces = self.workspaces.write().await;
         workspaces.insert(workspace.workspace_id, workspace.clone());
@@ -407,8 +458,17 @@ impl WorkspaceService for InMemoryWorkspaceService {
     }
 
     async fn get_workspace(&self, workspace_id: Uuid) -> Result<Option<Workspace>> {
-        let workspaces = self.workspaces.read().await;
-        Ok(workspaces.get(&workspace_id).cloned())
+        let mut workspace = {
+            let workspaces = self.workspaces.read().await;
+            match workspaces.get(&workspace_id).cloned() {
+                Some(ws) => ws,
+                None => return Ok(None),
+            }
+        };
+        let tenants = self.tenants.read().await;
+        let tenant = tenants.get(&workspace.tenant_id);
+        crate::workspace_model_update::resolve_inherited_model_fields(&mut workspace, tenant);
+        Ok(Some(workspace))
     }
 
     async fn get_workspace_by_slug(
@@ -416,11 +476,21 @@ impl WorkspaceService for InMemoryWorkspaceService {
         tenant_id: Uuid,
         slug: &str,
     ) -> Result<Option<Workspace>> {
-        let workspaces = self.workspaces.read().await;
-        Ok(workspaces
-            .values()
-            .find(|ws| ws.tenant_id == tenant_id && ws.slug == slug)
-            .cloned())
+        let mut workspace = {
+            let workspaces = self.workspaces.read().await;
+            match workspaces
+                .values()
+                .find(|ws| ws.tenant_id == tenant_id && ws.slug == slug)
+                .cloned()
+            {
+                Some(ws) => ws,
+                None => return Ok(None),
+            }
+        };
+        let tenants = self.tenants.read().await;
+        let tenant = tenants.get(&tenant_id);
+        crate::workspace_model_update::resolve_inherited_model_fields(&mut workspace, tenant);
+        Ok(Some(workspace))
     }
 
     async fn update_workspace(
@@ -428,6 +498,15 @@ impl WorkspaceService for InMemoryWorkspaceService {
         workspace_id: Uuid,
         request: UpdateWorkspaceRequest,
     ) -> Result<Workspace> {
+        let tenant = {
+            let workspaces = self.workspaces.read().await;
+            let ws = workspaces
+                .get(&workspace_id)
+                .ok_or_else(|| Error::not_found(format!("Workspace {} not found", workspace_id)))?;
+            let tenants = self.tenants.read().await;
+            tenants.get(&ws.tenant_id).cloned()
+        };
+
         let mut workspaces = self.workspaces.write().await;
 
         let workspace = workspaces
@@ -452,16 +531,31 @@ impl WorkspaceService for InMemoryWorkspaceService {
                 .insert("max_documents".to_string(), serde_json::json!(max_docs));
         }
 
-        crate::workspace_model_update::apply_llm_config_update(
+        let tenant_llm = tenant.as_ref().map(|t| {
+            (
+                t.default_llm_provider.as_str(),
+                t.default_llm_model.as_str(),
+            )
+        });
+        let tenant_emb = tenant.as_ref().map(|t| {
+            (
+                t.default_embedding_provider.as_str(),
+                t.default_embedding_model.as_str(),
+                t.default_embedding_dimension,
+            )
+        });
+        crate::workspace_model_update::apply_llm_config_update_with_tenant(
             workspace,
             request.llm_model,
             request.llm_provider,
+            tenant_llm,
         );
-        crate::workspace_model_update::apply_embedding_config_update(
+        crate::workspace_model_update::apply_embedding_config_update_with_tenant(
             workspace,
             request.embedding_model,
             request.embedding_provider,
             request.embedding_dimension,
+            tenant_emb,
         );
 
         // SPEC-085 / GitHub #216: entity type updates (mirror Postgres impl)
@@ -494,9 +588,31 @@ impl WorkspaceService for InMemoryWorkspaceService {
             request.entity_type_colors,
         )
         .map_err(Error::validation)?;
+        if let Some(effort) = request.default_reasoning_effort {
+            let trimmed = effort.trim();
+            if trimmed.is_empty()
+                || trimmed.eq_ignore_ascii_case("none")
+                || trimmed.eq_ignore_ascii_case("auto")
+            {
+                workspace.metadata.remove("default_reasoning_effort");
+            } else {
+                workspace.metadata.insert(
+                    "default_reasoning_effort".to_string(),
+                    serde_json::json!(trimmed),
+                );
+            }
+        }
+        if let Some(roles) = request.llm_roles {
+            if roles.is_null() || roles.as_object().map(|o| o.is_empty()).unwrap_or(false) {
+                workspace.metadata.remove("llm_roles");
+            } else {
+                workspace.metadata.insert("llm_roles".to_string(), roles);
+            }
+        }
 
         workspace.updated_at = chrono::Utc::now();
 
+        crate::workspace_model_update::resolve_inherited_model_fields(workspace, tenant.as_ref());
         Ok(workspace.clone())
     }
 
@@ -512,11 +628,17 @@ impl WorkspaceService for InMemoryWorkspaceService {
     }
 
     async fn list_workspaces(&self, tenant_id: Uuid) -> Result<Vec<Workspace>> {
+        let tenants = self.tenants.read().await;
+        let tenant = tenants.get(&tenant_id);
         let workspaces = self.workspaces.read().await;
         Ok(workspaces
             .values()
             .filter(|ws| ws.tenant_id == tenant_id)
             .cloned()
+            .map(|mut ws| {
+                crate::workspace_model_update::resolve_inherited_model_fields(&mut ws, tenant);
+                ws
+            })
             .collect())
     }
 
@@ -836,6 +958,8 @@ mod tests {
             entity_types_strict: None,
             extraction_language: None,
             entity_type_colors: None,
+            default_reasoning_effort: None,
+            llm_roles: None,
         };
 
         let workspace = service
@@ -857,6 +981,42 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some("vision")
         );
+    }
+
+    /// Explicit create overrides must survive get_workspace inheritance.
+    #[tokio::test]
+    async fn create_workspace_stamps_llm_metadata_for_get() {
+        let service = InMemoryWorkspaceService::new();
+        let tenant = service
+            .create_tenant(Tenant::new("Test Tenant", "test-meta"))
+            .await
+            .unwrap();
+        let created = service
+            .create_workspace(
+                tenant.tenant_id,
+                CreateWorkspaceRequest {
+                    name: "Explicit".to_string(),
+                    slug: Some(format!("explicit-{}", Uuid::new_v4())),
+                    llm_provider: Some("ollama".to_string()),
+                    llm_model: Some("gemma3:latest".to_string()),
+                    embedding_provider: Some("mock".to_string()),
+                    embedding_model: Some("mock-emb".to_string()),
+                    embedding_dimension: Some(8),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let got = service
+            .get_workspace(created.workspace_id)
+            .await
+            .unwrap()
+            .expect("workspace");
+        assert_eq!(got.llm_provider, "ollama");
+        assert_eq!(got.llm_model, "gemma3:latest");
+        assert_eq!(got.embedding_provider, "mock");
+        assert_eq!(got.embedding_model, "mock-emb");
+        assert_eq!(got.embedding_dimension, 8);
     }
 
     #[tokio::test]
@@ -926,6 +1086,8 @@ mod tests {
                 entity_types_strict: None,
                 extraction_language: None,
                 entity_type_colors: None,
+                default_reasoning_effort: None,
+                llm_roles: None,
             };
             service
                 .create_workspace(tenant.tenant_id, request)
@@ -951,6 +1113,8 @@ mod tests {
             entity_types_strict: None,
             extraction_language: None,
             entity_type_colors: None,
+            default_reasoning_effort: None,
+            llm_roles: None,
         };
         let result = service.create_workspace(tenant.tenant_id, request).await;
         assert!(result.is_err());

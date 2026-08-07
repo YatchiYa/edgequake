@@ -1,0 +1,36 @@
+warning: method `generate_answer` is never used
+   --> crates/edgequake-query/src/engine_impl/prompt.rs:699:25
+    |
+110 | impl QueryEngine {
+    | ---------------- method in this implementation
+...
+699 |     pub(super) async fn generate_answer(
+    |                         ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `edgequake-query` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.28s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_query-7d171203ab985f90)
+
+running 17 tests
+test cache::llm_response_cache::tests::master_on_answer_follows_unless_override ... ok
+test cache::llm_response_cache::tests::hash_query_prompt_includes_effort_when_set ... ok
+test cache::answer_cache::tests::different_prompts_different_keys ... ok
+test cache::llm_response_cache::tests::master_off_disables_answer_and_keywords ... ok
+test cache::llm_response_cache::tests::key_format_and_hash_pins ... ok
+test cache::answer_cache::tests::round_trip_and_hit ... ok
+test cache::query_result_cache::tests::repeated_context_only_query_hits_cache ... ok
+test cache::query_result_cache::tests::bump_epoch_evicts_entries ... ok
+test cache::query_result_cache::tests::mix_mode_cache_separates_weight_skews ... ok
+test cache::llm_response_cache::tests::memory_round_trip ... ok
+test keywords::cache::tests::test_in_memory_cache_basic ... ok
+test keywords::cache::tests::test_in_memory_cache_eviction ... ok
+test cache::embedding_cache::tests::repeated_embed_one_hits_cache ... ok
+test cache::embedding_cache::tests::embed_batch_populates_and_shares_cache_with_embed_one ... ok
+test cache::embedding_cache::tests::different_texts_do_not_collide ... ok
+test keywords::cache::tests::test_in_memory_cache_expiration ... ok
+test cache::embedding_cache::tests::ttl_expiration_causes_re_embed ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 269 filtered out; finished in 0.01s
+

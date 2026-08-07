@@ -832,12 +832,26 @@ impl WorkerPool {
                             {
                                 Ok(true) => {}
                                 Ok(false) => {
-                                    warn!(
-                                        task_id = %heartbeat_track_id,
-                                        "Lost task lease — aborting processing"
+                                    // Distinguishes purge (row gone) from true lease steal.
+                                    let purged = matches!(
+                                        heartbeat_storage.get_task(&heartbeat_track_id).await,
+                                        Ok(None)
                                     );
-                                    // SPEC-091 QW2: lease-lost transition (LAW-Q2).
-                                    edgequake_observability::metrics::record_task_transition("lease_lost");
+                                    if purged {
+                                        debug!(
+                                            task_id = %heartbeat_track_id,
+                                            "Task row removed during lease refresh — aborting (lifecycle purge)"
+                                        );
+                                    } else {
+                                        warn!(
+                                            task_id = %heartbeat_track_id,
+                                            "Lost task lease — aborting processing"
+                                        );
+                                        // SPEC-091 QW2: lease-lost transition (LAW-Q2).
+                                        edgequake_observability::metrics::record_task_transition(
+                                            "lease_lost",
+                                        );
+                                    }
                                     heartbeat_cancel.cancel();
                                     break;
                                 }
@@ -1040,17 +1054,7 @@ impl WorkerPool {
 
                     cancel_registry.deregister(&task.track_id).await;
 
-                    if let Err(e) = storage.update_task(&task).await {
-                        error!(
-                            error.source = "task_worker",
-                            error.action = "persist_task_result",
-                            worker_id = worker_id,
-                            task_id = %task.track_id,
-                            task_status = ?task.status,
-                            error.message = %e,
-                            "Failed to persist task result"
-                        );
-                    }
+                    persist_worker_task_result(&storage, &task, worker_id).await;
 
                     // _tenant_permit dropped here
                 }
@@ -1148,6 +1152,36 @@ impl WorkerPool {
     }
 }
 
+/// Persist the in-memory task outcome after `process_*` returns.
+///
+/// Lifecycle purge (`document_task_cleanup::cancel_and_delete_task`, wipe)
+/// may remove the row after signalling cancel while the worker is still
+/// draining. `TaskNotFound` is then expected — not an ERROR.
+async fn persist_worker_task_result(storage: &Arc<dyn TaskStorage>, task: &Task, worker_id: usize) {
+    match storage.update_task(task).await {
+        Ok(()) => {}
+        Err(TaskError::TaskNotFound(_)) => {
+            debug!(
+                worker_id,
+                task_id = %task.track_id,
+                task_status = ?task.status,
+                "Task row already removed — skip persist (lifecycle cancel/purge race)"
+            );
+        }
+        Err(e) => {
+            error!(
+                error.source = "task_worker",
+                error.action = "persist_task_result",
+                worker_id = worker_id,
+                task_id = %task.track_id,
+                task_status = ?task.status,
+                error.message = %e,
+                "Failed to persist task result"
+            );
+        }
+    }
+}
+
 /// True when the worker must not start (or requeue) this task.
 async fn should_skip_task(
     storage: &Arc<dyn TaskStorage>,
@@ -1166,7 +1200,8 @@ async fn should_skip_task(
                 || stored.status == TaskStatus::Indexed
                 || stored.is_terminal()
         }
-        Ok(None) => false,
+        // Lifecycle purge removed the row after claim — do not process.
+        Ok(None) => true,
         Err(e) => {
             warn!(
                 task_id = %task.track_id,
@@ -2491,5 +2526,55 @@ mod tests {
         );
 
         pool.shutdown().await;
+    }
+
+    /// Clear-All / document delete cancels the token and deletes the row while
+    /// the worker still drains. Persist must not ERROR on TaskNotFound.
+    #[tokio::test]
+    async fn persist_after_lifecycle_purge_is_idempotent() {
+        let storage: Arc<dyn TaskStorage> = Arc::new(MemoryTaskStorage::new());
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"doc": "purge-race"}),
+        );
+        storage.create_task(&task).await.unwrap();
+        task.mark_processing();
+        storage.update_task(&task).await.unwrap();
+
+        // Mimic document_task_cleanup::cancel_and_delete_task.
+        storage.delete_task(&task.track_id).await.unwrap();
+        task.mark_cancelled();
+
+        persist_worker_task_result(&storage, &task, 2).await;
+        assert!(
+            storage.get_task(&task.track_id).await.unwrap().is_none(),
+            "row stays gone; persist must not resurrect"
+        );
+    }
+
+    #[tokio::test]
+    async fn progress_update_after_purge_is_idempotent() {
+        let storage: Arc<dyn TaskStorage> = Arc::new(MemoryTaskStorage::new());
+        let task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        let track_id = task.track_id.clone();
+        storage.create_task(&task).await.unwrap();
+        storage.delete_task(&track_id).await.unwrap();
+        let progress = crate::types::TaskProgress {
+            current_step: "embedding".into(),
+            total_steps: 5,
+            percent_complete: 40,
+            chunk_progress: None,
+        };
+        storage
+            .update_task_progress(&track_id, &progress)
+            .await
+            .expect("missing row must not fail progress heartbeat");
     }
 }

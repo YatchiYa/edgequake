@@ -43,6 +43,10 @@ export interface QuerySettings {
    */
   model?: string;
   /**
+   * SPEC-109: reasoning effort override for this query. Undefined = Auto.
+   */
+  reasoningEffort?: string;
+  /**
    * Optional system prompt extension injected into the RAG prompt.
    * @implements SPEC-004: System prompt extension point
    */

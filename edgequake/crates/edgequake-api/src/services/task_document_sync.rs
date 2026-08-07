@@ -118,6 +118,18 @@ async fn find_document_id_in_kv_by_correlation(kv: &dyn KVStorage, task: &Task) 
 
 /// Best-effort `public.documents.status` touch (list column SSOT).
 pub async fn touch_relational_document_status_best_effort(document_id: &str, status: &str) {
+    touch_relational_document_track_status_best_effort(document_id, None, status).await;
+}
+
+/// Best-effort sync of `public.documents.track_id` + `status` (dual-write with KV).
+///
+/// Pass `track_id = None` to clear a stale insert-/pdf- pointer during convert restart
+/// before the new task id is known; pass `Some(id)` after enqueue.
+pub async fn touch_relational_document_track_status_best_effort(
+    document_id: &str,
+    track_id: Option<&str>,
+    status: &str,
+) {
     #[cfg(feature = "postgres")]
     {
         let Some(pool) = crate::services::relational_sidecar_store::sidecar_pool() else {
@@ -131,24 +143,41 @@ pub async fn touch_relational_document_status_best_effort(document_id: &str, sta
         } else {
             status
         };
-        if let Err(e) =
-            sqlx::query("UPDATE public.documents SET status = $2, updated_at = NOW() WHERE id = $1")
-                .bind(doc_uuid)
-                .bind(pg_status)
-                .execute(pool)
-                .await
-        {
+        let result = if let Some(tid) = track_id {
+            sqlx::query(
+                "UPDATE public.documents \
+                 SET track_id = $2, status = $3, updated_at = NOW() \
+                 WHERE id = $1",
+            )
+            .bind(doc_uuid)
+            .bind(tid)
+            .bind(pg_status)
+            .execute(pool)
+            .await
+        } else {
+            sqlx::query(
+                "UPDATE public.documents \
+                 SET track_id = NULL, status = $2, updated_at = NOW() \
+                 WHERE id = $1",
+            )
+            .bind(doc_uuid)
+            .bind(pg_status)
+            .execute(pool)
+            .await
+        };
+        if let Err(e) = result {
             tracing::warn!(
                 document_id = %document_id,
                 status = %status,
+                track_id = ?track_id,
                 error = %e,
-                "touch_relational_document_status_best_effort failed (non-fatal)"
+                "touch_relational_document_track_status_best_effort failed (non-fatal)"
             );
         }
     }
     #[cfg(not(feature = "postgres"))]
     {
-        let _ = (document_id, status);
+        let _ = (document_id, track_id, status);
     }
 }
 
@@ -236,6 +265,126 @@ pub async fn sync_doc_failed_no_active_task(
     tracing::warn!(
         document_id = %document_id,
         "Marked document failed — pipeline interrupted with no active task"
+    );
+    Ok(true)
+}
+
+/// True when mid-pipeline metadata already carries terminal-success evidence.
+///
+/// Force re-index / task loss can leave `processing`+`converting` while
+/// `stage_message` / entity counts still reflect a finished ingest.
+pub fn looks_like_completed_orphan(metadata: &serde_json::Value) -> bool {
+    let Some(obj) = metadata.as_object() else {
+        return false;
+    };
+    let status = obj.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if crate::document_metadata::is_terminal_success_status(status)
+        || is_terminal_failure_status(status)
+    {
+        return false;
+    }
+    if !crate::document_metadata::is_active_processing_status(status) {
+        return false;
+    }
+
+    let (entity_count, chunk_count, _) = graph_counts_from_metadata(obj);
+    let msg = obj
+        .get("stage_message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let completion_msg = crate::services::is_ingest_completion_stage_message(msg);
+    let has_processed_at = obj
+        .get("processed_at")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.trim().is_empty());
+
+    (completion_msg && (entity_count > 0 || chunk_count > 0))
+        || (has_processed_at && entity_count > 0)
+}
+
+fn graph_counts_from_metadata(obj: &serde_json::Map<String, serde_json::Value>) -> (u64, u64, u64) {
+    let entity_count = obj
+        .get("entity_count")
+        .or_else(|| obj.get("entities_count"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let chunk_count = obj.get("chunk_count").and_then(|v| v.as_u64()).unwrap_or(0);
+    let relationship_count = obj
+        .get("relationship_count")
+        .or_else(|| obj.get("relationships_count"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    (entity_count, chunk_count, relationship_count)
+}
+
+/// Promote a completed-looking mid-pipeline orphan to terminal success.
+///
+/// Preserves existing completion `stage_message` / counts when present.
+pub async fn sync_doc_completed_orphan(
+    kv: Arc<dyn KVStorage>,
+    document_id: &str,
+) -> Result<bool, String> {
+    let Some((metadata_key, existing)) =
+        crate::services::load_staging_first_metadata(kv.as_ref(), document_id).await?
+    else {
+        return Ok(false);
+    };
+
+    let Some(mut obj) = existing.as_object().cloned() else {
+        return Ok(false);
+    };
+
+    if !looks_like_completed_orphan(&json!(obj)) {
+        return Ok(false);
+    }
+
+    let (entity_count, chunk_count, relationship_count) = graph_counts_from_metadata(&obj);
+    let existing_msg = obj
+        .get("stage_message")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && crate::services::is_ingest_completion_stage_message(s))
+        .map(str::to_string);
+    let stage_message = existing_msg.unwrap_or_else(|| {
+        crate::services::format_ingest_completion_stage_message(
+            chunk_count,
+            entity_count,
+            relationship_count,
+        )
+    });
+
+    obj.insert("status".to_string(), json!("completed"));
+    obj.insert("current_stage".to_string(), json!("completed"));
+    obj.insert("stage_message".to_string(), json!(stage_message));
+    obj.insert("stage_progress".to_string(), json!(1.0));
+    obj.remove("error_message");
+    obj.remove("failure_class");
+    obj.remove("failure_code");
+    obj.remove("recommended_action");
+    if obj
+        .get("processed_at")
+        .and_then(|v| v.as_str())
+        .is_none_or(|s| s.trim().is_empty())
+    {
+        obj.insert(
+            "processed_at".to_string(),
+            json!(chrono::Utc::now().to_rfc3339()),
+        );
+    }
+    obj.insert(
+        "updated_at".to_string(),
+        json!(chrono::Utc::now().to_rfc3339()),
+    );
+
+    crate::services::upsert_metadata_kv_with_index(kv.as_ref(), &metadata_key, json!(obj))
+        .await
+        .map_err(|e| e.to_string())?;
+    touch_relational_document_status_best_effort(document_id, "completed").await;
+
+    tracing::info!(
+        document_id = %document_id,
+        entity_count,
+        "Healed completed-looking orphan to completed (no active task)"
     );
     Ok(true)
 }
@@ -434,5 +583,71 @@ mod tests {
         assert!(updated);
         let stored = kv.get_by_id(&meta_key).await.unwrap().unwrap();
         assert_eq!(stored["status"], "failed");
+    }
+
+    #[test]
+    fn looks_like_completed_orphan_detects_stale_completion_under_converting() {
+        let meta = json!({
+            "status": "processing",
+            "current_stage": "converting",
+            "stage_message": "Processed 22 chunks, extracted 658 entities and 381 relationships",
+            "entity_count": 658,
+            "chunk_count": 22,
+            "processed_at": "2026-08-06T10:15:12Z",
+        });
+        assert!(looks_like_completed_orphan(&meta));
+    }
+
+    #[test]
+    fn looks_like_completed_orphan_rejects_clean_converting() {
+        let meta = json!({
+            "status": "processing",
+            "current_stage": "converting",
+            "stage_message": "Converting PDF to Markdown (0/9 pages)",
+            "entity_count": 0,
+        });
+        assert!(!looks_like_completed_orphan(&meta));
+    }
+
+    #[tokio::test]
+    async fn sync_doc_completed_orphan_promotes_zombie() {
+        use edgequake_storage::kv_keys;
+        use edgequake_storage::MemoryKVStorage;
+
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("orphan-complete-test"));
+        let doc_id = "orphan-complete-doc";
+        let meta_key = kv_keys::doc_metadata(doc_id);
+        crate::services::upsert_metadata_kv_with_index(
+            kv.as_ref(),
+            &meta_key,
+            json!({
+                "id": doc_id,
+                "status": "processing",
+                "current_stage": "converting",
+                "stage_message": "Processed 22 chunks, extracted 658 entities and 381 relationships",
+                "stage_progress": 0.0,
+                "entity_count": 658,
+                "chunk_count": 22,
+                "relationship_count": 381,
+                "processed_at": "2026-08-06T10:15:12Z",
+                "workspace_id": "ws-1",
+            }),
+        )
+        .await
+        .unwrap();
+
+        let updated = sync_doc_completed_orphan(Arc::clone(&kv), doc_id)
+            .await
+            .unwrap();
+        assert!(updated);
+        let stored = kv.get_by_id(&meta_key).await.unwrap().unwrap();
+        assert_eq!(stored["status"], "completed");
+        assert_eq!(stored["current_stage"], "completed");
+        assert_eq!(stored["stage_progress"], 1.0);
+        assert_eq!(stored["entity_count"], 658);
+        assert!(stored["stage_message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Processed 22 chunks"));
     }
 }

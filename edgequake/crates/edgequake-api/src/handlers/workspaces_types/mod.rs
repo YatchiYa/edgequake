@@ -42,6 +42,7 @@ mod tests {
             default_embedding_dimension: Some(1536),
             default_vision_llm_model: Some("gpt-4o".to_string()),
             default_vision_llm_provider: Some("openai".to_string()),
+            default_reasoning_effort: None,
         };
 
         let json = serde_json::to_string(&req).unwrap();
@@ -85,6 +86,8 @@ mod tests {
             entity_types_strict: None,
             extraction_language: None,
             entity_type_colors: None,
+            default_reasoning_effort: None,
+            llm_roles: None,
         };
 
         let json = serde_json::to_string(&req).unwrap();
@@ -111,6 +114,8 @@ mod tests {
             entity_types_strict: None,
             extraction_language: None,
             entity_type_colors: None,
+            default_reasoning_effort: None,
+            llm_roles: None,
         };
 
         let json = serde_json::to_string(&req).unwrap();
@@ -137,6 +142,7 @@ mod tests {
             default_embedding_full_id: "openai/text-embedding-3-small".to_string(),
             default_vision_llm_model: None,
             default_vision_llm_provider: None,
+            default_reasoning_effort: None,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         };
@@ -176,6 +182,8 @@ mod tests {
             entity_type_colors: None,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
+            default_reasoning_effort: None,
+            llm_roles: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();

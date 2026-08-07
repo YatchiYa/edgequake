@@ -427,16 +427,16 @@ async fn e2e_spec091_drop_guard_verifies_typed_ssot() {
                        AND c.chunk_index = substring(k.key from 44)::int)) \
            OR ((k.key LIKE '%-metadata' OR k.key LIKE '%-content') \
               AND NOT EXISTS (SELECT 1 FROM public.documents d \
-                     WHERE d.id::text = substring(k.key from '{uuid_re}'))) \
+                     WHERE d.id = NULLIF(substring(k.key from '{uuid_re}'), '')::uuid)) \
            OR (k.key LIKE '%-lineage' \
               AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a \
-                     WHERE a.kind='lineage' AND a.document_id::text = substring(k.key from '{uuid_re}'))) \
+                     WHERE a.kind='lineage' AND a.document_id = NULLIF(substring(k.key from '{uuid_re}'), '')::uuid)) \
            OR (k.key LIKE '%-multimodal-manifest' \
               AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a \
-                     WHERE a.kind='multimodal-manifest' AND a.document_id::text = substring(k.key from '{uuid_re}'))) \
+                     WHERE a.kind='multimodal-manifest' AND a.document_id = NULLIF(substring(k.key from '{uuid_re}'), '')::uuid)) \
            OR (k.key LIKE '%-multimodal-chunks' \
               AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a \
-                     WHERE a.kind='multimodal-chunks' AND a.document_id::text = substring(k.key from '{uuid_re}'))) \
+                     WHERE a.kind='multimodal-chunks' AND a.document_id = NULLIF(substring(k.key from '{uuid_re}'), '')::uuid)) \
            OR k.key LIKE 'doc:hash:%' OR k.key LIKE 'staging:hash:%' \
            OR k.key LIKE 'wsdoc:%' OR k.key LIKE 'injection::%'"
     );

@@ -1180,12 +1180,8 @@ impl StorageInspector {
                 report.add_schema_issue(SchemaDriftIssue {
                     check_name: "inv_c_sample".to_string(),
                     severity: Severity::Warning,
-                    description: format!(
-                        "INV-C skipped — document sample query failed: {e}"
-                    ),
-                    details: Some(
-                        "Entity-count drift was not evaluated this run".to_string(),
-                    ),
+                    description: format!("INV-C skipped — document sample query failed: {e}"),
+                    details: Some("Entity-count drift was not evaluated this run".to_string()),
                 });
                 return;
             }
@@ -1223,9 +1219,7 @@ impl StorageInspector {
                 report.add_schema_issue(SchemaDriftIssue {
                     check_name: "inv_c_gin_batch".to_string(),
                     severity: Severity::Warning,
-                    description: format!(
-                        "INV-C skipped — batched GIN entity count failed: {e}"
-                    ),
+                    description: format!("INV-C skipped — batched GIN entity count failed: {e}"),
                     details: Some(
                         "Often 57014 under load (SPEC-089) or missing GIN; drift not evaluated"
                             .to_string(),
@@ -1943,7 +1937,9 @@ mod spec104_tests {
         assert_eq!(edgequake_storage::SOURCE_PREFIX_BATCH_LIMIT, 32);
         assert_eq!(edgequake_storage::SOURCE_COUNT_STATEMENT_TIMEOUT_MS, 300);
         // 50-prefix INV-C sample needs 2 batches under LAW-H1.
-        assert!(50 > edgequake_storage::SOURCE_PREFIX_BATCH_LIMIT);
+        const {
+            assert!(50 > edgequake_storage::SOURCE_PREFIX_BATCH_LIMIT);
+        }
         assert_eq!(
             50usize.div_ceil(edgequake_storage::SOURCE_PREFIX_BATCH_LIMIT),
             2

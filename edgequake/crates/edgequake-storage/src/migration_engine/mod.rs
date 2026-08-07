@@ -13,7 +13,11 @@ pub mod chunk_embedding_backfill;
 #[cfg(feature = "postgres")]
 pub mod chunk_text_backfill;
 #[cfg(feature = "postgres")]
+pub mod coverage;
+#[cfg(feature = "postgres")]
 pub mod fleet_embedding_backfill;
+#[cfg(feature = "postgres")]
+pub mod fleet_provenance_stamp;
 #[cfg(feature = "postgres")]
 pub mod lease;
 #[cfg(feature = "postgres")]

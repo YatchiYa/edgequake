@@ -27,20 +27,13 @@ pub(super) const M078_CHECKSUM_BROKEN_V0132: &str =
 pub(super) const M078_CHECKSUM_FIXED_V0133: &str =
     "a043177271c82c65a7509855f1d64c02c46235343126a9bbb96c359f4c25aa35427c79bb50051d499b431d869eb8e930";
 
-/// SPEC-083 X-02: silent checksum rewrite is DEV_MODE-only.
-fn allow_checksum_repair() -> bool {
-    matches!(
-        std::env::var("EDGEQUAKE_DEV_MODE").map(|v| v == "1" || v.eq_ignore_ascii_case("true")),
-        Ok(true)
-    )
-}
-
 /// Before sqlx runs: repair v0.13.2 broken M078 checksum so upgrade does not fail
 /// with "migration 78 was previously applied but has been modified".
 ///
-/// SPEC-083 X-02: production refuses silent repair — set EDGEQUAKE_DEV_MODE for a
-/// controlled one-shot upgrade, or apply the fixed checksum manually.
+/// SPEC-083 X-02 / LAW-MIG: production refuses silent repair — authorize via
+/// `EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=78` or `EDGEQUAKE_DEV_MODE`.
 pub async fn repair_migration_078_checksum_if_needed(pool: &PgPool) -> Result<bool, sqlx::Error> {
+    use super::super::checksum_repair::{allow_checksum_repair, refuse_silent_repair_message};
     if !super::super::helpers::sqlx_migrations_table_exists(pool).await? {
         return Ok(false);
     }
@@ -61,15 +54,11 @@ pub async fn repair_migration_078_checksum_if_needed(pool: &PgPool) -> Result<bo
         return Ok(false);
     }
 
-    if !allow_checksum_repair() {
-        return Err(sqlx::Error::Protocol(
-            "Migration 078 checksum drift detected (v0.13.2 broken). \
-             Refusing silent repair without EDGEQUAKE_DEV_MODE. \
-             Runbook: set EDGEQUAKE_DEV_MODE=true once on a controlled upgrade, \
-             or UPDATE _sqlx_migrations checksum for version 78 to M078_CHECKSUM_FIXED_V0133, \
-             then restart."
-                .into(),
-        ));
+    if !allow_checksum_repair(MIGRATION_078_VERSION) {
+        return Err(sqlx::Error::Protocol(refuse_silent_repair_message(
+            MIGRATION_078_VERSION,
+            "v0.13.2 broken AGE stats",
+        )));
     }
 
     sqlx::query(

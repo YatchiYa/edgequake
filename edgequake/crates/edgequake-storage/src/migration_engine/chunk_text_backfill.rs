@@ -112,6 +112,7 @@ impl BackfillJob for ChunkTextBackfillJob {
                 return Ok(BatchOutcome {
                     scanned: 0,
                     written: 0,
+                    failed: 0,
                     next_cursor: None,
                 });
             }
@@ -122,6 +123,7 @@ impl BackfillJob for ChunkTextBackfillJob {
             return Ok(BatchOutcome {
                 scanned: 0,
                 written: 0,
+                failed: 0,
                 next_cursor: None,
             });
         }
@@ -220,6 +222,7 @@ impl BackfillJob for ChunkTextBackfillJob {
         Ok(BatchOutcome {
             scanned,
             written,
+            failed: 0,
             next_cursor: Some(json!({ "last_key": next_key })),
         })
     }

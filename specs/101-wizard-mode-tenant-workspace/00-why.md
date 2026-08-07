@@ -8,7 +8,7 @@ Because the dialog packs **name + three full model pickers** (provider chips × 
 
 ### WHY-2 — Why are provider chips the default?
 
-Because SPEC-043 `ModelPickerPanel` defaults `showProviderFilters=true` and create dialogs mount three pickers at once. Power-user discovery leaked into first-value setup.
+Because SPEC-043 `ModelPickerPanel` originally defaulted an **external** provider chip bar (`showProviderFilters=true`) and create dialogs mounted three pickers at once. Power-user discovery leaked into first-value setup. Provider choice is now a dedicated **Provider** select (two-step → Model); chip bars are gone.
 
 ### WHY-3 — Why do server defaults feel hidden?
 

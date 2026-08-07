@@ -42,6 +42,42 @@ async function gotoWorkspacePage(
   return slug;
 }
 
+/** Open Reconfigure → Customize models so two-step pickers are mounted. */
+async function openWorkspaceModelEditors(
+  page: import("@playwright/test").Page,
+  request: import("@playwright/test").APIRequestContext,
+): Promise<string> {
+  const slug = await gotoWorkspacePage(page, request);
+  await page.getByTestId("workspace-edit-config").click();
+  await expect(page.getByTestId("reconfigure-workspace-wizard")).toBeVisible({
+    timeout: 15_000,
+  });
+  const customize = page.getByTestId("server-defaults-customize");
+  if (await customize.isVisible().catch(() => false)) {
+    await customize.click();
+  }
+  await expect(page.getByTestId("wizard-models-advanced")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("llm-model-selector").first()).toBeVisible({
+    timeout: 15_000,
+  });
+  return slug;
+}
+
+async function selectFirstProvider(
+  page: import("@playwright/test").Page,
+  picker: import("@playwright/test").Locator,
+): Promise<string> {
+  await picker.getByTestId("model-picker-provider-trigger").click();
+  const list = page.getByTestId("model-picker-provider-list");
+  await expect(list).toBeVisible({ timeout: 10_000 });
+  const first = list.locator("[cmdk-item]").first();
+  const id = (await first.getAttribute("data-testid")) ?? "";
+  await first.click();
+  return id;
+}
+
 async function gotoSettingsPage(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/settings", GOTO_OPTS);
   await expect(page.getByTestId("app-attribution-card")).toBeVisible({ timeout: 30_000 });
@@ -71,31 +107,29 @@ test.describe("SPEC-043 LLM model picker & attribution", () => {
       skipUnlessLiveStack();
     });
 
-    test("shows unified model picker with provider chips and capability filters", async ({
+    test("shows two-step provider then model picker with capability filters", async ({
       page,
       request,
     }) => {
-      await gotoWorkspacePage(page, request);
-      await page.getByTestId("workspace-edit-config").click();
+      await openWorkspaceModelEditors(page, request);
 
-      const llmSelector = page.getByTestId("llm-model-selector");
+      const llmSelector = page.getByTestId("llm-model-selector").first();
       await assertVisibleWithSize(llmSelector);
 
       const picker = llmSelector.getByTestId("model-picker-panel");
       await assertVisibleWithSize(picker);
 
-      const providerBar = picker.getByTestId("model-picker-provider-bar");
-      await expect(providerBar).toBeVisible();
-      const providerChips = providerBar.locator("button");
-      expect(await providerChips.count()).toBeGreaterThan(1);
+      await expect(picker.getByTestId("model-picker-provider-bar")).toHaveCount(0);
+      await expect(page.getByTestId("model-picker-provider-in-popover")).toHaveCount(0);
+      await expect(picker.getByTestId("model-picker-provider-trigger")).toBeVisible();
 
-      const capabilityBar = picker.getByTestId("model-picker-capability-bar");
-      await expect(capabilityBar).toBeVisible();
-      for (const cap of ["vision", "tools", "streaming"]) {
-        await expect(picker.getByTestId(`model-picker-capability-${cap}`)).toBeVisible();
-      }
+      await selectFirstProvider(page, picker);
+      await expect(page.getByTestId("model-picker-panel-list")).toBeVisible({
+        timeout: 10_000,
+      });
 
-      await expect(providerBar.getByTestId("model-picker-provider-mock")).toHaveCount(0);
+      // Wizard density keeps capability chips off; provider→model is the contract under test.
+      await expect(page.getByTestId("model-picker-provider-bar")).toHaveCount(0);
 
       await page.screenshot({
         path: spec043Screenshot("01-workspace-model-picker-edit-mode.png"),
@@ -107,11 +141,13 @@ test.describe("SPEC-043 LLM model picker & attribution", () => {
       page,
       request,
     }) => {
-      await gotoWorkspacePage(page, request);
-      await page.getByTestId("workspace-edit-config").click();
+      await openWorkspaceModelEditors(page, request);
 
-      const picker = page.getByTestId("llm-model-selector").getByTestId("model-picker-panel");
-      await picker.getByTestId("model-picker-panel-trigger").click();
+      const picker = page
+        .getByTestId("llm-model-selector")
+        .first()
+        .getByTestId("model-picker-panel");
+      await selectFirstProvider(page, picker);
 
       const search = page.getByTestId("model-picker-panel-search");
       await expect(search).toBeFocused({ timeout: 5_000 });
@@ -136,11 +172,13 @@ test.describe("SPEC-043 LLM model picker & attribution", () => {
       page,
       request,
     }) => {
-      await gotoWorkspacePage(page, request);
-      await page.getByTestId("workspace-edit-config").click();
+      await openWorkspaceModelEditors(page, request);
 
-      const picker = page.getByTestId("llm-model-selector").getByTestId("model-picker-panel");
-      await picker.getByTestId("model-picker-panel-trigger").click();
+      const picker = page
+        .getByTestId("llm-model-selector")
+        .first()
+        .getByTestId("model-picker-panel");
+      await selectFirstProvider(page, picker);
 
       const list = page.getByTestId("model-picker-panel-list");
       await expect(list).toBeVisible({ timeout: 10_000 });
@@ -166,25 +204,16 @@ test.describe("SPEC-043 LLM model picker & attribution", () => {
       });
     });
 
-    test("opens model dropdown and filters by provider chip", async ({
+    test("opens model dropdown after choosing provider", async ({
       page,
       request,
     }) => {
-      await gotoWorkspacePage(page, request);
-      await page.getByTestId("workspace-edit-config").click();
+      await openWorkspaceModelEditors(page, request);
 
-      const llmSelector = page.getByTestId("llm-model-selector");
+      const llmSelector = page.getByTestId("llm-model-selector").first();
       const picker = llmSelector.getByTestId("model-picker-panel");
-      const providerBar = picker.getByTestId("model-picker-provider-bar");
-      const chips = providerBar.locator("button").filter({ hasNotText: "All providers" });
-      const chipCount = await chips.count();
-      test.skip(chipCount === 0, "No provider chips");
+      await selectFirstProvider(page, picker);
 
-      const firstChip = chips.first();
-      const chipText = (await firstChip.textContent()) ?? "";
-      await firstChip.click();
-
-      await picker.getByTestId("model-picker-panel-trigger").click();
       const search = page.getByTestId("model-picker-panel-search");
       await expect(search).toBeVisible({ timeout: 10_000 });
 
@@ -192,36 +221,32 @@ test.describe("SPEC-043 LLM model picker & attribution", () => {
         path: spec043Screenshot("02-model-picker-dropdown-open.png"),
       });
 
-      // Close popover before toggling capability chips (clicks outside close the popover)
       await page.keyboard.press("Escape");
-
-      // Toggle vision capability filter then reopen dropdown for filtered view
-      await picker.getByTestId("model-picker-capability-vision").click();
       await picker.getByTestId("model-picker-panel-trigger").click();
-      await expect(page.getByTestId("model-picker-panel-search")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId("model-picker-panel-search")).toBeVisible({
+        timeout: 10_000,
+      });
       await picker.screenshot({
         path: spec043Screenshot("03-model-picker-vision-filter.png"),
       });
-
-      expect(chipText.length).toBeGreaterThan(0);
     });
 
-    test("embedding model picker uses unified panel with provider chips", async ({
+    test("embedding model picker uses two-step provider then model", async ({
       page,
       request,
     }) => {
-      await gotoWorkspacePage(page, request);
-      await page.getByTestId("workspace-edit-config").click();
+      await openWorkspaceModelEditors(page, request);
 
       const embeddingSelector = page.getByTestId("embedding-model-selector");
       await assertVisibleWithSize(embeddingSelector);
 
       const panel = page.getByTestId("embedding-model-picker-panel");
       await expect(panel).toBeVisible();
-      await expect(panel.getByTestId("model-picker-provider-bar")).toBeVisible();
+      await expect(panel.getByTestId("model-picker-provider-bar")).toHaveCount(0);
       await expect(panel.getByTestId("model-picker-capability-bar")).toHaveCount(0);
+      await expect(panel.getByTestId("model-picker-provider-trigger")).toBeVisible();
 
-      await panel.getByTestId("embedding-model-picker-panel-trigger").click();
+      await selectFirstProvider(page, panel);
       await expect(page.getByTestId("embedding-model-picker-panel-search")).toBeVisible({
         timeout: 10_000,
       });
@@ -230,7 +255,7 @@ test.describe("SPEC-043 LLM model picker & attribution", () => {
       });
     });
 
-    test("lm studio provider chip shows live-discovered models", async ({
+    test("lm studio provider option shows live-discovered models", async ({
       page,
       request,
     }) => {
@@ -242,15 +267,17 @@ test.describe("SPEC-043 LLM model picker & attribution", () => {
 
       await request.post(`${API_V1_URL}/models/discover/refresh`);
 
-      await gotoWorkspacePage(page, request);
-      await page.getByTestId("workspace-edit-config").click();
+      await openWorkspaceModelEditors(page, request);
 
-      const picker = page.getByTestId("llm-model-selector").getByTestId("model-picker-panel");
-      const lmChip = picker.getByTestId("model-picker-provider-lmstudio");
-      await expect(lmChip).toBeVisible({ timeout: 10_000 });
-      await lmChip.click();
+      const picker = page
+        .getByTestId("llm-model-selector")
+        .first()
+        .getByTestId("model-picker-panel");
+      await picker.getByTestId("model-picker-provider-trigger").click();
+      const lmOption = page.getByTestId("model-picker-provider-option-lmstudio");
+      await expect(lmOption).toBeVisible({ timeout: 10_000 });
+      await lmOption.click();
 
-      await picker.getByTestId("model-picker-panel-trigger").click();
       await expect(page.getByTestId("model-picker-panel-search")).toBeVisible({
         timeout: 10_000,
       });
@@ -260,7 +287,6 @@ test.describe("SPEC-043 LLM model picker & attribution", () => {
         await expect(listLoading).toBeHidden({ timeout: 20_000 });
       }
 
-      // Popover list is portaled outside the picker root — query from page.
       await expect(page.getByTestId("model-picker-live-badge").first()).toBeVisible({
         timeout: 20_000,
       });
@@ -338,13 +364,18 @@ test.describe("SPEC-043 LLM model picker & attribution", () => {
       await page.goto("/query", GOTO_OPTS);
     });
 
-    test("query settings uses unified model picker", async ({ page }) => {
+    test("query settings uses two-step model picker", async ({ page }) => {
       await page.getByTestId("query-settings-trigger").click({ timeout: 15_000 });
       await expect(page.getByTestId("query-settings-sheet")).toBeVisible({ timeout: 10_000 });
 
       const queryPicker = page.getByTestId("query-model-selector");
       await expect(queryPicker).toBeVisible({ timeout: 10_000 });
-      await expect(queryPicker.getByTestId("model-picker-provider-bar")).toBeVisible();
+      await expect(queryPicker.getByTestId("model-picker-provider-bar")).toHaveCount(0);
+      await expect(queryPicker.getByTestId("model-picker-provider-trigger")).toBeVisible();
+      await queryPicker.getByTestId("model-picker-provider-trigger").click();
+      await expect(page.getByTestId("model-picker-provider-list")).toBeVisible({
+        timeout: 10_000,
+      });
 
       await queryPicker.screenshot({
         path: spec043Screenshot("07-query-model-selector.png"),

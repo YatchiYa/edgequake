@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use edgequake_llm::ProviderFactory;
 use edgequake_pdf2md::{convert_from_bytes, ConversionConfig, FileCheckpointStore, PageSelection};
 use tracing::{info, warn};
 
@@ -13,6 +14,7 @@ use crate::chart_crop::{
 use crate::embedded_images::{figures_by_page, write_embedded_figure_assets};
 use crate::error::PdfConversionError;
 use crate::page_assets::{write_page_png_assets, PageAssetRenderConfig};
+use crate::reasoning_effort_inject::ReasoningEffortInjectProvider;
 use crate::region_assets::{tables_by_page, write_caption_region_assets};
 use crate::vision_markdown::{normalize_vision_pages, VisionPageSlice};
 
@@ -62,10 +64,23 @@ impl PdfConverter for VisionPdfConverter {
             .ok_or(PdfConversionError::BackendNotConfigured("vision model"))?;
 
         let mut builder = ConversionConfig::builder()
-            .provider_name(provider_name)
-            .model(model.clone())
             // SPEC-047 / 015: chart/figure number dump for RAG indexing
             .system_prompt(crate::vision_prompts::RAG_PAGE_VISION_SYSTEM_PROMPT);
+
+        // SPEC-109: when effort is set, inject a clamped provider so pdf2md page
+        // OCR forwards reasoning_effort (ConversionConfig has no effort field yet).
+        if vision.reasoning_effort.is_some() {
+            let base = ProviderFactory::create_llm_provider(&provider_name, &model)
+                .map_err(|error| PdfConversionError::Backend(error.to_string()))?;
+            let wrapped = ReasoningEffortInjectProvider::wrap(
+                base,
+                &provider_name,
+                vision.reasoning_effort.as_deref(),
+            );
+            builder = builder.provider(wrapped).model(model.clone());
+        } else {
+            builder = builder.provider_name(provider_name).model(model.clone());
+        }
 
         if let Some(concurrency) = vision.concurrency {
             builder = builder.concurrency(concurrency);

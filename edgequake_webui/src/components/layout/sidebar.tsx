@@ -273,7 +273,7 @@ export function MobileSidebar() {
             <span className="sr-only">Toggle menu</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-64 p-0 flex flex-col">
+        <SheetContent side="left" size="sm" className="w-64 p-0 flex flex-col">
           <SheetHeader className="sr-only">
             <SheetTitle>Navigation Menu</SheetTitle>
             <SheetDescription>Main navigation for EdgeQuake application</SheetDescription>

@@ -66,10 +66,13 @@ impl LlmRole {
 }
 
 /// Per-role provider override stored in workspace metadata.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct RoleLlmConfig {
     pub provider: Option<String>,
     pub model: Option<String>,
+    /// SPEC-109: optional reasoning effort for this role (`none`/`minimal`/`low`/…).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 /// Resolved provider + model for a role (always populated after fallback).
@@ -77,6 +80,137 @@ pub struct RoleLlmConfig {
 pub struct ResolvedRoleLlm {
     pub provider: String,
     pub model: String,
+}
+
+/// SPEC-109: resolved reasoning effort with explainability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedReasoningEffort {
+    /// Pre-clamp desired string (may be unset for Auto / floor).
+    pub desired: Option<String>,
+    /// Value to put on `CompletionOptions.reasoning_effort` (post-clamp).
+    pub effective: Option<String>,
+    /// Which hierarchy layer supplied `desired` (or `compiled_default`).
+    pub source: String,
+    /// True when effective differs from desired due to capability clamp.
+    pub clamped: bool,
+}
+
+/// Roles that default to lowest supported effort (structured / high-volume).
+pub fn role_uses_structured_effort_floor(role: LlmRole) -> bool {
+    matches!(
+        role,
+        LlmRole::Extract | LlmRole::Summary | LlmRole::Keyword | LlmRole::Vlm
+    )
+}
+
+/// Workspace-level fallback effort from metadata key `default_reasoning_effort`.
+pub fn workspace_default_reasoning_effort(ws: &Workspace) -> Option<String> {
+    ws.metadata
+        .get("default_reasoning_effort")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+fn env_reasoning_effort_for_role(role: LlmRole) -> Option<String> {
+    let role_key = match role {
+        LlmRole::Extract => "EDGEQUAKE_EXTRACT_REASONING_EFFORT",
+        LlmRole::Query => "EDGEQUAKE_QUERY_REASONING_EFFORT",
+        LlmRole::Summary => "EDGEQUAKE_SUMMARY_REASONING_EFFORT",
+        LlmRole::Vlm => "EDGEQUAKE_VLM_REASONING_EFFORT",
+        LlmRole::Keyword => "EDGEQUAKE_KEYWORD_REASONING_EFFORT",
+    };
+    non_empty_env(role_key).or_else(|| non_empty_env("EDGEQUAKE_REASONING_EFFORT"))
+}
+
+/// Resolve + clamp reasoning effort (SPEC-109 LAW-R6).
+///
+/// Hierarchy: request → llm_roles.{role} → workspace default → tenant →
+/// server role map → server default → env → compiled (structured floor / query omit).
+#[allow(clippy::too_many_arguments)] // SPEC-109 cascade needs role + provider + layered overrides
+pub fn resolve_role_reasoning_effort(
+    role: LlmRole,
+    provider: &str,
+    model: &str,
+    ws: &Workspace,
+    request_override: Option<&str>,
+    tenant_default: Option<&str>,
+    server_effort: Option<&str>,
+    server_by_role: Option<&str>,
+) -> ResolvedReasoningEffort {
+    let mut source = "compiled_default".to_string();
+    let mut desired: Option<String> = None;
+
+    if let Some(v) = request_override.map(str::trim).filter(|s| !s.is_empty()) {
+        desired = Some(v.to_string());
+        source = "request".into();
+    }
+    if desired.is_none() {
+        if let Some(cfg) = role_config_from_workspace(ws, role) {
+            if let Some(v) = cfg
+                .reasoning_effort
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                desired = Some(v.to_string());
+                source = "workspace.llm_roles".into();
+            }
+        }
+    }
+    if desired.is_none() {
+        if let Some(v) = workspace_default_reasoning_effort(ws) {
+            desired = Some(v);
+            source = "workspace.default_reasoning_effort".into();
+        }
+    }
+    if desired.is_none() {
+        if let Some(v) = tenant_default.map(str::trim).filter(|s| !s.is_empty()) {
+            desired = Some(v.to_string());
+            source = "tenant".into();
+        }
+    }
+    if desired.is_none() {
+        if let Some(v) = server_by_role.map(str::trim).filter(|s| !s.is_empty()) {
+            desired = Some(v.to_string());
+            source = "server.reasoning_by_role".into();
+        }
+    }
+    if desired.is_none() {
+        if let Some(v) = server_effort.map(str::trim).filter(|s| !s.is_empty()) {
+            desired = Some(v.to_string());
+            source = "server.reasoning_effort".into();
+        }
+    }
+    if desired.is_none() {
+        if let Some(v) = env_reasoning_effort_for_role(role) {
+            desired = Some(v);
+            source = "env".into();
+        }
+    }
+
+    let effective = if let Some(ref d) = desired {
+        edgequake_llm::clamp_reasoning_effort(provider, model, Some(d.as_str()))
+    } else if role_uses_structured_effort_floor(role) {
+        edgequake_llm::lowest_for_structured_output(provider, model)
+    } else {
+        None // query/chat Auto
+    };
+
+    let clamped = match (&desired, &effective) {
+        (Some(d), Some(e)) => !d.eq_ignore_ascii_case(e),
+        (Some(_), None) => true,
+        (None, Some(_)) if role_uses_structured_effort_floor(role) => false,
+        _ => false,
+    };
+
+    ResolvedReasoningEffort {
+        desired,
+        effective,
+        source,
+        clamped,
+    }
 }
 
 /// Read role overrides from workspace metadata key `llm_roles`.
@@ -375,5 +509,65 @@ mod tests {
         assert_eq!(from_env.provider, "mistral");
         std::env::remove_var("EDGEQUAKE_EXTRACT_LLM_MODEL");
         std::env::remove_var("EDGEQUAKE_EXTRACT_LLM_PROVIDER");
+    }
+
+    #[test]
+    fn resolve_extract_effort_uses_structured_floor_for_gpt5_mini() {
+        let ws = sample_workspace(HashMap::new());
+        let resolved = resolve_role_reasoning_effort(
+            LlmRole::Extract,
+            "openai",
+            "gpt-5-mini",
+            &ws,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(resolved.effective.as_deref(), Some("minimal"));
+        assert_eq!(resolved.source, "compiled_default");
+    }
+
+    #[test]
+    fn resolve_query_effort_omits_by_default() {
+        let ws = sample_workspace(HashMap::new());
+        let resolved = resolve_role_reasoning_effort(
+            LlmRole::Query,
+            "openai",
+            "gpt-5-mini",
+            &ws,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(resolved.effective.is_none());
+        assert!(resolved.desired.is_none());
+    }
+
+    #[test]
+    fn resolve_request_override_wins_and_clamps() {
+        let mut meta = HashMap::new();
+        meta.insert(
+            "llm_roles".into(),
+            serde_json::json!({
+                "query": { "provider": "openai", "model": "gpt-5-mini", "reasoning_effort": "medium" }
+            }),
+        );
+        let ws = sample_workspace(meta);
+        let resolved = resolve_role_reasoning_effort(
+            LlmRole::Query,
+            "openai",
+            "gpt-5-mini",
+            &ws,
+            Some("none"),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(resolved.desired.as_deref(), Some("none"));
+        assert_eq!(resolved.effective.as_deref(), Some("minimal"));
+        assert!(resolved.clamped);
+        assert_eq!(resolved.source, "request");
     }
 }

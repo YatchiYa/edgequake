@@ -810,7 +810,7 @@
     "entityTypesHeading": "抽取实体类型",
     "entityTypesHint": "选择要抽取到知识图谱中的实体类型。",
     "overriddenDefaults": "已覆盖",
-    "customModelsHint": "选择 LLM、嵌入和视觉模型。不显示提供商筛选。",
+    "customModelsHint": "先选择提供商，再选择模型。",
     "adminSection": "管理员",
     "modelsSection": "模型",
     "modelsMode": "模式",

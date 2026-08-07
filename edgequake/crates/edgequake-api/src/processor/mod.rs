@@ -425,6 +425,7 @@ impl DocumentTaskProcessor {
         task.update_progress(current_step, total_steps, percent);
         if let (Some(storage), Some(progress)) = (&self.task_storage, task.progress.as_ref()) {
             if let Err(e) = storage.update_task_progress(&task.track_id, progress).await {
+                // Missing-row is already Ok from storage; remaining failures are real.
                 tracing::warn!(
                     error = %e,
                     track_id = %task.track_id,

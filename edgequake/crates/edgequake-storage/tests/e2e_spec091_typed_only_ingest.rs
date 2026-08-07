@@ -128,6 +128,7 @@ async fn e2e_spec091_typed_only_ingest_and_query() {
                 workspace_id: WorkspaceId(ws),
                 dimensions: DIM as i32,
                 embedding: emb.clone(),
+                legacy_vector_id: None,
             }],
         )
         .await

@@ -77,6 +77,16 @@ pub(super) fn build_pdf_task(
         .unwrap_or(workspace.llm_provider.as_str())
         .to_string();
     let vision_model = workspace.vision_llm_model.clone().filter(|m| !m.is_empty());
+    let vision_model_for_resolve = vision_model
+        .clone()
+        .unwrap_or_else(|| crate::vision_env::default_vision_model_for_provider(&vision_provider));
+    let vision_reasoning_effort = crate::services::resolve_vlm_reasoning_effort(
+        Some(workspace),
+        &vision_provider,
+        &vision_model_for_resolve,
+        None,
+        None,
+    );
 
     edgequake_tasks::PdfProcessingData {
         pdf_id,
@@ -97,6 +107,7 @@ pub(super) fn build_pdf_task(
         restart_from_scratch: false,
         reprocess_mode: Some(edgequake_tasks::ReprocessMode::EntitiesOnly),
         multimodal_process_options: None,
+        vision_reasoning_effort,
     }
 }
 

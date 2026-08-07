@@ -50,6 +50,8 @@ pub struct ReconcilePendingReport {
     pub failed_closed: usize,
     /// Mid-pipeline KV healed to cancelled because the linked task is cancelled.
     pub cancelled_synced: usize,
+    /// Mid-pipeline docs with completion evidence → promoted to completed.
+    pub completed_synced: usize,
     pub errors: usize,
     pub document_ids: Vec<String>,
 }
@@ -115,6 +117,14 @@ pub enum CancelHealOutcome {
     NotCancelled,
 }
 
+/// Outcome of attempting completed-orphan heal (stale completion under mid-pipeline).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletedHealOutcome {
+    Healed,
+    /// Not eligible (active task, or metadata does not look completed).
+    NotApplicable,
+}
+
 /// If the document has a Cancelled task and no active work, sync metadata to cancelled.
 ///
 /// DRY SSOT used by orphan reconcile and `recover-stuck` so cancelled zombies are
@@ -153,6 +163,41 @@ pub async fn try_heal_cancelled_orphan(
                 document_id = %document_id,
                 error = %e,
                 "SPEC-054: cancel-orphan KV sync failed"
+            );
+            Err(ApiError::Internal(e))
+        }
+    }
+}
+
+/// If mid-pipeline metadata already shows finished ingest and no live task, promote to completed.
+///
+/// DRY with [`try_heal_cancelled_orphan`]: one active-task gate, one sync helper, one outcome.
+pub async fn try_heal_completed_orphan(
+    state: &AppState,
+    document_id: &str,
+    metadata: &Value,
+) -> ApiResult<CompletedHealOutcome> {
+    if !super::task_document_sync::looks_like_completed_orphan(metadata) {
+        return Ok(CompletedHealOutcome::NotApplicable);
+    }
+    let workspace_id = parse_uuid_field(metadata, "workspace_id");
+    if has_active_task_for_document(state.tasks.storage.as_ref(), document_id, workspace_id).await?
+    {
+        return Ok(CompletedHealOutcome::NotApplicable);
+    }
+    match super::task_document_sync::sync_doc_completed_orphan(
+        Arc::clone(&state.storage.kv_storage),
+        document_id,
+    )
+    .await
+    {
+        Ok(true) => Ok(CompletedHealOutcome::Healed),
+        Ok(false) => Ok(CompletedHealOutcome::NotApplicable),
+        Err(e) => {
+            warn!(
+                document_id = %document_id,
+                error = %e,
+                "SPEC-054: completed-orphan KV sync failed"
             );
             Err(ApiError::Internal(e))
         }
@@ -267,13 +312,26 @@ pub fn build_pdf_recovery_task_data_with_mode(
     full_restart: bool,
 ) -> PdfProcessingData {
     let vision_provider = resolve_pdf_recovery_vision_provider(metadata);
+    let vision_model = resolve_pdf_recovery_vision_model(metadata, &vision_provider);
+    let model_for_resolve = vision_model
+        .clone()
+        .unwrap_or_else(|| crate::vision_env::default_vision_model_for_provider(&vision_provider));
+    // Prefer explicit task override stored on document metadata; else clamp role default.
+    let request_override = meta_str(metadata, "vision_reasoning_effort");
+    let vision_reasoning_effort = crate::services::resolve_vlm_reasoning_effort(
+        None,
+        &vision_provider,
+        &model_for_resolve,
+        request_override,
+        None,
+    );
     PdfProcessingData {
         pdf_id,
         tenant_id,
         workspace_id,
         enable_vision: true,
         vision_provider: vision_provider.clone(),
-        vision_model: resolve_pdf_recovery_vision_model(metadata, &vision_provider),
+        vision_model,
         existing_document_id: Some(document_id.to_string()),
         pdf_parser_backend: edgequake_pdf::PdfParserBackend::Vision,
         pdf_parser_backend_explicit: false,
@@ -284,6 +342,7 @@ pub fn build_pdf_recovery_task_data_with_mode(
             None
         },
         multimodal_process_options: None,
+        vision_reasoning_effort,
     }
 }
 
@@ -590,6 +649,28 @@ async fn ensure_one_orphan(
         }
     }
 
+    // Force re-index / task loss can leave processing+converting with finished
+    // stage_message + entity counts. Promote to completed instead of re-converting.
+    if mid_pipeline {
+        match try_heal_completed_orphan(state, document_id, metadata).await {
+            Ok(CompletedHealOutcome::Healed) => {
+                report.completed_synced += 1;
+                report.document_ids.push(document_id.to_string());
+                return;
+            }
+            Ok(CompletedHealOutcome::NotApplicable) => {}
+            Err(e) => {
+                report.errors += 1;
+                warn!(
+                    document_id = %document_id,
+                    error = %e,
+                    "SPEC-054: completed-orphan heal failed"
+                );
+                return;
+            }
+        }
+    }
+
     match ensure_task_for_pending_document(
         state,
         document_id,
@@ -726,7 +807,12 @@ pub async fn reconcile_pending_documents_missing_tasks(
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     for (_key, value) in entries {
-        if report.enqueued + report.failed_closed + report.cancelled_synced >= max_documents {
+        if report.enqueued
+            + report.failed_closed
+            + report.cancelled_synced
+            + report.completed_synced
+            >= max_documents
+        {
             break;
         }
 
@@ -760,6 +846,7 @@ pub async fn reconcile_pending_documents_missing_tasks(
         skipped_no_content = report.skipped_no_content,
         failed_closed = report.failed_closed,
         cancelled_synced = report.cancelled_synced,
+        completed_synced = report.completed_synced,
         errors = report.errors,
         reason = %reason,
         "SPEC-054/#298: pending/mid-pipeline document task reconcile complete"

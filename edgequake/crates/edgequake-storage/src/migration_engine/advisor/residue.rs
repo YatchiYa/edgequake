@@ -37,19 +37,19 @@ SELECT
                        AND c.chunk_index = substring(k.key from 44)::int))) AS chunk_text,
   count(*) FILTER (WHERE ((k.key LIKE '%-metadata' OR k.key LIKE '%-content')
      AND NOT EXISTS (SELECT 1 FROM public.documents d
-                     WHERE d.id::text = substring(k.key from '%UUID_RE%')))) AS doc_shells,
+                     WHERE d.id = NULLIF(substring(k.key from '%UUID_RE%'), '')::uuid))) AS doc_shells,
   count(*) FILTER (WHERE (k.key LIKE '%-lineage'
      AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a
                      WHERE a.kind = 'lineage'
-                       AND a.document_id::text = substring(k.key from '%UUID_RE%')))) AS lineage,
+                       AND a.document_id = NULLIF(substring(k.key from '%UUID_RE%'), '')::uuid))) AS lineage,
   count(*) FILTER (WHERE ((k.key LIKE '%-multimodal-manifest'
      AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a
                      WHERE a.kind = 'multimodal-manifest'
-                       AND a.document_id::text = substring(k.key from '%UUID_RE%')))
+                       AND a.document_id = NULLIF(substring(k.key from '%UUID_RE%'), '')::uuid))
      OR (k.key LIKE '%-multimodal-chunks'
      AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a
                      WHERE a.kind = 'multimodal-chunks'
-                       AND a.document_id::text = substring(k.key from '%UUID_RE%'))))) AS multimodal,
+                       AND a.document_id = NULLIF(substring(k.key from '%UUID_RE%'), '')::uuid)))) AS multimodal,
   -- LAW-KVH5: purge-aware — only keys that would survive migration 125 verified purge.
   count(*) FILTER (WHERE (k.key LIKE 'doc:hash:%'
      AND NOT (split_part(k.key, ':', 3) ~ '%UUID_ANCHORED%'
@@ -90,19 +90,19 @@ SELECT count(*) FROM public."%TABLE%" k WHERE
                        AND c.chunk_index = substring(k.key from 44)::int))
   OR ((k.key LIKE '%-metadata' OR k.key LIKE '%-content')
      AND NOT EXISTS (SELECT 1 FROM public.documents d
-                     WHERE d.id::text = substring(k.key from '%UUID_RE%')))
+                     WHERE d.id = NULLIF(substring(k.key from '%UUID_RE%'), '')::uuid))
   OR (k.key LIKE '%-lineage'
      AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a
                      WHERE a.kind = 'lineage'
-                       AND a.document_id::text = substring(k.key from '%UUID_RE%')))
+                       AND a.document_id = NULLIF(substring(k.key from '%UUID_RE%'), '')::uuid))
   OR (k.key LIKE '%-multimodal-manifest'
      AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a
                      WHERE a.kind = 'multimodal-manifest'
-                       AND a.document_id::text = substring(k.key from '%UUID_RE%')))
+                       AND a.document_id = NULLIF(substring(k.key from '%UUID_RE%'), '')::uuid))
   OR (k.key LIKE '%-multimodal-chunks'
      AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a
                      WHERE a.kind = 'multimodal-chunks'
-                       AND a.document_id::text = substring(k.key from '%UUID_RE%')))
+                       AND a.document_id = NULLIF(substring(k.key from '%UUID_RE%'), '')::uuid))
   OR (k.key LIKE 'doc:hash:%'
      AND NOT (split_part(k.key, ':', 3) ~ '%UUID_ANCHORED%'
               AND EXISTS (SELECT 1 FROM public.ingestion_dedup d

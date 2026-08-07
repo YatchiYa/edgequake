@@ -85,6 +85,7 @@ pub fn migration_class_tag(version: i64) -> &'static str {
     } else if (106..=124).contains(&version)
         || (127..=130).contains(&version)
         || (132..=141).contains(&version)
+        || version == 143
     {
         "  [SAFE SCHEMA — expandable]"
     } else {
@@ -469,10 +470,12 @@ fn vector_row(posture: &MigrationPosture) -> String {
     let v = &posture.vector;
     let phase = if v.dropped {
         "Dropped"
-    } else if v.retirable() {
-        // Legacy fleet fully mirrored + verified + backend flipped → safe to drop.
-        "ReadyToRetire"
-    } else if v.backend == "chunk_embeddings" {
+    } else if v.fleet_retirable() {
+        "ReadyFleetDrop"
+    } else if v.chunk_retirable() {
+        // Chunk-only (126) ready — fleet may still have uncovered provenance.
+        "ReadyChunkDrop"
+    } else if v.backend_reads_typed() {
         "Flipped"
     } else if v.ready_to_flip() {
         "ReadyToFlip"
@@ -494,15 +497,52 @@ fn vector_row(posture: &MigrationPosture) -> String {
         Some(j) => j.state.clone(),
         None => "—".to_string(),
     };
-    let verify = match &v.verify {
-        Some(x) if x.mismatches > 0 => format!("{} MISMATCH", x.mismatches),
-        Some(x) if x.sampled > 0 => format!("ok ({} smpl)", x.sampled),
-        Some(_) => "ok".to_string(),
-        None => "—".to_string(),
+    let verify = match (&v.verify_chunk, &v.verify_fleet) {
+        (Some(c), Some(f)) if c.mismatches + f.mismatches > 0 => {
+            format!("{} MISMATCH", c.mismatches + f.mismatches)
+        }
+        (Some(c), Some(f)) if c.sampled + f.sampled > 0 => {
+            format!(
+                "ok c={} f={}",
+                if c.passes() { "pass" } else { "fail" },
+                if f.passes() { "pass" } else { "fail" }
+            )
+        }
+        (Some(c), Some(f)) => format!(
+            "ok c={} f={}",
+            if c.passes() { "pass" } else { "fail" },
+            if f.passes() { "pass" } else { "fail" }
+        ),
+        (Some(c), None) => {
+            if c.mismatches > 0 {
+                format!("{} MISMATCH", c.mismatches)
+            } else if c.sampled > 0 {
+                format!("ok ({} smpl)", c.sampled)
+            } else {
+                "ok".to_string()
+            }
+        }
+        (None, Some(f)) => {
+            if f.mismatches > 0 {
+                format!("{} MISMATCH", f.mismatches)
+            } else if f.sampled > 0 {
+                format!("ok ({} smpl)", f.sampled)
+            } else {
+                "ok".to_string()
+            }
+        }
+        _ => "—".to_string(),
     };
+    // RESIDUE = uncovered (drop gate), not raw legacy counts.
     format!(
         "{:<22} {:<10} {:<14} {:<22} {:<14} {:>8} {:>10}",
-        "VECTOR (chunk)", v.backend, phase, backfill, verify, v.legacy_chunk_rows, v.typed_rows,
+        "VECTOR (chunk+fleet)",
+        v.backend,
+        phase,
+        backfill,
+        verify,
+        v.uncovered_chunk_rows + v.uncovered_fleet_rows,
+        v.typed_rows,
     )
 }
 
@@ -642,21 +682,25 @@ pub fn print_guard(posture: &MigrationPosture, residue: &ResidueReport) {
         }
     );
 
-    // SPEC-091 W4 / IW2 — readiness to DROP OLD vector tables.
+    // SPEC-091 W4 / IW2 — chunk (126) vs fleet (131) readiness are separate.
     let v = &posture.vector;
+    let chunk_verify_ok = v.verify_chunk.map(|x| x.passes()).unwrap_or(false);
+    let fleet_verify_ok = v.verify_fleet.map(|x| x.passes()).unwrap_or(false);
     println!(
-        "  vector-legacy drop-readiness: {}",
+        "  vector-chunk drop-readiness (126): {}",
         if v.dropped {
-            "already dropped — nothing left to delete".to_string()
-        } else if v.retirable() {
-            "GREEN — old vector rows are copied + verified; safe to --confirm-drop".to_string()
+            "already dropped".to_string()
+        } else if v.chunk_retirable() {
+            format!(
+                "GREEN — uncovered_chunk={} (legacy_chunk={} informational); safe for chunk --confirm-drop",
+                v.uncovered_chunk_rows, v.legacy_chunk_rows
+            )
         } else {
             format!(
-                "RED — do NOT drop yet (backend={}, {} old chunk row(s) still need \
-                 backfill/verify; verify={})",
+                "RED — backend={}, uncovered_chunk={}, verify_chunk={}",
                 v.backend,
-                v.legacy_chunk_rows,
-                if v.verify.map(|x| x.passes()).unwrap_or(false) {
+                v.uncovered_chunk_rows,
+                if chunk_verify_ok {
                     "pass"
                 } else {
                     "fail/pending"
@@ -664,13 +708,51 @@ pub fn print_guard(posture: &MigrationPosture, residue: &ResidueReport) {
             )
         }
     );
-    if !v.dropped && !v.retirable() {
+    println!(
+        "  vector-fleet drop-readiness (131): {}",
+        if v.dropped {
+            "already dropped".to_string()
+        } else if v.fleet_retirable() {
+            format!(
+                "GREEN — uncovered_fleet={} (legacy_fleet={} informational); provenance complete; safe for fleet --confirm-drop",
+                v.uncovered_fleet_rows, v.legacy_fleet_rows
+            )
+        } else {
+            format!(
+                "RED — backend={}, uncovered_fleet={}, uncovered_chunk={}, verify_fleet={}, stalls={}",
+                v.backend,
+                v.uncovered_fleet_rows,
+                v.uncovered_chunk_rows,
+                if fleet_verify_ok { "pass" } else { "fail/pending" },
+                v.provenance_stall_rows
+            )
+        }
+    );
+    if !v.dropped && v.uncovered_fleet_rows > 0 {
+        let stall_line = if v.provenance_stall_rows > 0 {
+            format!(
+                " {} dual-legacy stall(s) (typed already holds another legacy_vector_id — \
+                 inspect/delete alias residue).",
+                v.provenance_stall_rows
+            )
+        } else {
+            String::new()
+        };
         println!(
-            "    plain English: typed tables are in use, but {} row(s) still live only",
-            v.legacy_chunk_rows
+            "    NEXT: run iw2-fleet-embedding-backfill and/or iw2-fleet-provenance-stamp \
+             until uncovered_fleet=0 (legacy_vector_id provenance; see specs/111-issues/09-ops-runbook.md).{stall_line}"
         );
-        println!("    in the old eq_*_vectors tables. Dropping now would lose that data.");
-        println!("    Wait for backfill (edgequake migrate status) until this light is GREEN.");
+    } else if !v.dropped && !v.chunk_retirable() && v.uncovered_chunk_rows > 0 {
+        println!(
+            "    plain English: {} chunk vector(s) lack typed coverage. \
+             Wait for w3-chunk-embedding-backfill.",
+            v.uncovered_chunk_rows
+        );
+    } else if !v.dropped && !v.fleet_retirable() && v.uncovered_fleet_rows == 0 {
+        println!(
+            "    plain English: provenance coverage is complete but fleet drop is gated \
+             (backend flip and/or fleet verify). Not an uncovered-data problem."
+        );
     }
 }
 
@@ -690,6 +772,7 @@ mod first_principles_tests {
         assert!(irreversible_drop_plain(125).contains("key-value"));
         assert!(migration_class_tag(131).contains("DROP OLD"));
         assert!(migration_class_tag(130).contains("SAFE SCHEMA"));
+        assert!(migration_class_tag(143).contains("SAFE SCHEMA"));
     }
 
     #[test]

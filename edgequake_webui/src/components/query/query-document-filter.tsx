@@ -28,6 +28,11 @@ interface QueryDocumentFilterProps {
   onChange: (filter: DocumentFilter | undefined) => void;
   /** Whether the filter is disabled */
   disabled?: boolean;
+  /**
+   * `icon` — compact toolbar trigger (default).
+   * `block` — full-width drawer/settings row trigger.
+   */
+  variant?: 'icon' | 'block';
 }
 
 /** Count how many active filter criteria are set. */
@@ -44,6 +49,7 @@ export function QueryDocumentFilter({
   value,
   onChange,
   disabled = false,
+  variant = 'icon',
 }: QueryDocumentFilterProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -75,25 +81,55 @@ export function QueryDocumentFilter({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant={count > 0 ? 'secondary' : 'ghost'}
-          size="icon"
-          disabled={disabled}
-          aria-label={t('query.filter.toggle', 'Document Filter')}
-          className="relative"
-        >
-          <Filter className="h-4 w-4" />
-          {count > 0 && (
-            <Badge
-              variant="destructive"
-              className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px]"
-            >
-              {count}
-            </Badge>
-          )}
-        </Button>
+        {variant === 'block' ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled}
+            aria-label={t('query.filter.toggle', 'Document Filter')}
+            className="w-full h-auto justify-start gap-2 px-3 py-2 text-xs font-normal text-muted-foreground hover:text-accent-foreground"
+          >
+            <Filter className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {count > 0
+                ? t('query.filter.activeCount', '{{count}} filter(s) active', {
+                    count,
+                  })
+                : t('query.filter.addCriteria', 'Add filter criteria')}
+            </span>
+            {count > 0 && (
+              <Badge
+                variant="secondary"
+                className="ml-auto h-5 min-w-5 px-1.5 font-mono text-[10px]"
+              >
+                {count}
+              </Badge>
+            )}
+          </Button>
+        ) : (
+          <Button
+            variant={count > 0 ? 'secondary' : 'ghost'}
+            size="icon"
+            disabled={disabled}
+            aria-label={t('query.filter.toggle', 'Document Filter')}
+            className="relative"
+          >
+            <Filter className="h-4 w-4" />
+            {count > 0 && (
+              <Badge
+                variant="destructive"
+                className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px]"
+              >
+                {count}
+              </Badge>
+            )}
+          </Button>
+        )}
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 space-y-4">
+      <PopoverContent
+        align={variant === 'block' ? 'start' : 'end'}
+        className="w-80 space-y-4"
+      >
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-semibold">
             {t('query.filter.title', 'Document Filter')}
@@ -156,7 +192,7 @@ export function QueryDocumentFilter({
             onChange={(e) => handleFieldChange('document_pattern', e.target.value)}
             className="h-8 text-sm"
           />
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {t('query.filter.patternHint', 'Comma-separated terms. Matches titles case-insensitively.')}
           </p>
         </div>

@@ -53,10 +53,20 @@ interface ConfigAreaResponse {
   mismatch_description: string | null;
 }
 
+interface ReasoningEffortExplain {
+  desired: string | null;
+  effective: string | null;
+  source: string;
+  clamped: boolean;
+  provider: string;
+  model: string;
+}
+
 interface EffectiveConfigResponse {
   llm: ConfigAreaResponse;
   embedding: ConfigAreaResponse;
   vision: ConfigAreaResponse;
+  reasoning_roles?: Record<string, ReasoningEffortExplain>;
   priority_rule: string;
   priority_mode: string;
   server_config_available: boolean;
@@ -358,6 +368,49 @@ export function ConfigExplainabilityPanel() {
             <ConfigAreaSection areaKey="llm" area={config.llm} />
             <ConfigAreaSection areaKey="embedding" area={config.embedding} />
             <ConfigAreaSection areaKey="vision" area={config.vision} />
+
+            {config.reasoning_roles && Object.keys(config.reasoning_roles).length > 0 && (
+              <>
+                <Separator />
+                <div className="space-y-2" data-testid="reasoning-roles-explain">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Zap className="h-4 w-4" />
+                    Reasoning effort by role
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Desired vs effective (clamped) effort per LLM role.
+                  </p>
+                  <div className="space-y-2">
+                    {Object.entries(config.reasoning_roles).map(([role, info]) => (
+                      <div
+                        key={role}
+                        className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs"
+                      >
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                          {role}
+                        </Badge>
+                        <span>
+                          <span className="text-muted-foreground">desired: </span>
+                          <span className="font-mono">{info.desired ?? 'Auto'}</span>
+                        </span>
+                        <span>
+                          <span className="text-muted-foreground">effective: </span>
+                          <span className="font-mono">{info.effective ?? 'omit'}</span>
+                        </span>
+                        {info.clamped && (
+                          <Badge variant="secondary" className="text-[10px] py-0 h-4">
+                            clamped
+                          </Badge>
+                        )}
+                        <span className="text-muted-foreground/70 font-mono text-[10px]">
+                          {info.source}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
 
             <Separator />
 

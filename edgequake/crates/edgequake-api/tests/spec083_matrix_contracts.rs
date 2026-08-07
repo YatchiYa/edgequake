@@ -1038,7 +1038,14 @@ fn contract_tasks_pk_documented() {
 fn contract_checksum_drift_fails_loud() {
     let m071 = include_str!("../src/state/migration_bootstrap/reconcile/m071.rs");
     let m078 = include_str!("../src/state/migration_bootstrap/reconcile/m078.rs");
-    for (label, src) in [("m071", m071), ("m078", m078)] {
+    let m118 = include_str!("../src/state/migration_bootstrap/reconcile/m118.rs");
+    let m121 = include_str!("../src/state/migration_bootstrap/reconcile/m121.rs");
+    for (label, src) in [
+        ("m071", m071),
+        ("m078", m078),
+        ("m118", m118),
+        ("m121", m121),
+    ] {
         assert!(
             src.contains("allow_checksum_repair")
                 && src.contains("EDGEQUAKE_DEV_MODE")

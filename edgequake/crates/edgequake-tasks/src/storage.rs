@@ -26,6 +26,8 @@ pub trait TaskStorage: Send + Sync {
     /// SPEC-090 F-090-04: update only `progress` + `updated_at` (no payload rewrite).
     ///
     /// Default falls back to get+update_task (memory / legacy adapters).
+    /// Missing row is success — lifecycle purge may delete during progress heartbeats
+    /// (same race as [`Self::touch_task`]).
     async fn update_task_progress(
         &self,
         track_id: &str,
@@ -34,9 +36,13 @@ pub trait TaskStorage: Send + Sync {
         if let Some(mut task) = self.get_task(track_id).await? {
             task.progress = Some(progress.clone());
             task.updated_at = Utc::now();
-            self.update_task(&task).await
+            match self.update_task(&task).await {
+                Ok(()) => Ok(()),
+                Err(crate::error::TaskError::TaskNotFound(_)) => Ok(()),
+                Err(e) => Err(e),
+            }
         } else {
-            Err(crate::error::TaskError::TaskNotFound(track_id.to_string()))
+            Ok(())
         }
     }
 

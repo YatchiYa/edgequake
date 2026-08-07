@@ -236,6 +236,16 @@ pub const MIGRATION_079_VERSION: i64 = 79;
 /// sqlx migration version for HNSW ef_construction optimization (SPEC-034 IMP-04).
 pub const MIGRATION_071_VERSION: i64 = 71;
 
+/// sqlx migration version for SPEC-091 wsdoc backfill (SPEC-110 checksum repair).
+pub const MIGRATION_118_VERSION: i64 = 118;
+
+/// sqlx migration version for SPEC-091 injection backfill (SPEC-110 checksum repair).
+pub const MIGRATION_121_VERSION: i64 = 121;
+/// sqlx migration version for SPEC-091 KV drop (SPEC-111 cast-direction checksum repair).
+pub const MIGRATION_125_VERSION: i64 = 125;
+/// sqlx migration version for SPEC-091 fleet vector drop (SPEC-111 provenance checksum repair).
+pub const MIGRATION_131_VERSION: i64 = 131;
+
 /// sqlx migration version for halfvec embeddings (SPEC-042-E E-01).
 pub const MIGRATION_080_VERSION: i64 = 80;
 
@@ -1215,6 +1225,38 @@ async fn run_postgres_migrations_inner(
         );
     }
 
+    if reconcile::repair_migration_118_checksum_if_needed(pool).await? {
+        info!(
+            target: "edgequake.migration",
+            step = "migration_118_checksum_repaired",
+            "v0.24.1 → SPEC-110 M118 checksum reconciled before sqlx run"
+        );
+    }
+
+    if reconcile::repair_migration_121_checksum_if_needed(pool).await? {
+        info!(
+            target: "edgequake.migration",
+            step = "migration_121_checksum_repaired",
+            "v0.24.1 → SPEC-110 M121 checksum reconciled before sqlx run"
+        );
+    }
+
+    if reconcile::repair_migration_125_checksum_if_needed(pool).await? {
+        info!(
+            target: "edgequake.migration",
+            step = "migration_125_checksum_repaired",
+            "SPEC-111 M125 cast-direction checksum reconciled before sqlx run"
+        );
+    }
+
+    if reconcile::repair_migration_131_checksum_if_needed(pool).await? {
+        info!(
+            target: "edgequake.migration",
+            step = "migration_131_checksum_repaired",
+            "SPEC-111 M131 provenance-guard checksum reconciled before sqlx run"
+        );
+    }
+
     let apply_sqlx = migrate_cli_mode() && !pending.is_empty();
     if !apply_sqlx {
         info!(
@@ -1867,9 +1909,15 @@ pub fn migration_description(version: i64) -> String {
         .unwrap_or_default()
 }
 
+mod checksum_repair;
 mod helpers;
 mod reconcile;
 mod reconcile_state;
+
+pub use checksum_repair::{
+    allow_checksum_repair, parse_allow_checksum_repair_list, refuse_silent_repair_message,
+    ALLOW_CHECKSUM_REPAIR_ENV, KNOWN_CHECKSUM_REPAIR_VERSIONS,
+};
 
 pub use helpers::large_graph_threshold;
 

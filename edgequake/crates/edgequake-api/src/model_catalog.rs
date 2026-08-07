@@ -14,6 +14,7 @@ use edgequake_llm::model_config::{ModelCapabilities, ModelType, ModelsConfig, Pr
 
 use crate::handlers::models_types::{
     EmbeddingModelItem, LlmModelItem, ModelCapabilitiesResponse, ModelCostResponse, ModelResponse,
+    ReasoningEffortCapabilityResponse,
 };
 
 /// Whether live model discovery is enabled (default: true).
@@ -22,6 +23,18 @@ pub fn dynamic_discovery_enabled() -> bool {
         std::env::var("EDGEQUAKE_DYNAMIC_MODELS").ok().as_deref(),
         Some("0") | Some("false") | Some("no") | Some("off")
     )
+}
+
+fn reasoning_effort_capability(
+    provider: &str,
+    model: &str,
+) -> Option<ReasoningEffortCapabilityResponse> {
+    let caps = edgequake_llm::reasoning_capabilities_for(provider, model)?;
+    Some(ReasoningEffortCapabilityResponse {
+        supported: caps.supported.iter().map(|s| (*s).to_string()).collect(),
+        lowest_structured: edgequake_llm::lowest_for_structured_output(provider, model)
+            .map(|s| s.to_string()),
+    })
 }
 
 /// Determine which provider names are visible in the current deployment.
@@ -95,6 +108,7 @@ pub fn model_card_to_response(card: &edgequake_llm::ModelCard) -> ModelResponse 
             supports_streaming: card.capabilities.supports_streaming,
             supports_system_message: card.capabilities.supports_system_message,
             embedding_dimension: card.capabilities.embedding_dimension,
+            reasoning_effort: reasoning_effort_capability("", &card.name),
         },
         cost: ModelCostResponse {
             input_per_1k: card.cost.input_per_1k,
@@ -143,6 +157,7 @@ pub fn discovered_to_response(model: &DiscoveredModel) -> ModelResponse {
             supports_streaming: model.capabilities.supports_streaming,
             supports_system_message: model.capabilities.supports_system_message,
             embedding_dimension: model.capabilities.embedding_dimension,
+            reasoning_effort: reasoning_effort_capability(&model.provider, &model.id),
         },
         cost: ModelCostResponse {
             input_per_1k,
@@ -587,6 +602,7 @@ mod tests {
                 supports_streaming: true,
                 supports_system_message: true,
                 embedding_dimension: 0,
+                reasoning_effort: None,
             },
             cost: ModelCostResponse {
                 input_per_1k: 0.0,

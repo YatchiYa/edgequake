@@ -4004,6 +4004,8 @@ export interface components {
              *     @implements SPEC-032: Provider selection in query interface
              */
             provider?: string | null;
+            /** @description SPEC-109: reasoning effort override (`none`/`minimal`/`low`/…). Auto = omit. */
+            reasoning_effort?: string | null;
             /** @description Whether to stream the response. */
             stream?: boolean;
             /**
@@ -5188,6 +5190,8 @@ export interface components {
              *     If not provided, auto-detected from model name or uses EDGEQUAKE_DEFAULT_LLM_PROVIDER.
              */
             default_llm_provider?: string | null;
+            /** @description SPEC-109: default reasoning effort seed for new workspaces (`none`/`minimal`/`low`/…). */
+            default_reasoning_effort?: string | null;
             /**
              * @description Default Vision LLM model for PDF-to-Markdown extraction (e.g., "gpt-4o", "gemma3:12b").
              *     Workspaces inherit this if not explicitly configured.
@@ -5270,6 +5274,8 @@ export interface components {
          *     }
          */
         CreateWorkspaceApiRequest: {
+            /** @description SPEC-109: seed workspace `default_reasoning_effort` metadata. */
+            default_reasoning_effort?: string | null;
             /** @description Optional description. */
             description?: string | null;
             /**
@@ -5320,6 +5326,8 @@ export interface components {
              *     If not provided, auto-detected from llm_model.
              */
             llm_provider?: string | null;
+            /** @description SPEC-109: initial `llm_roles` metadata. */
+            llm_roles?: unknown;
             /** @description Maximum number of documents. */
             max_documents?: number | null;
             /** @description Workspace name. */
@@ -6063,6 +6071,7 @@ export interface components {
          *       "llm": {},
          *       "priority_mode": {},
          *       "priority_rule": {},
+         *       "reasoning_roles": {},
          *       "server_config_available": {},
          *       "vision": {}
          *     }
@@ -6076,6 +6085,10 @@ export interface components {
             priority_mode: string;
             /** @description Priority rule explanation shown to the user. */
             priority_rule: string;
+            /** @description SPEC-109: per-role reasoning effort resolution (fleet defaults; workspace overlay separate). */
+            reasoning_roles?: {
+                [key: string]: components["schemas"]["ReasoningEffortExplain"];
+            };
             /** @description Whether PostgreSQL server_config persistence is available. */
             server_config_available: boolean;
             /** @description Vision/PDF configuration chain. */
@@ -8343,6 +8356,7 @@ export interface components {
          *       "context_length": {},
          *       "embedding_dimension": {},
          *       "max_output_tokens": {},
+         *       "reasoning_effort": {},
          *       "supports_function_calling": {},
          *       "supports_json_mode": {},
          *       "supports_streaming": {},
@@ -8357,6 +8371,7 @@ export interface components {
             embedding_dimension: number;
             /** @description Maximum output tokens. */
             max_output_tokens: number;
+            reasoning_effort?: null | components["schemas"]["ReasoningEffortCapabilityResponse"];
             /** @description Supports function calling. */
             supports_function_calling: boolean;
             /** @description Supports JSON mode output. */
@@ -10255,6 +10270,11 @@ export interface components {
              *     Forwarded to the engine for type-scoped answer prompts (047).
              */
             question_type?: string | null;
+            /**
+             * @description SPEC-109: reasoning effort override for this query (`none`/`minimal`/`low`/…).
+             *     Omit or null = Auto (inherit workspace query role / provider default).
+             */
+            reasoning_effort?: string | null;
             /** @description Rerank model to use (e.g., "cohere-rerank-v3"). */
             rerank_model?: string | null;
             /** @description Top K chunks to keep after reranking. */
@@ -10759,6 +10779,38 @@ export interface components {
             success: number;
             track_id?: string | null;
             v2_migration?: null | components["schemas"]["V2MigrationHint"];
+        };
+        /**
+         * @description SPEC-109: exposed reasoning-effort options for UI filters.
+         * @example {
+         *       "lowest_structured": {},
+         *       "supported": []
+         *     }
+         */
+        ReasoningEffortCapabilityResponse: {
+            /** @description Lowest effort suitable for structured extract/summary/vlm roles. */
+            lowest_structured?: string | null;
+            /** @description Allowed effort strings for this model. */
+            supported: string[];
+        };
+        /**
+         * @description SPEC-109: explainable reasoning effort for one LLM role.
+         * @example {
+         *       "clamped": {},
+         *       "desired": {},
+         *       "effective": {},
+         *       "model": {},
+         *       "provider": {},
+         *       "source": {}
+         *     }
+         */
+        ReasoningEffortExplain: {
+            clamped: boolean;
+            desired?: string | null;
+            effective?: string | null;
+            model: string;
+            provider: string;
+            source: string;
         };
         /**
          * @description Request to rebuild workspace embeddings with a new model.
@@ -11442,6 +11494,8 @@ export interface components {
          *       "embedding_provider": {},
          *       "llm_model": {},
          *       "llm_provider": {},
+         *       "reasoning_by_role": {},
+         *       "reasoning_effort": {},
          *       "vision_model": {},
          *       "vision_provider": {}
          *     }
@@ -11451,6 +11505,10 @@ export interface components {
             embedding_provider?: string | null;
             llm_model?: string | null;
             llm_provider?: string | null;
+            reasoning_by_role?: {
+                [key: string]: string;
+            };
+            reasoning_effort?: string | null;
             vision_model?: string | null;
             vision_provider?: string | null;
         };
@@ -12111,6 +12169,7 @@ export interface components {
          *       "mode": {},
          *       "query": {},
          *       "question_type": {},
+         *       "reasoning_effort": {},
          *       "response_type": {},
          *       "stream_format": {},
          *       "system_prompt": {}
@@ -12155,6 +12214,8 @@ export interface components {
             query: string;
             /** @description Optional question-type label for type-scoped answer prompts (047). */
             question_type?: string | null;
+            /** @description SPEC-109: reasoning effort override for streaming query. */
+            reasoning_effort?: string | null;
             /** @description Answer formatting cue (083 / LightRAG `response_type`). */
             response_type?: string | null;
             /**
@@ -12350,6 +12411,7 @@ export interface components {
          *       "default_llm_full_id": {},
          *       "default_llm_model": {},
          *       "default_llm_provider": {},
+         *       "default_reasoning_effort": {},
          *       "default_vision_llm_model": {},
          *       "default_vision_llm_provider": {},
          *       "id": {},
@@ -12378,6 +12440,8 @@ export interface components {
             default_llm_model: string;
             /** @description Default LLM provider for new workspaces. */
             default_llm_provider: string;
+            /** @description SPEC-109: default reasoning effort seed for workspaces. */
+            default_reasoning_effort?: string | null;
             /**
              * @description Default Vision LLM model for PDF-to-Markdown extraction.
              *     None if not configured (workspaces use upload-time defaults).
@@ -12581,6 +12645,8 @@ export interface components {
          *       "llm_model": {},
          *       "llm_provider": {},
          *       "priority_mode": {},
+         *       "reasoning_by_role": {},
+         *       "reasoning_effort": {},
          *       "vision_model": {},
          *       "vision_provider": {}
          *     }
@@ -12592,6 +12658,12 @@ export interface components {
             llm_provider?: string | null;
             /** @description `server` (DB wins) or `env` (env wins). Optional — keeps current when omitted. */
             priority_mode?: string | null;
+            /** @description SPEC-109: per-role reasoning effort map. */
+            reasoning_by_role?: {
+                [key: string]: string;
+            } | null;
+            /** @description SPEC-109: fleet default reasoning effort. */
+            reasoning_effort?: string | null;
             vision_model?: string | null;
             vision_provider?: string | null;
         };
@@ -12791,6 +12863,7 @@ export interface components {
          *     Changing LLM provider/model is safe and takes effect immediately for new ingestions.
          *     Changing embedding provider/model requires rebuilding vectors (use rebuild-embeddings endpoint).
          * @example {
+         *       "default_reasoning_effort": {},
          *       "description": {},
          *       "embedding_dimension": {},
          *       "embedding_model": {},
@@ -12802,6 +12875,7 @@ export interface components {
          *       "is_active": {},
          *       "llm_model": {},
          *       "llm_provider": {},
+         *       "llm_roles": {},
          *       "max_documents": {},
          *       "name": {},
          *       "pdf_parser_backend": {},
@@ -12810,6 +12884,8 @@ export interface components {
          *     }
          */
         UpdateWorkspaceApiRequest: {
+            /** @description SPEC-109: set/clear workspace default reasoning effort. */
+            default_reasoning_effort?: string | null;
             /** @description New description. */
             description?: string | null;
             /** @description Update embedding dimension. */
@@ -12843,6 +12919,8 @@ export interface components {
             llm_model?: string | null;
             /** @description Update LLM provider. */
             llm_provider?: string | null;
+            /** @description SPEC-109: merge into workspace `llm_roles` metadata. */
+            llm_roles?: unknown;
             /** @description Maximum number of documents. */
             max_documents?: number | null;
             /** @description New workspace name. */
@@ -13049,6 +13127,8 @@ export interface components {
         WorkspaceResponse: {
             /** @description Creation timestamp. */
             created_at: string;
+            /** @description SPEC-109: workspace default reasoning effort. */
+            default_reasoning_effort?: string | null;
             /** @description Description. */
             description?: string | null;
             /** @description Embedding vector dimension. */
@@ -13088,6 +13168,8 @@ export interface components {
             llm_model: string;
             /** @description LLM provider (openai, ollama, lmstudio). */
             llm_provider: string;
+            /** @description SPEC-109: per-role LLM overrides (incl. reasoning_effort). */
+            llm_roles?: unknown;
             /** @description Maximum documents allowed. */
             max_documents?: number | null;
             /** @description Workspace name. */

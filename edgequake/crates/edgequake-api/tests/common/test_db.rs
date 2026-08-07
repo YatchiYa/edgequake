@@ -129,11 +129,60 @@ async fn provision_test_db(url: &str) {
     admin.close().await;
 
     if let Ok(pool) = sqlx::PgPool::connect(url).await {
+        // Scratch DB only: reconcile known expandable-migration checksum
+        // drifts (SPEC-110/111) so sqlx migrate can apply pending files
+        // without requiring EDGEQUAKE_DEV_MODE (prod still fails closed).
+        repair_test_db_migration_checksums(&pool).await;
         // Idempotent: applies only pending migrations, so concurrent test
         // processes and repeat runs converge without dropping anything.
         if let Err(e) = MIGRATOR.run(&pool).await {
             eprintln!("test-db provisioning migrate failed: {e}");
         }
         pool.close().await;
+    }
+}
+
+/// Update `_sqlx_migrations.checksum` for known broken→fixed pairs so the
+/// isolated `{db}_test` scratch database can continue after SPEC-110/111
+/// in-place migration edits. No-op when the table or version is absent.
+async fn repair_test_db_migration_checksums(pool: &sqlx::PgPool) {
+    const REPAIRS: &[(i64, &str, &str)] = &[
+        (
+            125,
+            "67b73fd0f683dd5cae06213ae59c75c2f8fea214074e8b250997aa77efc90a1fa01c14764f9fdb968b0e73685136b2f6",
+            "9ae99858a9c88ec9b0a195447d6f7e2601fb4423f0d846314b6aa06d337ad9e74e9a8998ae7359fba65df694d5b1eeec",
+        ),
+        (
+            131,
+            "461fa2a7c560513df711f954edd4f24444c91cd0385a70189e41cecdebaf2f53cca49c932122b0d002407a6c7fc0dbe8",
+            "1b42205577666dc31fa346c42eb8e787c78208b6438da2822245ec61d65f3d538df8f985b132b7e3a3930b7272c87a14",
+        ),
+        (
+            131,
+            "d6bc6c00b753f8599248dda86ce5d314e147491bcbb9932273c43afcbfc84a5d51c6a797387dfffeeca00588dc02c896",
+            "1b42205577666dc31fa346c42eb8e787c78208b6438da2822245ec61d65f3d538df8f985b132b7e3a3930b7272c87a14",
+        ),
+    ];
+    let Ok(exists): Result<bool, _> =
+        sqlx::query_scalar("SELECT to_regclass('public._sqlx_migrations') IS NOT NULL")
+            .fetch_one(pool)
+            .await
+    else {
+        return;
+    };
+    if !exists {
+        return;
+    }
+    for &(version, broken, fixed) in REPAIRS {
+        let _ = sqlx::query(
+            "UPDATE _sqlx_migrations SET checksum = decode($1, 'hex') \
+             WHERE version = $2 AND success = true \
+               AND encode(checksum, 'hex') = $3",
+        )
+        .bind(fixed)
+        .bind(version)
+        .bind(broken)
+        .execute(pool)
+        .await;
     }
 }

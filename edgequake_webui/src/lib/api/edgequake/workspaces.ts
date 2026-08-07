@@ -211,6 +211,10 @@ export interface UpdateWorkspaceRequest {
    * Empty object clears overrides.
    */
   entity_type_colors?: Record<string, string>;
+  /** SPEC-109: workspace default reasoning effort. */
+  default_reasoning_effort?: string;
+  /** SPEC-109: merge llm_roles metadata (extract/query effort). */
+  llm_roles?: Record<string, { reasoning_effort?: string | null }>;
 }
 
 /**

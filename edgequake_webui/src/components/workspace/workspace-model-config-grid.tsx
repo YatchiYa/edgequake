@@ -17,7 +17,14 @@ import {
   LLMModelSelector,
   type LLMSelection,
 } from "@/components/workspace/llm-model-selector";
+import { ReasoningEffortSelect } from "@/components/settings/reasoning-effort-select";
 import { useInheritedModelDefaults } from "@/hooks/use-inherited-model-defaults";
+import { useLlmModels } from "@/hooks/use-providers";
+import {
+  effectiveEffortWhenAuto,
+  formatEffectiveBestPracticeHint,
+  supportedReasoningEffortsForModel,
+} from "@/lib/settings/reasoning-effort-supported";
 import { useTenantStore } from "@/stores/use-tenant-store";
 import type { Workspace } from "@/types";
 import { AlertTriangle, Brain, Layers } from "lucide-react";
@@ -32,6 +39,11 @@ export interface WorkspaceModelConfigGridProps {
   onEmbeddingChange: (value: EmbeddingSelection | undefined) => void;
   llmModelChanged: boolean;
   embeddingModelChanged: boolean;
+  /** SPEC-109: extract role effort (edit draft). */
+  extractReasoningEffort?: string;
+  queryReasoningEffort?: string;
+  onExtractReasoningChange?: (value: string | undefined) => void;
+  onQueryReasoningChange?: (value: string | undefined) => void;
 }
 
 function ModelDisplayRow({
@@ -113,10 +125,15 @@ export function WorkspaceModelConfigGrid({
   onEmbeddingChange,
   llmModelChanged,
   embeddingModelChanged,
+  extractReasoningEffort,
+  queryReasoningEffort,
+  onExtractReasoningChange,
+  onQueryReasoningChange,
 }: WorkspaceModelConfigGridProps) {
   const { t } = useTranslation();
   const tenantId = useTenantStore((s) => s.selectedTenantId);
   const inherited = useInheritedModelDefaults(tenantId);
+  const { data: llmCatalog } = useLlmModels();
   const llmDefaultId =
     inherited.defaultLlmProvider && inherited.defaultLlmModel
       ? `${inherited.defaultLlmProvider}/${inherited.defaultLlmModel}`
@@ -125,6 +142,35 @@ export function WorkspaceModelConfigGrid({
     inherited.defaultEmbeddingProvider && inherited.defaultEmbeddingModel
       ? `${inherited.defaultEmbeddingProvider}/${inherited.defaultEmbeddingModel}`
       : undefined;
+  const provider = selectedLLM?.provider ?? workspace.llm_provider;
+  const model = selectedLLM?.model ?? workspace.llm_model;
+  const supported = supportedReasoningEffortsForModel(
+    llmCatalog?.models,
+    provider,
+    model,
+  );
+  const extractEffectiveAuto = effectiveEffortWhenAuto(
+    llmCatalog?.models,
+    provider,
+    model,
+    "structured",
+  );
+  const queryEffectiveAuto = effectiveEffortWhenAuto(
+    llmCatalog?.models,
+    provider,
+    model,
+    "query",
+  );
+  const extractDisplay =
+    extractReasoningEffort ??
+    workspace.llm_roles?.extract?.reasoning_effort ??
+    workspace.default_reasoning_effort ??
+    undefined;
+  const queryDisplay =
+    queryReasoningEffort ??
+    workspace.llm_roles?.query?.reasoning_effort ??
+    workspace.default_reasoning_effort ??
+    undefined;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -158,6 +204,29 @@ export function WorkspaceModelConfigGrid({
                   )}
                 />
               )}
+              <div
+                className="space-y-3 pt-2 border-t"
+                data-testid="workspace-role-reasoning"
+              >
+                <ReasoningEffortSelect
+                  id="workspace-extract-effort"
+                  data-testid="workspace-extract-reasoning"
+                  label={t("workspace.extractReasoning", "Extract reasoning effort")}
+                  value={extractDisplay}
+                  supported={supported}
+                  effectiveWhenAuto={extractEffectiveAuto}
+                  onChange={(v) => onExtractReasoningChange?.(v)}
+                />
+                <ReasoningEffortSelect
+                  id="workspace-query-effort"
+                  data-testid="workspace-query-reasoning"
+                  label={t("workspace.queryReasoning", "Query reasoning effort")}
+                  value={queryDisplay}
+                  supported={supported}
+                  effectiveWhenAuto={queryEffectiveAuto}
+                  onChange={(v) => onQueryReasoningChange?.(v)}
+                />
+              </div>
             </>
           ) : (
             <ModelDisplayRow
@@ -166,6 +235,37 @@ export function WorkspaceModelConfigGrid({
               fullId={workspace.llm_full_id}
               resolvedDefaultId={llmDefaultId}
             />
+          )}
+          {!isEditing && (
+            <div
+              className="text-xs text-muted-foreground space-y-1"
+              data-testid="workspace-role-reasoning-readonly"
+            >
+              <div>
+                Extract effort:{" "}
+                {extractDisplay?.trim()
+                  ? extractDisplay
+                  : `Auto → ${extractEffectiveAuto}`}
+              </div>
+              <div
+                className="text-[11px]"
+                data-testid="workspace-extract-effective-hint"
+              >
+                {formatEffectiveBestPracticeHint(extractEffectiveAuto)}
+              </div>
+              <div>
+                Query effort:{" "}
+                {queryDisplay?.trim()
+                  ? queryDisplay
+                  : `Auto → ${queryEffectiveAuto}`}
+              </div>
+              <div
+                className="text-[11px]"
+                data-testid="workspace-query-effective-hint"
+              >
+                {formatEffectiveBestPracticeHint(queryEffectiveAuto)}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -14,10 +14,14 @@ use crate::embedding_family::{
 };
 use crate::error::StorageError;
 use crate::graph_batch_dedupe::normalize_relation_type_str;
+use crate::migration_engine::coverage::{
+    load_entity_name_index_pool, resolve_relationship_id_pool, EntityNameIndex,
+};
 use crate::traits::domain::{
     EmbeddingCapabilities, FleetEmbeddingIndex, FleetEmbeddingKey, FleetEmbeddingRow,
     MirrorLegacyReport, ModelId, ScoredFleet, UpsertReport, VectorQuery, WorkspaceId,
 };
+use std::collections::HashMap;
 
 /// Postgres adapter for entity/relationship/report typed embeddings.
 pub struct PgFleetEmbeddingIndex {
@@ -112,6 +116,12 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
             .map(|r| Self::format_vector(&r.embedding))
             .collect();
 
+        // Empty string → NULLIF → NULL (serving upserts without provenance).
+        let legacy_ids: Vec<String> = rows
+            .iter()
+            .map(|r| r.legacy_vector_id.clone().unwrap_or_default())
+            .collect();
+
         let upserted = match family {
             EmbeddingFamily::Entity => {
                 let entity_ids: Vec<Uuid> = rows
@@ -123,10 +133,14 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                     .collect();
                 sqlx::query(
                     r#"
-                    INSERT INTO entity_embeddings (model_id, entity_id, workspace_id, embedding, dimensions)
-                    SELECT $1, e, w, v::halfvec, d
-                    FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[]) AS t(e, w, v, d)
-                    ON CONFLICT (model_id, entity_id) DO NOTHING
+                    INSERT INTO entity_embeddings
+                      (model_id, entity_id, workspace_id, embedding, dimensions, legacy_vector_id)
+                    SELECT $1, e, w, v::halfvec, d, NULLIF(lid, '')
+                    FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[], $6::text[])
+                      AS t(e, w, v, d, lid)
+                    ON CONFLICT (model_id, entity_id) DO UPDATE
+                      SET legacy_vector_id = COALESCE(
+                            entity_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)
                     "#,
                 )
                 .bind(model_id.0)
@@ -134,6 +148,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                 .bind(&workspace_ids)
                 .bind(&vectors)
                 .bind(&dims)
+                .bind(&legacy_ids)
                 .execute(&self.pool)
                 .await
                 .map_err(StorageError::from)?
@@ -149,10 +164,14 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                     .collect();
                 sqlx::query(
                     r#"
-                    INSERT INTO relationship_embeddings (model_id, relationship_id, workspace_id, embedding, dimensions)
-                    SELECT $1, r, w, v::halfvec, d
-                    FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[]) AS t(r, w, v, d)
-                    ON CONFLICT (model_id, relationship_id) DO NOTHING
+                    INSERT INTO relationship_embeddings
+                      (model_id, relationship_id, workspace_id, embedding, dimensions, legacy_vector_id)
+                    SELECT $1, r, w, v::halfvec, d, NULLIF(lid, '')
+                    FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[], $6::text[])
+                      AS t(r, w, v, d, lid)
+                    ON CONFLICT (model_id, relationship_id) DO UPDATE
+                      SET legacy_vector_id = COALESCE(
+                            relationship_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)
                     "#,
                 )
                 .bind(model_id.0)
@@ -160,6 +179,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                 .bind(&workspace_ids)
                 .bind(&vectors)
                 .bind(&dims)
+                .bind(&legacy_ids)
                 .execute(&self.pool)
                 .await
                 .map_err(StorageError::from)?
@@ -175,10 +195,14 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                     .collect();
                 sqlx::query(
                     r#"
-                    INSERT INTO report_embeddings (model_id, report_id, workspace_id, embedding, dimensions)
-                    SELECT $1, r, w, v::halfvec, d
-                    FROM unnest($2::text[], $3::uuid[], $4::text[], $5::int[]) AS t(r, w, v, d)
-                    ON CONFLICT (model_id, report_id) DO NOTHING
+                    INSERT INTO report_embeddings
+                      (model_id, report_id, workspace_id, embedding, dimensions, legacy_vector_id)
+                    SELECT $1, r, w, v::halfvec, d, NULLIF(lid, '')
+                    FROM unnest($2::text[], $3::uuid[], $4::text[], $5::int[], $6::text[])
+                      AS t(r, w, v, d, lid)
+                    ON CONFLICT (model_id, report_id) DO UPDATE
+                      SET legacy_vector_id = COALESCE(
+                            report_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)
                     "#,
                 )
                 .bind(model_id.0)
@@ -186,6 +210,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                 .bind(&workspace_ids)
                 .bind(&vectors)
                 .bind(&dims)
+                .bind(&legacy_ids)
                 .execute(&self.pool)
                 .await
                 .map_err(StorageError::from)?
@@ -313,6 +338,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
         let mut rel_rows: Vec<FleetEmbeddingRow> = Vec::new();
         let mut report_rows: Vec<FleetEmbeddingRow> = Vec::new();
         let mut report = MirrorLegacyReport::default();
+        let mut index_cache: HashMap<Uuid, EntityNameIndex> = HashMap::new();
 
         for (id, embedding, meta) in rows {
             let Some(ws) = meta
@@ -323,11 +349,16 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                 report.push_invalid_workspace(id);
                 continue;
             };
+            if let std::collections::hash_map::Entry::Vacant(e) = index_cache.entry(ws) {
+                e.insert(load_entity_name_index_pool(&self.pool, ws).await?);
+            }
+            let index = index_cache.get(&ws).expect("just inserted");
             let row_template = |key: FleetEmbeddingKey| FleetEmbeddingRow {
                 workspace_id: WorkspaceId(ws),
                 embedding: embedding.clone(),
                 dimensions: embedding.len() as i32,
                 key,
+                legacy_vector_id: Some(id.clone()),
             };
 
             if count_as_entities {
@@ -335,19 +366,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                     continue;
                 };
                 report.eligible += 1;
-                let Some(eid) = sqlx::query_scalar(
-                    r#"SELECT id FROM entities
-                       WHERE workspace_id = $2
-                         AND (name = $1 OR name = ($2::text || '::' || $1))
-                       ORDER BY CASE WHEN name = $1 THEN 0 ELSE 1 END
-                       LIMIT 1"#,
-                )
-                .bind(name)
-                .bind(ws)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(StorageError::from)?
-                else {
+                let Some(eid) = index.resolve(name) else {
                     report.push_miss(id);
                     continue;
                 };
@@ -366,24 +385,9 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                     };
                     report.eligible += 1;
                     let rel_type = normalize_relation_type_str(&rel_type);
-                    let Some(rid) = sqlx::query_scalar(
-                        r#"SELECT r.id FROM relationships r
-                           JOIN entities es ON es.id = r.source_id
-                           JOIN entities et ON et.id = r.target_id
-                           WHERE r.workspace_id = $4
-                             AND r.relation_type = $3
-                             AND (es.name = $1 OR es.name = ($4::text || '::' || $1))
-                             AND (et.name = $2 OR et.name = ($4::text || '::' || $2))
-                           ORDER BY CASE WHEN es.name = $1 AND et.name = $2 THEN 0 ELSE 1 END
-                           LIMIT 1"#,
-                    )
-                    .bind(&src)
-                    .bind(&tgt)
-                    .bind(&rel_type)
-                    .bind(ws)
-                    .fetch_optional(&self.pool)
-                    .await
-                    .map_err(StorageError::from)?
+                    let Some(rid) =
+                        resolve_relationship_id_pool(&self.pool, ws, &src, &tgt, &rel_type, index)
+                            .await?
                     else {
                         report.push_miss(id);
                         continue;
@@ -395,32 +399,22 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
         }
 
         report.resolved = (entity_rows.len() + rel_rows.len() + report_rows.len()) as u64;
-        let mut upserted = 0u64;
         if !entity_rows.is_empty() {
-            upserted += self
-                .upsert_batch(EmbeddingFamily::Entity, ModelId(Uuid::nil()), &entity_rows)
-                .await?
-                .upserted;
+            self.upsert_batch(EmbeddingFamily::Entity, ModelId(Uuid::nil()), &entity_rows)
+                .await?;
         }
         if !rel_rows.is_empty() {
-            upserted += self
-                .upsert_batch(
-                    EmbeddingFamily::Relationship,
-                    ModelId(Uuid::nil()),
-                    &rel_rows,
-                )
-                .await?
-                .upserted;
+            self.upsert_batch(
+                EmbeddingFamily::Relationship,
+                ModelId(Uuid::nil()),
+                &rel_rows,
+            )
+            .await?;
         }
         if !report_rows.is_empty() {
-            upserted += self
-                .upsert_batch(EmbeddingFamily::Report, ModelId(Uuid::nil()), &report_rows)
-                .await?
-                .upserted;
+            self.upsert_batch(EmbeddingFamily::Report, ModelId(Uuid::nil()), &report_rows)
+                .await?;
         }
-        // Resolved = FK hits, not rows_affected — ON CONFLICT DO NOTHING
-        // must not be mistaken for a missing spine.
-        let _ = upserted;
         Ok(report)
     }
 }

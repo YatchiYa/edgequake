@@ -14,32 +14,21 @@ use crate::embedding_family::{
     classify_legacy_vector_id, entity_name_from_legacy_id, parse_relationship_legacy_key,
     EmbeddingFamily,
 };
-
-use super::runner::{BackfillJob, BatchOutcome, VerifyReport};
 use crate::error::StorageError;
+use crate::graph_batch_dedupe::normalize_relation_type_str;
+
+use super::coverage::{
+    list_vector_tables, list_vector_tables_ex, load_entity_name_index, resolve_relationship_id,
+    EntityNameIndex,
+};
+use super::runner::{BackfillJob, BatchOutcome, VerifyReport};
 
 const DESCRIPTOR_DEF: &str = concat!(
-    "iw2-fleet-embedding-backfill/v1:",
+    "iw2-fleet-embedding-backfill/v2:",
     "source=legacy_vectors_fleet:keyset_per_table;families=entity,relationship,report;",
-    "join=entities+relationships;insert=unnest+on_conflict;",
+    "join=entities+relationships+ensure_spine;insert=unnest+on_conflict;",
     "verify=coverage+sampled_vector_equality_fleet"
 );
-
-async fn list_vector_tables<'e, E>(ex: E) -> Result<Vec<String>, StorageError>
-where
-    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
-{
-    let mut tables: Vec<String> = sqlx::query_scalar(
-        "SELECT table_name FROM information_schema.tables \
-         WHERE table_schema = 'public' AND table_name LIKE 'eq\\_%\\_vectors' \
-         ORDER BY table_name",
-    )
-    .fetch_all(ex)
-    .await
-    .map_err(|e| StorageError::Database(format!("iw2 fleet list failed: {e}")))?;
-    tables.retain(|t| t.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
-    Ok(tables)
-}
 
 fn family_prefix(family: EmbeddingFamily) -> &'static str {
     match family {
@@ -87,6 +76,147 @@ fn parse_workspace_uuid(meta: &Value) -> Option<Uuid> {
     meta.get("workspace_id")
         .and_then(|v| v.as_str())
         .and_then(|s| Uuid::parse_str(s).ok())
+}
+
+fn workspace_from_row(row: &sqlx::postgres::PgRow, meta: &Value) -> Option<Uuid> {
+    parse_workspace_uuid(meta).or_else(|| {
+        row.try_get::<Option<String>, _>("col_workspace_id")
+            .ok()
+            .flatten()
+            .and_then(|s| Uuid::parse_str(s.trim()).ok())
+    })
+}
+
+/// Ensure a relational entity spine row for a legacy fleet key (SPEC-111).
+///
+/// When typed-only ingest / wipe left `eq_*_vectors` without `public.entities`,
+/// iw2 must create the FK parent before inserting `entity_embeddings`.
+///
+/// Only auto-creates when metadata carries extract signals (`entity_name`,
+/// non-empty `description`, or `entity_type`). Bare `{workspace_id}` ghosts
+/// remain durable misses (`failed_count`) — see E2E-111 unresolved test.
+async fn ensure_entity_spine(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace_id: Uuid,
+    meta: &Value,
+    legacy_name: &str,
+) -> Result<Option<Uuid>, StorageError> {
+    if legacy_name.is_empty() {
+        return Ok(None);
+    }
+    let has_signal = meta
+        .get("entity_name")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.is_empty())
+        || meta
+            .get("description")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty())
+        || meta
+            .get("entity_type")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty());
+    if !has_signal {
+        return Ok(None);
+    }
+    let tenant_id = meta
+        .get("tenant_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok());
+    let entity_type = meta
+        .get("entity_type")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("UNKNOWN");
+    let description = meta
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    // Prefer display name from metadata; fall back to legacy key suffix.
+    let name = meta
+        .get("entity_name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(legacy_name);
+
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO public.entities (name, entity_type, workspace_id, tenant_id, description) \
+         VALUES ($1, $2, $3, $4, $5) \
+         ON CONFLICT (tenant_id, workspace_id, name) DO UPDATE \
+           SET updated_at = now() \
+         RETURNING id",
+    )
+    .bind(name)
+    .bind(entity_type)
+    .bind(workspace_id)
+    .bind(tenant_id)
+    .bind(description)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(|e| StorageError::Database(format!("iw2 ensure entity spine: {e}")))?;
+    Ok(Some(id))
+}
+
+async fn ensure_relationship_spine(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace_id: Uuid,
+    meta: &Value,
+    src: &str,
+    tgt: &str,
+    rel_type: &str,
+    index: &EntityNameIndex,
+) -> Result<Option<Uuid>, StorageError> {
+    // Fabricate entity_name signals so ensure_entity_spine accepts endpoint keys
+    // even when relationship metadata only carries type/src_id/tgt_id.
+    let mut src_meta = meta.clone();
+    if let Some(obj) = src_meta.as_object_mut() {
+        obj.insert("entity_name".into(), json!(src));
+    }
+    let mut tgt_meta = meta.clone();
+    if let Some(obj) = tgt_meta.as_object_mut() {
+        obj.insert("entity_name".into(), json!(tgt));
+    }
+    let src_id = match index.resolve(src) {
+        Some(id) => id,
+        None => match ensure_entity_spine(tx, workspace_id, &src_meta, src).await? {
+            Some(id) => id,
+            None => return Ok(None),
+        },
+    };
+    // Refresh resolve for tgt after possible src insert (index may be stale).
+    let tgt_id = match index.resolve(tgt) {
+        Some(id) => id,
+        None => match ensure_entity_spine(tx, workspace_id, &tgt_meta, tgt).await? {
+            Some(id) => id,
+            None => return Ok(None),
+        },
+    };
+    let tenant_id = meta
+        .get("tenant_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok());
+    let description = meta
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO public.relationships \
+           (source_id, target_id, relation_type, workspace_id, tenant_id, description) \
+         VALUES ($1, $2, $3, $4, $5, $6) \
+         ON CONFLICT (tenant_id, workspace_id, source_id, target_id, relation_type) DO UPDATE \
+           SET updated_at = now() \
+         RETURNING id",
+    )
+    .bind(src_id)
+    .bind(tgt_id)
+    .bind(rel_type)
+    .bind(workspace_id)
+    .bind(tenant_id)
+    .bind(description)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(|e| StorageError::Database(format!("iw2 ensure relationship spine: {e}")))?;
+    Ok(Some(id))
 }
 
 pub struct FleetEmbeddingBackfillJob {
@@ -151,11 +281,12 @@ impl BackfillJob for FleetEmbeddingBackfillJob {
             _ => EmbeddingFamily::Entity,
         };
 
-        let tables = list_vector_tables(&mut **tx).await?;
+        let tables = list_vector_tables_ex(&mut **tx).await?;
         if tables.is_empty() {
             return Ok(BatchOutcome {
                 scanned: 0,
                 written: 0,
+                failed: 0,
                 next_cursor: None,
             });
         }
@@ -187,20 +318,54 @@ impl BackfillJob for FleetEmbeddingBackfillJob {
         };
         let table = &tables[active_idx];
 
-        let scan_sql = match family {
-            EmbeddingFamily::Entity => format!(
+        let filter = match family {
+            EmbeddingFamily::Entity => "id LIKE 'entity:%'",
+            EmbeddingFamily::Relationship => {
+                "id LIKE '%->%:%' AND id NOT LIKE 'entity:%' AND id NOT LIKE 'community_report:%'"
+            }
+            EmbeddingFamily::Report => "id LIKE 'community_report:%'",
+        };
+        let has_col = match sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = $1
+                  AND column_name = 'workspace_id'
+             )",
+        )
+        .bind(table)
+        .fetch_one(&mut **tx)
+        .await
+        {
+            Ok(v) => v,
+            Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("42P01") => {
+                return Ok(BatchOutcome {
+                    scanned: 0,
+                    written: 0,
+                    failed: 0,
+                    next_cursor: Some(json!({
+                        "family": family.backfill_family_key(),
+                        "table": table,
+                        "last_id": ""
+                    })),
+                });
+            }
+            Err(e) => {
+                return Err(StorageError::Database(format!(
+                    "iw2 workspace_id probe({table}): {e}"
+                )))
+            }
+        };
+        let scan_sql = if has_col {
+            format!(
+                "SELECT id, embedding::text, metadata, workspace_id::text AS col_workspace_id \
+                 FROM public.{table} WHERE {filter} AND id > $1 ORDER BY id LIMIT $2"
+            )
+        } else {
+            format!(
                 "SELECT id, embedding::text, metadata FROM public.{table} \
-                 WHERE id LIKE 'entity:%' AND id > $1 ORDER BY id LIMIT $2"
-            ),
-            EmbeddingFamily::Relationship => format!(
-                "SELECT id, embedding::text, metadata FROM public.{table} \
-                 WHERE id LIKE '%->%:%' AND id NOT LIKE 'entity:%' \
-                 AND id NOT LIKE 'community_report:%' AND id > $1 ORDER BY id LIMIT $2"
-            ),
-            EmbeddingFamily::Report => format!(
-                "SELECT id, embedding::text, metadata FROM public.{table} \
-                 WHERE id LIKE 'community_report:%' AND id > $1 ORDER BY id LIMIT $2"
-            ),
+                 WHERE {filter} AND id > $1 ORDER BY id LIMIT $2"
+            )
         };
 
         let rows = match sqlx::query(&scan_sql)
@@ -214,6 +379,7 @@ impl BackfillJob for FleetEmbeddingBackfillJob {
                 return Ok(BatchOutcome {
                     scanned: 0,
                     written: 0,
+                    failed: 0,
                     next_cursor: Some(json!({
                         "family": family.backfill_family_key(),
                         "table": table,
@@ -233,6 +399,7 @@ impl BackfillJob for FleetEmbeddingBackfillJob {
                 return Ok(BatchOutcome {
                     scanned: 0,
                     written: 0,
+                    failed: 0,
                     next_cursor: Some(json!({
                         "family": family.backfill_family_key(),
                         "table": tables[active_idx + 1],
@@ -249,7 +416,7 @@ impl BackfillJob for FleetEmbeddingBackfillJob {
             .and_then(|r| r.try_get::<String, _>("id").ok())
             .unwrap_or_default();
 
-        let written = match family {
+        let (written, failed) = match family {
             EmbeddingFamily::Entity => self.write_entity_batch(tx, &rows).await?,
             EmbeddingFamily::Relationship => self.write_relationship_batch(tx, &rows).await?,
             EmbeddingFamily::Report => self.write_report_batch(tx, &rows).await?,
@@ -258,6 +425,7 @@ impl BackfillJob for FleetEmbeddingBackfillJob {
         Ok(BatchOutcome {
             scanned,
             written,
+            failed,
             next_cursor: Some(json!({
                 "family": family.backfill_family_key(),
                 "table": table,
@@ -285,7 +453,7 @@ impl BackfillJob for FleetEmbeddingBackfillJob {
                 )
                 .await?;
                 agg.expected += r.expected;
-                agg.actual = agg.actual.max(r.actual);
+                agg.actual += r.actual;
                 agg.sampled += r.sampled;
                 agg.mismatches += r.mismatches;
             }
@@ -308,6 +476,7 @@ fn advance_family_or_finish(
         return Ok(BatchOutcome {
             scanned: 0,
             written: 0,
+            failed: 0,
             next_cursor: Some(json!({
                 "family": next.backfill_family_key(),
                 "table": if first_table.is_empty() { Value::Null } else { json!(first_table) },
@@ -318,6 +487,7 @@ fn advance_family_or_finish(
     Ok(BatchOutcome {
         scanned: 0,
         written: 0,
+        failed: 0,
         next_cursor: None,
     })
 }
@@ -339,16 +509,21 @@ impl FleetEmbeddingBackfillJob {
         .map_err(|e| StorageError::Database(format!("iw2 model upsert failed: {e}")))
     }
 
+    /// Returns `(written, failed)` — failed = durable unresolved joins / bad rows.
     async fn write_entity_batch(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         rows: &[sqlx::postgres::PgRow],
-    ) -> Result<i64, StorageError> {
+    ) -> Result<(i64, i64), StorageError> {
         let mut entity_ids: Vec<Uuid> = Vec::new();
         let mut workspace_ids: Vec<Uuid> = Vec::new();
+        let mut legacy_ids: Vec<String> = Vec::new();
         let mut vectors: Vec<String> = Vec::new();
         let mut dims: Vec<i32> = Vec::new();
         let mut dimensions = 0i32;
+        let mut failed = 0i64;
+        let mut index_cache: std::collections::HashMap<Uuid, EntityNameIndex> =
+            std::collections::HashMap::new();
 
         for row in rows {
             let id: String = row
@@ -359,28 +534,38 @@ impl FleetEmbeddingBackfillJob {
                 .map_err(|e| StorageError::Database(e.to_string()))?;
             let meta: Value = row.try_get("metadata").unwrap_or(json!({}));
             let Some(name) = entity_name_from_legacy_id(&id).map(str::to_string) else {
+                failed += 1;
                 continue;
             };
-            let Some(ws) = parse_workspace_uuid(&meta) else {
+            let Some(ws) = workspace_from_row(row, &meta) else {
+                failed += 1;
                 continue;
             };
             let Some(embedding) = parse_vector_text(&emb_text) else {
+                failed += 1;
                 continue;
             };
             dimensions = embedding.len() as i32;
-            let eid: Option<Uuid> = sqlx::query_scalar(
-                "SELECT id FROM entities WHERE name = $1 AND workspace_id = $2 LIMIT 1",
-            )
-            .bind(&name)
-            .bind(ws)
-            .fetch_optional(&mut **tx)
-            .await
-            .map_err(|e| StorageError::Database(format!("iw2 entity spine lookup failed: {e}")))?;
-            let Some(eid) = eid else {
-                continue;
+            if let std::collections::hash_map::Entry::Vacant(e) = index_cache.entry(ws) {
+                e.insert(load_entity_name_index(tx, ws).await?);
+            }
+            let index = index_cache.get(&ws).expect("just inserted");
+            let eid = match index.resolve(&name) {
+                Some(eid) => eid,
+                None => match ensure_entity_spine(tx, ws, &meta, &name).await? {
+                    Some(eid) => {
+                        index_cache.insert(ws, load_entity_name_index(tx, ws).await?);
+                        eid
+                    }
+                    None => {
+                        failed += 1;
+                        continue;
+                    }
+                },
             };
             entity_ids.push(eid);
             workspace_ids.push(ws);
+            legacy_ids.push(id);
             vectors.push(format!(
                 "[{}]",
                 embedding
@@ -392,37 +577,52 @@ impl FleetEmbeddingBackfillJob {
             dims.push(embedding.len() as i32);
         }
         if entity_ids.is_empty() {
-            return Ok(0);
+            return Ok((0, failed));
         }
         let model_id = self.upsert_model(tx, dimensions).await?;
-        let written = sqlx::query(
-            "INSERT INTO entity_embeddings (model_id, entity_id, workspace_id, embedding, dimensions) \
-             SELECT $1, e, w, v::halfvec, d \
-             FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[]) AS t(e, w, v, d) \
-             ON CONFLICT (model_id, entity_id) DO NOTHING",
+        let written_res = sqlx::query(
+            "INSERT INTO entity_embeddings \
+             (model_id, entity_id, workspace_id, embedding, dimensions, legacy_vector_id) \
+             SELECT $1, e, w, v::halfvec, d, lid \
+             FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[], $6::text[]) \
+               AS t(e, w, v, d, lid) \
+             ON CONFLICT (model_id, entity_id) DO UPDATE \
+               SET legacy_vector_id = COALESCE(entity_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)",
         )
         .bind(model_id)
         .bind(&entity_ids)
         .bind(&workspace_ids)
         .bind(&vectors)
         .bind(&dims)
+        .bind(&legacy_ids)
         .execute(&mut **tx)
-        .await
-        .map_err(|e| StorageError::Database(format!("iw2 entity insert failed: {e}")))?
-        .rows_affected() as i64;
-        Ok(written)
+        .await;
+        match written_res {
+            Ok(r) => Ok((r.rows_affected() as i64, failed)),
+            Err(sqlx::Error::Database(db)) if db.code().as_deref() == Some("23505") => {
+                // Unique legacy_vector_id / model conflict → durable miss for this batch.
+                Ok((0, failed + entity_ids.len() as i64))
+            }
+            Err(e) => Err(StorageError::Database(format!(
+                "iw2 entity insert failed: {e}"
+            ))),
+        }
     }
 
     async fn write_relationship_batch(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         rows: &[sqlx::postgres::PgRow],
-    ) -> Result<i64, StorageError> {
+    ) -> Result<(i64, i64), StorageError> {
         let mut rel_ids: Vec<Uuid> = Vec::new();
         let mut workspace_ids: Vec<Uuid> = Vec::new();
+        let mut legacy_ids: Vec<String> = Vec::new();
         let mut vectors: Vec<String> = Vec::new();
         let mut dims: Vec<i32> = Vec::new();
         let mut dimensions = 0i32;
+        let mut failed = 0i64;
+        let mut index_cache: std::collections::HashMap<Uuid, EntityNameIndex> =
+            std::collections::HashMap::new();
 
         for row in rows {
             let id: String = row
@@ -432,35 +632,44 @@ impl FleetEmbeddingBackfillJob {
                 .try_get("embedding")
                 .map_err(|e| StorageError::Database(e.to_string()))?;
             let meta: Value = row.try_get("metadata").unwrap_or(json!({}));
-            let Some((src, tgt, rel_type)) = parse_relationship_legacy_key(&id) else {
+            let Some((src, tgt, rel_type_raw)) = parse_relationship_legacy_key(&id) else {
+                failed += 1;
                 continue;
             };
-            let Some(ws) = parse_workspace_uuid(&meta) else {
+            let rel_type = normalize_relation_type_str(&rel_type_raw);
+            let Some(ws) = workspace_from_row(row, &meta) else {
+                failed += 1;
                 continue;
             };
             let Some(embedding) = parse_vector_text(&emb_text) else {
+                failed += 1;
                 continue;
             };
             dimensions = embedding.len() as i32;
-            let rid: Option<Uuid> = sqlx::query_scalar(
-                "SELECT r.id FROM relationships r \
-                 JOIN entities es ON es.id = r.source_id \
-                 JOIN entities et ON et.id = r.target_id \
-                 WHERE es.name = $1 AND et.name = $2 AND r.relation_type = $3 \
-                 AND r.workspace_id = $4 LIMIT 1",
-            )
-            .bind(&src)
-            .bind(&tgt)
-            .bind(&rel_type)
-            .bind(ws)
-            .fetch_optional(&mut **tx)
-            .await
-            .map_err(|e| StorageError::Database(format!("iw2 rel spine lookup failed: {e}")))?;
-            let Some(rid) = rid else {
-                continue;
+            if let std::collections::hash_map::Entry::Vacant(e) = index_cache.entry(ws) {
+                e.insert(load_entity_name_index(tx, ws).await?);
+            }
+            let index = index_cache.get(&ws).expect("just inserted");
+            let rid = match resolve_relationship_id(tx, ws, &src, &tgt, &rel_type, index).await? {
+                Some(rid) => rid,
+                None => {
+                    match ensure_relationship_spine(tx, ws, &meta, &src, &tgt, &rel_type, index)
+                        .await?
+                    {
+                        Some(rid) => {
+                            index_cache.insert(ws, load_entity_name_index(tx, ws).await?);
+                            rid
+                        }
+                        None => {
+                            failed += 1;
+                            continue;
+                        }
+                    }
+                }
             };
             rel_ids.push(rid);
             workspace_ids.push(ws);
+            legacy_ids.push(id);
             vectors.push(format!(
                 "[{}]",
                 embedding
@@ -472,37 +681,43 @@ impl FleetEmbeddingBackfillJob {
             dims.push(embedding.len() as i32);
         }
         if rel_ids.is_empty() {
-            return Ok(0);
+            return Ok((0, failed));
         }
         let model_id = self.upsert_model(tx, dimensions).await?;
         let written = sqlx::query(
-            "INSERT INTO relationship_embeddings (model_id, relationship_id, workspace_id, embedding, dimensions) \
-             SELECT $1, r, w, v::halfvec, d \
-             FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[]) AS t(r, w, v, d) \
-             ON CONFLICT (model_id, relationship_id) DO NOTHING",
+            "INSERT INTO relationship_embeddings \
+             (model_id, relationship_id, workspace_id, embedding, dimensions, legacy_vector_id) \
+             SELECT $1, r, w, v::halfvec, d, lid \
+             FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[], $6::text[]) \
+               AS t(r, w, v, d, lid) \
+             ON CONFLICT (model_id, relationship_id) DO UPDATE \
+               SET legacy_vector_id = COALESCE(relationship_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)",
         )
         .bind(model_id)
         .bind(&rel_ids)
         .bind(&workspace_ids)
         .bind(&vectors)
         .bind(&dims)
+        .bind(&legacy_ids)
         .execute(&mut **tx)
         .await
         .map_err(|e| StorageError::Database(format!("iw2 relationship insert failed: {e}")))?
         .rows_affected() as i64;
-        Ok(written)
+        Ok((written, failed))
     }
 
     async fn write_report_batch(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         rows: &[sqlx::postgres::PgRow],
-    ) -> Result<i64, StorageError> {
+    ) -> Result<(i64, i64), StorageError> {
         let mut report_ids: Vec<String> = Vec::new();
         let mut workspace_ids: Vec<Uuid> = Vec::new();
+        let mut legacy_ids: Vec<String> = Vec::new();
         let mut vectors: Vec<String> = Vec::new();
         let mut dims: Vec<i32> = Vec::new();
         let mut dimensions = 0i32;
+        let mut failed = 0i64;
 
         for row in rows {
             let id: String = row
@@ -513,16 +728,20 @@ impl FleetEmbeddingBackfillJob {
                 .map_err(|e| StorageError::Database(e.to_string()))?;
             let meta: Value = row.try_get("metadata").unwrap_or(json!({}));
             if classify_legacy_vector_id(&id) != Some(EmbeddingFamily::Report) {
+                failed += 1;
                 continue;
             }
-            let Some(ws) = parse_workspace_uuid(&meta) else {
+            let Some(ws) = workspace_from_row(row, &meta) else {
+                failed += 1;
                 continue;
             };
             let Some(embedding) = parse_vector_text(&emb_text) else {
+                failed += 1;
                 continue;
             };
             dimensions = embedding.len() as i32;
-            report_ids.push(id);
+            report_ids.push(id.clone());
+            legacy_ids.push(id);
             workspace_ids.push(ws);
             vectors.push(format!(
                 "[{}]",
@@ -535,25 +754,29 @@ impl FleetEmbeddingBackfillJob {
             dims.push(embedding.len() as i32);
         }
         if report_ids.is_empty() {
-            return Ok(0);
+            return Ok((0, failed));
         }
         let model_id = self.upsert_model(tx, dimensions).await?;
         let written = sqlx::query(
-            "INSERT INTO report_embeddings (model_id, report_id, workspace_id, embedding, dimensions) \
-             SELECT $1, r, w, v::halfvec, d \
-             FROM unnest($2::text[], $3::uuid[], $4::text[], $5::int[]) AS t(r, w, v, d) \
-             ON CONFLICT (model_id, report_id) DO NOTHING",
+            "INSERT INTO report_embeddings \
+             (model_id, report_id, workspace_id, embedding, dimensions, legacy_vector_id) \
+             SELECT $1, r, w, v::halfvec, d, lid \
+             FROM unnest($2::text[], $3::uuid[], $4::text[], $5::int[], $6::text[]) \
+               AS t(r, w, v, d, lid) \
+             ON CONFLICT (model_id, report_id) DO UPDATE \
+               SET legacy_vector_id = COALESCE(report_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)",
         )
         .bind(model_id)
         .bind(&report_ids)
         .bind(&workspace_ids)
         .bind(&vectors)
         .bind(&dims)
+        .bind(&legacy_ids)
         .execute(&mut **tx)
         .await
         .map_err(|e| StorageError::Database(format!("iw2 report insert failed: {e}")))?
         .rows_affected() as i64;
-        Ok(written)
+        Ok((written, failed))
     }
 }
 

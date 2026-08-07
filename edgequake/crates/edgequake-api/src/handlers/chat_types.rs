@@ -76,6 +76,10 @@ pub struct ChatCompletionRequest {
     #[serde(default)]
     pub model: Option<String>,
 
+    /// SPEC-109: reasoning effort override (`none`/`minimal`/`low`/…). Auto = omit.
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+
     /// Preferred response language (ISO 639-1 code, e.g., "en", "zh", "fr").
     /// When provided, the LLM is instructed to respond in this language
     /// regardless of the query language. Falls back to "same language as query"

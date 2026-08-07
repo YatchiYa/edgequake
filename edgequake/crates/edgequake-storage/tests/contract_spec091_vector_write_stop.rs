@@ -309,3 +309,72 @@ async fn legacy_chunk_ddl_retired_probe_contract() {
         .ok();
     std::env::remove_var(VECTOR_BACKEND_ENV);
 }
+
+/// SPEC-111: typed write-stop must NOT skip lifecycle DELETE — wipe residue
+/// would otherwise leave orphan fleet rows that fail provenance-stamp verify.
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn typed_backend_clear_workspace_purges_residual_legacy_rows() {
+    let Some(cfg) = require_or_skip_postgres("spec091_vws_purge") else {
+        return;
+    };
+    let _g = w3::w3_lock().lock().await;
+    let pool = contract_pg_pool(&cfg).await;
+
+    let ns = format!("vwsp_{}", Uuid::new_v4().as_simple());
+    std::env::set_var(VECTOR_BACKEND_ENV, "typed_embeddings");
+
+    let mut pg_cfg = cfg.clone();
+    pg_cfg.namespace = ns;
+    let storage = PgVectorStorage::with_pool(
+        PostgresPool::from_existing(pool.clone(), pg_cfg.clone()),
+        pg_cfg,
+        8,
+    );
+    let table = storage
+        .vectors_table_name()
+        .trim_start_matches("public.")
+        .to_string();
+    let ws = Uuid::new_v4();
+
+    // Simulate pre-131 residue: legacy table still present under typed authority.
+    sqlx::query(&format!(
+        "CREATE TABLE public.{table} (
+            id TEXT PRIMARY KEY,
+            embedding halfvec(8) NOT NULL,
+            metadata JSONB DEFAULT '{{}}'::jsonb,
+            workspace_id TEXT
+        )"
+    ))
+    .execute(&pool)
+    .await
+    .expect("create residual legacy table");
+    sqlx::query(&format!(
+        "INSERT INTO public.{table} (id, embedding, metadata, workspace_id)
+         VALUES ($1, $2::halfvec, $3, $4)"
+    ))
+    .bind("entity:ORPHAN_QUERY")
+    .bind("[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8]")
+    .bind(json!({"workspace_id": ws.to_string()}))
+    .bind(ws.to_string())
+    .execute(&pool)
+    .await
+    .expect("seed orphan");
+
+    let n = storage
+        .clear_workspace(&ws)
+        .await
+        .expect("clear_workspace under typed must purge residue");
+    assert!(n >= 1, "must delete residual legacy rows, got {n}");
+    let left: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM public.{table}"))
+        .fetch_one(&pool)
+        .await
+        .expect("count");
+    assert_eq!(left, 0, "orphan fleet rows must be gone after wipe clear");
+
+    sqlx::query(&format!("DROP TABLE IF EXISTS public.{table}"))
+        .execute(&pool)
+        .await
+        .ok();
+    std::env::remove_var(VECTOR_BACKEND_ENV);
+}

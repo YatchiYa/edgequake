@@ -131,6 +131,13 @@ fn create_pg_config(namespace: &str) -> PostgresConfig {
 ///
 /// Uses a unique namespace for test isolation.
 async fn create_postgres_test_state(pool: &PgPool) -> AppState {
+    create_postgres_test_state_named(pool).await.0
+}
+
+/// Same as [`create_postgres_test_state`] plus KV namespace + concrete KV handle.
+async fn create_postgres_test_state_named(
+    pool: &PgPool,
+) -> (AppState, String, Arc<PostgresKVStorage>) {
     use edgequake_api::cache_manager::CacheManager;
     use edgequake_api::state::StorageMode;
     use edgequake_auth::AuthConfig;
@@ -226,7 +233,7 @@ async fn create_postgres_test_state(pool: &PgPool) -> AppState {
             Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
         ));
 
-    AppState {
+    let state = AppState {
         storage: edgequake_api::state::StorageRuntime {
             kv_storage: Arc::clone(&kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
             vector_storage: Arc::clone(&vector_storage)
@@ -278,7 +285,8 @@ async fn create_postgres_test_state(pool: &PgPool) -> AppState {
         read_path_db: std::sync::Arc::new(edgequake_api::read_path::ReadPathDbPermit::from_env()),
         postgres_capabilities: None,
         server_config: edgequake_api::server_config_store::ServerConfigStore::new(),
-    }
+    };
+    (state, namespace, kv_storage)
 }
 
 fn create_test_config() -> ServerConfig {
@@ -944,6 +952,125 @@ async fn issue309_workspace_wipe_admit_and_drain_pg() {
     }
 
     println!("✅ ISSUE-309 workspace wipe admit+drain (PostgreSQL): PASSED");
+}
+
+/// SPEC-111 E2E-111-08 / #366: Clear All → GET /documents count 0.
+///
+/// Also proves LAW-111-9: after typed membership is empty, leftover dual-write
+/// KV `-metadata` residue must **not** resurrect into the list (the v0.24.1 bug).
+#[tokio::test]
+async fn e2e_spec111_clear_all_list_empty_pg() {
+    let _serial = db_test_serial().await;
+    let pool = require_postgres!();
+    let (state, kv_namespace, pg_kv) = create_postgres_test_state_named(&pool).await;
+    let workspace_id = Uuid::new_v4();
+    let tenant_id = "00000000-0000-0000-0000-000000000001";
+    seed_test_workspace(&state, Uuid::parse_str(tenant_id).unwrap(), workspace_id).await;
+    let server = Server::new(create_test_config(), state.clone());
+    let app = server.build_router();
+
+    let mut seeded_ids = Vec::new();
+    for i in 0..3 {
+        let doc_id = Uuid::new_v4().to_string();
+        seeded_ids.push(doc_id.clone());
+        let meta = json!({
+            "id": doc_id,
+            "title": format!("ClearAll {i}"),
+            "status": "completed",
+            "workspace_id": workspace_id.to_string(),
+            "tenant_id": tenant_id,
+        });
+        state
+            .storage
+            .kv_storage
+            .upsert(&[(format!("{doc_id}-metadata"), meta)])
+            .await
+            .unwrap();
+    }
+
+    let (status, _) =
+        delete_all_documents_http_and_drain(&app, &state, &workspace_id.to_string()).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+
+    async fn list_total(app: &axum::Router, tenant_id: &str, workspace_id: Uuid) -> u64 {
+        let list = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/v1/documents")
+                    .header("X-Tenant-ID", tenant_id)
+                    .header("X-Workspace-ID", workspace_id.to_string())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(list.status(), StatusCode::OK);
+        let body = extract_json(list).await;
+        body["total"]
+            .as_u64()
+            .or_else(|| body["documents"].as_array().map(|a| a.len() as u64))
+            .unwrap_or(u64::MAX)
+    }
+
+    assert_eq!(
+        list_total(&app, tenant_id, workspace_id).await,
+        0,
+        "GET /documents must be empty after Clear All wipe"
+    );
+
+    // #366 regression: plant raw KV residue into this test's namespaced KV
+    // table (create if post-125 dropped it) while `documents` stays empty.
+    // Authoritative membership must not suffix-fallback into these rows.
+    let kv_table = format!(
+        "public.{}",
+        edgequake_storage::bare_kv_table_for_namespace(&kv_namespace)
+    );
+    sqlx::query(&format!(
+        "CREATE TABLE IF NOT EXISTS {kv_table} (
+            key TEXT PRIMARY KEY,
+            value JSONB NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )"
+    ))
+    .execute(&pool)
+    .await
+    .expect("ensure scratch KV table for #366 residue plant");
+
+    for doc_id in &seeded_ids {
+        let ghost = json!({
+            "id": doc_id,
+            "title": "Ghost after wipe",
+            "status": "completed",
+            "workspace_id": workspace_id.to_string(),
+            "tenant_id": tenant_id,
+        });
+        sqlx::query(&format!(
+            "INSERT INTO {kv_table} (key, value, updated_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()"
+        ))
+        .bind(format!("{doc_id}-metadata"))
+        .bind(&ghost)
+        .execute(&pool)
+        .await
+        .expect("plant KV ghost");
+    }
+
+    // Reset relation-absent short-circuit so a buggy suffix fallback would
+    // actually see the planted rows (regression must fail closed).
+    pg_kv.seed_relation_from_dropped(false);
+
+    assert_eq!(
+        list_total(&app, tenant_id, workspace_id).await,
+        0,
+        "LAW-111-9: raw KV residue must not resurrect documents after wipe (#366)"
+    );
+    let _ = sqlx::query(&format!("DROP TABLE IF EXISTS {kv_table}"))
+        .execute(&pool)
+        .await;
+    println!("✅ SPEC-111 clear-all list empty + #366 no-KV-resurrect (PostgreSQL): PASSED");
 }
 
 /// ISSUE-304: AUTO_RESUME=0 orphan → structured Interrupted; force entities requeues Full PDF.

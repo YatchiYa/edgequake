@@ -178,6 +178,11 @@ pub struct QueryRequest {
     #[serde(default)]
     pub llm_model: Option<String>,
 
+    /// SPEC-109: reasoning effort override for this query (`none`/`minimal`/`low`/…).
+    /// Omit or null = Auto (inherit workspace query role / provider default).
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+
     /// Optional system prompt extension injected into the LLM prompt.
     /// Extends (not replaces) the base RAG prompt with additional instructions.
     /// @implements SPEC-004: System prompt extension point
@@ -281,6 +286,10 @@ pub struct StreamQueryRequest {
     /// @implements SPEC-006 + SPEC-032: Model selection in streaming queries
     #[serde(default)]
     pub llm_model: Option<String>,
+
+    /// SPEC-109: reasoning effort override for streaming query.
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 
     /// Stream format version: "v1" (raw text) or "v2" (structured JSON events, default).
     /// @implements SPEC-006: Backward compatibility

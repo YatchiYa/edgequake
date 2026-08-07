@@ -113,6 +113,12 @@ pub struct QueryRequest {
     /// Default when unset: `"Multiple Paragraphs"`.
     #[serde(default)]
     pub response_type: Option<String>,
+
+    /// SPEC-109: effective reasoning effort for answer generation (post-clamp).
+    /// When `Some`, forwarded on `CompletionOptions.reasoning_effort` and
+    /// included in the SPEC-103 answer-cache hash.
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 }
 
 /// A single message in conversation history.
@@ -147,6 +153,7 @@ impl QueryRequest {
             hl_keywords: None,
             ll_keywords: None,
             response_type: None,
+            reasoning_effort: None,
         }
     }
 
@@ -240,6 +247,18 @@ impl QueryRequest {
     /// @implements SPEC-032: Model selection at query time
     pub fn with_llm_model(mut self, model: impl Into<String>) -> Self {
         self.llm_model = Some(model.into());
+        self
+    }
+
+    /// SPEC-109: set effective reasoning effort for answer generation.
+    pub fn with_reasoning_effort(mut self, effort: impl Into<String>) -> Self {
+        let s = effort.into();
+        let trimmed = s.trim();
+        self.reasoning_effort = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
         self
     }
 
@@ -506,6 +525,10 @@ pub struct QueryStats {
     /// LLM / heuristic query intent used for truncation + Mix gating (022 P3a).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query_intent: Option<String>,
+
+    /// SPEC-109: effective reasoning effort used for answer generation (when set).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 impl QueryStats {

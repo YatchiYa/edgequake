@@ -11,9 +11,15 @@ import {
   LLMModelSelector,
   type LLMSelection,
 } from '@/components/workspace/llm-model-selector';
+import { ReasoningEffortSelect } from '@/components/settings/reasoning-effort-select';
 import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
+import { useLlmModels } from '@/hooks/use-providers';
+import {
+  effectiveEffortWhenAuto,
+  supportedReasoningEffortsForModel,
+} from '@/lib/settings/reasoning-effort-supported';
 import type { WizardDraft } from '@/lib/onboarding/wizard-state';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface ModelDefaultsStepProps {
@@ -33,7 +39,7 @@ export interface ModelDefaultsStepProps {
 
 /**
  * SPEC-101 — Defaults-first model step (LAW-101-2 / LAW-101-3).
- * Happy path never mounts provider chip bars. Card stays visible when Advanced opens.
+ * Happy path never mounts pickers. Advanced uses two-step provider → model.
  */
 export function ModelDefaultsStep({
   draft,
@@ -51,6 +57,26 @@ export function ModelDefaultsStep({
   const { t } = useTranslation();
   const useTenantLadder = Boolean(tenantId);
   const inherited = useInheritedModelDefaults(tenantId ?? null);
+  const { data: llmCatalog } = useLlmModels();
+  const reasoningSupported = useMemo(
+    () =>
+      supportedReasoningEffortsForModel(
+        llmCatalog?.models,
+        llm?.provider,
+        llm?.model,
+      ),
+    [llmCatalog?.models, llm?.provider, llm?.model],
+  );
+  const reasoningEffectiveAuto = useMemo(
+    () =>
+      effectiveEffortWhenAuto(
+        llmCatalog?.models,
+        llm?.provider,
+        llm?.model,
+        'fleet',
+      ),
+    [llmCatalog?.models, llm?.provider, llm?.model],
+  );
 
   const { isLoading, hasConfiguredDefaults } = inherited;
 
@@ -123,7 +149,7 @@ export function ModelDefaultsStep({
           <p className="text-xs text-muted-foreground">
             {t(
               'onboarding.customModelsHint',
-              'Pick LLM, embedding, and vision. Provider filters stay hidden.',
+              'Choose a provider, then a model.',
             )}
           </p>
           <div className="grid gap-3">
@@ -132,7 +158,6 @@ export function ModelDefaultsStep({
               <LLMModelSelector
                 value={llm}
                 onChange={onLlmChange}
-                showProviderFilters={false}
                 showCapabilityFilters={false}
                 showUsageHint
               />
@@ -142,7 +167,6 @@ export function ModelDefaultsStep({
               <EmbeddingModelSelector
                 value={embedding}
                 onChange={onEmbeddingChange}
-                showProviderFilters={false}
               />
             </div>
             <div className="grid gap-2">
@@ -151,11 +175,18 @@ export function ModelDefaultsStep({
                 value={vision}
                 onChange={onVisionChange}
                 filterVision
-                showProviderFilters={false}
                 showCapabilityFilters={false}
                 showUsageHint
               />
             </div>
+            <ReasoningEffortSelect
+              value={draft.reasoningEffort}
+              onChange={(reasoningEffort) => onChange({ reasoningEffort })}
+              supported={reasoningSupported}
+              effectiveWhenAuto={reasoningEffectiveAuto}
+              label={t('onboarding.reasoningEffort', 'Default reasoning effort')}
+              data-testid="wizard-reasoning-effort"
+            />
           </div>
         </div>
       ) : null}

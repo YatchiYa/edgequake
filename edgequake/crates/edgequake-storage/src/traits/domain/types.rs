@@ -114,6 +114,9 @@ pub struct FleetEmbeddingRow {
     pub dimensions: i32,
     /// Entity UUID, relationship UUID, or legacy report TEXT id.
     pub key: FleetEmbeddingKey,
+    /// SPEC-111: source `eq_*_vectors.id` for migration 131 provenance (optional).
+    #[serde(default)]
+    pub legacy_vector_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

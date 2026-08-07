@@ -59,6 +59,11 @@ pub fn entity_name_from_legacy_id(id: &str) -> Option<&str> {
 }
 
 /// Parse `{source}->{target}:{relation_type}` legacy relationship vector id.
+///
+/// Uses the **last** `->` as the source/target separator so entity names that
+/// themselves contain `->` (e.g. LLM-extracted `27_->_25_STRENGTHENING`) still
+/// resolve. Rel type is taken from the last `:`. Residual ambiguity remains if
+/// the **target** name also contains `->`.
 pub fn parse_relationship_legacy_key(id: &str) -> Option<(String, String, String)> {
     if id.starts_with("entity:") || id.starts_with("community_report:") {
         return None;
@@ -67,7 +72,7 @@ pub fn parse_relationship_legacy_key(id: &str) -> Option<(String, String, String
     if rel_type.is_empty() {
         return None;
     }
-    let (source, target) = pair.split_once("->")?;
+    let (source, target) = pair.rsplit_once("->")?;
     if source.is_empty() || target.is_empty() {
         return None;
     }
@@ -108,5 +113,31 @@ mod tests {
             parse_relationship_legacy_key("A->B:TYPE"),
             Some(("A".into(), "B".into(), "TYPE".into()))
         );
+    }
+
+    /// SPEC-098 / Argus miss class: source entity name contains `->`.
+    #[test]
+    fn contract_iw2_parse_relationship_key_arrow_in_source() {
+        let miss = "27_->_25_STRENGTHENING->CLAIM_FRONTIER:STRENGTHENS";
+        assert_eq!(
+            parse_relationship_legacy_key(miss),
+            Some((
+                "27_->_25_STRENGTHENING".into(),
+                "CLAIM_FRONTIER".into(),
+                "STRENGTHENS".into()
+            ))
+        );
+        assert_eq!(
+            classify_legacy_vector_id(miss),
+            Some(EmbeddingFamily::Relationship)
+        );
+    }
+
+    #[test]
+    fn contract_iw2_parse_relationship_key_rejects_empty_sides() {
+        assert!(parse_relationship_legacy_key("->B:TYPE").is_none());
+        assert!(parse_relationship_legacy_key("A->:TYPE").is_none());
+        assert!(parse_relationship_legacy_key("A->B:").is_none());
+        assert!(parse_relationship_legacy_key("entity:A->B:TYPE").is_none());
     }
 }

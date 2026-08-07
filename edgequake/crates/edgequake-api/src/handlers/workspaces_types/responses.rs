@@ -50,6 +50,10 @@ pub struct TenantResponse {
     /// None if not configured.
     pub default_vision_llm_provider: Option<String>,
 
+    /// SPEC-109: default reasoning effort seed for workspaces.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_reasoning_effort: Option<String>,
+
     /// Creation timestamp.
     pub created_at: String,
     /// Last update timestamp.
@@ -122,6 +126,14 @@ pub struct WorkspaceResponse {
     /// Custom entity-type → hex color map for graph visualization (SPEC-102).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
+
+    /// SPEC-109: workspace default reasoning effort.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_reasoning_effort: Option<String>,
+
+    /// SPEC-109: per-role LLM overrides (incl. reasoning_effort).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_roles: Option<serde_json::Value>,
 
     /// Creation timestamp.
     pub created_at: String,

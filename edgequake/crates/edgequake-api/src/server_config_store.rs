@@ -133,6 +133,10 @@ struct LlmDefaultsJson {
     embedding_model: Option<String>,
     vision_provider: Option<String>,
     vision_model: Option<String>,
+    #[serde(default)]
+    reasoning_effort: Option<String>,
+    #[serde(default)]
+    reasoning_by_role: std::collections::HashMap<String, String>,
 }
 
 impl From<LlmDefaultsJson> for ServerLlmDefaults {
@@ -144,6 +148,12 @@ impl From<LlmDefaultsJson> for ServerLlmDefaults {
             embedding_model: v.embedding_model.filter(|s| !s.trim().is_empty()),
             vision_provider: v.vision_provider.filter(|s| !s.trim().is_empty()),
             vision_model: v.vision_model.filter(|s| !s.trim().is_empty()),
+            reasoning_effort: v.reasoning_effort.filter(|s| !s.trim().is_empty()),
+            reasoning_by_role: v
+                .reasoning_by_role
+                .into_iter()
+                .filter(|(k, v)| !k.trim().is_empty() && !v.trim().is_empty())
+                .collect(),
         }
     }
 }
@@ -157,6 +167,8 @@ impl From<ServerLlmDefaults> for LlmDefaultsJson {
             embedding_model: v.embedding_model,
             vision_provider: v.vision_provider,
             vision_model: v.vision_model,
+            reasoning_effort: v.reasoning_effort,
+            reasoning_by_role: v.reasoning_by_role,
         }
     }
 }

@@ -165,6 +165,7 @@ async fn run_context_retrieval(
         workspace_id: tenant_ctx.workspace_id.clone(),
         llm_provider: None,
         llm_model: None,
+        reasoning_effort: None,
     };
 
     let engine_request = build_engine_request(&params);

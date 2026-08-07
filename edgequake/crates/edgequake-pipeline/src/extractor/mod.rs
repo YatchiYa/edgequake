@@ -41,7 +41,8 @@ mod temperature;
 mod types;
 
 pub use completion_options::{
-    assign_token_usage, extraction_completion_options, recommended_chunk_size_for_bytes,
+    assign_token_usage, extraction_completion_options, extraction_completion_options_with_effort,
+    recommended_chunk_size_for_bytes,
 };
 pub use schema::ConfigurableEntitySchema;
 pub use temperature::effective_temperature_for_model;

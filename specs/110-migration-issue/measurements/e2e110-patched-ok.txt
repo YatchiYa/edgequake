@@ -1,0 +1,12 @@
+=== e2e_spec110_wsdoc_on_conflict ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running tests/e2e_spec110_wsdoc_on_conflict.rs (target/debug/deps/e2e_spec110_wsdoc_on_conflict-16fd8753d78ab4f6)
+
+running 4 tests
+test e2e110_05_source_guard_distinct_on ... ok
+test e2e110_01_old_118_fails_on_multi_ws_wsdoc ... ok
+test e2e110_02_03_patched_118_collapses_and_idempotent ... ok
+test e2e110_04_patched_121_injection_multi_ws ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+

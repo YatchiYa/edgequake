@@ -1,0 +1,16 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.25s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_llm-9781bfeef9c1ab6b)
+
+running 9 tests
+test reasoning_capabilities::tests::gpt41_omits ... ok
+test reasoning_capabilities::tests::auto_omit_returns_none ... ok
+test reasoning_capabilities::tests::mistral_large_omits ... ok
+test reasoning_capabilities::tests::lowest_structured_mini_is_minimal ... ok
+test reasoning_capabilities::tests::xhigh_clamps_down_on_mini ... ok
+test reasoning_capabilities::tests::gpt5_mini_none_clamps_to_minimal ... ok
+test reasoning_capabilities::tests::exact_match_preserved ... ok
+test reasoning_capabilities::tests::gpt54_nano_none_stays_none ... ok
+test reasoning_capabilities::tests::lowest_structured_nano54_is_none ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 1513 filtered out; finished in 0.00s
+

@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.24.1"
+    "version": "0.24.2"
   },
   "servers": [
     {
@@ -3098,8 +3098,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "recover_stuck",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "recover_stuck"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -8980,8 +8980,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_embeddings",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_embeddings"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -9054,8 +9054,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -9128,8 +9128,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_all",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_all"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -9620,8 +9620,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     },
     "/ws/progress/{track_id}": {
@@ -9652,8 +9652,8 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     }
   },
@@ -10645,6 +10645,13 @@
               "null"
             ],
             "description": "LLM provider ID to use for this query (e.g., \"openai\", \"ollama\", \"lmstudio\").\nIf not provided, uses the workspace or server default.\n\n@implements SPEC-032: Provider selection in query interface"
+          },
+          "reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-109: reasoning effort override (`none`/`minimal`/`low`/…). Auto = omit."
           },
           "stream": {
             "type": "boolean",
@@ -13135,6 +13142,13 @@
             ],
             "description": "Default LLM provider for new workspaces (\"openai\", \"ollama\", \"lmstudio\").\nWorkspaces inherit this if not explicitly configured.\nIf not provided, auto-detected from model name or uses EDGEQUAKE_DEFAULT_LLM_PROVIDER."
           },
+          "default_reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-109: default reasoning effort seed for new workspaces (`none`/`minimal`/`low`/…)."
+          },
           "default_vision_llm_model": {
             "type": [
               "string",
@@ -13245,6 +13259,13 @@
           "name"
         ],
         "properties": {
+          "default_reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-109: seed workspace `default_reasoning_effort` metadata."
+          },
           "description": {
             "type": [
               "string",
@@ -13324,6 +13345,9 @@
               "null"
             ],
             "description": "LLM provider (\"openai\", \"ollama\", \"lmstudio\").\nIf not provided, auto-detected from llm_model."
+          },
+          "llm_roles": {
+            "description": "SPEC-109: initial `llm_roles` metadata."
           },
           "max_documents": {
             "type": [
@@ -14740,6 +14764,16 @@
             "type": "string",
             "description": "Priority rule explanation shown to the user."
           },
+          "reasoning_roles": {
+            "type": "object",
+            "description": "SPEC-109: per-role reasoning effort resolution (fleet defaults; workspace overlay separate).",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ReasoningEffortExplain"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "server_config_available": {
             "type": "boolean",
             "description": "Whether PostgreSQL server_config persistence is available."
@@ -14754,6 +14788,7 @@
           "llm": {},
           "priority_mode": {},
           "priority_rule": {},
+          "reasoning_roles": {},
           "server_config_available": {},
           "vision": {}
         }
@@ -19177,6 +19212,17 @@
             "description": "Maximum output tokens.",
             "minimum": 0
           },
+          "reasoning_effort": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningEffortCapabilityResponse",
+                "description": "SPEC-109: reasoning-effort capability (omit when model is non-reasoning)."
+              }
+            ]
+          },
           "supports_function_calling": {
             "type": "boolean",
             "description": "Supports function calling."
@@ -19202,6 +19248,7 @@
           "context_length": {},
           "embedding_dimension": {},
           "max_output_tokens": {},
+          "reasoning_effort": {},
           "supports_function_calling": {},
           "supports_json_mode": {},
           "supports_streaming": {},
@@ -22753,6 +22800,13 @@
             ],
             "description": "Optional question-type label (e.g. GraphRAG-Bench `Complex Reasoning`).\nForwarded to the engine for type-scoped answer prompts (047)."
           },
+          "reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-109: reasoning effort override for this query (`none`/`minimal`/`low`/…).\nOmit or null = Auto (inherit workspace query role / provider default)."
+          },
           "rerank_model": {
             "type": [
               "string",
@@ -23719,6 +23773,77 @@
           "success": {},
           "track_id": {},
           "v2_migration": {}
+        }
+      },
+      "ReasoningEffortCapabilityResponse": {
+        "type": "object",
+        "description": "SPEC-109: exposed reasoning-effort options for UI filters.",
+        "required": [
+          "supported"
+        ],
+        "properties": {
+          "lowest_structured": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Lowest effort suitable for structured extract/summary/vlm roles."
+          },
+          "supported": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowed effort strings for this model."
+          }
+        },
+        "example": {
+          "lowest_structured": {},
+          "supported": []
+        }
+      },
+      "ReasoningEffortExplain": {
+        "type": "object",
+        "description": "SPEC-109: explainable reasoning effort for one LLM role.",
+        "required": [
+          "source",
+          "clamped",
+          "provider",
+          "model"
+        ],
+        "properties": {
+          "clamped": {
+            "type": "boolean"
+          },
+          "desired": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effective": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "clamped": {},
+          "desired": {},
+          "effective": {},
+          "model": {},
+          "provider": {},
+          "source": {}
         }
       },
       "RebuildEmbeddingsRequest": {
@@ -24967,6 +25092,21 @@
               "null"
             ]
           },
+          "reasoning_by_role": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "vision_model": {
             "type": [
               "string",
@@ -24985,6 +25125,8 @@
           "embedding_provider": {},
           "llm_model": {},
           "llm_provider": {},
+          "reasoning_by_role": {},
+          "reasoning_effort": {},
           "vision_model": {},
           "vision_provider": {}
         }
@@ -26299,6 +26441,13 @@
             ],
             "description": "Optional question-type label for type-scoped answer prompts (047)."
           },
+          "reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-109: reasoning effort override for streaming query."
+          },
           "response_type": {
             "type": [
               "string",
@@ -26333,6 +26482,7 @@
           "mode": {},
           "query": {},
           "question_type": {},
+          "reasoning_effort": {},
           "response_type": {},
           "stream_format": {},
           "system_prompt": {}
@@ -26727,6 +26877,13 @@
             "type": "string",
             "description": "Default LLM provider for new workspaces."
           },
+          "default_reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-109: default reasoning effort seed for workspaces."
+          },
           "default_vision_llm_model": {
             "type": [
               "string",
@@ -26781,6 +26938,7 @@
           "default_llm_full_id": {},
           "default_llm_model": {},
           "default_llm_provider": {},
+          "default_reasoning_effort": {},
           "default_vision_llm_model": {},
           "default_vision_llm_provider": {},
           "id": {},
@@ -27148,6 +27306,26 @@
             ],
             "description": "`server` (DB wins) or `env` (env wins). Optional — keeps current when omitted."
           },
+          "reasoning_by_role": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "SPEC-109: per-role reasoning effort map.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-109: fleet default reasoning effort."
+          },
           "vision_model": {
             "type": [
               "string",
@@ -27167,6 +27345,8 @@
           "llm_model": {},
           "llm_provider": {},
           "priority_mode": {},
+          "reasoning_by_role": {},
+          "reasoning_effort": {},
           "vision_model": {},
           "vision_provider": {}
         }
@@ -27494,6 +27674,13 @@
         "type": "object",
         "description": "Request to update a workspace.\n\n## Model Configuration Updates (SPEC-032)\n\nChanging LLM provider/model is safe and takes effect immediately for new ingestions.\nChanging embedding provider/model requires rebuilding vectors (use rebuild-embeddings endpoint).",
         "properties": {
+          "default_reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-109: set/clear workspace default reasoning effort."
+          },
           "description": {
             "type": [
               "string",
@@ -27581,6 +27768,9 @@
             ],
             "description": "Update LLM provider."
           },
+          "llm_roles": {
+            "description": "SPEC-109: merge into workspace `llm_roles` metadata."
+          },
           "max_documents": {
             "type": [
               "integer",
@@ -27619,6 +27809,7 @@
           }
         },
         "example": {
+          "default_reasoning_effort": {},
           "description": {},
           "embedding_dimension": {},
           "embedding_model": {},
@@ -27630,6 +27821,7 @@
           "is_active": {},
           "llm_model": {},
           "llm_provider": {},
+          "llm_roles": {},
           "max_documents": {},
           "name": {},
           "pdf_parser_backend": {},
@@ -28039,6 +28231,13 @@
             "type": "string",
             "description": "Creation timestamp."
           },
+          "default_reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-109: workspace default reasoning effort."
+          },
           "description": {
             "type": [
               "string",
@@ -28117,6 +28316,9 @@
           "llm_provider": {
             "type": "string",
             "description": "LLM provider (openai, ollama, lmstudio)."
+          },
+          "llm_roles": {
+            "description": "SPEC-109: per-role LLM overrides (incl. reasoning_effort)."
           },
           "max_documents": {
             "type": [
@@ -28395,7 +28597,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.24.1",
+      "version": "0.24.2",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455)."
     },
     "defaultContentType": "application/json",

@@ -63,6 +63,31 @@ export function formatServerDefaultPdfParserLabel(
 }
 
 /**
+ * Documents upload inherit option — never-silent workspace (or server) default.
+ * Example: `Workspace Default (Vision)`.
+ *
+ * Uses the same resolve chain as upload when choice is `default`: workspace
+ * override when set, otherwise server env → Vision.
+ */
+export function formatWorkspaceDefaultPdfParserLabel(
+  t: (key: string, defaultValue: string, options?: { value: string }) => string,
+  workspaceBackend?: PdfParserBackend | null,
+  serverBackend?: PdfParserBackend,
+): string {
+  const resolved = resolvePdfParserBackend({
+    uploadChoice: "default",
+    workspaceBackend,
+    serverBackend,
+  });
+  const value = pdfParserBackendDisplayName(resolved.backend);
+  return t(
+    "documents.upload.pdfParserDefaultWithValue",
+    `Workspace Default (${value})`,
+    { value },
+  );
+}
+
+/**
  * Resolve effective PDF parser backend using the same chain as the upload API.
  */
 export function resolvePdfParserBackend(

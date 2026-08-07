@@ -92,6 +92,7 @@ pub mod query_execution;
 pub mod query_generation;
 pub mod query_request_builder;
 pub mod query_stats_mapper;
+pub mod reasoning_effort_resolve;
 pub mod relational_sidecar_store;
 pub mod reprocess_admission;
 pub mod reprocess_stage_reset;
@@ -198,7 +199,8 @@ pub use ingestion_persist::{
 };
 pub use ingestion_status::{
     apply_doc_cancelled_fields, apply_doc_failed_fields, apply_doc_terminal_fields,
-    capture_cancelled_from_stage, pdf_status_for_cancel, DocTerminalKind,
+    capture_cancelled_from_stage, format_ingest_completion_stage_message,
+    is_ingest_completion_stage_message, pdf_status_for_cancel, DocTerminalKind,
 };
 pub use ingestion_status_mapper::{
     enrich_document_summaries, enrich_document_summaries_with_cancel,
@@ -260,8 +262,8 @@ pub use pdf_workspace_dedup::{
     workspace_has_visible_document_for_pdf,
 };
 pub use pending_doc_task_reconcile::{
-    ensure_task_for_pending_document, try_heal_cancelled_orphan, CancelHealOutcome,
-    EnsureTaskOutcome,
+    ensure_task_for_pending_document, try_heal_cancelled_orphan, try_heal_completed_orphan,
+    CancelHealOutcome, CompletedHealOutcome, EnsureTaskOutcome,
 };
 pub use pipeline_failure_classify::{classify_from_llm_error, classify_from_pipeline_error};
 pub use progress_counts::{
@@ -282,6 +284,7 @@ pub use query_execution::{
 pub use query_generation::{execute_full_query, execute_legacy_query_response};
 pub use query_request_builder::{build_engine_request, QueryExecutionParams};
 pub use query_stats_mapper::from_engine_stats as map_engine_query_stats;
+pub use reasoning_effort_resolve::{resolve_query_reasoning_effort, resolve_vlm_reasoning_effort};
 pub use reprocess_admission::{
     evaluate_reprocess_admission, is_reprocess_completed_status, is_reprocess_inflight_status,
     is_reprocess_lifecycle_exclusive, is_reprocess_orphan_waiting_status,
@@ -300,9 +303,11 @@ pub use task_cancel::{
     is_cancel_error_message, TaskCancelApplyResult,
 };
 pub use task_document_sync::{
-    extract_document_id_from_task, resolve_document_id_for_task, sync_doc_cancelled_by_document_id,
-    sync_doc_cancelled_for_task, sync_doc_failed_no_active_task,
-    sync_document_failed_on_orphan_heartbeat, touch_relational_document_status_best_effort,
+    extract_document_id_from_task, looks_like_completed_orphan, resolve_document_id_for_task,
+    sync_doc_cancelled_by_document_id, sync_doc_cancelled_for_task, sync_doc_completed_orphan,
+    sync_doc_failed_no_active_task, sync_document_failed_on_orphan_heartbeat,
+    touch_relational_document_status_best_effort,
+    touch_relational_document_track_status_best_effort,
 };
 pub use text_insert_content::{
     load_staging_and_final_metadata, load_staging_first_metadata, patch_document_metadata,
@@ -326,9 +331,11 @@ pub use workspace_content_hash_dedup::{
     recycle_orphan_workspace_hash, workspace_has_visible_document_for_hash,
 };
 pub use workspace_document_index::{
-    list_workspace_document_ids, list_workspace_metadata_keys, remove_workspace_document_index,
+    list_workspace_document_ids, list_workspace_metadata_keys,
+    list_workspace_metadata_keys_detailed, list_workspace_metadata_keys_limited,
+    list_workspace_metadata_keys_limited_detailed, remove_workspace_document_index,
     sync_after_metadata_upsert, sync_workspace_document_index, upsert_final_document_metadata,
-    upsert_metadata_kv_with_index,
+    upsert_metadata_kv_with_index, WorkspaceMetadataKeyList,
 };
 pub use workspace_document_wipe::{
     broadcast_wipe_failed, count_planned_wipe_documents, new_wipe_task_data,

@@ -142,6 +142,7 @@ export function DocumentManager() {
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [pdfParserBackend, setPdfParserBackend] = useState<'default' | 'vision' | 'edgeparse'>('default');
+  const [visionReasoningEffort, setVisionReasoningEffort] = useState<string | undefined>();
   const [largePdfAdmissionOpen, setLargePdfAdmissionOpen] = useState(false);
   const [largePdfPreviews, setLargePdfPreviews] = useState<LargePdfAdmissionPreview[]>([]);
   const [pendingAdmissionFiles, setPendingAdmissionFiles] = useState<File[]>([]);
@@ -195,6 +196,7 @@ export function DocumentManager() {
     onUploadStart: () => setStatusFilter('all'),
     pdfParserBackend:
       pdfParserBackend === 'default' ? undefined : pdfParserBackend,
+    visionReasoningEffort,
   });
 
   const handleFilesAccepted = useCallback(
@@ -725,6 +727,9 @@ export function DocumentManager() {
             openFileDialog={openFileDialog}
             pdfParserBackend={pdfParserBackend}
             onPdfParserBackendChange={setPdfParserBackend}
+            workspacePdfParserBackend={selectedWorkspace?.pdf_parser_backend}
+            visionReasoningEffort={visionReasoningEffort}
+            onVisionReasoningEffortChange={setVisionReasoningEffort}
             selectedCount={selectedCount}
             onBulkReprocess={() => {
               // WHY: Open the bulk choice dialog so the user picks full

@@ -37,6 +37,17 @@ test.describe("SPEC-038 Large PDF Admission", () => {
     });
   });
 
+  test("upload parser select shows workspace default with backend value", async ({
+    page,
+  }) => {
+    const parser = page.getByTestId("spec038-upload-parser-select");
+    await expect(parser).toBeVisible({ timeout: 15_000 });
+    await expect(parser).toHaveText(/Workspace Default \(Vision\)/);
+    // Trigger must be wide enough that the full inherit label is visible (not "Workspace [").
+    const box = await parser.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(168);
+  });
+
   test("shows admission dialog for 603-page PDF fixture", async ({ page }) => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spec038-"));
     const fixturePath = path.join(tmpDir, "large-guide-stub.pdf");
@@ -175,6 +186,12 @@ test.describe("SPEC-038 Large PDF Admission — workspace EdgeParse default", ()
       state: "visible",
       timeout: 20_000,
     });
+  });
+
+  test("upload parser select shows EdgeParse workspace default", async ({ page }) => {
+    const parser = page.getByTestId("spec038-upload-parser-select");
+    await expect(parser).toBeVisible({ timeout: 15_000 });
+    await expect(parser).toHaveText(/Workspace Default \(EdgeParse\)/);
   });
 
   test.fixme("skips admission when workspace default is EdgeParse", async ({ page }) => {

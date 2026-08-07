@@ -140,16 +140,43 @@ pub async fn sync_after_metadata_upsert(
     sync_workspace_document_index(kv, metadata_key, metadata).await
 }
 
+/// Workspace metadata-key listing with membership authority (SPEC-111 / #366).
+///
+/// When `authoritative` is true, relational `documents` membership answered
+/// (including **empty**). Callers must treat empty keys as an empty workspace
+/// and must **not** fall back to a global KV `-metadata` suffix scan — that
+/// resurrected dual-write residue after Clear All (issue #366 / #360 on v0.24.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceMetadataKeyList {
+    pub keys: Vec<String>,
+    pub truncated: bool,
+    pub authoritative: bool,
+}
+
 /// List metadata keys for documents in a workspace via index prefix scan.
 pub async fn list_workspace_metadata_keys(
     kv: &dyn KVStorage,
     workspace_id: &str,
 ) -> Result<Vec<String>, StorageError> {
+    Ok(list_workspace_metadata_keys_detailed(kv, workspace_id)
+        .await?
+        .keys)
+}
+
+/// Same as [`list_workspace_metadata_keys`] but preserves membership authority.
+pub async fn list_workspace_metadata_keys_detailed(
+    kv: &dyn KVStorage,
+    workspace_id: &str,
+) -> Result<WorkspaceMetadataKeyList, StorageError> {
     if let Some(doc_ids) = relational_workspace_doc_ids(workspace_id).await {
-        return Ok(doc_ids
-            .iter()
-            .map(|doc_id| kv_keys::doc_metadata(doc_id))
-            .collect());
+        return Ok(WorkspaceMetadataKeyList {
+            keys: doc_ids
+                .iter()
+                .map(|doc_id| kv_keys::doc_metadata(doc_id))
+                .collect(),
+            truncated: false,
+            authoritative: true,
+        });
     }
     let prefix = kv_keys::workspace_doc_index_prefix(workspace_id);
     let index_keys = kv.keys_with_prefix(&prefix).await?;
@@ -161,7 +188,11 @@ pub async fn list_workspace_metadata_keys(
             }
         }
     }
-    Ok(metadata_keys)
+    Ok(WorkspaceMetadataKeyList {
+        keys: metadata_keys,
+        truncated: false,
+        authoritative: false,
+    })
 }
 
 /// Bounded workspace metadata-key listing for interactive list paths.
@@ -178,6 +209,17 @@ pub async fn list_workspace_metadata_keys_limited(
     workspace_id: &str,
     max_entries: usize,
 ) -> Result<(Vec<String>, bool), StorageError> {
+    let listed =
+        list_workspace_metadata_keys_limited_detailed(kv, workspace_id, max_entries).await?;
+    Ok((listed.keys, listed.truncated))
+}
+
+/// Bounded listing with membership authority (see [`WorkspaceMetadataKeyList`]).
+pub async fn list_workspace_metadata_keys_limited_detailed(
+    kv: &dyn KVStorage,
+    workspace_id: &str,
+    max_entries: usize,
+) -> Result<WorkspaceMetadataKeyList, StorageError> {
     let max_entries = max_entries.clamp(1, 1_000_000);
     if let Some(doc_ids) = relational_workspace_doc_ids(workspace_id).await {
         // Relational branch: bounded in-memory — the relational read path
@@ -189,7 +231,11 @@ pub async fn list_workspace_metadata_keys_limited(
             .take(max_entries)
             .map(|doc_id| kv_keys::doc_metadata(doc_id))
             .collect();
-        return Ok((keys, truncated));
+        return Ok(WorkspaceMetadataKeyList {
+            keys,
+            truncated,
+            authoritative: true,
+        });
     }
     let prefix = kv_keys::workspace_doc_index_prefix(workspace_id);
     // Fetch one extra index key so truncation is known without a COUNT.
@@ -203,12 +249,20 @@ pub async fn list_workspace_metadata_keys_limited(
                 metadata_keys.push(kv_keys::doc_metadata(doc_id));
                 if metadata_keys.len() > max_entries {
                     metadata_keys.truncate(max_entries);
-                    return Ok((metadata_keys, true));
+                    return Ok(WorkspaceMetadataKeyList {
+                        keys: metadata_keys,
+                        truncated: true,
+                        authoritative: false,
+                    });
                 }
             }
         }
     }
-    Ok((metadata_keys, false))
+    Ok(WorkspaceMetadataKeyList {
+        keys: metadata_keys,
+        truncated: false,
+        authoritative: false,
+    })
 }
 
 /// Document ids indexed under a workspace (prefix scan).
@@ -240,6 +294,27 @@ mod tests {
     use super::*;
     use edgequake_storage::MemoryKVStorage;
     use std::sync::Arc;
+
+    #[test]
+    fn authoritative_empty_list_is_terminal_for_readers() {
+        // LAW-111-9 contract: callers must treat this as empty workspace.
+        let listed = WorkspaceMetadataKeyList {
+            keys: vec![],
+            truncated: false,
+            authoritative: true,
+        };
+        assert!(listed.authoritative);
+        assert!(listed.keys.is_empty());
+        // Reader rule (mirrored in document_metadata_scan): accept and stop.
+        assert!(listed.authoritative || !listed.keys.is_empty());
+        // Non-authoritative empty still allows legacy suffix fallback.
+        let legacy_empty = WorkspaceMetadataKeyList {
+            keys: vec![],
+            truncated: false,
+            authoritative: false,
+        };
+        assert!(!legacy_empty.authoritative && legacy_empty.keys.is_empty());
+    }
 
     /// SPEC-091 Wave B3: flag=relational without a registered pool (or with a
     /// non-UUID workspace) must fall back to the KV index, never error.

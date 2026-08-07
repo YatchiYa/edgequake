@@ -251,7 +251,7 @@ async fn chunk_verify(pool: &PgPool, kv_tables: &[String]) -> Option<VerifySumma
         match verify::verify_chunk_text_backfill(pool, table).await {
             Ok(r) => {
                 agg.expected += r.expected;
-                agg.actual = agg.actual.max(r.actual);
+                agg.actual += r.actual;
                 agg.sampled += r.sampled;
                 agg.mismatches += r.mismatches;
             }
@@ -297,36 +297,59 @@ async fn vector_posture(pool: &PgPool) -> Result<VectorPosture, StorageError> {
     let typed_report_rows = count_table(pool, "report_embeddings").await?;
     let legacy_chunk_rows = count_legacy_chunk_rows(pool).await?;
     let legacy_fleet_rows = count_legacy_fleet_rows(pool).await?;
+    let uncovered_chunk_rows =
+        crate::migration_engine::coverage::count_uncovered_chunk_rows(pool).await?;
+    let uncovered_fleet_rows =
+        crate::migration_engine::coverage::count_uncovered_fleet_rows(pool).await?;
     let chunk_fleet_dropped = drop_migration_applied(pool, 126).await?;
     let dropped = legacy_vectors_dropped(pool).await?;
     let backfill = vector_backfill_job(pool, CHUNK_EMBEDDING_BACKFILL_STEP).await?;
     let fleet_backfill = vector_backfill_job(pool, FLEET_EMBEDDING_BACKFILL_STEP).await?;
-    let verify = vector_verify(pool).await;
+    let verify_chunk = vector_verify_chunk(pool).await;
+    let verify_fleet = vector_verify_fleet(pool).await;
+    let verify = merge_verify_summaries(verify_chunk, verify_fleet);
+    let provenance_stall_rows =
+        crate::migration_engine::coverage::count_provenance_stall_rows(pool).await?;
 
     Ok(VectorPosture {
         backend,
         backfill,
         fleet_backfill,
+        verify_chunk,
+        verify_fleet,
         verify,
+        provenance_stall_rows,
         typed_rows,
         typed_entity_rows,
         typed_relationship_rows,
         typed_report_rows,
         legacy_chunk_rows,
         legacy_fleet_rows,
+        uncovered_chunk_rows,
+        uncovered_fleet_rows,
         chunk_fleet_dropped,
         dropped,
     })
 }
 
+fn merge_verify_summaries(
+    chunk: Option<VerifySummary>,
+    fleet: Option<VerifySummary>,
+) -> Option<VerifySummary> {
+    match (chunk, fleet) {
+        (None, None) => None,
+        (Some(a), None) | (None, Some(a)) => Some(a),
+        (Some(a), Some(b)) => Some(VerifySummary {
+            expected: a.expected + b.expected,
+            actual: a.actual + b.actual,
+            sampled: a.sampled + b.sampled,
+            mismatches: a.mismatches + b.mismatches,
+        }),
+    }
+}
+
 async fn count_legacy_fleet_rows(pool: &PgPool) -> Result<i64, StorageError> {
-    let tables: Vec<String> = sqlx::query_scalar(
-        "SELECT table_name FROM information_schema.tables \
-         WHERE table_schema = 'public' AND table_name LIKE 'eq\\_%\\_vectors'",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| StorageError::Database(format!("advisor list vectors failed: {e}")))?;
+    let tables = crate::migration_engine::coverage::list_vector_tables(pool).await?;
     let mut total = 0i64;
     for t in tables {
         let n = match sqlx::query_scalar::<_, i64>(&format!(
@@ -352,13 +375,7 @@ async fn count_legacy_fleet_rows(pool: &PgPool) -> Result<i64, StorageError> {
 
 /// Sum chunk-row counts across every remaining `eq_*_vectors` relation.
 async fn count_legacy_chunk_rows(pool: &PgPool) -> Result<i64, StorageError> {
-    let tables: Vec<String> = sqlx::query_scalar(
-        "SELECT table_name FROM information_schema.tables \
-         WHERE table_schema = 'public' AND table_name LIKE 'eq\\_%\\_vectors'",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| StorageError::Database(format!("advisor list vectors failed: {e}")))?;
+    let tables = crate::migration_engine::coverage::list_vector_tables(pool).await?;
     let mut total = 0;
     for t in tables {
         let n = match sqlx::query_scalar::<_, i64>(&format!(
@@ -418,16 +435,11 @@ async fn vector_backfill_job(
     Ok(detail.map(snapshot_from_detail))
 }
 
-/// W3 chunk-embedding verify (read-only), combined across remaining vector
-/// tables. Returns `None` on hard error. Dropped store verifies clean.
-async fn vector_verify(pool: &PgPool) -> Option<VerifySummary> {
-    let tables: Vec<String> = sqlx::query_scalar(
-        "SELECT table_name FROM information_schema.tables \
-         WHERE table_schema = 'public' AND table_name LIKE 'eq\\_%\\_vectors'",
-    )
-    .fetch_all(pool)
-    .await
-    .ok()?;
+/// Chunk-embedding verify across remaining vector tables (migration 126).
+async fn vector_verify_chunk(pool: &PgPool) -> Option<VerifySummary> {
+    let tables = crate::migration_engine::coverage::list_vector_tables(pool)
+        .await
+        .ok()?;
     let model = std::env::var("EDGEQUAKE_EMBEDDING_MODEL")
         .ok()
         .filter(|s| !s.trim().is_empty())
@@ -450,17 +462,45 @@ async fn vector_verify(pool: &PgPool) -> Option<VerifySummary> {
         match verify::verify_chunk_embedding_backfill(pool, &table, &model).await {
             Ok(r) => {
                 agg.expected += r.expected;
-                agg.actual = agg.actual.max(r.actual);
+                agg.actual += r.actual;
                 agg.sampled += r.sampled;
                 agg.mismatches += r.mismatches;
             }
             Err(_) => return None,
         }
+    }
+    Some(agg)
+}
+
+/// Fleet-embedding verify across remaining vector tables (migration 131).
+async fn vector_verify_fleet(pool: &PgPool) -> Option<VerifySummary> {
+    let tables = crate::migration_engine::coverage::list_vector_tables(pool)
+        .await
+        .ok()?;
+    let model = std::env::var("EDGEQUAKE_EMBEDDING_MODEL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "text-embedding-3-small".to_string());
+    if tables.is_empty() {
+        return Some(VerifySummary {
+            expected: 0,
+            actual: 0,
+            sampled: 0,
+            mismatches: 0,
+        });
+    }
+    let mut agg = VerifySummary {
+        expected: 0,
+        actual: 0,
+        sampled: 0,
+        mismatches: 0,
+    };
+    for table in tables {
         for family in crate::embedding_family::EmbeddingFamily::FLEET_BACKFILL_FAMILIES {
             match verify::verify_fleet_embedding_backfill(pool, &table, family, &model).await {
                 Ok(r) => {
                     agg.expected += r.expected;
-                    agg.actual = agg.actual.max(r.actual);
+                    agg.actual += r.actual;
                     agg.sampled += r.sampled;
                     agg.mismatches += r.mismatches;
                 }

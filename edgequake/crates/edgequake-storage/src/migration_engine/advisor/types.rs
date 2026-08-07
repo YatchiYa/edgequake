@@ -325,8 +325,14 @@ pub struct VectorPosture {
     pub backfill: Option<JobSnapshot>,
     /// Engine IW2 fleet job snapshot.
     pub fleet_backfill: Option<JobSnapshot>,
-    /// Verification summary (coverage + sampled vector equality).
+    /// Chunk-embedding verify only (migration 126 gate).
+    pub verify_chunk: Option<VerifySummary>,
+    /// Fleet-embedding verify only (migration 131 gate; provenance coverage).
+    pub verify_fleet: Option<VerifySummary>,
+    /// Combined chunk+fleet verify (JSON compat / display aggregate).
     pub verify: Option<VerifySummary>,
+    /// Dual-legacy→one-typed collision stalls (entity/rel alias residue).
+    pub provenance_stall_rows: i64,
     /// Typed `chunk_embeddings` row count.
     pub typed_rows: i64,
     /// Typed fleet row counts (IW2).
@@ -337,6 +343,10 @@ pub struct VectorPosture {
     pub legacy_chunk_rows: i64,
     /// Legacy entity/relationship/report rows remaining in `eq_*_vectors`.
     pub legacy_fleet_rows: i64,
+    /// Legacy chunk rows without typed coverage (SPEC-111 — drop readiness).
+    pub uncovered_chunk_rows: i64,
+    /// Legacy fleet rows without typed coverage (SPEC-111).
+    pub uncovered_fleet_rows: i64,
     /// Migration 126 applied — chunk-dedicated legacy vector fleet retired.
     pub chunk_fleet_dropped: bool,
     /// All legacy `eq_*_vectors` relations dropped (terminal, IW2+).
@@ -349,16 +359,16 @@ impl VectorPosture {
     pub fn ready_to_flip(&self) -> bool {
         !self.dropped
             && self.legacy_chunk_rows > 0
-            && self.verify.map(|v| v.passes()).unwrap_or(false)
+            && self.uncovered_chunk_rows == 0
+            && self.verify_chunk.map(|v| v.passes()).unwrap_or(false)
     }
 
     /// Readiness to **retire** the legacy chunk-vector fleet (drop
     /// `eq_*_vectors` chunk relations). Stricter than `ready_to_flip`: the
-    /// read backend must already be authoritative on typed `chunk_embeddings`
-    /// (`chunk_embeddings`), every legacy chunk row must be covered
-    /// (`legacy_chunk_rows == 0` after the fleet backfill drains, or fully
-    /// mirrored), and the sampled vector-equality verify must pass. Terminal
-    /// once `dropped` is true (idempotent gate).
+    /// read backend must already be authoritative on typed `chunk_embeddings`,
+    /// every legacy chunk row must be **covered** in typed SSOT
+    /// (`uncovered_chunk_rows == 0` — LAW-111-2; emptiness is a post-condition
+    /// of DROP), and chunk verify must pass. Terminal once `dropped` is true.
     pub fn retirable(&self) -> bool {
         self.chunk_retirable()
     }
@@ -367,20 +377,21 @@ impl VectorPosture {
     pub fn chunk_retirable(&self) -> bool {
         !self.dropped
             && self.backend_reads_typed()
-            && self.legacy_chunk_rows == 0
-            && self.verify.map(|v| v.passes()).unwrap_or(false)
+            && self.uncovered_chunk_rows == 0
+            && self.verify_chunk.map(|v| v.passes()).unwrap_or(false)
     }
 
     /// Readiness for migration 131 (full legacy vector fleet drop).
     pub fn fleet_retirable(&self) -> bool {
         !self.dropped
             && self.backend_reads_typed()
-            && self.legacy_chunk_rows == 0
-            && self.legacy_fleet_rows == 0
-            && self.verify.map(|v| v.passes()).unwrap_or(false)
+            && self.uncovered_chunk_rows == 0
+            && self.uncovered_fleet_rows == 0
+            && self.verify_fleet.map(|v| v.passes()).unwrap_or(false)
     }
 
-    fn backend_reads_typed(&self) -> bool {
+    /// Backend already reads typed SSOT (chunk or full fleet).
+    pub fn backend_reads_typed(&self) -> bool {
         matches!(
             self.backend.as_str(),
             "typed_embeddings" | "chunk_embeddings"

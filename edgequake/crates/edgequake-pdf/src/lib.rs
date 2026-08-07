@@ -11,6 +11,7 @@ pub mod page_count;
 pub mod page_marker;
 pub mod page_selection;
 pub mod pdfium_ready;
+pub mod reasoning_effort_inject;
 pub mod region_assets;
 pub mod vision_markdown;
 pub mod vision_prompts;

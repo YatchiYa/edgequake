@@ -27,6 +27,8 @@ pub struct BatchOutcome {
     pub scanned: i64,
     /// Rows written/mutated (informational; logged).
     pub written: i64,
+    /// Durable misses this batch (unresolved joins, bad metadata) — bumps `failed_count`.
+    pub failed: i64,
     /// Next keyset cursor; `None` ⇒ source exhausted → verification phase.
     pub next_cursor: Option<Value>,
 }
@@ -42,8 +44,30 @@ pub struct VerifyReport {
 }
 
 impl VerifyReport {
+    /// Coverage gate: typed counterparts for every expected legacy row.
+    /// Equality mismatches fail only when `EDGEQUAKE_MIGRATION_VERIFY_EQUALITY`
+    /// is enabled (default on — copy path; set `0` for regenerate/coverage-only).
     pub fn passes(&self) -> bool {
-        self.mismatches == 0 && self.actual >= self.expected
+        let coverage_ok = self.actual >= self.expected;
+        if !coverage_ok {
+            return false;
+        }
+        if verify_equality_required() {
+            self.mismatches == 0
+        } else {
+            true
+        }
+    }
+}
+
+/// `EDGEQUAKE_MIGRATION_VERIFY_EQUALITY` — default on; `0`/`false` = coverage-only.
+pub fn verify_equality_required() -> bool {
+    match std::env::var("EDGEQUAKE_MIGRATION_VERIFY_EQUALITY") {
+        Ok(v) => {
+            let t = v.trim();
+            !(t == "0" || t.eq_ignore_ascii_case("false") || t.eq_ignore_ascii_case("off"))
+        }
+        Err(_) => true,
     }
 }
 
@@ -155,6 +179,7 @@ pub fn spawn_for_serving(
             ),
         ),
         std::sync::Arc::new(super::fleet_embedding_backfill::FleetEmbeddingBackfillJob::new(model)),
+        std::sync::Arc::new(super::fleet_provenance_stamp::FleetProvenanceStampJob::new()),
     ];
     let config = MigrationEngineConfig::from_env();
     let pool = pool.clone();
@@ -325,6 +350,7 @@ async fn run_job(
                 &config.owner,
                 config.lease_ttl_secs,
                 outcome.scanned,
+                outcome.failed,
                 next,
                 sizer.size() as i32,
                 None,
@@ -340,6 +366,7 @@ async fn run_job(
             step = job.step_id(),
             scanned = outcome.scanned,
             written = outcome.written,
+            failed = outcome.failed,
             duration_ms,
             batch_size = sizer.size(),
             ?adjustment,

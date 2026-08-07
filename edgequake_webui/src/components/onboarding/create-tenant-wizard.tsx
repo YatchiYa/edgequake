@@ -123,6 +123,7 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
         llm,
         embedding,
         vision,
+        reasoningEffort: draft.reasoningEffort,
       });
       const tenant = await createTenant({
         name: draft.tenantName.trim(),
@@ -143,6 +144,7 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
         llm,
         embedding,
         vision,
+        reasoningEffort: draft.reasoningEffort,
       });
 
       let workspace: Workspace;

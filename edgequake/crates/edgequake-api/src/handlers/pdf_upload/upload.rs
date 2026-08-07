@@ -102,6 +102,7 @@ pub async fn upload_pdf_document(
         force_reindex: false,
         pdf_parser_backend: None,
         process_options: None,
+        vision_reasoning_effort: None,
     };
 
     while let Some(field) = multipart
@@ -130,6 +131,14 @@ pub async fn upload_pdf_document(
             Some("vision_model") => {
                 if let Ok(text) = field.text().await {
                     options.vision_model = Some(text);
+                }
+            }
+            Some("vision_reasoning_effort") => {
+                if let Ok(text) = field.text().await {
+                    let t = text.trim();
+                    if !t.is_empty() {
+                        options.vision_reasoning_effort = Some(t.to_string());
+                    }
                 }
             }
             Some("title") => {
@@ -211,6 +220,7 @@ pub async fn upload_pdf_batch_document(
         force_reindex: false,
         pdf_parser_backend: None,
         process_options: None,
+        vision_reasoning_effort: None,
     };
     // SPEC-083 D-51: stream each file to temp; cap batch count; process sequentially.
     let mut files: Vec<StreamedUploadFile> = Vec::new();
@@ -241,6 +251,14 @@ pub async fn upload_pdf_batch_document(
             Some("vision_model") => {
                 if let Ok(text) = field.text().await {
                     options.vision_model = Some(text);
+                }
+            }
+            Some("vision_reasoning_effort") => {
+                if let Ok(text) = field.text().await {
+                    let t = text.trim();
+                    if !t.is_empty() {
+                        options.vision_reasoning_effort = Some(t.to_string());
+                    }
                 }
             }
             Some("title") => {
@@ -449,16 +467,22 @@ async fn process_pdf_upload_parts(
 
                 // Reset the existing document's KV metadata so the UI shows it
                 // returning to processing on the SAME document id (no new UUID).
+                // Must clear stale completion message/counts — otherwise Active Runs
+                // paints "Processed N chunks…" under Prepare and nests a dead PDF meter.
                 let metadata_key =
                     crate::services::document_metadata_scan::metadata_key_for_document(document_id);
                 if let Ok(Some(mut metadata)) =
                     state.storage.kv_storage.get_by_id(&metadata_key).await
                 {
                     if let Some(obj) = metadata.as_object_mut() {
-                        obj.insert("status".to_string(), serde_json::json!("processing"));
-                        obj.insert("current_stage".to_string(), serde_json::json!("converting"));
-                        obj.insert("stage_progress".to_string(), serde_json::json!(0.0));
-                        obj.insert("error_message".to_string(), serde_json::Value::Null);
+                        let page_hint = existing
+                            .page_count
+                            .filter(|&n| n > 0)
+                            .map(|n| format!("Converting PDF to Markdown (0/{n} pages)"));
+                        crate::services::reprocess_stage_reset::apply_pdf_convert_restart_admit(
+                            obj,
+                            page_hint.as_deref(),
+                        );
                         // SPEC-054: do not write client batch track_id into metadata.track_id.
                         // Progress/list SSOT is the server task id, set after enqueue below.
                         if let Some(client_batch) = options
@@ -480,6 +504,14 @@ async fn process_pdf_upload_parts(
                     )
                     .await;
                 }
+                // Keep documents.track_id from pointing at a purged insert-* while
+                // KV already shows converting (dual-SSOT drift → Task not found).
+                crate::services::task_document_sync::touch_relational_document_track_status_best_effort(
+                    document_id,
+                    None,
+                    "processing",
+                )
+                .await;
 
                 // Cancel any in-flight task for this document before requeueing.
                 let ws_for_tasks = context
@@ -541,6 +573,12 @@ async fn process_pdf_upload_parts(
                     )
                     .await;
                 }
+                crate::services::task_document_sync::touch_relational_document_track_status_best_effort(
+                    document_id,
+                    Some(enqueue.track_id.as_str()),
+                    "processing",
+                )
+                .await;
             }
 
             seed_pdf_job_progress(

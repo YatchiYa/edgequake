@@ -11,8 +11,9 @@ use crate::{
 
 #[cfg(feature = "postgres")]
 use super::helpers::{
-    apply_entity_types_metadata, apply_entity_types_strict_metadata,
-    apply_extraction_language_metadata,
+    apply_default_reasoning_effort_metadata, apply_entity_types_metadata,
+    apply_entity_types_strict_metadata, apply_extraction_language_metadata,
+    apply_llm_roles_metadata,
 };
 #[cfg(feature = "postgres")]
 use super::rows::WorkspaceRow;
@@ -141,6 +142,19 @@ impl WorkspaceServiceImpl {
                 serde_json::json!(provider),
             );
         }
+
+        // SPEC-109: seed workspace default reasoning effort from tenant when unset
+        if !workspace.metadata.contains_key("default_reasoning_effort") {
+            if let Some(ref effort) = tenant.default_reasoning_effort {
+                if !effort.trim().is_empty() {
+                    workspace.metadata.insert(
+                        "default_reasoning_effort".to_string(),
+                        serde_json::json!(effort),
+                    );
+                }
+            }
+        }
+
         // Persist vision by default when omitted so env edgeparse cannot silently
         // override a freshly created workspace.
         let pdf_parser_backend = request
@@ -151,6 +165,13 @@ impl WorkspaceServiceImpl {
             "pdf_parser_backend".to_string(),
             serde_json::json!(pdf_parser_backend.as_str()),
         );
+
+        // SPEC-109: optional create-time override (else tenant seed above)
+        apply_default_reasoning_effort_metadata(
+            &mut workspace.metadata,
+            request.default_reasoning_effort,
+        );
+        apply_llm_roles_metadata(&mut workspace.metadata, request.llm_roles);
 
         // SPEC-085: Apply entity type configuration from request
         // Normalize: uppercase, underscored, deduplicated, max 50 types
@@ -271,7 +292,18 @@ impl WorkspaceServiceImpl {
         .await
         .map_err(|e| Error::internal(format!("Failed to get workspace: {}", e)))?;
 
-        Ok(row.map(|r| r.into_workspace()))
+        match row {
+            None => Ok(None),
+            Some(r) => {
+                let mut workspace = r.into_workspace();
+                let tenant = self.pg_get_tenant(workspace.tenant_id).await?;
+                crate::workspace_model_update::resolve_inherited_model_fields(
+                    &mut workspace,
+                    tenant.as_ref(),
+                );
+                Ok(Some(workspace))
+            }
+        }
     }
 
     pub(super) async fn pg_get_workspace_by_slug(
@@ -292,7 +324,18 @@ impl WorkspaceServiceImpl {
         .await
         .map_err(|e| Error::internal(format!("Failed to get workspace by slug: {}", e)))?;
 
-        Ok(row.map(|r| r.into_workspace()))
+        match row {
+            None => Ok(None),
+            Some(r) => {
+                let mut workspace = r.into_workspace();
+                let tenant = self.pg_get_tenant(tenant_id).await?;
+                crate::workspace_model_update::resolve_inherited_model_fields(
+                    &mut workspace,
+                    tenant.as_ref(),
+                );
+                Ok(Some(workspace))
+            }
+        }
     }
 
     pub(super) async fn pg_update_workspace(
@@ -321,17 +364,33 @@ impl WorkspaceServiceImpl {
                 .metadata
                 .insert("max_documents".to_string(), serde_json::json!(max_docs));
         }
-        // SPEC-032 / SPEC-013: LLM + embedding updates (empty string = server/env default)
-        crate::workspace_model_update::apply_llm_config_update(
+        // SPEC-032 / SPEC-013: LLM + embedding updates (empty string = tenant → env default)
+        let tenant = self.pg_get_tenant(workspace.tenant_id).await?;
+        let tenant_llm = tenant.as_ref().map(|t| {
+            (
+                t.default_llm_provider.as_str(),
+                t.default_llm_model.as_str(),
+            )
+        });
+        let tenant_emb = tenant.as_ref().map(|t| {
+            (
+                t.default_embedding_provider.as_str(),
+                t.default_embedding_model.as_str(),
+                t.default_embedding_dimension,
+            )
+        });
+        crate::workspace_model_update::apply_llm_config_update_with_tenant(
             &mut workspace,
             request.llm_model,
             request.llm_provider,
+            tenant_llm,
         );
-        crate::workspace_model_update::apply_embedding_config_update(
+        crate::workspace_model_update::apply_embedding_config_update_with_tenant(
             &mut workspace,
             request.embedding_model,
             request.embedding_provider,
             request.embedding_dimension,
+            tenant_emb,
         );
         // SPEC-040: Vision LLM configuration updates
         if let Some(vision_provider) = request.vision_llm_provider {
@@ -386,6 +445,11 @@ impl WorkspaceServiceImpl {
             request.entity_type_colors,
         )
         .map_err(Error::validation)?;
+        apply_default_reasoning_effort_metadata(
+            &mut workspace.metadata,
+            request.default_reasoning_effort,
+        );
+        apply_llm_roles_metadata(&mut workspace.metadata, request.llm_roles);
         workspace.updated_at = chrono::Utc::now();
 
         // Store all config in metadata JSONB column (database schema uses metadata, not separate columns)
@@ -406,6 +470,10 @@ impl WorkspaceServiceImpl {
         .await
         .map_err(|e| Error::internal(format!("Failed to update workspace: {}", e)))?;
 
+        crate::workspace_model_update::resolve_inherited_model_fields(
+            &mut workspace,
+            tenant.as_ref(),
+        );
         Ok(workspace)
     }
 
@@ -434,7 +502,18 @@ impl WorkspaceServiceImpl {
         .await
         .map_err(|e| Error::internal(format!("Failed to list workspaces: {}", e)))?;
 
-        Ok(rows.into_iter().map(|r| r.into_workspace()).collect())
+        let tenant = self.pg_get_tenant(tenant_id).await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                let mut workspace = r.into_workspace();
+                crate::workspace_model_update::resolve_inherited_model_fields(
+                    &mut workspace,
+                    tenant.as_ref(),
+                );
+                workspace
+            })
+            .collect())
     }
 
     pub(super) async fn pg_get_workspace_stats(

@@ -57,44 +57,40 @@ BEGIN
         END IF;
 
         -- Uncovered entity rows (entity: prefix)
+        -- SPEC-111 residual: provenance-only (LAW-C3 ≡ advisor). Exact-name
+        -- fallback removed (false-GREEN across workspaces). Stamp via iw2 /
+        -- iw2-fleet-provenance-stamp before --confirm-drop.
         EXECUTE format($q$
             SELECT count(*) FROM public.%I v
             WHERE v.id LIKE 'entity:%%'
               AND NOT EXISTS (
-                    SELECT 1
-                    FROM public.entities e
-                    JOIN public.entity_embeddings ee ON ee.entity_id = e.id
-                    WHERE e.name = substring(v.id from 8))
+                    SELECT 1 FROM public.entity_embeddings ee
+                    WHERE ee.legacy_vector_id = v.id)
             $q$,
             vec_rec.tbl
         ) INTO durable;
         IF durable > 0 THEN
             RAISE EXCEPTION
-                'SPEC-091 IW2 ABORT: % holds % legacy entity vectors not in entity_embeddings. Run iw2-fleet-embedding-backfill, then re-apply with --confirm-drop.',
+                'SPEC-091 IW2 ABORT: % holds % legacy entity vectors without legacy_vector_id provenance. Run iw2-fleet-embedding-backfill or iw2-fleet-provenance-stamp, then re-apply with --confirm-drop.',
                 vec_rec.tbl, durable;
         END IF;
 
         -- Uncovered relationship rows ({src}->{tgt}:{type})
+        -- SPEC-111 residual: provenance-only (LAW-C3 ≡ advisor).
         EXECUTE format($q$
             SELECT count(*) FROM public.%I v
             WHERE v.id ~ '^.+->.+:.+$'
               AND v.id NOT LIKE 'entity:%%'
               AND v.id NOT LIKE 'community_report:%%'
               AND NOT EXISTS (
-                    SELECT 1
-                    FROM public.relationships r
-                    JOIN public.entities es ON es.id = r.source_id
-                    JOIN public.entities et ON et.id = r.target_id
-                    JOIN public.relationship_embeddings re ON re.relationship_id = r.id
-                    WHERE r.relation_type = split_part(v.id, ':', 2)
-                      AND es.name = split_part(split_part(v.id, '->', 1), ':', 1)
-                      AND et.name = split_part(split_part(v.id, '->', 2), ':', 1))
+                    SELECT 1 FROM public.relationship_embeddings re
+                    WHERE re.legacy_vector_id = v.id)
             $q$,
             vec_rec.tbl
         ) INTO durable;
         IF durable > 0 THEN
             RAISE EXCEPTION
-                'SPEC-091 IW2 ABORT: % holds % legacy relationship vectors not in relationship_embeddings. Run iw2-fleet-embedding-backfill, then re-apply with --confirm-drop.',
+                'SPEC-091 IW2 ABORT: % holds % legacy relationship vectors without legacy_vector_id provenance. Run iw2-fleet-embedding-backfill or iw2-fleet-provenance-stamp, then re-apply with --confirm-drop.',
                 vec_rec.tbl, durable;
         END IF;
 
@@ -105,7 +101,7 @@ BEGIN
               AND NOT EXISTS (
                     SELECT 1
                     FROM public.report_embeddings re
-                    WHERE re.report_id = v.id)
+                    WHERE re.legacy_vector_id = v.id OR re.report_id = v.id)
             $q$,
             vec_rec.tbl
         ) INTO durable;
