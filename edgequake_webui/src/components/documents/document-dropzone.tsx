@@ -12,11 +12,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ReasoningEffortSelect } from '@/components/settings/reasoning-effort-select';
+import { useLlmModels } from '@/hooks/use-providers';
 import { useTranslation } from 'react-i18next';
 import { MAX_UPLOAD_LABEL } from '@/lib/api/upload-limits';
 import { formatWorkspaceDefaultPdfParserLabel } from '@/lib/pdf/resolve-pdf-parser-backend';
-import { effectiveEffortWhenAuto } from '@/lib/settings/reasoning-effort-supported';
+import {
+  effectiveEffortWhenAuto,
+  modelSupportsThinking,
+  supportedReasoningEffortsForModel,
+} from '@/lib/settings/reasoning-effort-supported';
 import type { PdfParserBackend } from '@/types/graph';
+import { useMemo } from 'react';
 
 /**
  * Props for the DocumentDropzone component.
@@ -42,6 +48,9 @@ export interface DocumentDropzoneProps {
   /** SPEC-109: optional vision reasoning effort for VLM convert. */
   visionReasoningEffort?: string;
   onVisionReasoningEffortChange?: (value: string | undefined) => void;
+  /** SPEC-113: vision model identity for thinking capability honesty. */
+  visionProvider?: string | null;
+  visionModel?: string | null;
   /**
    * SPEC-048: compact chrome while ingestion is working so progress UI stays primary.
    */
@@ -143,10 +152,26 @@ export function DocumentDropzone({
   workspacePdfParserBackend,
   visionReasoningEffort,
   onVisionReasoningEffortChange,
+  visionProvider,
+  visionModel,
   quiet = false,
   collapsed = false,
 }: DocumentDropzoneProps) {
   const { t } = useTranslation();
+  const { data: llmCatalog } = useLlmModels();
+  const visionThinkingSupported = useMemo(
+    () => modelSupportsThinking(llmCatalog?.models, visionProvider, visionModel),
+    [llmCatalog?.models, visionProvider, visionModel],
+  );
+  const visionEffortSupported = useMemo(
+    () =>
+      supportedReasoningEffortsForModel(
+        llmCatalog?.models,
+        visionProvider,
+        visionModel,
+      ),
+    [llmCatalog?.models, visionProvider, visionModel],
+  );
   const compact = quiet || collapsed;
   const showVisionEffort =
     pdfParserBackend === 'vision' && typeof onVisionReasoningEffortChange === 'function';
@@ -296,10 +321,12 @@ export function DocumentDropzone({
                   compact || collapsed ? 'h-7 text-xs' : 'h-9'
                 }
                 label={t('documents.upload.visionReasoningEffort', 'Vision effort')}
+                supported={visionEffortSupported}
+                thinkingSupported={visionThinkingSupported}
                 effectiveWhenAuto={effectiveEffortWhenAuto(
-                  undefined,
-                  undefined,
-                  undefined,
+                  llmCatalog?.models,
+                  visionProvider,
+                  visionModel,
                   'structured',
                 )}
                 data-testid="pdf-vision-reasoning-effort-select"

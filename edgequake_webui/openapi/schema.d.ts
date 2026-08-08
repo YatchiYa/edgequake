@@ -8361,6 +8361,7 @@ export interface components {
          *       "supports_json_mode": {},
          *       "supports_streaming": {},
          *       "supports_system_message": {},
+         *       "supports_thinking": {},
          *       "supports_vision": {}
          *     }
          */
@@ -8380,6 +8381,8 @@ export interface components {
             supports_streaming: boolean;
             /** @description Supports system message. */
             supports_system_message: boolean;
+            /** @description SPEC-113: live thinking capability (Ollama `capabilities` includes `thinking`). */
+            supports_thinking?: boolean;
             /** @description Supports vision/image input. */
             supports_vision: boolean;
         };

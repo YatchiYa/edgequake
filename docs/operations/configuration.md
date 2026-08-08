@@ -119,6 +119,11 @@ export EDGEQUAKE_DB_POOL_SIZE_ADMIN=1
 | `OLLAMA_MODEL`           | String | `gemma4:latest`          | Default LLM model (`make dev` sets this when using Ollama)                                                       |
 | `OLLAMA_EMBEDDING_MODEL` | String | `embeddinggemma:latest`  | Default embedding model (`make dev` sets this when using Ollama)                                                 |
 | `OLLAMA_EMBEDDING_HOST`  | String | value of `OLLAMA_HOST`   | Dedicated Ollama host for embeddings only (closes [#140](https://github.com/raphaelmansuy/edgequake/issues/140)) |
+| `EDGEQUAKE_OLLAMA_THINK_CAPABILITY` | String | `auto` | SPEC-113: Ollama `think` gate — `auto` (probe `/api/show` capabilities), `force_off`, `force_on` (debug), `legacy_name` (old substring heuristic) |
+| `EDGEQUAKE_OLLAMA_CAPABILITY_TTL_SECS` | Integer | `300` | SPEC-113: TTL for cached Ollama thinking capability answers |
+| `EDGEQUAKE_OLLAMA_CAPABILITY_TIMEOUT_MS` | Integer | `2000` | SPEC-113: timeout for `/api/show` capability probe; on failure Auto **omits** `think` |
+
+> **SPEC-113:** EdgeQuake does **not** assume every `qwen3*` name supports thinking. Truth is Ollama `capabilities` (`thinking`). When capability is unknown or absent, the client omits the `think` parameter so non-thinking VL variants (e.g. many `qwen3-vl-*`) keep working.
 
 #### LM Studio
 

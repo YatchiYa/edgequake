@@ -141,6 +141,10 @@ pub struct ModelCapabilitiesResponse {
     /// Embedding dimension (0 for non-embedding models).
     pub embedding_dimension: usize,
 
+    /// SPEC-113: live thinking capability (Ollama `capabilities` includes `thinking`).
+    #[serde(default)]
+    pub supports_thinking: bool,
+
     /// SPEC-109: reasoning-effort capability (omit when model is non-reasoning).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<ReasoningEffortCapabilityResponse>,

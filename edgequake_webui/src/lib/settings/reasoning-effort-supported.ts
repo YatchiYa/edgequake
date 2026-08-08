@@ -19,12 +19,26 @@ function findModel(
   );
 }
 
+export function modelSupportsThinking(
+  models: ModelResponse[] | undefined,
+  provider?: string | null,
+  model?: string | null,
+): boolean | undefined {
+  const hit = findModel(models, provider, model);
+  if (!hit) return undefined;
+  return hit.capabilities?.supports_thinking === true;
+}
+
 export function supportedReasoningEffortsForModel(
   models: ModelResponse[] | undefined,
   provider?: string | null,
   model?: string | null,
 ): string[] | undefined {
   const hit = findModel(models, provider, model);
+  // SPEC-113: when catalog explicitly says no thinking, hide effort controls.
+  if (hit?.capabilities?.supports_thinking === false) {
+    return undefined;
+  }
   const supported = hit?.capabilities?.reasoning_effort?.supported;
   if (!supported || supported.length === 0) return undefined;
   return supported;

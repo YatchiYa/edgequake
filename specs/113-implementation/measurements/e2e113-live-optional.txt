@@ -1,0 +1,71 @@
+SPEC-113 / T-113-23 — Live Ollama verification
+Date: 2026-08-08
+Host: http://localhost:11434 (ollama 0.32.6)
+Crate: edgequake-llm 0.10.5 (local path + published)
+
+## Models
+
+| Model | Capabilities | Role |
+|-------|--------------|------|
+| granite4:latest | completion, tools | non-thinking baseline |
+| qwen3-fake-vl:test | completion, tools | #369 class: `ollama cp granite4:latest qwen3-fake-vl:test` (name has qwen3, caps lack thinking) |
+| deepseek-r1:1.5b | tools, thinking, completion | thinking-capable Auto |
+
+## Raw Ollama API (control)
+
+```bash
+# think:true on alias → HARD FAIL
+curl -s localhost:11434/api/chat -d '{
+  "model":"qwen3-fake-vl:test","stream":false,"think":true,
+  "messages":[{"role":"user","content":"ping"}]
+}'
+# → {"error":"\"qwen3-fake-vl:test\" does not support thinking"}
+
+# omit think → OK
+curl -s localhost:11434/api/chat -d '{
+  "model":"qwen3-fake-vl:test","stream":false,
+  "messages":[{"role":"user","content":"Reply with exactly: OK"}]
+}'
+# → content: OK
+```
+
+## edgequake-llm Auto path (gated)
+
+```bash
+cd ../edgequake-llm
+cargo test --test e2e_ollama_think_capability -- --ignored --nocapture
+```
+
+Result (2026-08-08):
+
+```
+T-113-23 granite PASS caps=["completion", "tools"] reply=OK
+test t113_23_live_granite_non_thinking_auto_chat ... ok
+
+T-113-23 VL-class PASS model=qwen3-fake-vl:test caps=["completion", "tools"] reply=OK
+test t113_23_live_qwen3_name_non_thinking_auto_chat ... ok
+
+T-113-23 thinking PASS model=deepseek-r1:1.5b caps=["tools", "thinking", "completion"] thinking_tokens=Some(63) reply=OK
+test t113_23_live_thinking_model_auto_chat ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 14.22s
+```
+
+## Contrast — `legacy_name` escape hatch (must still brick)
+
+```bash
+EDGEQUAKE_OLLAMA_THINK_CAPABILITY=legacy_name \
+  cargo test --test e2e_ollama_think_capability \
+  t113_23_live_qwen3_name_non_thinking_auto_chat -- --ignored --nocapture
+```
+
+Result: **FAILED** with
+`Ollama API error (400): "qwen3-fake-vl:test" does not support thinking`
+
+Confirms substring SSOT is only on the opt-in rollback path; default `auto` is the fix.
+
+## Verdict
+
+- Name containing `qwen3` + caps without `thinking` → client Auto omits `think` → chat succeeds (would brick on 0.10.4 / `legacy_name`).
+- Caps with `thinking` → Auto may send think → chat succeeds (thinking_tokens observed).
+- Alias rename workaround not required after 0.10.5.

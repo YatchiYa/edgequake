@@ -19,7 +19,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ReasoningEffortSelect } from "@/components/settings/reasoning-effort-select";
 import { useLlmModels } from "@/hooks/use-providers";
-import { supportedReasoningEffortsForModel, effectiveEffortWhenAuto } from "@/lib/settings/reasoning-effort-supported";
+import {
+  effectiveEffortWhenAuto,
+  modelSupportsThinking,
+  supportedReasoningEffortsForModel,
+} from "@/lib/settings/reasoning-effort-supported";
 
 const ROLE_EFFORT_KEYS = ["extract", "query", "vlm"] as const;
 
@@ -91,6 +95,10 @@ export function ServerLlmConfigCard() {
         llm?.provider,
         llm?.model,
       ),
+    [llmCatalog?.models, llm?.provider, llm?.model],
+  );
+  const thinkingSupported = useMemo(
+    () => modelSupportsThinking(llmCatalog?.models, llm?.provider, llm?.model),
     [llmCatalog?.models, llm?.provider, llm?.model],
   );
   const fleetEffectiveAuto = useMemo(
@@ -290,6 +298,7 @@ export function ServerLlmConfigCard() {
                 value={reasoningEffort}
                 onChange={setReasoningEffort}
                 supported={fleetSupported}
+                thinkingSupported={thinkingSupported}
                 effectiveWhenAuto={fleetEffectiveAuto}
                 label="Default reasoning effort (fleet)"
               />
@@ -309,6 +318,7 @@ export function ServerLlmConfigCard() {
                     label={`${role} role`}
                     value={reasoningByRole[role]}
                     supported={fleetSupported}
+                    thinkingSupported={thinkingSupported}
                     effectiveWhenAuto={
                       role === "query" ? queryEffectiveAuto : fleetEffectiveAuto
                     }

@@ -730,6 +730,13 @@ export function DocumentManager() {
             workspacePdfParserBackend={selectedWorkspace?.pdf_parser_backend}
             visionReasoningEffort={visionReasoningEffort}
             onVisionReasoningEffortChange={setVisionReasoningEffort}
+            visionProvider={
+              selectedWorkspace?.vision_llm_provider ??
+              selectedWorkspace?.llm_provider
+            }
+            visionModel={
+              selectedWorkspace?.vision_llm_model ?? selectedWorkspace?.llm_model
+            }
             selectedCount={selectedCount}
             onBulkReprocess={() => {
               // WHY: Open the bulk choice dialog so the user picks full

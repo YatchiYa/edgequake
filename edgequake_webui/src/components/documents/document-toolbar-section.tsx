@@ -62,6 +62,8 @@ export interface DocumentToolbarSectionProps {
   workspacePdfParserBackend?: DocumentDropzoneProps['workspacePdfParserBackend'];
   visionReasoningEffort?: string;
   onVisionReasoningEffortChange?: (value: string | undefined) => void;
+  visionProvider?: string | null;
+  visionModel?: string | null;
 
   // Bulk actions
   selectedCount: number;
@@ -97,6 +99,8 @@ export function DocumentToolbarSection({
   workspacePdfParserBackend,
   visionReasoningEffort,
   onVisionReasoningEffortChange,
+  visionProvider,
+  visionModel,
   selectedCount,
   onBulkReprocess,
   onBulkDelete,
@@ -202,6 +206,8 @@ export function DocumentToolbarSection({
         workspacePdfParserBackend={workspacePdfParserBackend}
         visionReasoningEffort={visionReasoningEffort}
         onVisionReasoningEffortChange={onVisionReasoningEffortChange}
+        visionProvider={visionProvider}
+        visionModel={visionModel}
         quiet={quietDropzone && !collapseUploadSlot}
         collapsed={collapseUploadSlot}
       />

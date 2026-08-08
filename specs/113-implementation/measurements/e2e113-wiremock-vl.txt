@@ -1,0 +1,21 @@
+SPEC-113 / #369 — wiremock VL fixture proof
+Date: 2026-08-08
+
+Fixture show capabilities: ["completion", "vision"]  (family qwen3; NO thinking)
+Model id: qwen3-vl:8b
+Mode: Auto (reasoning_effort unset)
+
+edgequake-llm 0.10.5 + EdgeQuake path patch:
+
+  cargo test -p edgequake-api --test spec113_ollama_think_gate t113_20 -- --nocapture
+  → ok
+
+  cargo test --test e2e_ollama_think_capability t113_10 -- --nocapture
+  → ok
+
+Outbound /api/chat JSON assertion:
+  body.get("think").is_none()  == true
+  (serde skip_serializing_if Option::is_none — field absent, not null)
+
+BEFORE (0.10.4 heuristic): name contains "qwen3" → think:true → Ollama "does not support thinking"
+AFTER  (0.10.5 gate):      caps lack thinking → omit think → chat 200

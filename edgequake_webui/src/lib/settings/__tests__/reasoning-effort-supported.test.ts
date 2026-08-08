@@ -5,6 +5,7 @@ import {
   formatAutoEffortLabel,
   formatEffectiveBestPracticeHint,
   lowestStructuredEffortForModel,
+  modelSupportsThinking,
   supportedReasoningEffortsForModel,
 } from "@/lib/settings/reasoning-effort-supported";
 
@@ -12,6 +13,7 @@ function model(
   provider: string,
   name: string,
   reasoning?: { supported: string[]; lowest_structured?: string | null },
+  supportsThinking?: boolean,
 ): ModelResponse {
   return {
     name,
@@ -30,6 +32,7 @@ function model(
       supports_streaming: true,
       supports_system_message: true,
       embedding_dimension: 0,
+      supports_thinking: supportsThinking,
       reasoning_effort: reasoning ?? null,
     },
     tags: [],
@@ -88,6 +91,23 @@ describe("reasoning-effort-supported best-practice effective", () => {
         "structured",
       ),
     ).toBe("omit");
+  });
+
+  it("SPEC-113: supports_thinking false hides effort ladder", () => {
+    const ollamaVl = [
+      model(
+        "ollama",
+        "qwen3-vl:8b",
+        { supported: ["low", "medium", "high"] },
+        false,
+      ),
+    ];
+    expect(modelSupportsThinking(ollamaVl, "ollama", "qwen3-vl:8b")).toBe(
+      false,
+    );
+    expect(
+      supportedReasoningEffortsForModel(ollamaVl, "ollama", "qwen3-vl:8b"),
+    ).toBeUndefined();
   });
 
   it("formats Auto label and helper with effective best practice", () => {

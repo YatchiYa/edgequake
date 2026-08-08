@@ -23,6 +23,7 @@ import { useLlmModels } from "@/hooks/use-providers";
 import {
   effectiveEffortWhenAuto,
   formatEffectiveBestPracticeHint,
+  modelSupportsThinking,
   supportedReasoningEffortsForModel,
 } from "@/lib/settings/reasoning-effort-supported";
 import { useTenantStore } from "@/stores/use-tenant-store";
@@ -149,6 +150,11 @@ export function WorkspaceModelConfigGrid({
     provider,
     model,
   );
+  const thinkingSupported = modelSupportsThinking(
+    llmCatalog?.models,
+    provider,
+    model,
+  );
   const extractEffectiveAuto = effectiveEffortWhenAuto(
     llmCatalog?.models,
     provider,
@@ -211,18 +217,26 @@ export function WorkspaceModelConfigGrid({
                 <ReasoningEffortSelect
                   id="workspace-extract-effort"
                   data-testid="workspace-extract-reasoning"
-                  label={t("workspace.extractReasoning", "Extract reasoning effort")}
+                  label={t(
+                    "workspace.extractReasoning",
+                    "Extract reasoning effort",
+                  )}
                   value={extractDisplay}
                   supported={supported}
+                  thinkingSupported={thinkingSupported}
                   effectiveWhenAuto={extractEffectiveAuto}
                   onChange={(v) => onExtractReasoningChange?.(v)}
                 />
                 <ReasoningEffortSelect
                   id="workspace-query-effort"
                   data-testid="workspace-query-reasoning"
-                  label={t("workspace.queryReasoning", "Query reasoning effort")}
+                  label={t(
+                    "workspace.queryReasoning",
+                    "Query reasoning effort",
+                  )}
                   value={queryDisplay}
                   supported={supported}
+                  thinkingSupported={thinkingSupported}
                   effectiveWhenAuto={queryEffectiveAuto}
                   onChange={(v) => onQueryReasoningChange?.(v)}
                 />

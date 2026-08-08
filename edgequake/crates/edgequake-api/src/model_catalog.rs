@@ -28,7 +28,19 @@ pub fn dynamic_discovery_enabled() -> bool {
 fn reasoning_effort_capability(
     provider: &str,
     model: &str,
+    supports_thinking: bool,
 ) -> Option<ReasoningEffortCapabilityResponse> {
+    // SPEC-113: Ollama effort UI only when live capabilities include thinking.
+    if provider.to_ascii_lowercase().contains("ollama") {
+        if !supports_thinking {
+            return None;
+        }
+        let caps = edgequake_llm::ollama_thinking_effort_vocab();
+        return Some(ReasoningEffortCapabilityResponse {
+            supported: caps.supported.iter().map(|s| (*s).to_string()).collect(),
+            lowest_structured: Some("low".to_string()),
+        });
+    }
     let caps = edgequake_llm::reasoning_capabilities_for(provider, model)?;
     Some(ReasoningEffortCapabilityResponse {
         supported: caps.supported.iter().map(|s| (*s).to_string()).collect(),
@@ -108,7 +120,12 @@ pub fn model_card_to_response(card: &edgequake_llm::ModelCard) -> ModelResponse 
             supports_streaming: card.capabilities.supports_streaming,
             supports_system_message: card.capabilities.supports_system_message,
             embedding_dimension: card.capabilities.embedding_dimension,
-            reasoning_effort: reasoning_effort_capability("", &card.name),
+            supports_thinking: card.capabilities.supports_thinking,
+            reasoning_effort: reasoning_effort_capability(
+                "",
+                &card.name,
+                card.capabilities.supports_thinking,
+            ),
         },
         cost: ModelCostResponse {
             input_per_1k: card.cost.input_per_1k,
@@ -157,7 +174,12 @@ pub fn discovered_to_response(model: &DiscoveredModel) -> ModelResponse {
             supports_streaming: model.capabilities.supports_streaming,
             supports_system_message: model.capabilities.supports_system_message,
             embedding_dimension: model.capabilities.embedding_dimension,
-            reasoning_effort: reasoning_effort_capability(&model.provider, &model.id),
+            supports_thinking: model.capabilities.supports_thinking,
+            reasoning_effort: reasoning_effort_capability(
+                &model.provider,
+                &model.id,
+                model.capabilities.supports_thinking,
+            ),
         },
         cost: ModelCostResponse {
             input_per_1k,
@@ -221,6 +243,7 @@ fn llm_item_to_discovered(item: &LlmModelItem) -> DiscoveredModel {
             supports_streaming: caps.supports_streaming,
             supports_system_message: caps.supports_system_message,
             embedding_dimension: caps.embedding_dimension,
+            supports_thinking: caps.supports_thinking,
             ..Default::default()
         },
         source: DiscoverySource::UserConfig,
@@ -248,6 +271,7 @@ fn embedding_item_to_discovered(item: &EmbeddingModelItem) -> DiscoveredModel {
             supports_streaming: caps.supports_streaming,
             supports_system_message: caps.supports_system_message,
             embedding_dimension: item.dimension,
+            supports_thinking: caps.supports_thinking,
             ..Default::default()
         },
         source: DiscoverySource::UserConfig,
@@ -602,6 +626,7 @@ mod tests {
                 supports_streaming: true,
                 supports_system_message: true,
                 embedding_dimension: 0,
+                supports_thinking: false,
                 reasoning_effort: None,
             },
             cost: ModelCostResponse {

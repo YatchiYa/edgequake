@@ -59,7 +59,11 @@ import { ProviderModelSelector } from './provider-model-selector';
 import { QueryDocumentFilter } from './query-document-filter';
 import { ReasoningEffortSelect } from '@/components/settings/reasoning-effort-select';
 import { useLlmModels } from '@/hooks/use-providers';
-import { supportedReasoningEffortsForModel, effectiveEffortWhenAuto } from '@/lib/settings/reasoning-effort-supported';
+import {
+  effectiveEffortWhenAuto,
+  modelSupportsThinking,
+  supportedReasoningEffortsForModel,
+} from '@/lib/settings/reasoning-effort-supported';
 import { normalizeModelFullId } from '@/lib/onboarding/model-payload';
 
 interface QuerySettings {
@@ -111,6 +115,11 @@ export function QuerySettingsSheet({
     if (!providerModel?.trim()) return undefined;
     const { provider, model } = normalizeModelFullId(providerModel);
     return supportedReasoningEffortsForModel(llmData?.models, provider, model);
+  }, [llmData?.models, providerModel]);
+  const thinkingSupported = useMemo(() => {
+    if (!providerModel?.trim()) return undefined;
+    const { provider, model } = normalizeModelFullId(providerModel);
+    return modelSupportsThinking(llmData?.models, provider, model);
   }, [llmData?.models, providerModel]);
   const reasoningEffectiveAuto = useMemo(() => {
     if (!providerModel?.trim()) {
@@ -278,6 +287,7 @@ export function QuerySettingsSheet({
                   onSettingsChange({ reasoningEffort })
                 }
                 supported={reasoningSupported}
+                thinkingSupported={thinkingSupported}
                 effectiveWhenAuto={reasoningEffectiveAuto}
                 disabled={disabled}
                 label={t('query.settings.reasoningEffort', 'Reasoning effort')}

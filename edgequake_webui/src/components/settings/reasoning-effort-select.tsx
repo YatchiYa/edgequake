@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * SPEC-109: shared reasoning-effort select (Auto + capability-filtered values).
+ * SPEC-109 / SPEC-113: shared reasoning-effort select (Auto + capability-filtered values).
  * Auto displays the effective / best-practice value so operators know what runs.
+ * When `thinkingSupported === false`, do not offer a think ladder (LAW-113-8).
  */
 
 import { Label } from "@/components/ui/label";
@@ -40,6 +41,11 @@ export interface ReasoningEffortSelectProps {
   /** When set, only these efforts are offered (plus Auto). */
   supported?: string[];
   /**
+   * SPEC-113: when explicitly false, hide the effort ladder (model cannot think).
+   * `undefined` = unknown / not in catalog — do not claim unsupported.
+   */
+  thinkingSupported?: boolean;
+  /**
    * Effective effort when Auto is chosen (catalog / role policy).
    * Shown on the Auto option and as a best-practice hint.
    * Use `"omit"` when the wire field is not sent.
@@ -67,6 +73,7 @@ export function ReasoningEffortSelect({
   value,
   onChange,
   supported,
+  thinkingSupported,
   effectiveWhenAuto,
   disabled,
   id = "reasoning-effort",
@@ -78,6 +85,25 @@ export function ReasoningEffortSelect({
   className,
   "data-testid": testId = "reasoning-effort-select",
 }: ReasoningEffortSelectProps) {
+  if (thinkingSupported === false) {
+    return (
+      <div className={className ?? "space-y-2"} data-testid={testId}>
+        {!hideLabel && (
+          <Label htmlFor={id} className="text-sm font-medium">
+            {label}
+          </Label>
+        )}
+        <p
+          id={id}
+          className="text-sm text-muted-foreground"
+          data-testid={`${testId}-unsupported`}
+        >
+          Thinking not supported by this model
+        </p>
+      </div>
+    );
+  }
+
   const options =
     supported && supported.length > 0
       ? REASONING_EFFORT_VALUES.filter((v) =>

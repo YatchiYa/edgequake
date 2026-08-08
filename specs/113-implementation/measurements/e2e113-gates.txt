@@ -1,0 +1,29 @@
+SPEC-113 gates — 2026-08-08
+edgequake-llm 0.10.5 (crates.io) + EdgeQuake pin
+
+PASS: cargo test --test e2e_ollama_think_capability (7)
+PASS: cargo test -p edgequake-api --test spec113_ollama_think_gate (2)
+PASS: unit ollama_capabilities T-113-01..09,15,24 + t113_18
+ISSUE: #369 closed
+
+==== raw transcript below ====
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.29s
+     Running tests/e2e_ollama_think_capability.rs (target/debug/deps/e2e_ollama_think_capability-ac6175a9affba537)
+
+running 7 tests
+test t113_17_discovery_parse_matches_resolver ... ok
+test t113_12_show_500_still_chats_without_think ... ok
+test t113_10_vl_caps_omit_think_on_chat ... ok
+test t113_11_thinking_caps_auto_sends_think_true ... ok
+test t113_22_stream_and_nonstream_honor_gate ... ok
+test t113_13_cache_second_lookup_skips_show ... ok
+test t113_14_different_hosts_do_not_share_cache ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+
+
+--- crates.io pin verify ---
+cargo test -p edgequake-api --test spec113_ollama_think_gate
+PASS (2/2) against registry edgequake-llm 0.10.5

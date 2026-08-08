@@ -34,6 +34,8 @@ export interface ModelCapabilities {
   supports_streaming: boolean;
   supports_system_message: boolean;
   embedding_dimension: number;
+  /** SPEC-113: live thinking capability (Ollama `capabilities` includes `thinking`). */
+  supports_thinking?: boolean;
   /** SPEC-109: when present, UI filters reasoning-effort options. */
   reasoning_effort?: ReasoningEffortCapability | null;
 }

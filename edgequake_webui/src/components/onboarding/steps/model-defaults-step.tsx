@@ -16,6 +16,7 @@ import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults'
 import { useLlmModels } from '@/hooks/use-providers';
 import {
   effectiveEffortWhenAuto,
+  modelSupportsThinking,
   supportedReasoningEffortsForModel,
 } from '@/lib/settings/reasoning-effort-supported';
 import type { WizardDraft } from '@/lib/onboarding/wizard-state';
@@ -65,6 +66,10 @@ export function ModelDefaultsStep({
         llm?.provider,
         llm?.model,
       ),
+    [llmCatalog?.models, llm?.provider, llm?.model],
+  );
+  const thinkingSupported = useMemo(
+    () => modelSupportsThinking(llmCatalog?.models, llm?.provider, llm?.model),
     [llmCatalog?.models, llm?.provider, llm?.model],
   );
   const reasoningEffectiveAuto = useMemo(
@@ -183,6 +188,7 @@ export function ModelDefaultsStep({
               value={draft.reasoningEffort}
               onChange={(reasoningEffort) => onChange({ reasoningEffort })}
               supported={reasoningSupported}
+              thinkingSupported={thinkingSupported}
               effectiveWhenAuto={reasoningEffectiveAuto}
               label={t('onboarding.reasoningEffort', 'Default reasoning effort')}
               data-testid="wizard-reasoning-effort"
