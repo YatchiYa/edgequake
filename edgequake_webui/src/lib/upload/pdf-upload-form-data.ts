@@ -46,6 +46,27 @@ export function buildPdfUploadFormData(
       options.vision_reasoning_effort.trim(),
     );
   }
+  if (options?.vision_extract_images !== undefined) {
+    formData.append("vision_extract_images", String(options.vision_extract_images));
+  }
+  if (options?.vision_extract_charts !== undefined) {
+    formData.append("vision_extract_charts", String(options.vision_extract_charts));
+  }
+  if (options?.vision_extract_figures !== undefined) {
+    formData.append("vision_extract_figures", String(options.vision_extract_figures));
+  }
+  if (options?.vision_page_system_prompt !== undefined) {
+    formData.append("vision_page_system_prompt", options.vision_page_system_prompt);
+  }
+  if (options?.vision_image_system_prompt !== undefined) {
+    formData.append("vision_image_system_prompt", options.vision_image_system_prompt);
+  }
+  if (options?.vision_chart_system_prompt !== undefined) {
+    formData.append("vision_chart_system_prompt", options.vision_chart_system_prompt);
+  }
+  if (options?.vision_figure_system_prompt !== undefined) {
+    formData.append("vision_figure_system_prompt", options.vision_figure_system_prompt);
+  }
 
   return formData;
 }

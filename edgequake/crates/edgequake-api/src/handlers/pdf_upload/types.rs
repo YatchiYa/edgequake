@@ -38,6 +38,8 @@ pub struct PdfUploadOptions {
     pub process_options: Option<String>,
     /// SPEC-109: vision/VLM reasoning effort override for this upload.
     pub vision_reasoning_effort: Option<String>,
+    /// SPEC-015V: sparse vision extract overlay (None fields inherit workspace).
+    pub vision_extract: edgequake_pdf::VisionExtractOverlay,
 }
 
 impl PdfUploadOptions {
@@ -73,6 +75,16 @@ impl PdfUploadOptions {
                 self.pdf_parser_backend = Some(backend);
             }
         }
+    }
+
+    /// Resolve SPEC-015V extract policy (upload overlay over workspace metadata).
+    pub fn resolved_vision_extract(
+        &self,
+        workspace: Option<&Workspace>,
+    ) -> Result<edgequake_pdf::VisionExtractConfig, String> {
+        let empty = std::collections::HashMap::new();
+        let meta = workspace.map(|w| &w.metadata).unwrap_or(&empty);
+        edgequake_pdf::VisionExtractConfig::resolve(meta, &self.vision_extract)
     }
 
     /// Get the resolved vision provider (with fallback to server default).

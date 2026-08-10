@@ -36,6 +36,14 @@ export interface WizardDraft {
   entityTypes: string[];
   /** SPEC-101 Wave 8 — PDF parser (reconfigure). */
   pdfParserBackend: PdfParserBackendDraft;
+  /** SPEC-015V — Vision extract policy (document parsing). */
+  visionExtractImages: boolean;
+  visionExtractCharts: boolean;
+  visionExtractFigures: boolean;
+  visionPageSystemPrompt: string;
+  visionImageSystemPrompt: string;
+  visionChartSystemPrompt: string;
+  visionFigureSystemPrompt: string;
   /** SPEC-101 Wave 8 — strict entity types (reconfigure). */
   entityTypesStrict: boolean;
   /** SPEC-102 — entity type → hex color overrides. */
@@ -66,6 +74,13 @@ export const EMPTY_WIZARD_DRAFT: WizardDraft = {
   extractionLanguage: null,
   entityTypes: [],
   pdfParserBackend: 'none',
+  visionExtractImages: true,
+  visionExtractCharts: true,
+  visionExtractFigures: true,
+  visionPageSystemPrompt: '',
+  visionImageSystemPrompt: '',
+  visionChartSystemPrompt: '',
+  visionFigureSystemPrompt: '',
   entityTypesStrict: true,
   entityTypeColors: {},
   relationTypes: [],

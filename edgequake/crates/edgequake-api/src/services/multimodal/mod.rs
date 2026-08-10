@@ -76,6 +76,7 @@ pub use prompts::{
     chart_analysis_messages, chart_analysis_messages_dense, equation_analysis_messages,
     figure_analysis_messages, image_analysis_messages, is_chart_like_type, is_figure_like_type,
     json_repair_user_message, should_specialize_as_chart, table_analysis_messages,
+    CHART_ANALYSIS_SYSTEM_PROMPT, FIGURE_ANALYSIS_SYSTEM_PROMPT, IMAGE_ANALYSIS_SYSTEM_PROMPT,
 };
 pub use providers::MultimodalProviders;
 pub use reanalyze::{

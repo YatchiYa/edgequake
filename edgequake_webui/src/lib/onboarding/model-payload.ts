@@ -112,6 +112,14 @@ export function buildWorkspaceUpdatePayload(args: {
   embedding?: ModelSelectionSlash;
   vision?: ModelSelectionSlash;
   pdfParserBackend: PdfParserBackendDraft;
+  /** SPEC-015V */
+  visionExtractImages?: boolean;
+  visionExtractCharts?: boolean;
+  visionExtractFigures?: boolean;
+  visionPageSystemPrompt?: string;
+  visionImageSystemPrompt?: string;
+  visionChartSystemPrompt?: string;
+  visionFigureSystemPrompt?: string;
   extractionLanguage: string | null;
   entityTypes: string[];
   entityTypesStrict: boolean;
@@ -131,6 +139,13 @@ export function buildWorkspaceUpdatePayload(args: {
   vision_llm_model: string;
   vision_llm_provider: string;
   pdf_parser_backend: PdfParserBackendDraft;
+  vision_extract_images?: boolean;
+  vision_extract_charts?: boolean;
+  vision_extract_figures?: boolean;
+  vision_page_system_prompt?: string;
+  vision_image_system_prompt?: string;
+  vision_chart_system_prompt?: string;
+  vision_figure_system_prompt?: string;
   entity_types: string[];
   entity_types_strict: boolean;
   extraction_language: string;
@@ -156,6 +171,15 @@ export function buildWorkspaceUpdatePayload(args: {
     kg_schema_preset,
     relation_edges,
   };
+  const visionExtractFields = {
+    vision_extract_images: args.visionExtractImages ?? true,
+    vision_extract_charts: args.visionExtractCharts ?? true,
+    vision_extract_figures: args.visionExtractFigures ?? true,
+    vision_page_system_prompt: args.visionPageSystemPrompt ?? '',
+    vision_image_system_prompt: args.visionImageSystemPrompt ?? '',
+    vision_chart_system_prompt: args.visionChartSystemPrompt ?? '',
+    vision_figure_system_prompt: args.visionFigureSystemPrompt ?? '',
+  };
   if (args.useServerDefaults) {
     return {
       llm_model: '',
@@ -166,6 +190,7 @@ export function buildWorkspaceUpdatePayload(args: {
       vision_llm_model: '',
       vision_llm_provider: '',
       pdf_parser_backend: args.pdfParserBackend,
+      ...visionExtractFields,
       entity_types: args.entityTypes,
       entity_types_strict: args.entityTypesStrict,
       extraction_language: extractionLanguageToUpdatePayload(args.extractionLanguage),
@@ -185,6 +210,7 @@ export function buildWorkspaceUpdatePayload(args: {
     vision_llm_model: args.vision?.model ?? '',
     vision_llm_provider: args.vision?.provider ?? '',
     pdf_parser_backend: args.pdfParserBackend,
+    ...visionExtractFields,
     entity_types: args.entityTypes,
     entity_types_strict: args.entityTypesStrict,
     extraction_language: extractionLanguageToUpdatePayload(args.extractionLanguage),

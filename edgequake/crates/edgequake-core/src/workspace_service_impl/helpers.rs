@@ -168,8 +168,25 @@ pub(crate) fn apply_llm_roles_metadata(
     }
 }
 
-/// Alias for [`normalize_type_list`] (SPEC-085 / SPEC-114 DRY).
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn normalize_entity_types(types: &[String]) -> Vec<String> {
-    normalize_type_list(types)
+/// Apply SPEC-015V vision extract toggles + prompt overrides to workspace metadata.
+pub(crate) fn apply_vision_extract_metadata(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    extract_images: Option<bool>,
+    extract_charts: Option<bool>,
+    extract_figures: Option<bool>,
+    page_system_prompt: Option<String>,
+    image_system_prompt: Option<String>,
+    chart_system_prompt: Option<String>,
+    figure_system_prompt: Option<String>,
+) -> Result<(), String> {
+    let overlay = edgequake_pdf::VisionExtractOverlay {
+        extract_images,
+        extract_charts,
+        extract_figures,
+        page_system_prompt,
+        image_system_prompt,
+        chart_system_prompt,
+        figure_system_prompt,
+    };
+    edgequake_pdf::VisionExtractConfig::apply_to_metadata(metadata, &overlay)
 }

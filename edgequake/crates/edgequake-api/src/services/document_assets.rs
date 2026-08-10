@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use edgequake_pdf::{PageDrawingAssetsConfig, VisionExtractConfig};
+
 /// Root directory for all document mm-assets (override via `EDGEQUAKE_MM_ASSETS_DIR`).
 pub fn mm_assets_base_dir() -> PathBuf {
     std::env::var("EDGEQUAKE_MM_ASSETS_DIR")
@@ -25,7 +27,7 @@ pub fn multimodal_images_requested(process_options: Option<&str>) -> bool {
 pub fn page_drawing_assets_config(
     document_id: &str,
     process_options: Option<&str>,
-) -> Option<edgequake_pdf::PageDrawingAssetsConfig> {
+) -> Option<PageDrawingAssetsConfig> {
     if !multimodal_images_requested(process_options) {
         return None;
     }
@@ -36,12 +38,12 @@ pub fn page_drawing_assets_config(
         );
         return None;
     }
-    Some(edgequake_pdf::PageDrawingAssetsConfig {
-        assets_root: document_mm_assets_root(document_id),
-        id_prefix: Some(document_id.to_string()),
-        emit_analyze_tags: true,
-        figure_filter_provider: None, // opt-in via explicit provider injection
-    })
+    let mut cfg = PageDrawingAssetsConfig::with_defaults(
+        document_mm_assets_root(document_id),
+        Some(document_id.to_string()),
+    );
+    cfg.emit_analyze_tags = true;
+    Some(cfg)
 }
 
 /// Page PNG + viewer images for Vision PDF conversion.
@@ -49,18 +51,23 @@ pub fn page_drawing_assets_config(
 /// Full-page `page-NNNN.png` rasters are dual-pane PDF context only.
 /// Analyze `<drawing/>` tags stay gated on the `i` process option **and**
 /// `VLM_PROCESS_ENABLE` — never emit placeholders that Pass B cannot replace.
+///
+/// SPEC-015V: `extract` gates writers; when all extract flags are false, analyze
+/// tags are also suppressed (EC-015V-9).
 pub fn page_drawing_assets_config_for_vision(
     document_id: &str,
     process_options: Option<&str>,
-) -> edgequake_pdf::PageDrawingAssetsConfig {
+    extract: &VisionExtractConfig,
+) -> PageDrawingAssetsConfig {
     let images = multimodal_images_requested(process_options);
     let vlm_on = super::multimodal::vlm_process_enabled();
-    edgequake_pdf::PageDrawingAssetsConfig {
-        assets_root: document_mm_assets_root(document_id),
-        id_prefix: Some(document_id.to_string()),
-        emit_analyze_tags: images && vlm_on,
-        figure_filter_provider: None, // opt-in via explicit provider injection
-    }
+    let mut cfg = PageDrawingAssetsConfig::with_defaults(
+        document_mm_assets_root(document_id),
+        Some(document_id.to_string()),
+    );
+    cfg.apply_vision_extract(extract);
+    cfg.emit_analyze_tags = images && vlm_on && extract.any_extract_enabled();
+    cfg
 }
 
 /// Asset base dir for multimodal analyze stage (same root as page PNG writes).
@@ -84,28 +91,64 @@ mod tests {
     }
 
     #[test]
-    fn vision_always_emits_viewer_assets() {
-        let cfg = page_drawing_assets_config_for_vision("abc", None);
+    fn vision_always_emits_viewer_assets_by_default() {
+        let cfg =
+            page_drawing_assets_config_for_vision("abc", None, &VisionExtractConfig::default());
         assert!(cfg.assets_root.ends_with("abc"));
         assert!(!cfg.emit_analyze_tags);
+        assert!(cfg.extract_images && cfg.extract_charts && cfg.extract_figures);
+    }
+
+    #[test]
+    fn vision_respects_extract_flags() {
+        let extract = VisionExtractConfig {
+            extract_images: false,
+            extract_charts: true,
+            extract_figures: false,
+            ..Default::default()
+        };
+        let cfg = page_drawing_assets_config_for_vision("abc", Some("i"), &extract);
+        assert!(!cfg.extract_images);
+        assert!(cfg.extract_charts);
+        assert!(!cfg.extract_figures);
     }
 
     #[test]
     #[serial_test::serial]
     fn vision_analyze_tags_require_vlm_enable_and_i_flag() {
         std::env::remove_var("VLM_PROCESS_ENABLE");
-        let default_on = page_drawing_assets_config_for_vision("abc", Some("i"));
+        let default_on = page_drawing_assets_config_for_vision(
+            "abc",
+            Some("i"),
+            &VisionExtractConfig::default(),
+        );
         assert!(
             default_on.emit_analyze_tags,
             "VLM_PROCESS_ENABLE defaults on — emit tags when process_options=i"
         );
         std::env::set_var("VLM_PROCESS_ENABLE", "false");
-        let off = page_drawing_assets_config_for_vision("abc", Some("i"));
+        let off = page_drawing_assets_config_for_vision(
+            "abc",
+            Some("i"),
+            &VisionExtractConfig::default(),
+        );
         assert!(
             !off.emit_analyze_tags,
             "must not emit orphan <drawing/> when VLM_PROCESS_ENABLE=false"
         );
         std::env::remove_var("VLM_PROCESS_ENABLE");
+    }
+
+    #[test]
+    fn extract_all_false_suppresses_analyze_even_with_i() {
+        let extract = VisionExtractConfig {
+            extract_images: false,
+            extract_charts: false,
+            extract_figures: false,
+            ..Default::default()
+        };
+        let cfg = page_drawing_assets_config_for_vision("abc", Some("i"), &extract);
+        assert!(!cfg.emit_analyze_tags);
     }
 
     #[test]

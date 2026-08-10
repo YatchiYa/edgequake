@@ -63,9 +63,14 @@ impl PdfConverter for VisionPdfConverter {
             .clone()
             .ok_or(PdfConversionError::BackendNotConfigured("vision model"))?;
 
+        let page_prompt = config
+            .page_drawing_assets
+            .as_ref()
+            .and_then(|c| c.page_system_prompt.as_deref())
+            .unwrap_or(crate::vision_prompts::RAG_PAGE_VISION_SYSTEM_PROMPT);
         let mut builder = ConversionConfig::builder()
-            // SPEC-047 / 015: chart/figure number dump for RAG indexing
-            .system_prompt(crate::vision_prompts::RAG_PAGE_VISION_SYSTEM_PROMPT);
+            // SPEC-047 / SPEC-015V: chart/figure number dump for RAG indexing
+            .system_prompt(page_prompt);
 
         // SPEC-109: when effort is set, inject a clamped provider so pdf2md page
         // OCR forwards reasoning_effort (ConversionConfig has no effort field yet).
@@ -120,7 +125,10 @@ impl PdfConverter for VisionPdfConverter {
             ));
         }
 
-        let emit_viewer_images = config.page_drawing_assets.is_some();
+        let emit_viewer_images = config
+            .page_drawing_assets
+            .as_ref()
+            .is_some_and(|c| c.write_plan().any_writer());
         let emit_analyze_tags = config
             .page_drawing_assets
             .as_ref()
@@ -132,6 +140,7 @@ impl PdfConverter for VisionPdfConverter {
         let mut crop_coverage_comment: Option<String> = None;
         if emit_viewer_images {
             if let Some(page_assets) = &config.page_drawing_assets {
+                let plan = page_assets.write_plan();
                 let total_pages = output.stats.total_pages.max(output.pages.len()).max(1);
                 let page_numbers: Vec<usize> = (1..=total_pages).collect();
                 let render = PageAssetRenderConfig {
@@ -140,214 +149,235 @@ impl PdfConverter for VisionPdfConverter {
                 };
 
                 // 1) Embedded ImageXObjects first — VLM analyze SSOT (figure-bounded).
-                if let Some(hook) = status_hook {
-                    hook("Extracting embedded figures from PDF…", 0.92);
-                }
-                match write_embedded_figure_assets(
-                    pdf_bytes,
-                    &page_assets.assets_root,
-                    Some(&page_numbers),
-                )
-                .await
-                {
-                    Ok(written) => {
-                        info!(
-                            figures = written.len(),
-                            assets_root = %page_assets.assets_root.display(),
-                            "Embedded figure assets written for VLM analyze"
-                        );
-                        figure_map = figures_by_page(&written);
-                        if let Some(hook) = status_hook {
-                            hook(
-                                &format!(
-                                    "Extracted {} embedded figure(s) — rendering page images…",
-                                    written.len()
-                                ),
-                                0.93,
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        warn!(
-                            error = %e,
-                            "Embedded figure extract failed; analyze may fall back to chart crops"
-                        );
-                    }
-                }
-
-                // 1b) Caption-anchored Form XObject figures + table crops.
-                match write_caption_region_assets(pdf_bytes, &page_assets.assets_root, &figure_map)
-                    .await
-                {
-                    Ok((region_figs, region_tables)) => {
-                        if !region_figs.is_empty() {
-                            info!(
-                                figures = region_figs.len(),
-                                "Caption-anchored figure regions written"
-                            );
-                            for fig in region_figs {
-                                figure_map.entry(fig.page_num).or_default().push(fig);
-                            }
-                        }
-                        if !region_tables.is_empty() {
-                            info!(
-                                tables = region_tables.len(),
-                                "Caption-anchored table regions written"
-                            );
-                            table_map = tables_by_page(&region_tables);
-                        }
-                    }
-                    Err(e) => {
-                        warn!(error = %e, "Caption region extract failed");
-                    }
-                }
-
-                // 1c) SPEC-049 two-pass VLM figure filter — runs after all figure PNGs are
-                //     on disk.  Optional: only when figure_filter_provider is set.
-                //     Pass 1 → semantic filter (discard logos / text-boxes).
-                //     Pass 2 → kind-aware description (chart→data, diagram→flow, …).
-                //     Results written to figure_filter_manifest.json for RAG.
-                if let Some(ref provider) = page_assets.figure_filter_provider {
-                    let candidates: Vec<crate::figure_filter::FigureCandidate> = figure_map
-                        .values()
-                        .flatten()
-                        .map(|fig| crate::figure_filter::FigureCandidate {
-                            rel_path: fig.rel_path.clone(),
-                            full_path: page_assets.assets_root.join(&fig.rel_path),
-                            page_num: fig.page_num,
-                            label: String::new(),
-                        })
-                        .collect();
-                    if !candidates.is_empty() {
-                        if let Some(hook) = status_hook {
-                            hook(
-                                &format!(
-                                    "Running two-pass figure filter on {} crops…",
-                                    candidates.len()
-                                ),
-                                0.935,
-                            );
-                        }
-                        let filter = crate::figure_filter::FigureFilter::new(Arc::clone(provider));
-                        match filter.run(&candidates).await {
-                            Ok(results) => {
-                                let kept = results.iter().filter(|r| r.is_figure).count();
-                                info!(
-                                    total = results.len(),
-                                    kept,
-                                    discarded = results.len() - kept,
-                                    "SPEC-049 two-pass figure filter complete"
-                                );
-                                if let Err(e) = crate::figure_filter::write_manifest(
-                                    &page_assets.assets_root,
-                                    &results,
-                                ) {
-                                    warn!(error = %e, "Failed to write figure filter manifest");
-                                }
-                            }
-                            Err(e) => {
-                                warn!(error = %e, "SPEC-049 figure filter failed; keeping all crops");
-                            }
-                        }
-                    }
-                }
-
-                // 2) Full-page PNGs for markdown viewer only (not VLM analyze targets).
-                if let Some(hook) = status_hook {
-                    hook(
-                        &format!("Rendering page images for the viewer (0/{total_pages} pages)…"),
-                        0.94,
-                    );
-                }
-                match write_page_png_assets(
-                    pdf_bytes,
-                    &page_assets.assets_root,
-                    &page_numbers,
-                    render,
-                )
-                .await
-                {
-                    Ok(written) => {
-                        info!(
-                            pages = written.len(),
-                            assets_root = %page_assets.assets_root.display(),
-                            "Vision page PNG assets written for markdown viewer"
-                        );
-                        if let Some(hook) = status_hook {
-                            hook(
-                                &format!(
-                                    "Rendered page images ({}/{} pages) — assembling markdown…",
-                                    written.len(),
-                                    total_pages
-                                ),
-                                0.95,
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        warn!(
-                            error = %e,
-                            "Failed to write vision page PNG assets; figure images may not resolve"
-                        );
-                    }
-                }
-
-                // 3) Chart ink-residual for pages without tables (W1-crop-expand:
-                // allow alongside fig). Proposal = ink geometry (page PNG prefilter
-                // + hi-res crop gates). Pass-A English is specialize routing only.
-                let page_nums: Vec<usize> = output.pages.iter().map(|p| p.page_num).collect();
-                let mut coverage =
-                    CropCoverageReport::from_pages(&page_nums, &figure_map, &table_map);
-                let candidates =
-                    chart_residual_candidate_pages(&page_nums, &figure_map, &table_map);
-                let chart_pages =
-                    filter_chart_pages_by_page_png_ink(&page_assets.assets_root, &candidates);
-                coverage = coverage.with_ink_filter_count(chart_pages.len());
-                if !chart_pages.is_empty() {
+                // SPEC-015V: gated by extract_figures.
+                if plan.write_figures {
                     if let Some(hook) = status_hook {
-                        hook(
-                            &format!(
-                                "Rendering chart ink-crops ({} pages; alongside_fig={}, table_skip={})…",
-                                chart_pages.len(),
-                                coverage.residual_alongside_fig,
-                                coverage.residual_skipped_due_to_fig_or_table,
-                            ),
-                            0.96,
-                        );
+                        hook("Extracting embedded figures from PDF…", 0.92);
                     }
-                    match write_chart_crop_assets(
+                    match write_embedded_figure_assets(
                         pdf_bytes,
                         &page_assets.assets_root,
-                        &chart_pages,
-                        CHART_CROP_RENDER,
+                        Some(&page_numbers),
                     )
                     .await
                     {
-                        Ok(paths) => {
-                            chart_crop_paths = paths;
+                        Ok(written) => {
+                            info!(
+                                figures = written.len(),
+                                assets_root = %page_assets.assets_root.display(),
+                                "Embedded figure assets written for VLM analyze"
+                            );
+                            figure_map = figures_by_page(&written);
+                            if let Some(hook) = status_hook {
+                                hook(
+                                    &format!(
+                                        "Extracted {} embedded figure(s) — rendering page images…",
+                                        written.len()
+                                    ),
+                                    0.93,
+                                );
+                            }
                         }
                         Err(e) => {
                             warn!(
                                 error = %e,
-                                "MV-24 chart crop render failed; no analyze fallback for those pages"
+                                "Embedded figure extract failed; analyze may fall back to chart crops"
+                            );
+                        }
+                    }
+
+                    // 1b) Caption-anchored Form XObject figures + table crops.
+                    match write_caption_region_assets(
+                        pdf_bytes,
+                        &page_assets.assets_root,
+                        &figure_map,
+                    )
+                    .await
+                    {
+                        Ok((region_figs, region_tables)) => {
+                            if !region_figs.is_empty() {
+                                info!(
+                                    figures = region_figs.len(),
+                                    "Caption-anchored figure regions written"
+                                );
+                                for fig in region_figs {
+                                    figure_map.entry(fig.page_num).or_default().push(fig);
+                                }
+                            }
+                            if !region_tables.is_empty() {
+                                info!(
+                                    tables = region_tables.len(),
+                                    "Caption-anchored table regions written"
+                                );
+                                table_map = tables_by_page(&region_tables);
+                            }
+                        }
+                        Err(e) => {
+                            warn!(error = %e, "Caption region extract failed");
+                        }
+                    }
+
+                    // 1c) SPEC-049 two-pass VLM figure filter — runs after all figure PNGs are
+                    //     on disk.  Optional: only when figure_filter_provider is set.
+                    if let Some(ref provider) = page_assets.figure_filter_provider {
+                        let candidates: Vec<crate::figure_filter::FigureCandidate> = figure_map
+                            .values()
+                            .flatten()
+                            .map(|fig| crate::figure_filter::FigureCandidate {
+                                rel_path: fig.rel_path.clone(),
+                                full_path: page_assets.assets_root.join(&fig.rel_path),
+                                page_num: fig.page_num,
+                                label: String::new(),
+                            })
+                            .collect();
+                        if !candidates.is_empty() {
+                            if let Some(hook) = status_hook {
+                                hook(
+                                    &format!(
+                                        "Running two-pass figure filter on {} crops…",
+                                        candidates.len()
+                                    ),
+                                    0.935,
+                                );
+                            }
+                            let filter =
+                                crate::figure_filter::FigureFilter::new(Arc::clone(provider));
+                            match filter.run(&candidates).await {
+                                Ok(results) => {
+                                    let kept = results.iter().filter(|r| r.is_figure).count();
+                                    info!(
+                                        total = results.len(),
+                                        kept,
+                                        discarded = results.len() - kept,
+                                        "SPEC-049 two-pass figure filter complete"
+                                    );
+                                    if let Err(e) = crate::figure_filter::write_manifest(
+                                        &page_assets.assets_root,
+                                        &results,
+                                    ) {
+                                        warn!(error = %e, "Failed to write figure filter manifest");
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        error = %e,
+                                        "SPEC-049 figure filter failed; keeping all crops"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2) Full-page PNGs for markdown viewer only (SPEC-015V: extract_images).
+                if plan.write_page_pngs {
+                    if let Some(hook) = status_hook {
+                        hook(
+                            &format!(
+                                "Rendering page images for the viewer (0/{total_pages} pages)…"
+                            ),
+                            0.94,
+                        );
+                    }
+                    match write_page_png_assets(
+                        pdf_bytes,
+                        &page_assets.assets_root,
+                        &page_numbers,
+                        render,
+                    )
+                    .await
+                    {
+                        Ok(written) => {
+                            info!(
+                                pages = written.len(),
+                                assets_root = %page_assets.assets_root.display(),
+                                "Vision page PNG assets written for markdown viewer"
+                            );
+                            if let Some(hook) = status_hook {
+                                hook(
+                                    &format!(
+                                        "Rendered page images ({}/{} pages) — assembling markdown…",
+                                        written.len(),
+                                        total_pages
+                                    ),
+                                    0.95,
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            warn!(
+                                error = %e,
+                                "Failed to write vision page PNG assets; figure images may not resolve"
                             );
                         }
                     }
                 }
-                // W1-fig-as-chart: alongside pages with empty residual ink → chart IS the fig.
-                let alongside =
-                    chart_residual_alongside_fig_pages(&page_nums, &figure_map, &table_map);
-                let promoted = crate::chart_crop::promote_fig_as_chart_when_ink_empty(
-                    &page_assets.assets_root,
-                    &alongside,
-                    &chart_crop_paths,
-                );
-                if !promoted.is_empty() {
-                    info!(
-                        promoted = promoted.len(),
-                        "W1-fig-as-chart: promoted fig assets to chart crops (ink residual empty)"
-                    );
-                    chart_crop_paths.extend(promoted);
+
+                // 3) Chart ink-residual — SPEC-015V: gated by extract_charts.
+                let page_nums: Vec<usize> = output.pages.iter().map(|p| p.page_num).collect();
+                let mut coverage =
+                    CropCoverageReport::from_pages(&page_nums, &figure_map, &table_map);
+                if plan.write_charts {
+                    let candidates =
+                        chart_residual_candidate_pages(&page_nums, &figure_map, &table_map);
+                    // EC-015V-4: without page PNGs, skip ink prefilter and crop candidates directly.
+                    let chart_pages = if plan.write_page_pngs {
+                        filter_chart_pages_by_page_png_ink(&page_assets.assets_root, &candidates)
+                    } else {
+                        candidates
+                    };
+                    coverage = coverage.with_ink_filter_count(chart_pages.len());
+                    if !chart_pages.is_empty() {
+                        if let Some(hook) = status_hook {
+                            hook(
+                                &format!(
+                                    "Rendering chart ink-crops ({} pages; alongside_fig={}, table_skip={})…",
+                                    chart_pages.len(),
+                                    coverage.residual_alongside_fig,
+                                    coverage.residual_skipped_due_to_fig_or_table,
+                                ),
+                                0.96,
+                            );
+                        }
+                        match write_chart_crop_assets(
+                            pdf_bytes,
+                            &page_assets.assets_root,
+                            &chart_pages,
+                            CHART_CROP_RENDER,
+                        )
+                        .await
+                        {
+                            Ok(paths) => {
+                                chart_crop_paths = paths;
+                            }
+                            Err(e) => {
+                                warn!(
+                                    error = %e,
+                                    "MV-24 chart crop render failed; no analyze fallback for those pages"
+                                );
+                            }
+                        }
+                    }
+                    // W1-fig-as-chart: only when both charts+figures enabled (EC-015V-2).
+                    if plan.promote_fig_as_chart {
+                        let alongside = chart_residual_alongside_fig_pages(
+                            &page_nums,
+                            &figure_map,
+                            &table_map,
+                        );
+                        let promoted = crate::chart_crop::promote_fig_as_chart_when_ink_empty(
+                            &page_assets.assets_root,
+                            &alongside,
+                            &chart_crop_paths,
+                        );
+                        if !promoted.is_empty() {
+                            info!(
+                                promoted = promoted.len(),
+                                "W1-fig-as-chart: promoted fig assets to chart crops (ink residual empty)"
+                            );
+                            chart_crop_paths.extend(promoted);
+                        }
+                    }
                 }
                 coverage = coverage.with_crops_written(chart_crop_paths.len());
                 info!(

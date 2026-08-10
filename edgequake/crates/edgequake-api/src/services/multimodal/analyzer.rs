@@ -42,6 +42,18 @@ use crate::services::converting_subprogress::{
 };
 
 /// Remove `<drawing …/>` placeholders that Pass B did not replace (viewer hygiene).
+
+tokio::task_local! {
+    /// SPEC-015V: Pass B prompt / specialize gates for the current analyze stage.
+    pub static VISION_EXTRACT_CTX: edgequake_pdf::VisionExtractConfig;
+}
+
+fn current_vision_extract() -> edgequake_pdf::VisionExtractConfig {
+    VISION_EXTRACT_CTX
+        .try_with(|c| c.clone())
+        .unwrap_or_default()
+}
+
 fn strip_drawing_tags(markdown: &str) -> String {
     let refs = scan_inline_image_refs(markdown);
     if refs.is_empty() {
@@ -742,11 +754,12 @@ async fn analyze_one_image(
 ) -> Result<(MultimodalItemRecord, String), MultimodalItemRecord> {
     let asset = resolve_image_asset(image_ref, asset_base_dir)
         .map_err(|e| MultimodalItemRecord::skipped(&image_ref.item_id, "drawing", e))?;
-    let ctx = PromptContext::from_parts(
+    let mut ctx = PromptContext::from_parts(
         image_ref.caption.as_deref(),
         image_ref.footnote.as_deref(),
         surrounding,
     );
+    ctx.apply_vision_extract(&current_vision_extract());
     // MV-28: `format_drawing_block` already emits `![alt](assets/…)` above the
     // `<drawing/>` tag. Replace only the tag with analysis body so the viewer
     // image stays on-page without duplication.
@@ -781,7 +794,8 @@ async fn analyze_one_table(
     let format = item.mime_type.as_deref().unwrap_or("html");
     let (trimmed, _) =
         trim_content_to_budget(body, max_extract_input_tokens(), SurroundingKind::Tables);
-    let ctx = PromptContext::from_item_and_surrounding(item, surrounding);
+    let mut ctx = PromptContext::from_item_and_surrounding(item, surrounding);
+    ctx.apply_vision_extract(&current_vision_extract());
     let messages = match table_analysis_messages(&trimmed, format, &ctx) {
         Ok(m) => m,
         Err(e) => return Err(MultimodalItemRecord::failed(&item.item_id, "table", e)),
@@ -805,7 +819,8 @@ async fn analyze_one_equation(
     }
     let (trimmed, _) =
         trim_content_to_budget(body, max_extract_input_tokens(), SurroundingKind::Equations);
-    let ctx = PromptContext::from_item_and_surrounding(item, surrounding);
+    let mut ctx = PromptContext::from_item_and_surrounding(item, surrounding);
+    ctx.apply_vision_extract(&current_vision_extract());
     analyze_equation_modality(&item.item_id, &trimmed, extract, &ctx, kv).await
 }
 
@@ -1023,6 +1038,13 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
+        
+            image_system_prompt: None,
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
         };
         let result = analyze_image_bytes("im-chart", png, "image/png", &mock, &ctx, None).await;
         unsafe {

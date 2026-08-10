@@ -13,6 +13,7 @@ pub mod page_selection;
 pub mod pdfium_ready;
 pub mod reasoning_effort_inject;
 pub mod region_assets;
+pub mod vision_extract;
 pub mod vision_markdown;
 pub mod vision_prompts;
 
@@ -62,5 +63,11 @@ pub use vision_markdown::{
     assemble_vision_markdown_with_options, assemble_vision_markdown_with_overrides,
     enrich_markdown_with_viewer_assets, inject_on_disk_region_assets, normalize_vision_pages,
     page_numbers_from_markdown, VisionPageSlice,
+};
+pub use vision_extract::{
+    VisionAssetWritePlan, VisionExtractConfig, VisionExtractOverlay, DOC_META_VISION_EXTRACT,
+    META_CHART_SYSTEM_PROMPT, META_EXTRACT_CHARTS, META_EXTRACT_FIGURES, META_EXTRACT_IMAGES,
+    META_FIGURE_SYSTEM_PROMPT, META_IMAGE_SYSTEM_PROMPT, META_PAGE_SYSTEM_PROMPT,
+    VISION_PROMPT_MAX_BYTES,
 };
 pub use vision_prompts::RAG_PAGE_VISION_SYSTEM_PROMPT;

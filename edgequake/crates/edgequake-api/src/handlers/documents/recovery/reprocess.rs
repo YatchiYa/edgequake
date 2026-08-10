@@ -634,6 +634,7 @@ pub(crate) async fn run_reprocess_failed(
                         reprocess_mode: Some(reprocess_mode),
                         multimodal_process_options,
                         vision_reasoning_effort,
+                        vision_extract: Default::default(),
                     };
 
                     // SPEC-054: create task first so document.track_id == progress key.
@@ -963,6 +964,7 @@ pub(crate) async fn run_reprocess_failed(
                     reprocess_mode: Some(reprocess_mode),
                     multimodal_process_options,
                     vision_reasoning_effort,
+                    vision_extract: Default::default(),
                 };
 
                 let track_id = format!("pdf-{}", Uuid::new_v4());

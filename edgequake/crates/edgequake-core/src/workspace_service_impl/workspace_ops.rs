@@ -15,6 +15,7 @@ use super::helpers::{
     apply_entity_types_strict_metadata, apply_extraction_language_metadata,
     apply_kg_schema_preset_metadata, apply_llm_roles_metadata, apply_relation_edges_metadata,
     apply_relation_types_metadata, apply_relation_types_strict_metadata,
+    apply_vision_extract_metadata,
 };
 #[cfg(feature = "postgres")]
 use super::rows::WorkspaceRow;
@@ -191,6 +192,18 @@ impl WorkspaceServiceImpl {
         // SPEC-096: Workspace extraction language (future ingestions only)
         apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
             .map_err(Error::validation)?;
+        // SPEC-015V: Vision extract toggles + prompts
+        apply_vision_extract_metadata(
+            &mut workspace.metadata,
+            request.vision_extract_images,
+            request.vision_extract_charts,
+            request.vision_extract_figures,
+            request.vision_page_system_prompt,
+            request.vision_image_system_prompt,
+            request.vision_chart_system_prompt,
+            request.vision_figure_system_prompt,
+        )
+        .map_err(Error::validation)?;
         // SPEC-102: entity type color overrides for graph visualization
         crate::entity_type_colors::apply_entity_type_colors_metadata(
             &mut workspace.metadata,
@@ -459,6 +472,17 @@ impl WorkspaceServiceImpl {
         apply_relation_edges_metadata(&mut workspace.metadata, request.relation_edges);
         apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
             .map_err(Error::validation)?;
+        apply_vision_extract_metadata(
+            &mut workspace.metadata,
+            request.vision_extract_images,
+            request.vision_extract_charts,
+            request.vision_extract_figures,
+            request.vision_page_system_prompt,
+            request.vision_image_system_prompt,
+            request.vision_chart_system_prompt,
+            request.vision_figure_system_prompt,
+        )
+        .map_err(Error::validation)?;
         crate::entity_type_colors::apply_entity_type_colors_metadata(
             &mut workspace.metadata,
             request.entity_type_colors,

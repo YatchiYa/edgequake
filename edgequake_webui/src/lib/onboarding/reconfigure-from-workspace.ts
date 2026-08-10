@@ -132,6 +132,13 @@ export function prefillReconfigureFromWorkspace(workspace: Workspace): Reconfigu
     kgSchemaPreset,
     relationEdges,
     pdfParserBackend,
+    visionExtractImages: workspace.vision_extract_images ?? true,
+    visionExtractCharts: workspace.vision_extract_charts ?? true,
+    visionExtractFigures: workspace.vision_extract_figures ?? true,
+    visionPageSystemPrompt: workspace.vision_page_system_prompt ?? '',
+    visionImageSystemPrompt: workspace.vision_image_system_prompt ?? '',
+    visionChartSystemPrompt: workspace.vision_chart_system_prompt ?? '',
+    visionFigureSystemPrompt: workspace.vision_figure_system_prompt ?? '',
   };
 
   const snapshot: WorkspaceConfigSnapshot = {

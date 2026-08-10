@@ -129,6 +129,13 @@ pub async fn create_workspace(
         ),
         default_reasoning_effort: request.default_reasoning_effort.clone(),
         llm_roles: request.llm_roles.clone(),
+        vision_extract_images: request.vision_extract_images,
+        vision_extract_charts: request.vision_extract_charts,
+        vision_extract_figures: request.vision_extract_figures,
+        vision_page_system_prompt: request.vision_page_system_prompt.clone(),
+        vision_image_system_prompt: request.vision_image_system_prompt.clone(),
+        vision_chart_system_prompt: request.vision_chart_system_prompt.clone(),
+        vision_figure_system_prompt: request.vision_figure_system_prompt.clone(),
     };
 
     // Store workspace via workspace service
@@ -342,6 +349,13 @@ pub async fn update_workspace(
         ),
         default_reasoning_effort: request.default_reasoning_effort,
         llm_roles: request.llm_roles,
+        vision_extract_images: request.vision_extract_images,
+        vision_extract_charts: request.vision_extract_charts,
+        vision_extract_figures: request.vision_extract_figures,
+        vision_page_system_prompt: request.vision_page_system_prompt,
+        vision_image_system_prompt: request.vision_image_system_prompt,
+        vision_chart_system_prompt: request.vision_chart_system_prompt,
+        vision_figure_system_prompt: request.vision_figure_system_prompt,
     };
 
     let workspace = state

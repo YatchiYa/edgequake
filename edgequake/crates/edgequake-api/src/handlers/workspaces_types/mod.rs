@@ -92,6 +92,13 @@ mod tests {
             relation_edges: None,
             default_reasoning_effort: None,
             llm_roles: None,
+            vision_extract_images: None,
+            vision_extract_charts: None,
+            vision_extract_figures: None,
+            vision_page_system_prompt: None,
+            vision_image_system_prompt: None,
+            vision_chart_system_prompt: None,
+            vision_figure_system_prompt: None,
         };
 
         let json = serde_json::to_string(&req).unwrap();
@@ -124,6 +131,13 @@ mod tests {
             relation_edges: None,
             default_reasoning_effort: None,
             llm_roles: None,
+            vision_extract_images: None,
+            vision_extract_charts: None,
+            vision_extract_figures: None,
+            vision_page_system_prompt: None,
+            vision_image_system_prompt: None,
+            vision_chart_system_prompt: None,
+            vision_figure_system_prompt: None,
         };
 
         let json = serde_json::to_string(&req).unwrap();
@@ -196,6 +210,13 @@ mod tests {
             updated_at: "2024-01-01T00:00:00Z".to_string(),
             default_reasoning_effort: None,
             llm_roles: None,
+            vision_extract_images: None,
+            vision_extract_charts: None,
+            vision_extract_figures: None,
+            vision_page_system_prompt: None,
+            vision_image_system_prompt: None,
+            vision_chart_system_prompt: None,
+            vision_figure_system_prompt: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();

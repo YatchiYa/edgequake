@@ -148,6 +148,14 @@ export interface Workspace {
    * @implements Mission 03: Configurable PDF parser backend
    */
   pdf_parser_backend?: PdfParserBackend;
+  /** SPEC-015V — Vision extract toggles (absent → server default ON). */
+  vision_extract_images?: boolean | null;
+  vision_extract_charts?: boolean | null;
+  vision_extract_figures?: boolean | null;
+  vision_page_system_prompt?: string | null;
+  vision_image_system_prompt?: string | null;
+  vision_chart_system_prompt?: string | null;
+  vision_figure_system_prompt?: string | null;
   /**
    * Custom entity types for the extraction pipeline.
    * If absent, the server uses the default types (PERSON, ORGANIZATION, etc.).

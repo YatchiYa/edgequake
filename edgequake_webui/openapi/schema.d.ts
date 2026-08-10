@@ -5315,6 +5315,8 @@ export interface components {
              *     German, Portuguese, Italian, Russian. Omit to inherit env/default.
              */
             extraction_language?: string | null;
+            /** @description Domain preset id for UX honesty (SPEC-114): general…finance / custom. */
+            kg_schema_preset?: string | null;
             /**
              * @description LLM model for knowledge graph generation, summarization, entity extraction.
              *     Format: "model_name" or "provider/model_name" (e.g., "gemma3:12b", "ollama/gemma3:12b").
@@ -5334,8 +5336,20 @@ export interface components {
             name: string;
             /** @description Default PDF parser backend for this workspace ("vision" or "edgeparse"). */
             pdf_parser_backend?: string | null;
+            /** @description Typed edge constraints (SPEC-114b). Empty/omit → unconstrained endpoints. */
+            relation_edges?: components["schemas"]["RelationEdgeDto"][] | null;
+            /** @description Relation type allow-list for extraction (SPEC-114). Empty/omit → free-form. */
+            relation_types?: string[] | null;
+            /** @description Strict relation type limit (SPEC-114). Default true when list non-empty. */
+            relation_types_strict?: boolean | null;
             /** @description URL-friendly slug (auto-generated if not provided). */
             slug?: string | null;
+            vision_chart_system_prompt?: string | null;
+            vision_extract_charts?: boolean | null;
+            vision_extract_figures?: boolean | null;
+            vision_extract_images?: boolean | null;
+            vision_figure_system_prompt?: string | null;
+            vision_image_system_prompt?: string | null;
             /**
              * @description Vision LLM model for PDF-to-Markdown extraction (e.g., "gpt-4o", "gemma3:12b").
              *     If not provided, inherits from tenant default_vision_llm_model, then server default.
@@ -5346,6 +5360,7 @@ export interface components {
              *     If not provided, auto-detected from vision_llm_model or inherited from tenant.
              */
             vision_llm_provider?: string | null;
+            vision_page_system_prompt?: string | null;
         };
         /**
          * @description Default models for a provider
@@ -11122,6 +11137,19 @@ export interface components {
             shared_documents: number;
         };
         /**
+         * @description Typed edge DTO (SPEC-114b) — mirrors `edgequake_core::type_list::RelationEdge`.
+         * @example {
+         *       "relation": {},
+         *       "source": {},
+         *       "target": {}
+         *     }
+         */
+        RelationEdgeDto: {
+            relation: string;
+            source: string;
+            target: string;
+        };
+        /**
          * @description Relationship changes summary.
          * @example {
          *       "fields_updated": [],
@@ -12900,14 +12928,25 @@ export interface components {
          *       "entity_types_strict": {},
          *       "extraction_language": {},
          *       "is_active": {},
+         *       "kg_schema_preset": {},
          *       "llm_model": {},
          *       "llm_provider": {},
          *       "llm_roles": {},
          *       "max_documents": {},
          *       "name": {},
          *       "pdf_parser_backend": {},
+         *       "relation_edges": [],
+         *       "relation_types": [],
+         *       "relation_types_strict": {},
+         *       "vision_chart_system_prompt": {},
+         *       "vision_extract_charts": {},
+         *       "vision_extract_figures": {},
+         *       "vision_extract_images": {},
+         *       "vision_figure_system_prompt": {},
+         *       "vision_image_system_prompt": {},
          *       "vision_llm_model": {},
-         *       "vision_llm_provider": {}
+         *       "vision_llm_provider": {},
+         *       "vision_page_system_prompt": {}
          *     }
          */
         UpdateWorkspaceApiRequest: {
@@ -12942,6 +12981,8 @@ export interface components {
             extraction_language?: string | null;
             /** @description Whether the workspace is active. */
             is_active?: boolean | null;
+            /** @description Domain preset id (SPEC-114). Empty / `"none"` clears. */
+            kg_schema_preset?: string | null;
             /** @description Update LLM model (takes effect on next ingestion). */
             llm_model?: string | null;
             /** @description Update LLM provider. */
@@ -12954,6 +12995,18 @@ export interface components {
             name?: string | null;
             /** @description Default PDF parser backend for this workspace ("vision" or "edgeparse"). */
             pdf_parser_backend?: string | null;
+            /** @description Typed edge constraints (SPEC-114b). Omit = leave unchanged; empty clears. */
+            relation_edges?: components["schemas"]["RelationEdgeDto"][] | null;
+            /** @description Relation type allow-list (SPEC-114). Omit = leave unchanged; empty clears. */
+            relation_types?: string[] | null;
+            /** @description Strict relation type limit (SPEC-114). */
+            relation_types_strict?: boolean | null;
+            vision_chart_system_prompt?: string | null;
+            vision_extract_charts?: boolean | null;
+            vision_extract_figures?: boolean | null;
+            vision_extract_images?: boolean | null;
+            vision_figure_system_prompt?: string | null;
+            vision_image_system_prompt?: string | null;
             /**
              * @description Vision LLM model for PDF page image extraction (e.g., "gpt-4o", "gemma3:latest").
              *     When set, this workspace will use this model for PDF → Markdown vision extraction.
@@ -12965,6 +13018,7 @@ export interface components {
              *     Pass empty string or "none" to clear the workspace override.
              */
             vision_llm_provider?: string | null;
+            vision_page_system_prompt?: string | null;
         };
         /**
          * @description Document upload request.
@@ -13189,6 +13243,8 @@ export interface components {
             id: string;
             /** @description Whether the workspace is active. */
             is_active: boolean;
+            /** @description Domain preset id (SPEC-114), if set. */
+            kg_schema_preset?: string | null;
             /** @description Fully qualified LLM model ID (provider/model format). */
             llm_full_id: string;
             /** @description LLM model for knowledge graph generation and summarization. */
@@ -13203,6 +13259,12 @@ export interface components {
             name: string;
             /** @description Default PDF parser backend for this workspace (None means server default). */
             pdf_parser_backend?: string | null;
+            /** @description Typed edge constraints (SPEC-114b). Absent/empty ⇒ unconstrained endpoints. */
+            relation_edges?: components["schemas"]["RelationEdgeDto"][] | null;
+            /** @description Relation type allow-list (SPEC-114). None/empty means free-form relations. */
+            relation_types?: string[] | null;
+            /** @description When true, unknown relations remap (default true when list present). */
+            relation_types_strict: boolean;
             /** @description URL-friendly slug. */
             slug: string;
             /**
@@ -13212,10 +13274,17 @@ export interface components {
             tenant_id: string;
             /** @description Last update timestamp. */
             updated_at: string;
+            vision_chart_system_prompt?: string | null;
+            vision_extract_charts?: boolean | null;
+            vision_extract_figures?: boolean | null;
+            vision_extract_images?: boolean | null;
+            vision_figure_system_prompt?: string | null;
+            vision_image_system_prompt?: string | null;
             /** @description Vision LLM model for PDF page image extraction (None if not configured). */
             vision_llm_model?: string | null;
             /** @description Vision LLM provider for PDF → Markdown extraction (None if not configured). */
             vision_llm_provider?: string | null;
+            vision_page_system_prompt?: string | null;
         };
         /**
          * @description Workspace statistics response.

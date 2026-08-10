@@ -119,11 +119,10 @@ impl ResolvedParseOptions {
             None
         };
 
-        let page_drawing_assets = assets_root.map(|root| PageDrawingAssetsConfig {
-            assets_root: root,
-            id_prefix: Some("parse".into()),
-            emit_analyze_tags: false,
-            figure_filter_provider: None,
+        let page_drawing_assets = assets_root.map(|root| {
+            let mut cfg = PageDrawingAssetsConfig::with_defaults(root, Some("parse".into()));
+            cfg.emit_analyze_tags = false;
+            cfg
         });
 
         PdfConversionConfig {

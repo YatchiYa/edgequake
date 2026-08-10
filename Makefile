@@ -143,6 +143,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         backend-dev backend-db backend-memory backend-bg backend-build backend-build-online backend-sqlx-prepare backend-test backend-run \
         frontend-dev frontend-bg frontend-build frontend-test frontend-lint \
         openapi-snapshot codegen-openapi codegen-openapi-refresh codegen-openapi-live \
+        codegen-vision-prompts \
         db-start postgres-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
@@ -1312,6 +1313,12 @@ codegen-openapi: ## Generate TypeScript types from committed OpenAPI snapshot (o
 
 codegen-openapi-refresh: openapi-snapshot codegen-openapi ## Refresh snapshot + regenerate schema.d.ts (offline)
 	@echo "$(GREEN)✓ OpenAPI codegen refresh complete$(RESET)"
+
+codegen-vision-prompts: ## SPEC-015V: regenerate FE Vision system-prompt mirror from Rust SSOT
+	@echo "$(BLUE)Regenerating Vision prompt mirror from Rust SSOT...$(RESET)"
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-api spec015v_write_vision_prompt_codegen \
+		--test spec015v_vision_prompt_codegen -- --ignored --nocapture
+	@echo "$(GREEN)✓ Prompts: $(FRONTEND_DIR)/src/lib/vision/default-system-prompts.ts$(RESET)"
 
 codegen-openapi-live: ## Fetch live OpenAPI from running backend + regenerate schema.d.ts
 	@echo "$(BLUE)Fetching OpenAPI from $(BACKEND_URL)/api-docs/openapi.json ...$(RESET)"

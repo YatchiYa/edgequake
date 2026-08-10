@@ -11,7 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ReasoningEffortSelect } from '@/components/settings/reasoning-effort-select';
+import {
+  shouldShowVisionExtractControls,
+  VisionSettingsPanel,
+  type VisionExtractDraft,
+} from '@/components/settings/vision-extract-controls';
 import { useLlmModels } from '@/hooks/use-providers';
 import { useTranslation } from 'react-i18next';
 import { MAX_UPLOAD_LABEL } from '@/lib/api/upload-limits';
@@ -48,6 +52,9 @@ export interface DocumentDropzoneProps {
   /** SPEC-109: optional vision reasoning effort for VLM convert. */
   visionReasoningEffort?: string;
   onVisionReasoningEffortChange?: (value: string | undefined) => void;
+  /** SPEC-015V */
+  visionExtract?: VisionExtractDraft;
+  onVisionExtractChange?: (value: VisionExtractDraft) => void;
   /** SPEC-113: vision model identity for thinking capability honesty. */
   visionProvider?: string | null;
   visionModel?: string | null;
@@ -152,6 +159,8 @@ export function DocumentDropzone({
   workspacePdfParserBackend,
   visionReasoningEffort,
   onVisionReasoningEffortChange,
+  visionExtract,
+  onVisionExtractChange,
   visionProvider,
   visionModel,
   quiet = false,
@@ -173,8 +182,16 @@ export function DocumentDropzone({
     [llmCatalog?.models, visionProvider, visionModel],
   );
   const compact = quiet || collapsed;
+  const workspaceIsVision =
+    !workspacePdfParserBackend || workspacePdfParserBackend === 'vision';
+  const showVisionPanel =
+    !compact &&
+    !collapsed &&
+    typeof onVisionExtractChange === 'function' &&
+    visionExtract &&
+    shouldShowVisionExtractControls(pdfParserBackend, workspaceIsVision);
   const showVisionEffort =
-    pdfParserBackend === 'vision' && typeof onVisionReasoningEffortChange === 'function';
+    showVisionPanel && typeof onVisionReasoningEffortChange === 'function';
 
   const rootProps = getRootProps({
     onClick: (e: React.MouseEvent) => {
@@ -271,69 +288,49 @@ export function DocumentDropzone({
       </div>
       <div
         className={cn(
-          'shrink-0 flex flex-col justify-center gap-1',
+          'shrink-0 flex items-center gap-2',
           (compact || collapsed) && 'opacity-80',
         )}
         data-testid="upload-parser-vision-combo"
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
       >
-        {showVisionEffort && !compact && !collapsed && (
-          <div className="grid grid-cols-2 gap-2 w-[22rem]">
-            <span className="text-[11px] font-medium text-muted-foreground truncate">
-              {t('documents.upload.pdfParserShort', 'Parser')}
-            </span>
-            <span className="text-[11px] font-medium text-muted-foreground truncate">
-              {t('documents.upload.visionReasoningEffort', 'Vision effort')}
-            </span>
-          </div>
-        )}
-        <div
-          className={cn(
-            'flex items-center gap-2',
-            showVisionEffort && 'w-[22rem]',
-          )}
-        >
-          <ParserSelect
-            pdfParserBackend={pdfParserBackend}
-            onPdfParserBackendChange={onPdfParserBackendChange}
-            workspacePdfParserBackend={workspacePdfParserBackend}
+        <ParserSelect
+          pdfParserBackend={pdfParserBackend}
+          onPdfParserBackendChange={onPdfParserBackendChange}
+          workspacePdfParserBackend={workspacePdfParserBackend}
+          compact={compact || collapsed}
+          hideSideLabel={false}
+          triggerClassName={
+            compact || collapsed
+              ? 'min-w-[10.5rem] w-auto max-w-[14rem] h-7 text-xs'
+              : 'min-w-[13.5rem] w-auto max-w-[18rem] h-9'
+          }
+        />
+        {showVisionPanel && visionExtract && onVisionExtractChange ? (
+          <VisionSettingsPanel
+            value={visionExtract}
+            onChange={onVisionExtractChange}
+            showInheritHint={pdfParserBackend === 'default'}
             compact={compact || collapsed}
-            hideSideLabel={showVisionEffort}
-            triggerClassName={
-              showVisionEffort
-                ? compact || collapsed
-                  ? 'w-full min-w-0 h-7 text-xs'
-                  : 'w-full min-w-0 h-9'
+            effort={
+              showVisionEffort && onVisionReasoningEffortChange
+                ? {
+                    value: visionReasoningEffort,
+                    onChange: onVisionReasoningEffortChange,
+                    supported: visionEffortSupported,
+                    thinkingSupported: visionThinkingSupported,
+                    effectiveWhenAuto: effectiveEffortWhenAuto(
+                      llmCatalog?.models,
+                      visionProvider,
+                      visionModel,
+                      'structured',
+                    ),
+                  }
                 : undefined
             }
           />
-          {showVisionEffort && (
-            <div className="min-w-0 flex-1" data-testid="pdf-vision-reasoning-effort">
-              <ReasoningEffortSelect
-                value={visionReasoningEffort}
-                onChange={onVisionReasoningEffortChange}
-                hideLabel
-                hideHint
-                compactTrigger
-                className="w-full min-w-0"
-                triggerClassName={
-                  compact || collapsed ? 'h-7 text-xs' : 'h-9'
-                }
-                label={t('documents.upload.visionReasoningEffort', 'Vision effort')}
-                supported={visionEffortSupported}
-                thinkingSupported={visionThinkingSupported}
-                effectiveWhenAuto={effectiveEffortWhenAuto(
-                  llmCatalog?.models,
-                  visionProvider,
-                  visionModel,
-                  'structured',
-                )}
-                data-testid="pdf-vision-reasoning-effort-select"
-              />
-            </div>
-          )}
-        </div>
+        ) : null}
       </div>
     </div>
   );

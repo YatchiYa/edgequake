@@ -103,6 +103,7 @@ pub async fn upload_pdf_document(
         pdf_parser_backend: None,
         process_options: None,
         vision_reasoning_effort: None,
+        vision_extract: Default::default(),
     };
 
     while let Some(field) = multipart
@@ -178,6 +179,48 @@ pub async fn upload_pdf_document(
                     }
                 }
             }
+
+            Some("vision_extract_images") => {
+                if let Ok(text) = field.text().await {
+                    if let Ok(v) = text.trim().parse::<bool>() {
+                        options.vision_extract.extract_images = Some(v);
+                    }
+                }
+            }
+            Some("vision_extract_charts") => {
+                if let Ok(text) = field.text().await {
+                    if let Ok(v) = text.trim().parse::<bool>() {
+                        options.vision_extract.extract_charts = Some(v);
+                    }
+                }
+            }
+            Some("vision_extract_figures") => {
+                if let Ok(text) = field.text().await {
+                    if let Ok(v) = text.trim().parse::<bool>() {
+                        options.vision_extract.extract_figures = Some(v);
+                    }
+                }
+            }
+            Some("vision_page_system_prompt") => {
+                if let Ok(text) = field.text().await {
+                    options.vision_extract.page_system_prompt = Some(text);
+                }
+            }
+            Some("vision_image_system_prompt") => {
+                if let Ok(text) = field.text().await {
+                    options.vision_extract.image_system_prompt = Some(text);
+                }
+            }
+            Some("vision_chart_system_prompt") => {
+                if let Ok(text) = field.text().await {
+                    options.vision_extract.chart_system_prompt = Some(text);
+                }
+            }
+            Some("vision_figure_system_prompt") => {
+                if let Ok(text) = field.text().await {
+                    options.vision_extract.figure_system_prompt = Some(text);
+                }
+            }
             _ => {}
         }
     }
@@ -221,6 +264,7 @@ pub async fn upload_pdf_batch_document(
         pdf_parser_backend: None,
         process_options: None,
         vision_reasoning_effort: None,
+        vision_extract: Default::default(),
     };
     // SPEC-083 D-51: stream each file to temp; cap batch count; process sequentially.
     let mut files: Vec<StreamedUploadFile> = Vec::new();
@@ -294,6 +338,48 @@ pub async fn upload_pdf_batch_document(
                     if !trimmed.is_empty() {
                         options.process_options = Some(trimmed.to_string());
                     }
+                }
+            }
+
+            Some("vision_extract_images") => {
+                if let Ok(text) = field.text().await {
+                    if let Ok(v) = text.trim().parse::<bool>() {
+                        options.vision_extract.extract_images = Some(v);
+                    }
+                }
+            }
+            Some("vision_extract_charts") => {
+                if let Ok(text) = field.text().await {
+                    if let Ok(v) = text.trim().parse::<bool>() {
+                        options.vision_extract.extract_charts = Some(v);
+                    }
+                }
+            }
+            Some("vision_extract_figures") => {
+                if let Ok(text) = field.text().await {
+                    if let Ok(v) = text.trim().parse::<bool>() {
+                        options.vision_extract.extract_figures = Some(v);
+                    }
+                }
+            }
+            Some("vision_page_system_prompt") => {
+                if let Ok(text) = field.text().await {
+                    options.vision_extract.page_system_prompt = Some(text);
+                }
+            }
+            Some("vision_image_system_prompt") => {
+                if let Ok(text) = field.text().await {
+                    options.vision_extract.image_system_prompt = Some(text);
+                }
+            }
+            Some("vision_chart_system_prompt") => {
+                if let Ok(text) = field.text().await {
+                    options.vision_extract.chart_system_prompt = Some(text);
+                }
+            }
+            Some("vision_figure_system_prompt") => {
+                if let Ok(text) = field.text().await {
+                    options.vision_extract.figure_system_prompt = Some(text);
                 }
             }
             _ => {}

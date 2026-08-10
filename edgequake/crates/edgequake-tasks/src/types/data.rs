@@ -153,6 +153,10 @@ pub struct PdfProcessingData {
     /// SPEC-109: optional vision/VLM reasoning effort override for this PDF task.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vision_reasoning_effort: Option<String>,
+
+    /// SPEC-015V: resolved vision extract policy for this task (defaults all ON).
+    #[serde(default)]
+    pub vision_extract: edgequake_pdf::VisionExtractConfig,
 }
 
 /// Text insert task payload

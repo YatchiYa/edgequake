@@ -23,6 +23,14 @@ export interface PerformFileUploadOptions {
   analyzeInlineImages?: boolean;
   /** SPEC-109: vision reasoning effort for VLM PDF convert. */
   visionReasoningEffort?: string;
+  /** SPEC-015V — only set when dirty vs workspace defaults. */
+  visionExtractImages?: boolean;
+  visionExtractCharts?: boolean;
+  visionExtractFigures?: boolean;
+  visionPageSystemPrompt?: string;
+  visionImageSystemPrompt?: string;
+  visionChartSystemPrompt?: string;
+  visionFigureSystemPrompt?: string;
   onUploadProgress?: (progress: MultipartUploadProgress) => void;
 }
 
@@ -68,6 +76,13 @@ export async function performFileUpload(
       pdf_parser_backend: options.pdfParserBackend,
       analyze_inline_images: options.analyzeInlineImages ?? true,
       vision_reasoning_effort: options.visionReasoningEffort,
+      vision_extract_images: options.visionExtractImages,
+      vision_extract_charts: options.visionExtractCharts,
+      vision_extract_figures: options.visionExtractFigures,
+      vision_page_system_prompt: options.visionPageSystemPrompt,
+      vision_image_system_prompt: options.visionImageSystemPrompt,
+      vision_chart_system_prompt: options.visionChartSystemPrompt,
+      vision_figure_system_prompt: options.visionFigureSystemPrompt,
       onUploadProgress: options.onUploadProgress,
       metadata: options.expectedBatchCount
         ? { expected_batch_count: options.expectedBatchCount }

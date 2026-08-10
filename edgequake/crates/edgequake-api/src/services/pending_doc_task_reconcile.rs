@@ -343,6 +343,7 @@ pub fn build_pdf_recovery_task_data_with_mode(
         },
         multimodal_process_options: None,
         vision_reasoning_effort,
+        vision_extract: Default::default(),
     }
 }
 

@@ -19,6 +19,32 @@ pub struct PromptContext {
     pub footnotes: String,
     pub leading: String,
     pub trailing: String,
+    /// SPEC-015V Pass B system prompt overrides (None → built-in SSOT).
+    pub image_system_prompt: Option<String>,
+    pub chart_system_prompt: Option<String>,
+    pub figure_system_prompt: Option<String>,
+    /// SPEC-015V extract gates for specialize routing.
+    pub extract_images: bool,
+    pub extract_charts: bool,
+    pub extract_figures: bool,
+}
+
+impl Default for PromptContext {
+    fn default() -> Self {
+        Self {
+            language: "English".into(),
+            captions: "n/a".into(),
+            footnotes: "n/a".into(),
+            leading: "n/a".into(),
+            trailing: "n/a".into(),
+            image_system_prompt: None,
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
+        }
+    }
 }
 
 impl PromptContext {
@@ -52,7 +78,23 @@ impl PromptContext {
             footnotes: Self::na_or(footnote),
             leading: Self::na_or(Some(surrounding.leading.as_str())),
             trailing: Self::na_or(Some(surrounding.trailing.as_str())),
+            image_system_prompt: None,
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
         }
+    }
+
+    /// Apply SPEC-015V resolved extract policy onto this prompt context.
+    pub fn apply_vision_extract(&mut self, extract: &edgequake_pdf::VisionExtractConfig) {
+        self.image_system_prompt = extract.image_system_prompt.clone();
+        self.chart_system_prompt = extract.chart_system_prompt.clone();
+        self.figure_system_prompt = extract.figure_system_prompt.clone();
+        self.extract_images = extract.extract_images;
+        self.extract_charts = extract.extract_charts;
+        self.extract_figures = extract.extract_figures;
     }
 
     pub fn additional_context_block(&self) -> String {

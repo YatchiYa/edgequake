@@ -8980,8 +8980,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_embeddings",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_embeddings"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -9620,8 +9620,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     },
     "/ws/progress/{track_id}": {
@@ -9652,8 +9652,8 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     }
   },
@@ -13332,6 +13332,13 @@
             ],
             "description": "Natural-language output language for entity/relationship values (SPEC-096).\nAllowlisted names: English, Chinese, Japanese, Korean, Spanish, French,\nGerman, Portuguese, Italian, Russian. Omit to inherit env/default."
           },
+          "kg_schema_preset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Domain preset id for UX honesty (SPEC-114): general…finance / custom."
+          },
           "llm_model": {
             "type": [
               "string",
@@ -13368,12 +13375,75 @@
             ],
             "description": "Default PDF parser backend for this workspace (\"vision\" or \"edgeparse\")."
           },
+          "relation_edges": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RelationEdgeDto"
+            },
+            "description": "Typed edge constraints (SPEC-114b). Empty/omit → unconstrained endpoints."
+          },
+          "relation_types": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Relation type allow-list for extraction (SPEC-114). Empty/omit → free-form."
+          },
+          "relation_types_strict": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Strict relation type limit (SPEC-114). Default true when list non-empty."
+          },
           "slug": {
             "type": [
               "string",
               "null"
             ],
             "description": "URL-friendly slug (auto-generated if not provided)."
+          },
+          "vision_chart_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_extract_charts": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_extract_figures": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_extract_images": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_figure_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_image_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "vision_llm_model": {
             "type": [
@@ -13388,6 +13458,12 @@
               "null"
             ],
             "description": "Vision LLM provider for PDF-to-Markdown extraction (\"openai\", \"ollama\", \"lmstudio\").\nIf not provided, auto-detected from vision_llm_model or inherited from tenant."
+          },
+          "vision_page_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "example": {
@@ -24345,6 +24421,31 @@
           "shared_documents": {}
         }
       },
+      "RelationEdgeDto": {
+        "type": "object",
+        "description": "Typed edge DTO (SPEC-114b) — mirrors `edgequake_core::type_list::RelationEdge`.",
+        "required": [
+          "source",
+          "relation",
+          "target"
+        ],
+        "properties": {
+          "relation": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "relation": {},
+          "source": {},
+          "target": {}
+        }
+      },
       "RelationshipChangesSummary": {
         "type": "object",
         "description": "Relationship changes summary.",
@@ -27814,6 +27915,13 @@
             ],
             "description": "Whether the workspace is active."
           },
+          "kg_schema_preset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Domain preset id (SPEC-114). Empty / `\"none\"` clears."
+          },
           "llm_model": {
             "type": [
               "string",
@@ -27853,6 +27961,69 @@
             ],
             "description": "Default PDF parser backend for this workspace (\"vision\" or \"edgeparse\")."
           },
+          "relation_edges": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RelationEdgeDto"
+            },
+            "description": "Typed edge constraints (SPEC-114b). Omit = leave unchanged; empty clears."
+          },
+          "relation_types": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Relation type allow-list (SPEC-114). Omit = leave unchanged; empty clears."
+          },
+          "relation_types_strict": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Strict relation type limit (SPEC-114)."
+          },
+          "vision_chart_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_extract_charts": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_extract_figures": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_extract_images": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_figure_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_image_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "vision_llm_model": {
             "type": [
               "string",
@@ -27866,6 +28037,12 @@
               "null"
             ],
             "description": "Vision LLM provider for PDF extraction (\"openai\", \"ollama\", \"lmstudio\").\nPass empty string or \"none\" to clear the workspace override."
+          },
+          "vision_page_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "example": {
@@ -27879,14 +28056,25 @@
           "entity_types_strict": {},
           "extraction_language": {},
           "is_active": {},
+          "kg_schema_preset": {},
           "llm_model": {},
           "llm_provider": {},
           "llm_roles": {},
           "max_documents": {},
           "name": {},
           "pdf_parser_backend": {},
+          "relation_edges": [],
+          "relation_types": [],
+          "relation_types_strict": {},
+          "vision_chart_system_prompt": {},
+          "vision_extract_charts": {},
+          "vision_extract_figures": {},
+          "vision_extract_images": {},
+          "vision_figure_system_prompt": {},
+          "vision_image_system_prompt": {},
           "vision_llm_model": {},
-          "vision_llm_provider": {}
+          "vision_llm_provider": {},
+          "vision_page_system_prompt": {}
         }
       },
       "UploadDocumentRequest": {
@@ -28283,6 +28471,7 @@
           "embedding_dimension",
           "embedding_full_id",
           "entity_types_strict",
+          "relation_types_strict",
           "created_at",
           "updated_at"
         ],
@@ -28365,6 +28554,13 @@
             "type": "boolean",
             "description": "Whether the workspace is active."
           },
+          "kg_schema_preset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Domain preset id (SPEC-114), if set."
+          },
           "llm_full_id": {
             "type": "string",
             "description": "Fully qualified LLM model ID (provider/model format)."
@@ -28399,6 +28595,30 @@
             ],
             "description": "Default PDF parser backend for this workspace (None means server default)."
           },
+          "relation_edges": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RelationEdgeDto"
+            },
+            "description": "Typed edge constraints (SPEC-114b). Absent/empty ⇒ unconstrained endpoints."
+          },
+          "relation_types": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Relation type allow-list (SPEC-114). None/empty means free-form relations."
+          },
+          "relation_types_strict": {
+            "type": "boolean",
+            "description": "When true, unknown relations remap (default true when list present)."
+          },
           "slug": {
             "type": "string",
             "description": "URL-friendly slug."
@@ -28411,6 +28631,42 @@
           "updated_at": {
             "type": "string",
             "description": "Last update timestamp."
+          },
+          "vision_chart_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_extract_charts": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_extract_figures": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_extract_images": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_figure_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_image_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "vision_llm_model": {
             "type": [
@@ -28425,6 +28681,12 @@
               "null"
             ],
             "description": "Vision LLM provider for PDF → Markdown extraction (None if not configured)."
+          },
+          "vision_page_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "example": {

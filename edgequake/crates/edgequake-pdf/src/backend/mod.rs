@@ -97,6 +97,8 @@ impl std::fmt::Debug for VisionConversionConfig {
 ///
 /// First principle: page PNGs serve the markdown viewer. Multimodal VLM
 /// analyze (`<drawing/>` tags) is optional via [`Self::emit_analyze_tags`].
+///
+/// SPEC-015V: `extract_*` gates writers; absent/default all true (compat).
 #[derive(Clone)]
 pub struct PageDrawingAssetsConfig {
     /// Root passed to multimodal `resolve_image_asset` as `base_dir`.
@@ -105,11 +107,52 @@ pub struct PageDrawingAssetsConfig {
     pub id_prefix: Option<String>,
     /// When true, also emit `<drawing/>` tags for multimodal analyze scan (`i`).
     pub emit_analyze_tags: bool,
+    /// SPEC-015V: write full-page viewer PNGs (`write_page_png_assets`).
+    pub extract_images: bool,
+    /// SPEC-015V: write chart ink crops (+ fig-as-chart promotion).
+    pub extract_charts: bool,
+    /// SPEC-015V: write embedded + caption figure crops.
+    pub extract_figures: bool,
+    /// SPEC-015V: Pass A page OCR system prompt override (None → SSOT).
+    pub page_system_prompt: Option<String>,
     /// When set, run the SPEC-049 two-pass VLM figure filter after all crops
     /// are written.  The provider should be the same vision LLM used for page
     /// OCR.  Results are written to `figure_filter_manifest.json` under
     /// `assets_root`.
     pub figure_filter_provider: Option<Arc<dyn edgequake_llm::LLMProvider>>,
+}
+
+impl PageDrawingAssetsConfig {
+    /// Defaults for extract flags (all ON) and no prompt override.
+    pub fn with_defaults(assets_root: PathBuf, id_prefix: Option<String>) -> Self {
+        Self {
+            assets_root,
+            id_prefix,
+            emit_analyze_tags: false,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
+            page_system_prompt: None,
+            figure_filter_provider: None,
+        }
+    }
+
+    /// Apply SPEC-015V resolved extract policy onto this config.
+    pub fn apply_vision_extract(&mut self, extract: &crate::VisionExtractConfig) {
+        self.extract_images = extract.extract_images;
+        self.extract_charts = extract.extract_charts;
+        self.extract_figures = extract.extract_figures;
+        self.page_system_prompt = extract.page_system_prompt.clone();
+    }
+
+    /// SPEC-015V writer plan (SSOT with [`crate::VisionAssetWritePlan`]).
+    pub fn write_plan(&self) -> crate::VisionAssetWritePlan {
+        crate::VisionAssetWritePlan::from_flags(
+            self.extract_images,
+            self.extract_charts,
+            self.extract_figures,
+        )
+    }
 }
 
 impl std::fmt::Debug for PageDrawingAssetsConfig {
@@ -118,6 +161,13 @@ impl std::fmt::Debug for PageDrawingAssetsConfig {
             .field("assets_root", &self.assets_root)
             .field("id_prefix", &self.id_prefix)
             .field("emit_analyze_tags", &self.emit_analyze_tags)
+            .field("extract_images", &self.extract_images)
+            .field("extract_charts", &self.extract_charts)
+            .field("extract_figures", &self.extract_figures)
+            .field(
+                "page_system_prompt",
+                &self.page_system_prompt.as_ref().map(|s| s.len()),
+            )
             .field(
                 "figure_filter_provider",
                 &self.figure_filter_provider.as_ref().map(|p| p.name()),

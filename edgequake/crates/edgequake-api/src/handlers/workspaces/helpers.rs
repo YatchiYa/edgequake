@@ -134,6 +134,39 @@ pub(super) fn workspace_to_response(workspace: &Workspace) -> WorkspaceResponse 
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
         llm_roles: workspace.metadata.get("llm_roles").cloned(),
+        // SPEC-015V: vision extract policy (absent bool → None; FE treats as default ON)
+        vision_extract_images: workspace
+            .metadata
+            .get(edgequake_pdf::META_EXTRACT_IMAGES)
+            .and_then(|v| v.as_bool()),
+        vision_extract_charts: workspace
+            .metadata
+            .get(edgequake_pdf::META_EXTRACT_CHARTS)
+            .and_then(|v| v.as_bool()),
+        vision_extract_figures: workspace
+            .metadata
+            .get(edgequake_pdf::META_EXTRACT_FIGURES)
+            .and_then(|v| v.as_bool()),
+        vision_page_system_prompt: workspace
+            .metadata
+            .get(edgequake_pdf::META_PAGE_SYSTEM_PROMPT)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        vision_image_system_prompt: workspace
+            .metadata
+            .get(edgequake_pdf::META_IMAGE_SYSTEM_PROMPT)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        vision_chart_system_prompt: workspace
+            .metadata
+            .get(edgequake_pdf::META_CHART_SYSTEM_PROMPT)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        vision_figure_system_prompt: workspace
+            .metadata
+            .get(edgequake_pdf::META_FIGURE_SYSTEM_PROMPT)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         created_at: workspace.created_at.to_rfc3339(),
         updated_at: workspace.updated_at.to_rfc3339(),
     }

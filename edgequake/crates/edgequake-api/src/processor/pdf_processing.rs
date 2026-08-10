@@ -560,6 +560,11 @@ impl DocumentTaskProcessor {
                 obj,
                 data.multimodal_process_options.as_deref(),
             );
+            // SPEC-015V: persist resolved extract snapshot for audit/reprocess.
+            obj.insert(
+                edgequake_pdf::DOC_META_VISION_EXTRACT.to_string(),
+                data.vision_extract.to_snapshot_value(),
+            );
         }
 
         crate::services::upsert_metadata_kv_with_index(
@@ -927,6 +932,7 @@ impl DocumentTaskProcessor {
                 Some(crate::services::page_drawing_assets_config_for_vision(
                     &early_doc_id,
                     data.multimodal_process_options.as_deref(),
+                    &data.vision_extract,
                 ))
             }
             _ => crate::services::page_drawing_assets_config(
@@ -1667,6 +1673,7 @@ mod tests {
             reprocess_mode: None,
             multimodal_process_options: None,
             vision_reasoning_effort: None,
+            vision_extract: Default::default(),
         };
         let mut task = Task::new(
             tenant_id,

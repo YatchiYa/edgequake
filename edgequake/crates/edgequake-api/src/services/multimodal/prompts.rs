@@ -8,7 +8,8 @@ use edgequake_llm::traits::{ChatMessage, ImageData};
 
 use super::prompt_context::{table_content_format_label, PromptContext};
 
-const IMAGE_ANALYSIS_SYSTEM_PROMPT: &str = "\
+/// Pass-B image classify system prompt (SPEC-015V SSOT; FE mirror via codegen).
+pub const IMAGE_ANALYSIS_SYSTEM_PROMPT: &str = "\
 You are an expert image analyzer for RAG indexing. Analyze the provided image and return a single JSON object.
 
 Use Additional Context (Captions, Footnotes, Leading/Trailing Text) only to disambiguate — the image itself takes priority.
@@ -18,7 +19,8 @@ Prefer type=Illustration/Flowchart for diagrams without quantitative axes.
 Return ONLY valid JSON with keys: \"name\" (snake_case), \"type\" (Photo|Illustration|Screenshot|Icon|Chart|Table|Infographic|Flowchart|Chat Log|Wireframe|Texture|Other), \"description\" (markdown, ≤500 words; include any visible numbers verbatim).
 Output values for name and description must be in the requested language.";
 
-const CHART_ANALYSIS_SYSTEM_PROMPT: &str = "\
+/// Pass-B chart specialize system prompt (SPEC-015V SSOT; FE mirror via codegen).
+pub const CHART_ANALYSIS_SYSTEM_PROMPT: &str = "\
 You are an expert chart/data-visualization analyzer for RAG indexing.
 
 Extract ONLY what is visually readable. Never invent, estimate, interpolate, or round from guesswork — omit unreadables.
@@ -45,7 +47,8 @@ REQUIREMENTS (fail closed):\n\
 - Do NOT invent values. Do NOT return prose-only description.\n\
 - English only for string fields.";
 
-const FIGURE_ANALYSIS_SYSTEM_PROMPT: &str = "\
+/// Pass-B figure specialize system prompt (SPEC-015V SSOT; FE mirror via codegen).
+pub const FIGURE_ANALYSIS_SYSTEM_PROMPT: &str = "\
 You are an expert technical-figure / diagram analyzer for RAG indexing.
 
 Focus on components, labels, relationships, flow, and any visible numbers — not decorative style.
@@ -126,7 +129,12 @@ pub fn image_analysis_messages(
     );
 
     vec![
-        ChatMessage::system(IMAGE_ANALYSIS_SYSTEM_PROMPT),
+        ChatMessage::system(
+            ctx.image_system_prompt
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(IMAGE_ANALYSIS_SYSTEM_PROMPT),
+        ),
         ChatMessage::user_with_images(user_text, vec![image_data]),
     ]
 }
@@ -175,7 +183,12 @@ fn chart_analysis_messages_with_density(
         ctx.additional_context_block()
     );
     vec![
-        ChatMessage::system(CHART_ANALYSIS_SYSTEM_PROMPT),
+        ChatMessage::system(
+            ctx.chart_system_prompt
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(CHART_ANALYSIS_SYSTEM_PROMPT),
+        ),
         ChatMessage::user_with_images(user_text, vec![image_data]),
     ]
 }
@@ -196,7 +209,12 @@ pub fn figure_analysis_messages(
         ctx.additional_context_block()
     );
     vec![
-        ChatMessage::system(FIGURE_ANALYSIS_SYSTEM_PROMPT),
+        ChatMessage::system(
+            ctx.figure_system_prompt
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(FIGURE_ANALYSIS_SYSTEM_PROMPT),
+        ),
         ChatMessage::user_with_images(user_text, vec![image_data]),
     ]
 }
@@ -277,6 +295,13 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "See figure below".into(),
             trailing: "n/a".into(),
+        
+            image_system_prompt: None,
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
         };
         let msgs = image_analysis_messages(&[0u8; 8], "image/png", &ctx);
         let user = msgs[1].content.as_str();
@@ -292,6 +317,13 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
+        
+            image_system_prompt: None,
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
         };
         let msgs = table_analysis_messages("<tr><td>A</td></tr>", "html", &ctx).unwrap();
         assert!(msgs[1].content.contains("HTML format"));
@@ -316,6 +348,13 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
+        
+            image_system_prompt: None,
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
         };
         assert!(context_suggests_chart(&ctx));
         assert!(should_specialize_as_chart("Illustration", &ctx));
@@ -329,6 +368,13 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
+        
+            image_system_prompt: None,
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
         };
         assert!(context_suggests_chart(&ctx));
         assert!(should_specialize_as_chart("Illustration", &ctx));
@@ -343,6 +389,13 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
+        
+            image_system_prompt: None,
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
         };
         let msgs = chart_analysis_messages(&[0u8; 4], "image/png", &ctx);
         let system = msgs[0].content.as_str();
@@ -363,6 +416,13 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
+        
+            image_system_prompt: None,
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
         };
         let base = chart_analysis_messages(&[0u8; 4], "image/png", &ctx);
         let dense = chart_analysis_messages_dense(&[0u8; 4], "image/png", &ctx);
@@ -379,9 +439,59 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
+        
+            image_system_prompt: None,
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
         };
         let msgs = figure_analysis_messages(&[0u8; 4], "image/png", &ctx);
         assert!(msgs[0].content.contains("components"));
         assert!(msgs[0].content.contains("visible_text"));
+    }
+
+    #[test]
+    fn g5_override_system_prompt_replaces_builtin() {
+        let custom = "SPEC015V CUSTOM IMAGE SYSTEM PROMPT";
+        let ctx = PromptContext {
+            language: "English".into(),
+            captions: "n/a".into(),
+            footnotes: "n/a".into(),
+            leading: "n/a".into(),
+            trailing: "n/a".into(),
+            image_system_prompt: Some(custom.into()),
+            chart_system_prompt: Some("CUSTOM CHART".into()),
+            figure_system_prompt: Some("CUSTOM FIGURE".into()),
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
+        };
+        let img = image_analysis_messages(&[0u8; 4], "image/png", &ctx);
+        assert_eq!(img[0].content, custom);
+        let chart = chart_analysis_messages(&[0u8; 4], "image/png", &ctx);
+        assert_eq!(chart[0].content, "CUSTOM CHART");
+        let fig = figure_analysis_messages(&[0u8; 4], "image/png", &ctx);
+        assert_eq!(fig[0].content, "CUSTOM FIGURE");
+    }
+
+    #[test]
+    fn g5_empty_override_falls_back_to_ssot() {
+        let ctx = PromptContext {
+            language: "English".into(),
+            captions: "n/a".into(),
+            footnotes: "n/a".into(),
+            leading: "n/a".into(),
+            trailing: "n/a".into(),
+            image_system_prompt: Some(String::new()),
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
+        };
+        let img = image_analysis_messages(&[0u8; 4], "image/png", &ctx);
+        assert_eq!(img[0].content, IMAGE_ANALYSIS_SYSTEM_PROMPT);
     }
 }

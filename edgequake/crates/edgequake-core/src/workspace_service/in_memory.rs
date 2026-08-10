@@ -388,6 +388,19 @@ impl WorkspaceService for InMemoryWorkspaceService {
         );
         // SPEC-096: extraction language
         apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
+        edgequake_pdf::VisionExtractConfig::apply_to_metadata(
+            &mut workspace.metadata,
+            &edgequake_pdf::VisionExtractOverlay {
+                extract_images: request.vision_extract_images,
+                extract_charts: request.vision_extract_charts,
+                extract_figures: request.vision_extract_figures,
+                page_system_prompt: request.vision_page_system_prompt,
+                image_system_prompt: request.vision_image_system_prompt,
+                chart_system_prompt: request.vision_chart_system_prompt,
+                figure_system_prompt: request.vision_figure_system_prompt,
+            },
+        )
+        .map_err(Error::validation)?;
         // SPEC-102: entity type colors
         crate::entity_type_colors::apply_entity_type_colors_metadata(
             &mut workspace.metadata,
@@ -599,6 +612,19 @@ impl WorkspaceService for InMemoryWorkspaceService {
             request.relation_edges,
         );
         apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
+        edgequake_pdf::VisionExtractConfig::apply_to_metadata(
+            &mut workspace.metadata,
+            &edgequake_pdf::VisionExtractOverlay {
+                extract_images: request.vision_extract_images,
+                extract_charts: request.vision_extract_charts,
+                extract_figures: request.vision_extract_figures,
+                page_system_prompt: request.vision_page_system_prompt,
+                image_system_prompt: request.vision_image_system_prompt,
+                chart_system_prompt: request.vision_chart_system_prompt,
+                figure_system_prompt: request.vision_figure_system_prompt,
+            },
+        )
+        .map_err(Error::validation)?;
         crate::entity_type_colors::apply_entity_type_colors_metadata(
             &mut workspace.metadata,
             request.entity_type_colors,
@@ -980,6 +1006,13 @@ mod tests {
             relation_edges: None,
             default_reasoning_effort: None,
             llm_roles: None,
+            vision_extract_images: None,
+            vision_extract_charts: None,
+            vision_extract_figures: None,
+            vision_page_system_prompt: None,
+            vision_image_system_prompt: None,
+            vision_chart_system_prompt: None,
+            vision_figure_system_prompt: None,
         };
 
         let workspace = service
@@ -1112,6 +1145,13 @@ mod tests {
             relation_edges: None,
             default_reasoning_effort: None,
                 llm_roles: None,
+                vision_extract_images: None,
+                vision_extract_charts: None,
+                vision_extract_figures: None,
+                vision_page_system_prompt: None,
+                vision_image_system_prompt: None,
+                vision_chart_system_prompt: None,
+                vision_figure_system_prompt: None,
             };
             service
                 .create_workspace(tenant.tenant_id, request)
@@ -1143,6 +1183,13 @@ mod tests {
             relation_edges: None,
             default_reasoning_effort: None,
             llm_roles: None,
+            vision_extract_images: None,
+            vision_extract_charts: None,
+            vision_extract_figures: None,
+            vision_page_system_prompt: None,
+            vision_image_system_prompt: None,
+            vision_chart_system_prompt: None,
+            vision_figure_system_prompt: None,
         };
         let result = service.create_workspace(tenant.tenant_id, request).await;
         assert!(result.is_err());

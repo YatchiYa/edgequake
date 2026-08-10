@@ -118,6 +118,15 @@ pub struct CreateWorkspaceRequest {
 
     /// SPEC-109: merge into workspace metadata `llm_roles` (role → config).
     pub llm_roles: Option<serde_json::Value>,
+
+    // === Vision extract (SPEC-015V) ===
+    pub vision_extract_images: Option<bool>,
+    pub vision_extract_charts: Option<bool>,
+    pub vision_extract_figures: Option<bool>,
+    pub vision_page_system_prompt: Option<String>,
+    pub vision_image_system_prompt: Option<String>,
+    pub vision_chart_system_prompt: Option<String>,
+    pub vision_figure_system_prompt: Option<String>,
 }
 
 impl CreateWorkspaceRequest {
@@ -350,6 +359,15 @@ pub struct UpdateWorkspaceRequest {
 
     /// SPEC-109: merge role effort overrides into metadata `llm_roles`.
     pub llm_roles: Option<serde_json::Value>,
+
+    // === Vision extract (SPEC-015V) ===
+    pub vision_extract_images: Option<bool>,
+    pub vision_extract_charts: Option<bool>,
+    pub vision_extract_figures: Option<bool>,
+    pub vision_page_system_prompt: Option<String>,
+    pub vision_image_system_prompt: Option<String>,
+    pub vision_chart_system_prompt: Option<String>,
+    pub vision_figure_system_prompt: Option<String>,
 }
 
 /// Statistics for a workspace.

@@ -67,6 +67,10 @@ import { useDocumentPreferences } from '@/hooks/use-document-preferences';
 import { useDocumentsInventory } from '@/hooks/use-documents-inventory';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useDocumentWebSocket } from '@/hooks/use-document-websocket';
+import {
+  DEFAULT_VISION_EXTRACT_DRAFT,
+  type VisionExtractDraft,
+} from '@/components/settings/vision-extract-controls';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { useLiveWorkControllers } from '@/hooks/use-live-work-controllers';
 import {
@@ -143,6 +147,9 @@ export function DocumentManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [pdfParserBackend, setPdfParserBackend] = useState<'default' | 'vision' | 'edgeparse'>('default');
   const [visionReasoningEffort, setVisionReasoningEffort] = useState<string | undefined>();
+  const [visionExtract, setVisionExtract] = useState<VisionExtractDraft>(
+    () => ({ ...DEFAULT_VISION_EXTRACT_DRAFT }),
+  );
   const [largePdfAdmissionOpen, setLargePdfAdmissionOpen] = useState(false);
   const [largePdfPreviews, setLargePdfPreviews] = useState<LargePdfAdmissionPreview[]>([]);
   const [pendingAdmissionFiles, setPendingAdmissionFiles] = useState<File[]>([]);
@@ -154,6 +161,19 @@ export function DocumentManager() {
     }),
     [pdfParserBackend, selectedWorkspace?.pdf_parser_backend],
   );
+
+  useEffect(() => {
+    if (!selectedWorkspace) return;
+    setVisionExtract({
+      extractImages: selectedWorkspace.vision_extract_images ?? true,
+      extractCharts: selectedWorkspace.vision_extract_charts ?? true,
+      extractFigures: selectedWorkspace.vision_extract_figures ?? true,
+      pageSystemPrompt: selectedWorkspace.vision_page_system_prompt ?? '',
+      imageSystemPrompt: selectedWorkspace.vision_image_system_prompt ?? '',
+      chartSystemPrompt: selectedWorkspace.vision_chart_system_prompt ?? '',
+      figureSystemPrompt: selectedWorkspace.vision_figure_system_prompt ?? '',
+    });
+  }, [selectedWorkspace?.id]);
 
   // VS-03: No pagination state — virtual scrolling handles windowing client-side.
   // We fetch all documents at once (up to VIRTUAL_PAGE_SIZE) and let the
@@ -197,6 +217,13 @@ export function DocumentManager() {
     pdfParserBackend:
       pdfParserBackend === 'default' ? undefined : pdfParserBackend,
     visionReasoningEffort,
+    visionExtractImages: visionExtract.extractImages,
+    visionExtractCharts: visionExtract.extractCharts,
+    visionExtractFigures: visionExtract.extractFigures,
+    visionPageSystemPrompt: visionExtract.pageSystemPrompt || undefined,
+    visionImageSystemPrompt: visionExtract.imageSystemPrompt || undefined,
+    visionChartSystemPrompt: visionExtract.chartSystemPrompt || undefined,
+    visionFigureSystemPrompt: visionExtract.figureSystemPrompt || undefined,
   });
 
   const handleFilesAccepted = useCallback(
@@ -730,6 +757,8 @@ export function DocumentManager() {
             workspacePdfParserBackend={selectedWorkspace?.pdf_parser_backend}
             visionReasoningEffort={visionReasoningEffort}
             onVisionReasoningEffortChange={setVisionReasoningEffort}
+            visionExtract={visionExtract}
+            onVisionExtractChange={setVisionExtract}
             visionProvider={
               selectedWorkspace?.vision_llm_provider ??
               selectedWorkspace?.llm_provider

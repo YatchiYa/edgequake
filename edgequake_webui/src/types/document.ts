@@ -390,6 +390,14 @@ export interface PdfUploadOptions {
   analyze_inline_images?: boolean;
   /** SPEC-109: vision/VLM reasoning effort for this upload. */
   vision_reasoning_effort?: string;
+  /** SPEC-015V — per-upload Vision extract overrides (omit to inherit workspace). */
+  vision_extract_images?: boolean;
+  vision_extract_charts?: boolean;
+  vision_extract_figures?: boolean;
+  vision_page_system_prompt?: string;
+  vision_image_system_prompt?: string;
+  vision_chart_system_prompt?: string;
+  vision_figure_system_prompt?: string;
 }
 
 export interface PdfMetadata {

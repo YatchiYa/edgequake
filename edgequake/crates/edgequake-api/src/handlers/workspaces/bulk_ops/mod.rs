@@ -108,6 +108,7 @@ pub(super) fn build_pdf_task(
         reprocess_mode: Some(edgequake_tasks::ReprocessMode::EntitiesOnly),
         multimodal_process_options: None,
         vision_reasoning_effort,
+        vision_extract: Default::default(),
     }
 }
 

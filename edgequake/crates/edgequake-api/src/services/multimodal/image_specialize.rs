@@ -396,7 +396,7 @@ pub async fn specialize_image_analysis(
     kv: Option<Arc<dyn KVStorage>>,
     classified: ImageAnalysisResult,
 ) -> ImageAnalysisResult {
-    if should_specialize_as_chart(&classified.image_type, ctx) {
+    if ctx.extract_charts && should_specialize_as_chart(&classified.image_type, ctx) {
         // MV-24: ink-crop full-page drawings so chart marks occupy more of the VLM frame.
         let specialize_bytes = edgequake_pdf::maybe_chart_specialize_bytes(bytes);
         let messages = chart_analysis_messages(&specialize_bytes, mime_type, ctx);
@@ -464,7 +464,7 @@ pub async fn specialize_image_analysis(
         }
     }
 
-    if is_figure_like_type(&classified.image_type) {
+    if ctx.extract_figures && is_figure_like_type(&classified.image_type) {
         let messages = figure_analysis_messages(bytes, mime_type, ctx);
         match chat_json_with_analysis_cache(
             llm,
@@ -510,6 +510,13 @@ mod tests {
             footnotes: "n/a".into(),
             leading: leading.into(),
             trailing: "n/a".into(),
+        
+            image_system_prompt: None,
+            chart_system_prompt: None,
+            figure_system_prompt: None,
+            extract_images: true,
+            extract_charts: true,
+            extract_figures: true,
         }
     }
 

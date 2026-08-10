@@ -168,6 +168,9 @@ pub(super) async fn create_pdf_processing_task(
         reprocess_mode: intent.reprocess_mode,
         multimodal_process_options: options.resolved_process_options(workspace),
         vision_reasoning_effort: options.vision_reasoning_effort.clone(),
+        vision_extract: options
+            .resolved_vision_extract(workspace)
+            .unwrap_or_default(),
     };
 
     let track_id = format!("pdf-{}", Uuid::new_v4());

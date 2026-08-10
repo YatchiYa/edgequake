@@ -61,6 +61,14 @@ export interface UseFileUploadOptions {
   pdfParserBackend?: "vision" | "edgeparse";
   /** SPEC-109: vision convert reasoning effort (multipart). */
   visionReasoningEffort?: string;
+  /** SPEC-015V */
+  visionExtractImages?: boolean;
+  visionExtractCharts?: boolean;
+  visionExtractFigures?: boolean;
+  visionPageSystemPrompt?: string;
+  visionImageSystemPrompt?: string;
+  visionChartSystemPrompt?: string;
+  visionFigureSystemPrompt?: string;
   /**
    * SPEC-099 LAW-099-6: when true, skip persistent "Uploading N…" loading toast
    * because the feedback zone owns the upload session narrative.
@@ -114,7 +122,18 @@ export function useFileUpload(
   options: UseFileUploadOptions = {},
 ): UseFileUploadReturn {
   const { tenantId, workspaceId, onUploadStart } = options;
-  const { pdfParserBackend, visionReasoningEffort, demoteLoadingToast = true } =
+  const {
+    pdfParserBackend,
+    visionReasoningEffort,
+    visionExtractImages,
+    visionExtractCharts,
+    visionExtractFigures,
+    visionPageSystemPrompt,
+    visionImageSystemPrompt,
+    visionChartSystemPrompt,
+    visionFigureSystemPrompt,
+    demoteLoadingToast = true,
+  } =
     options;
 
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
@@ -299,6 +318,13 @@ export function useFileUpload(
                   uploadOptions?.pdfParserBackend ?? pdfParserBackend,
                 visionReasoningEffort:
                   uploadOptions?.visionReasoningEffort ?? visionReasoningEffort,
+                visionExtractImages,
+                visionExtractCharts,
+                visionExtractFigures,
+                visionPageSystemPrompt,
+                visionImageSystemPrompt,
+                visionChartSystemPrompt,
+                visionFigureSystemPrompt,
                 onUploadProgress: applyUploadProgress,
               });
               response = {
@@ -588,6 +614,13 @@ export function useFileUpload(
       onUploadStart,
       pdfParserBackend,
       visionReasoningEffort,
+      visionExtractImages,
+      visionExtractCharts,
+      visionExtractFigures,
+      visionPageSystemPrompt,
+      visionImageSystemPrompt,
+      visionChartSystemPrompt,
+      visionFigureSystemPrompt,
       queryClient,
       router,
       t,

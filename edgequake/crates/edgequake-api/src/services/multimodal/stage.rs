@@ -100,17 +100,43 @@ pub async fn run_multimodal_analyze_stage_outcome_with_cancel(
     let extract =
         resolve_extract_provider_for_workspace(workspace_service, workspace_id, fallback_llm).await;
 
-    let outcome = super::analyzer::analyze_multimodal_images_with_substep(
-        &markdown,
-        process_options,
-        filename,
-        MultimodalProviders::split(vlm.as_ref(), extract.as_ref()),
-        asset_base_dir,
-        kv_storage.clone(),
-        converting_substep,
-        cancel_token,
-    )
-    .await;
+    let mut vision_extract = edgequake_pdf::VisionExtractConfig::default();
+    if let Some(svc) = workspace_service {
+        if let Ok(Some(ws)) = svc.get_workspace(workspace_id).await {
+            vision_extract = edgequake_pdf::VisionExtractConfig::from_metadata(&ws.metadata);
+        }
+    }
+    // Prefer ingest snapshot on document metadata when present (EC-015V-10).
+    if let (Some(doc_id), Some(kv)) = (document_id, kv_storage.as_ref()) {
+        if let Ok(Some(existing)) = kv
+            .get_by_id(&edgequake_storage::kv_keys::doc_metadata(doc_id))
+            .await
+        {
+            if let Some(snap) = existing.get(edgequake_pdf::DOC_META_VISION_EXTRACT) {
+                if let Ok(cfg) =
+                    serde_json::from_value::<edgequake_pdf::VisionExtractConfig>(snap.clone())
+                {
+                    vision_extract = cfg;
+                }
+            }
+        }
+    }
+
+    let outcome = super::analyzer::VISION_EXTRACT_CTX
+        .scope(vision_extract, async {
+            super::analyzer::analyze_multimodal_images_with_substep(
+                &markdown,
+                process_options,
+                filename,
+                MultimodalProviders::split(vlm.as_ref(), extract.as_ref()),
+                asset_base_dir,
+                kv_storage.clone(),
+                converting_substep,
+                cancel_token,
+            )
+            .await
+        })
+        .await;
 
     if let Some(err) = &outcome.hard_error {
         if super::should_abort_multimodal_hard_error(Some(err.as_str())) {

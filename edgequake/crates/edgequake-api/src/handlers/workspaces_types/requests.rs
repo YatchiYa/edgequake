@@ -258,6 +258,22 @@ pub struct CreateWorkspaceApiRequest {
     /// SPEC-109: initial `llm_roles` metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_roles: Option<serde_json::Value>,
+
+    // === Vision extract (SPEC-015V) ===
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_extract_images: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_extract_charts: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_extract_figures: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_page_system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_image_system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_chart_system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_figure_system_prompt: Option<String>,
 }
 
 /// Request to update a workspace.
@@ -357,4 +373,20 @@ pub struct UpdateWorkspaceApiRequest {
     /// SPEC-109: merge into workspace `llm_roles` metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_roles: Option<serde_json::Value>,
+
+    // === Vision extract (SPEC-015V) ===
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_extract_images: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_extract_charts: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_extract_figures: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_page_system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_image_system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_chart_system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_figure_system_prompt: Option<String>,
 }
