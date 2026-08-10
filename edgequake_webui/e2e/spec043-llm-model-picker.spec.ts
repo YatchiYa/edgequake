@@ -296,30 +296,16 @@ test.describe("SPEC-043 LLM model picker & attribution", () => {
       });
     });
 
-    test("provider status hub shows expandable provider rows", async ({
+    test("workspace page does not show provider status hub", async ({
       page,
       request,
     }) => {
       await gotoWorkspacePage(page, request);
-
-      const hub = page.getByTestId("provider-status-hub");
-      await assertVisibleWithSize(hub, 200, 80);
-
-      const rows = hub.locator("[data-testid^='provider-status-row-']");
-      await expect(rows.first()).toBeVisible({ timeout: 15_000 });
-      expect(await rows.count()).toBeGreaterThan(0);
-
-      await rows.first().click();
-      await page.waitForTimeout(300);
-
-      await page.screenshot({
-        path: spec043Screenshot("04-provider-status-hub-expanded.png"),
-        fullPage: true,
-      });
+      // Provider Status hub removed from workspace overview (lives on Settings if needed).
+      await expect(page.getByTestId("provider-status-hub")).toHaveCount(0);
     });
 
-    test("vertexai provider uses identity auth labels (not API key)", async ({
-      page,
+    test("vertexai provider uses identity auth (API health)", async ({
       request,
     }) => {
       const healthResponse = await request.get(`${API_V1_URL}/models/health`);
@@ -335,26 +321,6 @@ test.describe("SPEC-043 LLM model picker & attribution", () => {
       if (vertex!.health?.error) {
         expect(vertex!.health.error.toLowerCase()).not.toContain("api key");
       }
-
-      await gotoWorkspacePage(page, request);
-
-      const vertexRow = page.getByTestId("provider-status-row-vertexai");
-      await expect(vertexRow).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByTestId("provider-auth-badge-vertexai")).toHaveText(
-        "Identity (ADC)",
-      );
-
-      await vertexRow.click();
-      await expect(page.getByTestId("provider-config-requirements-vertexai")).toBeVisible();
-      const errorLine = page.getByTestId("provider-health-error-vertexai");
-      if (await errorLine.isVisible().catch(() => false)) {
-        const errText = (await errorLine.textContent()) ?? "";
-        expect(errText.toLowerCase()).not.toContain("api key");
-      }
-
-      await vertexRow.screenshot({
-        path: spec043Screenshot("11-vertexai-identity-auth.png"),
-      });
     });
   });
 

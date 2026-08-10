@@ -58,6 +58,11 @@ impl DocumentTaskProcessor {
                 .await;
             super::pipeline_checkpoint::clear_extraction_snapshot(&self.kv_storage, &document_id)
                 .await;
+            super::pipeline_checkpoint::clear_partial_chunk_checkpoint(
+                &self.kv_storage,
+                &document_id,
+            )
+            .await;
         }
 
         let checkpoint_result = super::pipeline_checkpoint::load_pipeline_checkpoint(
@@ -138,6 +143,33 @@ impl DocumentTaskProcessor {
                 // SPEC-091 WP1: cancel before embed-bearing pipeline work.
                 self.check_cancelled(&cancel_token, "pre-embed", &document_id)
                     .await?;
+                let resume_chunks = super::pipeline_checkpoint::load_partial_chunk_checkpoint(
+                    &self.kv_storage,
+                    &document_id,
+                    &data.workspace_id,
+                    &provider_lineage.extraction_provider,
+                    &processed_text,
+                )
+                .await;
+                let kv_for_chunks = Arc::clone(&self.kv_storage);
+                let doc_for_chunks = document_id.clone();
+                let ws_for_chunks = data.workspace_id.clone();
+                let provider_for_chunks = provider_lineage.extraction_provider.clone();
+                let text_for_chunks = processed_text.clone();
+                let on_chunk: Option<edgequake_pipeline::ChunkExtractedCallback> =
+                    Some(std::sync::Arc::new(move |chunk_id, result| {
+                        let kv = Arc::clone(&kv_for_chunks);
+                        let doc = doc_for_chunks.clone();
+                        let ws = ws_for_chunks.clone();
+                        let provider = provider_for_chunks.clone();
+                        let text = text_for_chunks.clone();
+                        tokio::spawn(async move {
+                            super::pipeline_checkpoint::save_partial_chunk_extraction(
+                                &kv, &doc, &ws, &provider, &text, &chunk_id, result,
+                            )
+                            .await;
+                        });
+                    }));
                 let fresh_result = match pipeline
                     .process_with_resilience_cancellable(
                         &document_id,
@@ -145,6 +177,8 @@ impl DocumentTaskProcessor {
                         Some(chunk_progress_callback.clone()),
                         Some(cancel_token.clone()),
                         Some(embed_progress_callback.clone()),
+                        resume_chunks,
+                        on_chunk,
                     )
                     .await
                 {
@@ -298,6 +332,12 @@ impl DocumentTaskProcessor {
                         error = %e,
                         "Failed to save pipeline checkpoint — processing continues without checkpoint"
                     );
+                } else {
+                    super::pipeline_checkpoint::clear_partial_chunk_checkpoint(
+                        &self.kv_storage,
+                        &document_id,
+                    )
+                    .await;
                 }
 
                 (fresh_result, false)

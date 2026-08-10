@@ -2,6 +2,8 @@
  * SPEC-101 — Pure wizard step navigation + validation (unit-tested).
  */
 
+import type { RelationEdge } from '@/constants/kg-schema-presets';
+
 export type WizardKind =
   | 'first-run'
   | 'create-tenant'
@@ -38,6 +40,14 @@ export interface WizardDraft {
   entityTypesStrict: boolean;
   /** SPEC-102 — entity type → hex color overrides. */
   entityTypeColors: Record<string, string>;
+  /** SPEC-114 — relation type allow-list (empty = free-form). */
+  relationTypes: string[];
+  /** SPEC-114 — strict relation types. */
+  relationTypesStrict: boolean;
+  /** SPEC-114 — optional domain preset id. */
+  kgSchemaPreset?: string;
+  /** SPEC-114b — typed edges (source — relation → target). */
+  relationEdges: RelationEdge[];
   /** SPEC-109 — seed default reasoning effort. */
   reasoningEffort?: string;
 }
@@ -58,6 +68,10 @@ export const EMPTY_WIZARD_DRAFT: WizardDraft = {
   pdfParserBackend: 'none',
   entityTypesStrict: true,
   entityTypeColors: {},
+  relationTypes: [],
+  relationTypesStrict: true,
+  kgSchemaPreset: undefined,
+  relationEdges: [],
   reasoningEffort: undefined,
 };
 

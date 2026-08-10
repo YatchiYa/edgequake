@@ -664,7 +664,11 @@ mod tests {
                 entity_types_strict: None,
                 extraction_language: None,
                 entity_type_colors: None,
-                default_reasoning_effort: None,
+            relation_types: None,
+            relation_types_strict: None,
+            kg_schema_preset: None,
+            relation_edges: None,
+            default_reasoning_effort: None,
                 llm_roles: None,
             };
 

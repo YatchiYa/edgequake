@@ -4,7 +4,9 @@
 //! common LLM malformation issues (unquoted keys, trailing commas,
 //! control characters, etc.).
 
-use super::super::entity_type_policy::{enforce_entity_type, EntityExtractionSchema};
+use super::super::entity_type_policy::{
+    enforce_entity_type, enforce_relationship_against_schema, EntityExtractionSchema,
+};
 use super::super::extract_caps::apply_default_extraction_caps;
 use super::super::normalizer::normalize_entity_name;
 use crate::error::{PipelineError, Result};
@@ -167,6 +169,12 @@ fn populate_from_value(
     }
 
     if let Some(relationships) = parsed.get("relationships").and_then(|v| v.as_array()) {
+        let name_to_type: std::collections::HashMap<String, String> = result
+            .entities
+            .iter()
+            .map(|e| (e.name.clone(), e.entity_type.clone()))
+            .collect();
+
         for rel_val in relationships {
             if let (Some(source), Some(target), Some(rel_type)) = (
                 rel_val.get("source").and_then(|v| v.as_str()),
@@ -211,9 +219,32 @@ fn populate_from_value(
                     })
                     .unwrap_or_default();
 
-                let mut rel =
-                    ExtractedRelationship::new(normalized_source, normalized_target, rel_type)
-                        .with_description(description);
+                let enforced_rel_type = if let Some(schema) = entity_schema {
+                    let (enforced, remapped) = enforce_relationship_against_schema(
+                        &normalized_source,
+                        &normalized_target,
+                        rel_type,
+                        &name_to_type,
+                        schema,
+                    );
+                    if remapped {
+                        tracing::debug!(
+                            raw_type = %rel_type,
+                            enforced = %enforced,
+                            "Remapped relationship type to workspace schema"
+                        );
+                    }
+                    enforced
+                } else {
+                    rel_type.to_uppercase()
+                };
+
+                let mut rel = ExtractedRelationship::new(
+                    normalized_source,
+                    normalized_target,
+                    enforced_rel_type,
+                )
+                .with_description(description);
 
                 if !keywords.is_empty() {
                     rel = rel.with_keywords(keywords);

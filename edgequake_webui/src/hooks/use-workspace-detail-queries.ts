@@ -4,7 +4,6 @@ import {
   getWorkspace,
   getWorkspaceStats,
 } from "@/lib/api/edgequake";
-import { fetchProvidersHealth } from "@/lib/api/models";
 import { useQuery } from "@tanstack/react-query";
 
 export interface UseWorkspaceDetailQueriesOptions {
@@ -42,23 +41,12 @@ export function useWorkspaceDetailQueries(
     placeholderData: (previous) => previous,
   });
 
-  const providerHealthQuery = useQuery({
-    queryKey: ["providersHealth"],
-    queryFn: fetchProvidersHealth,
-    enabled,
-    staleTime: 60_000,
-    retry: 1,
-    placeholderData: (previous) => previous,
-  });
-
   return {
     workspace: workspaceQuery.data,
     stats: statsQuery.data,
-    providerHealth: providerHealthQuery.data,
     // SPEC-100: full-page skeleton only on cold load (no cached workspace)
     isLoadingWorkspace: workspaceQuery.isLoading && !workspaceQuery.data,
     isLoadingStats: statsQuery.isLoading && !statsQuery.data,
-    isLoadingHealth: providerHealthQuery.isLoading && !providerHealthQuery.data,
     refetchWorkspace: workspaceQuery.refetch,
   };
 }

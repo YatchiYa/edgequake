@@ -270,8 +270,21 @@ impl LLMProvider for SafetyLimitedProviderWrapper {
         .await;
 
         match result {
-            Ok(inner_result) => inner_result,
+            Ok(inner_result) => {
+                match &inner_result {
+                    Ok(_) => crate::local_inference_gate::record_local_chat_success(self.name()),
+                    Err(e) => crate::local_inference_gate::record_local_chat_network_failure(
+                        self.name(),
+                        &e.to_string(),
+                    ),
+                }
+                inner_result
+            }
             Err(_elapsed) => {
+                crate::local_inference_gate::record_local_chat_network_failure(
+                    self.name(),
+                    "timeout",
+                );
                 if self.config.log_enforcement {
                     tracing::error!(
                         timeout_secs = self.config.timeout.as_secs(),
@@ -306,8 +319,21 @@ impl LLMProvider for SafetyLimitedProviderWrapper {
         .await;
 
         match result {
-            Ok(inner_result) => inner_result,
+            Ok(inner_result) => {
+                match &inner_result {
+                    Ok(_) => crate::local_inference_gate::record_local_chat_success(self.name()),
+                    Err(e) => crate::local_inference_gate::record_local_chat_network_failure(
+                        self.name(),
+                        &e.to_string(),
+                    ),
+                }
+                inner_result
+            }
             Err(_elapsed) => {
+                crate::local_inference_gate::record_local_chat_network_failure(
+                    self.name(),
+                    "timeout",
+                );
                 if self.config.log_enforcement {
                     tracing::error!(
                         timeout_secs = self.config.timeout.as_secs(),

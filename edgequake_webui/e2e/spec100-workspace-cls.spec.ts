@@ -1,5 +1,6 @@
 /**
- * SPEC-100 — Workspace CLS: rebuild banner slot always mounted when actions card paints.
+ * SPEC-100 — Workspace CLS: rebuild slot always mounted; collapses when idle
+ * (no permanent blank strip). Banner appears after user Apply (interaction).
  */
 import { expect, test } from "@playwright/test";
 import { GOTO_OPTS } from "./helpers/app-ready";
@@ -9,7 +10,7 @@ import {
 } from "./helpers/spec038-admission-mocks";
 
 test.describe("SPEC-100 workspace CLS", () => {
-  test("rebuild slot remains reserved after workspace loads", async ({ page }) => {
+  test("rebuild slot stays mounted and collapses when idle", async ({ page }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1280, height: 900 });
     await mockSpec038AdmissionRoutes(page);
@@ -21,8 +22,10 @@ test.describe("SPEC-100 workspace CLS", () => {
     await expect(slot.or(page.getByTestId("spec100-workspace-skeleton"))).toBeVisible({
       timeout: 20_000,
     });
-    await expect(slot).toBeVisible({ timeout: 45_000 });
+    await expect(slot).toBeAttached({ timeout: 45_000 });
+    await expect(slot).toHaveAttribute("data-reserved", "collapsed");
     const box = await slot.boundingBox();
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(80);
+    // Idle: no tall empty reservation (was ≥80px blank).
+    expect(box?.height ?? 0).toBeLessThan(24);
   });
 });

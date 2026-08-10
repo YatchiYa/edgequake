@@ -1,33 +1,19 @@
 use std::collections::HashMap;
 
+use crate::type_list::{
+    apply_kg_schema_preset_metadata as apply_kg_schema_preset_metadata_inner,
+    apply_relation_edges_metadata as apply_relation_edges_metadata_inner,
+    apply_type_list_metadata, apply_type_list_strict_metadata, normalize_type_list, RelationEdge,
+};
+
 // ============ Helper Functions ============
 
-/// Normalize entity types for storage.
-///
-/// WHY: Consistent normalization ensures that types like "machine" and "MACHINE"
-/// map to the same entity type, preventing duplicate type entries in the graph.
-///
-/// Rules (per SPEC-085):
-/// - Trim whitespace
-/// - Convert to UPPERCASE
-/// - Replace spaces/hyphens with underscores
-/// - Skip empty strings
-/// - Deduplicate (preserving first occurrence order)
-/// - Cap at 50 types to avoid prompt bloat
-///
 /// Apply `entity_types` list to workspace metadata (create/update).
 pub(crate) fn apply_entity_types_metadata(
     metadata: &mut HashMap<String, serde_json::Value>,
     entity_types: Option<Vec<String>>,
 ) {
-    if let Some(entity_types) = entity_types {
-        let normalized = normalize_entity_types(&entity_types);
-        if normalized.is_empty() {
-            metadata.remove("entity_types");
-        } else {
-            metadata.insert("entity_types".to_string(), serde_json::json!(normalized));
-        }
-    }
+    apply_type_list_metadata(metadata, "entity_types", entity_types);
 }
 
 /// Apply strict entity-type enforcement flag (default true when key absent).
@@ -35,13 +21,39 @@ pub(crate) fn apply_entity_types_strict_metadata(
     metadata: &mut HashMap<String, serde_json::Value>,
     strict: Option<bool>,
 ) {
-    if let Some(strict) = strict {
-        if strict {
-            metadata.remove("entity_types_strict");
-        } else {
-            metadata.insert("entity_types_strict".to_string(), serde_json::json!(false));
-        }
-    }
+    apply_type_list_strict_metadata(metadata, "entity_types_strict", strict);
+}
+
+/// Apply `relation_types` list (SPEC-114).
+pub(crate) fn apply_relation_types_metadata(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    relation_types: Option<Vec<String>>,
+) {
+    apply_type_list_metadata(metadata, "relation_types", relation_types);
+}
+
+/// Apply `relation_types_strict` sparse flag (SPEC-114).
+pub(crate) fn apply_relation_types_strict_metadata(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    strict: Option<bool>,
+) {
+    apply_type_list_strict_metadata(metadata, "relation_types_strict", strict);
+}
+
+/// Apply `kg_schema_preset` (SPEC-114).
+pub(crate) fn apply_kg_schema_preset_metadata(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    preset: Option<String>,
+) -> Result<(), String> {
+    apply_kg_schema_preset_metadata_inner(metadata, preset)
+}
+
+/// Apply `relation_edges` (SPEC-114b). Call after entity/relation type lists.
+pub(crate) fn apply_relation_edges_metadata(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    edges: Option<Vec<RelationEdge>>,
+) {
+    apply_relation_edges_metadata_inner(metadata, edges);
 }
 
 // SPEC-102 color helpers live in `crate::entity_type_colors` (shared with in-memory).
@@ -156,21 +168,8 @@ pub(crate) fn apply_llm_roles_metadata(
     }
 }
 
+/// Alias for [`normalize_type_list`] (SPEC-085 / SPEC-114 DRY).
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn normalize_entity_types(types: &[String]) -> Vec<String> {
-    const MAX_ENTITY_TYPES: usize = 50;
-
-    let mut seen = std::collections::HashSet::new();
-    types
-        .iter()
-        .filter_map(|t| {
-            let normalized = t.trim().to_uppercase().replace([' ', '-'], "_");
-            if normalized.is_empty() {
-                None
-            } else {
-                Some(normalized)
-            }
-        })
-        .filter(|t| seen.insert(t.clone()))
-        .take(MAX_ENTITY_TYPES)
-        .collect()
+    normalize_type_list(types)
 }

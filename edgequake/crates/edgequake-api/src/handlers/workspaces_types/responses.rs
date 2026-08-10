@@ -127,6 +127,21 @@ pub struct WorkspaceResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
 
+    /// Relation type allow-list (SPEC-114). None/empty means free-form relations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation_types: Option<Vec<String>>,
+
+    /// When true, unknown relations remap (default true when list present).
+    pub relation_types_strict: bool,
+
+    /// Domain preset id (SPEC-114), if set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kg_schema_preset: Option<String>,
+
+    /// Typed edge constraints (SPEC-114b). Absent/empty ⇒ unconstrained endpoints.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation_edges: Option<Vec<super::RelationEdgeDto>>,
+
     /// SPEC-109: workspace default reasoning effort.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_reasoning_effort: Option<String>,

@@ -30,6 +30,15 @@ pub const MISTRAL_LLM_MODEL: &str = "mistral-small-latest";
 pub const MISTRAL_EMBEDDING_MODEL: &str = "mistral-embed";
 pub const MISTRAL_EMBEDDING_DIMENSION: usize = 1024;
 
+/// Default Ollama chat model for SPEC-114 live extract (thinking MoE; use reasoning none).
+pub const OLLAMA_LLM_MODEL: &str = "qwen3.6:35b-a3b";
+/// Preferred Ollama embedding model (768 dimensions).
+pub const OLLAMA_EMBEDDING_MODEL: &str = "embeddinggemma:latest";
+/// Fallback embed if preferred tag is missing.
+pub const OLLAMA_EMBEDDING_MODEL_FALLBACK: &str = "nomic-embed-text";
+pub const OLLAMA_EMBEDDING_DIMENSION: usize = 768;
+pub const OLLAMA_DEFAULT_HOST: &str = "http://localhost:11434";
+
 static SPEC013_WORKER_POOL: OnceLock<Mutex<Option<WorkerPool>>> = OnceLock::new();
 
 /// Create-workspace JSON body with explicit Mistral LLM + embedding providers.
@@ -44,15 +53,140 @@ pub fn mistral_workspace_json_with_entity_types(
     name: impl AsRef<str>,
     entity_types: &[&str],
 ) -> Value {
+    mistral_kg_schema_workspace_json(
+        name,
+        entity_types,
+        &[],
+        &[],
+        true,
+        true,
+    )
+}
+
+/// Provider-agnostic workspace create payload with dual allowlists + typed edges.
+pub fn kg_schema_workspace_json(
+    name: impl AsRef<str>,
+    llm_provider: &str,
+    llm_model: &str,
+    embedding_provider: &str,
+    embedding_model: &str,
+    embedding_dimension: usize,
+    entity_types: &[&str],
+    relation_types: &[&str],
+    relation_edges: &[(&str, &str, &str)],
+    entity_types_strict: bool,
+    relation_types_strict: bool,
+) -> Value {
+    let edges: Vec<Value> = relation_edges
+        .iter()
+        .map(|(source, relation, target)| {
+            json!({
+                "source": source,
+                "relation": relation,
+                "target": target,
+            })
+        })
+        .collect();
     json!({
         "name": name.as_ref(),
-        "llm_provider": "mistral",
-        "llm_model": MISTRAL_LLM_MODEL,
-        "embedding_provider": "mistral",
-        "embedding_model": MISTRAL_EMBEDDING_MODEL,
-        "embedding_dimension": MISTRAL_EMBEDDING_DIMENSION,
+        "llm_provider": llm_provider,
+        "llm_model": llm_model,
+        "embedding_provider": embedding_provider,
+        "embedding_model": embedding_model,
+        "embedding_dimension": embedding_dimension,
         "entity_types": entity_types,
+        "entity_types_strict": entity_types_strict,
+        "relation_types": relation_types,
+        "relation_types_strict": relation_types_strict,
+        "relation_edges": edges,
+        "kg_schema_preset": if relation_types.is_empty() && relation_edges.is_empty() {
+            "blank"
+        } else {
+            "custom"
+        },
+        // Disable think-heavy extract for Qwen3.6 / reasoning models (SPEC-109 / SPEC-113).
+        "default_reasoning_effort": "none",
     })
+}
+
+/// Mistral workspace with optional dual allowlists + typed edges (SPEC-114).
+///
+/// Empty `relation_types` / `relation_edges` keep free-form relation extraction
+/// (EC-114-01 / EC-114-18). Prefer [`mistral_kg_schema_workspace_json`] for
+/// G-114-17 live extract gates that pin WORKS_AT / LOCATED_IN.
+pub fn mistral_kg_schema_workspace_json(
+    name: impl AsRef<str>,
+    entity_types: &[&str],
+    relation_types: &[&str],
+    relation_edges: &[(&str, &str, &str)],
+    entity_types_strict: bool,
+    relation_types_strict: bool,
+) -> Value {
+    kg_schema_workspace_json(
+        name,
+        "mistral",
+        MISTRAL_LLM_MODEL,
+        "mistral",
+        MISTRAL_EMBEDDING_MODEL,
+        MISTRAL_EMBEDDING_DIMENSION,
+        entity_types,
+        relation_types,
+        relation_edges,
+        entity_types_strict,
+        relation_types_strict,
+    )
+}
+
+/// Default SPEC-114 Mistral extract schema (PERSON/ORG/OTHER + WORKS_AT/LOCATED_IN).
+pub fn mistral_spec114_extract_workspace_json(name: impl AsRef<str>) -> Value {
+    mistral_kg_schema_workspace_json(
+        name,
+        &["PERSON", "ORGANIZATION", "OTHER"],
+        &["WORKS_AT", "LOCATED_IN"],
+        &[("PERSON", "WORKS_AT", "ORGANIZATION")],
+        true,
+        true,
+    )
+}
+
+/// Ollama workspace with dual allowlists (qwen3.6:35b-a3b + local embed).
+pub fn ollama_kg_schema_workspace_json(
+    name: impl AsRef<str>,
+    entity_types: &[&str],
+    relation_types: &[&str],
+    relation_edges: &[(&str, &str, &str)],
+    entity_types_strict: bool,
+    relation_types_strict: bool,
+) -> Value {
+    let embed = env::var("EDGEQUAKE_EMBEDDING_MODEL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| OLLAMA_EMBEDDING_MODEL.to_string());
+    kg_schema_workspace_json(
+        name,
+        "ollama",
+        OLLAMA_LLM_MODEL,
+        "ollama",
+        &embed,
+        OLLAMA_EMBEDDING_DIMENSION,
+        entity_types,
+        relation_types,
+        relation_edges,
+        entity_types_strict,
+        relation_types_strict,
+    )
+}
+
+/// Default SPEC-114 Ollama extract schema.
+pub fn ollama_spec114_extract_workspace_json(name: impl AsRef<str>) -> Value {
+    ollama_kg_schema_workspace_json(
+        name,
+        &["PERSON", "ORGANIZATION", "OTHER"],
+        &["WORKS_AT", "LOCATED_IN"],
+        &[("PERSON", "WORKS_AT", "ORGANIZATION")],
+        true,
+        true,
+    )
 }
 
 /// Assert workspace API response uses Mistral providers/models.
@@ -77,6 +211,86 @@ pub fn assert_workspace_uses_mistral(ws: &Value) {
         Some(MISTRAL_EMBEDDING_MODEL),
         "embedding_model: {ws:?}"
     );
+}
+
+/// Assert workspace API response uses Ollama providers (model pins may vary on embed fallback).
+pub fn assert_workspace_uses_ollama(ws: &Value) {
+    assert_eq!(
+        ws["llm_provider"].as_str(),
+        Some("ollama"),
+        "llm_provider: {ws:?}"
+    );
+    assert_eq!(
+        ws["embedding_provider"].as_str(),
+        Some("ollama"),
+        "embedding_provider: {ws:?}"
+    );
+    assert_eq!(
+        ws["llm_model"].as_str(),
+        Some(OLLAMA_LLM_MODEL),
+        "llm_model: {ws:?}"
+    );
+    let embed = ws["embedding_model"].as_str().unwrap_or("");
+    assert!(
+        embed.contains("embeddinggemma") || embed.contains("nomic-embed"),
+        "expected ollama embed model, got {embed}"
+    );
+}
+
+/// Resolve OLLAMA_HOST (default localhost:11434).
+pub fn ollama_host() -> String {
+    env::var("OLLAMA_HOST").unwrap_or_else(|_| OLLAMA_DEFAULT_HOST.to_string())
+}
+
+/// Probe `/api/tags` for a model name substring (e.g. `qwen3.6:35b-a3b`).
+pub async fn ollama_has_model(host: &str, model_substr: &str) -> bool {
+    let url = format!("{}/api/tags", host.trim_end_matches('/'));
+    let Ok(resp) = reqwest::Client::new()
+        .get(&url)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+    else {
+        return false;
+    };
+    if !resp.status().is_success() {
+        return false;
+    }
+    let Ok(body) = resp.json::<Value>().await else {
+        return false;
+    };
+    body.get("models")
+        .and_then(|m| m.as_array())
+        .map(|models| {
+            models.iter().any(|m| {
+                m.get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|n| n.contains(model_substr) || model_substr.contains(n))
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// Pick an available Ollama embedding model tag, or None.
+pub async fn resolve_ollama_embed_model(host: &str) -> Option<&'static str> {
+    if ollama_has_model(host, "embeddinggemma").await {
+        return Some(OLLAMA_EMBEDDING_MODEL);
+    }
+    if ollama_has_model(host, "nomic-embed-text").await {
+        return Some(OLLAMA_EMBEDDING_MODEL_FALLBACK);
+    }
+    None
+}
+
+/// True when DATABASE_URL + Ollama host has chat + embed models for SPEC-114 live.
+pub async fn ollama_live_extract_available() -> bool {
+    if database_url().is_none() {
+        return false;
+    }
+    let host = ollama_host();
+    ollama_has_model(&host, OLLAMA_LLM_MODEL).await
+        && resolve_ollama_embed_model(&host).await.is_some()
 }
 
 /// Resolve PostgreSQL connection URL from environment.
@@ -156,9 +370,35 @@ pub async fn start_worker_pool(state: &mut AppState) {
     .with_app_state(state.clone())
     .with_progress_broadcaster(state.tasks.progress_broadcaster.clone());
 
+    // SPEC-091 / SPEC-021: fleet FK spine requires PostgresEntitySink under typed vectors.
+    #[cfg(feature = "postgres")]
+    if let Some(ref pool) = state.pg_pool {
+        let entity_sink =
+            edgequake_api::postgres_entity_sink::PostgresEntitySink::create_for_runtime(Arc::new(
+                pool.clone(),
+            ))
+            .await;
+        processor = processor.with_relational_sink(entity_sink);
+        let lineage_sink =
+            edgequake_api::postgres_lineage_sink::PostgresLineageSink::create_if_migration_applied(
+                Arc::new(pool.clone()),
+            )
+            .await;
+        processor = processor.with_lineage_sink(lineage_sink);
+    }
+
     #[cfg(feature = "postgres")]
     if let Some(ref pdf_storage) = state.storage.pdf_storage {
         processor = processor.with_pdf_storage(Arc::clone(pdf_storage));
+    }
+    #[cfg(feature = "postgres")]
+    if let Some(ref mm_asset_storage) = state.storage.mm_asset_storage {
+        processor = processor.with_mm_asset_storage(Arc::clone(mm_asset_storage));
+    }
+    // SPEC-091: typed vector persist needs pg_pool on the processor (same as main.rs).
+    #[cfg(feature = "postgres")]
+    if let (Some(pool), Some(caps)) = (state.pg_pool.clone(), state.postgres_capabilities.clone()) {
+        processor = processor.with_postgres_id_allocation(pool, caps);
     }
 
     let processor = Arc::new(processor);
@@ -285,6 +525,8 @@ pub async fn create_postgres_mistral_app() -> axum::Router {
     env::set_var("EDGEQUAKE_EMBEDDING_PROVIDER", "mistral");
     env::set_var("MISTRAL_EMBEDDING_MODEL", "mistral-embed");
     env::set_var("EDGEQUAKE_EMBEDDING_BATCH_SIZE", "16");
+    env::set_var("EDGEQUAKE_EXTRACT_REASONING_EFFORT", "none");
+    env::set_var("EDGEQUAKE_REASONING_EFFORT", "none");
 
     let url = require_database_url();
     let state = AppState::new_postgres(url, "")
@@ -305,11 +547,59 @@ pub async fn create_postgres_mistral_app_or_skip() -> Option<axum::Router> {
     env::set_var("EDGEQUAKE_EMBEDDING_PROVIDER", "mistral");
     env::set_var("MISTRAL_EMBEDDING_MODEL", "mistral-embed");
     env::set_var("EDGEQUAKE_EMBEDDING_BATCH_SIZE", "16");
+    env::set_var("EDGEQUAKE_EXTRACT_REASONING_EFFORT", "none");
+    env::set_var("EDGEQUAKE_REASONING_EFFORT", "none");
 
     let url = try_database_url()?;
     let state = AppState::new_postgres(url, "")
         .await
         .map_err(|e| eprintln!("SKIP: PostgreSQL Mistral AppState failed: {e}"))
+        .ok()?;
+    Some(build_postgres_router(state).await)
+}
+
+/// Build PostgreSQL app with Ollama (`qwen3.6:35b-a3b`) for SPEC-114 live extract.
+///
+/// Returns `None` when DATABASE_URL missing, Ollama unreachable, or required
+/// models are not pulled.
+pub async fn create_postgres_ollama_app_or_skip() -> Option<axum::Router> {
+    let host = ollama_host();
+    if !ollama_has_model(&host, OLLAMA_LLM_MODEL).await {
+        eprintln!(
+            "SKIP: Ollama model `{OLLAMA_LLM_MODEL}` not found at {host} — run `ollama pull {OLLAMA_LLM_MODEL}`"
+        );
+        return None;
+    }
+    let embed_model = match resolve_ollama_embed_model(&host).await {
+        Some(m) => m,
+        None => {
+            eprintln!(
+                "SKIP: no Ollama embed model ({OLLAMA_EMBEDDING_MODEL} or {OLLAMA_EMBEDDING_MODEL_FALLBACK}) at {host}"
+            );
+            return None;
+        }
+    };
+
+    super::clear_provider_detection_env();
+    configure_postgres_e2e_auth_env();
+    env::set_var("OLLAMA_HOST", &host);
+    env::set_var("EDGEQUAKE_LLM_PROVIDER", "ollama");
+    env::set_var("EDGEQUAKE_EMBEDDING_PROVIDER", "ollama");
+    env::set_var("OLLAMA_MODEL", OLLAMA_LLM_MODEL);
+    env::set_var("EDGEQUAKE_LLM_MODEL", OLLAMA_LLM_MODEL);
+    env::set_var("OLLAMA_EMBEDDING_MODEL", embed_model);
+    env::set_var("EDGEQUAKE_EMBEDDING_MODEL", embed_model);
+    env::set_var(
+        "EDGEQUAKE_EMBEDDING_DIMENSION",
+        OLLAMA_EMBEDDING_DIMENSION.to_string(),
+    );
+    env::set_var("EDGEQUAKE_EXTRACT_REASONING_EFFORT", "none");
+    env::set_var("EDGEQUAKE_REASONING_EFFORT", "none");
+
+    let url = try_database_url()?;
+    let state = AppState::new_postgres(url, "")
+        .await
+        .map_err(|e| eprintln!("SKIP: PostgreSQL Ollama AppState failed: {e}"))
         .ok()?;
     Some(build_postgres_router(state).await)
 }

@@ -378,6 +378,7 @@ use crate::handlers;
         handlers::TenantListResponse,
         handlers::CreateWorkspaceApiRequest,
         handlers::UpdateWorkspaceApiRequest,
+        handlers::RelationEdgeDto,
         handlers::WorkspaceResponse,
         handlers::WorkspaceListResponse,
         handlers::PaginationParams,

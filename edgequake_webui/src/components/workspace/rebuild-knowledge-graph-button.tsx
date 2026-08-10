@@ -232,20 +232,20 @@ export function RebuildKnowledgeGraphButton({
   if (variant === 'card') {
     return (
       <>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Network className="h-5 w-5" />
+        <Card className="h-full gap-2 py-3 shadow-none">
+          <CardHeader className="px-3 pb-0 gap-1">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Network className="h-3.5 w-3.5" />
               {t('workspace.rebuild.graphTitle', 'Rebuild Knowledge Graph')}
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs leading-snug">
               {t(
                 'workspace.rebuild.graphDescription',
                 'Clear and rebuild the knowledge graph when changing LLM models or fixing corrupted data. This will delete all entities and relationships.'
               )}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="mt-auto flex flex-1 flex-col justify-end px-3 pt-0">
             <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
               <AlertDialogTrigger asChild>
                 <Button

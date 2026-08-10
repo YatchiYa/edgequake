@@ -13,7 +13,8 @@ use crate::{
 use super::helpers::{
     apply_default_reasoning_effort_metadata, apply_entity_types_metadata,
     apply_entity_types_strict_metadata, apply_extraction_language_metadata,
-    apply_llm_roles_metadata,
+    apply_kg_schema_preset_metadata, apply_llm_roles_metadata, apply_relation_edges_metadata,
+    apply_relation_types_metadata, apply_relation_types_strict_metadata,
 };
 #[cfg(feature = "postgres")]
 use super::rows::WorkspaceRow;
@@ -177,6 +178,16 @@ impl WorkspaceServiceImpl {
         // Normalize: uppercase, underscored, deduplicated, max 50 types
         apply_entity_types_metadata(&mut workspace.metadata, request.entity_types);
         apply_entity_types_strict_metadata(&mut workspace.metadata, request.entity_types_strict);
+        // SPEC-114: relation types + schema preset
+        apply_relation_types_metadata(&mut workspace.metadata, request.relation_types);
+        apply_relation_types_strict_metadata(
+            &mut workspace.metadata,
+            request.relation_types_strict,
+        );
+        apply_kg_schema_preset_metadata(&mut workspace.metadata, request.kg_schema_preset)
+            .map_err(Error::validation)?;
+        // SPEC-114b: typed edges (after type lists so allow-lists are current)
+        apply_relation_edges_metadata(&mut workspace.metadata, request.relation_edges);
         // SPEC-096: Workspace extraction language (future ingestions only)
         apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
             .map_err(Error::validation)?;
@@ -438,6 +449,14 @@ impl WorkspaceServiceImpl {
         }
         apply_entity_types_metadata(&mut workspace.metadata, request.entity_types);
         apply_entity_types_strict_metadata(&mut workspace.metadata, request.entity_types_strict);
+        apply_relation_types_metadata(&mut workspace.metadata, request.relation_types);
+        apply_relation_types_strict_metadata(
+            &mut workspace.metadata,
+            request.relation_types_strict,
+        );
+        apply_kg_schema_preset_metadata(&mut workspace.metadata, request.kg_schema_preset)
+            .map_err(Error::validation)?;
+        apply_relation_edges_metadata(&mut workspace.metadata, request.relation_edges);
         apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
             .map_err(Error::validation)?;
         crate::entity_type_colors::apply_entity_type_colors_metadata(

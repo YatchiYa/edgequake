@@ -120,6 +120,13 @@ pub async fn create_workspace(
         extraction_language: request.extraction_language.clone(),
         // SPEC-102: entity type colors for graph visualization
         entity_type_colors: request.entity_type_colors.clone(),
+        // SPEC-114 / 114b: relation types + schema preset + typed edges
+        relation_types: request.relation_types.clone(),
+        relation_types_strict: request.relation_types_strict,
+        kg_schema_preset: request.kg_schema_preset.clone(),
+        relation_edges: crate::handlers::workspaces_types::relation_edges_to_core(
+            request.relation_edges.clone(),
+        ),
         default_reasoning_effort: request.default_reasoning_effort.clone(),
         llm_roles: request.llm_roles.clone(),
     };
@@ -327,6 +334,12 @@ pub async fn update_workspace(
         entity_types_strict: request.entity_types_strict,
         extraction_language: request.extraction_language,
         entity_type_colors: request.entity_type_colors,
+        relation_types: request.relation_types,
+        relation_types_strict: request.relation_types_strict,
+        kg_schema_preset: request.kg_schema_preset,
+        relation_edges: crate::handlers::workspaces_types::relation_edges_to_core(
+            request.relation_edges,
+        ),
         default_reasoning_effort: request.default_reasoning_effort,
         llm_roles: request.llm_roles,
     };

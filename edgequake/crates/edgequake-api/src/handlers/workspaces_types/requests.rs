@@ -3,6 +3,41 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+/// Typed edge DTO (SPEC-114b) — mirrors `edgequake_core::type_list::RelationEdge`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+pub struct RelationEdgeDto {
+    pub source: String,
+    pub relation: String,
+    pub target: String,
+}
+
+impl From<RelationEdgeDto> for edgequake_core::type_list::RelationEdge {
+    fn from(value: RelationEdgeDto) -> Self {
+        Self {
+            source: value.source,
+            relation: value.relation,
+            target: value.target,
+        }
+    }
+}
+
+impl From<edgequake_core::type_list::RelationEdge> for RelationEdgeDto {
+    fn from(value: edgequake_core::type_list::RelationEdge) -> Self {
+        Self {
+            source: value.source,
+            relation: value.relation,
+            target: value.target,
+        }
+    }
+}
+
+/// Convert optional API edge list to core type.
+pub fn relation_edges_to_core(
+    edges: Option<Vec<RelationEdgeDto>>,
+) -> Option<Vec<edgequake_core::type_list::RelationEdge>> {
+    edges.map(|v| v.into_iter().map(Into::into).collect())
+}
+
 // ── Tenant Requests ───────────────────────────────────────────────────────
 
 /// Request to create a new tenant.
@@ -200,6 +235,22 @@ pub struct CreateWorkspaceApiRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
 
+    /// Relation type allow-list for extraction (SPEC-114). Empty/omit → free-form.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation_types: Option<Vec<String>>,
+
+    /// Strict relation type limit (SPEC-114). Default true when list non-empty.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation_types_strict: Option<bool>,
+
+    /// Domain preset id for UX honesty (SPEC-114): general…finance / custom.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kg_schema_preset: Option<String>,
+
+    /// Typed edge constraints (SPEC-114b). Empty/omit → unconstrained endpoints.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation_edges: Option<Vec<RelationEdgeDto>>,
+
     /// SPEC-109: seed workspace `default_reasoning_effort` metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_reasoning_effort: Option<String>,
@@ -282,6 +333,22 @@ pub struct UpdateWorkspaceApiRequest {
     /// empty object clears the workspace override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
+
+    /// Relation type allow-list (SPEC-114). Omit = leave unchanged; empty clears.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation_types: Option<Vec<String>>,
+
+    /// Strict relation type limit (SPEC-114).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation_types_strict: Option<bool>,
+
+    /// Domain preset id (SPEC-114). Empty / `"none"` clears.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kg_schema_preset: Option<String>,
+
+    /// Typed edge constraints (SPEC-114b). Omit = leave unchanged; empty clears.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation_edges: Option<Vec<RelationEdgeDto>>,
 
     /// SPEC-109: set/clear workspace default reasoning effort.
     #[serde(skip_serializing_if = "Option::is_none")]

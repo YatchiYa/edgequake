@@ -38,6 +38,10 @@ pub struct IngestionPipelineOptions {
     ///
     /// Resolved by callers via `resolve_extraction_language` (workspace → env → English).
     pub extraction_language: String,
+    /// Desired extract-role reasoning effort (SPEC-109 / SPEC-113).
+    ///
+    /// When `None`, extractors apply provider-aware flooring (`none` for Ollama).
+    pub reasoning_effort: Option<String>,
 }
 
 impl IngestionPipelineOptions {
@@ -52,6 +56,7 @@ impl IngestionPipelineOptions {
             llm_provider: None,
             allow_local_gleaning: false,
             extraction_language: crate::prompts::DEFAULT_EXTRACTION_LANGUAGE.to_string(),
+            reasoning_effort: None,
         }
     }
 
@@ -64,6 +69,14 @@ impl IngestionPipelineOptions {
     /// Bind the extract-role provider so pipeline knobs can be provider-aware.
     pub fn with_llm_provider(mut self, provider: impl Into<String>) -> Self {
         self.llm_provider = Some(provider.into());
+        self
+    }
+
+    /// Set extract-role reasoning effort (e.g. `"none"` for Ollama think-off).
+    pub fn with_reasoning_effort(mut self, effort: Option<String>) -> Self {
+        self.reasoning_effort = effort
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         self
     }
 
@@ -184,6 +197,7 @@ pub fn build_ingestion_pipeline(
         extraction_language = %options.extraction_language,
         llm_provider = provider,
         is_local_extraction = crate::pipeline::is_local_extraction_provider(provider),
+        reasoning_effort = options.reasoning_effort.as_deref().unwrap_or("(floor)"),
         chunk_timeout_secs = pipeline_config.chunk_extraction_timeout_secs,
         max_concurrent_extractions = pipeline_config.max_concurrent_extractions,
         ollama_context_length = %std::env::var("OLLAMA_CONTEXT_LENGTH").unwrap_or_else(|_| "(unset)".into()),
@@ -191,10 +205,12 @@ pub fn build_ingestion_pipeline(
     );
 
     let language = options.extraction_language.clone();
+    let effort = options.reasoning_effort.clone();
     let base_extractor: Arc<dyn EntityExtractor> = Arc::new(
         LLMExtractor::new(llm.clone())
             .with_entity_schema(entity_schema.clone())
-            .with_language(language.clone()),
+            .with_language(language.clone())
+            .with_reasoning_effort(effort.clone()),
     );
 
     let extractor: Arc<dyn EntityExtractor> = if enable_gleaning && max_gleaning > 0 {
@@ -202,6 +218,7 @@ pub fn build_ingestion_pipeline(
             GleaningExtractor::new(llm, base_extractor)
                 .with_entity_schema(entity_schema)
                 .with_language(language)
+                .with_reasoning_effort(effort)
                 .with_config(GleaningConfig {
                     max_gleaning,
                     always_glean: false,

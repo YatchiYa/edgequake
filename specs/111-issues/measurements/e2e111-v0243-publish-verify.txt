@@ -49,33 +49,7 @@ Full CHANGELOG: https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/C
 {"conclusion":"success","createdAt":"2026-08-07T15:29:25Z","displayTitle":"release: bump to v0.24.3","status":"completed","updatedAt":"2026-08-07T16:02:38Z","url":"https://github.com/raphaelmansuy/edgequake/actions/runs/31192856924"}
 === imagetools ===
 ---- ghcr.io/raphaelmansuy/edgequake:0.24.3 ----
-Name:      ghcr.io/raphaelmansuy/edgequake:0.24.3
-MediaType: application/vnd.oci.image.index.v1+json
-Digest:    sha256:b4f8f40d8398eb6e4884a684fb604f5d85e2daeec392667a1f33c6bfe7005e24
-           
-Manifests: 
-  Name:        ghcr.io/raphaelmansuy/edgequake:0.24.3@sha256:06088c1a01dcbdfca1e0031d47e420e8ba69921e7fa6f3aacf7360c60cfddc20
-  MediaType:   application/vnd.oci.image.manifest.v1+json
-  Platform:    linux/amd64
-               
-  Name:        ghcr.io/raphaelmansuy/edgequake:0.24.3@sha256:08fde07fe248dcc726b2b356df60c386c266929dc8ad593038226f4e1041f87a
-  MediaType:   application/vnd.oci.image.manifest.v1+json
-  Platform:    unknown/unknown
-  Annotations: 
-    vnd.docker.reference.digest: sha256:06088c1a01dcbdfca1e0031d47e420e8ba69921e7fa6f3aacf7360c60cfddc20
-    vnd.docker.reference.type:   attestation-manifest
-               
-  Name:        ghcr.io/raphaelmansuy/edgequake:0.24.3@sha256:ef123916558c3f984081d617271f55579051445a1504c6556ccb41726b54a956
-  MediaType:   application/vnd.oci.image.manifest.v1+json
-  Platform:    linux/arm64
-               
-  Name:        ghcr.io/raphaelmansuy/edgequake:0.24.3@sha256:d6fa8b646edb1349b310d9c5074ec5e2ead78ab477e14e0b6c642042369b4c66
-  MediaType:   application/vnd.oci.image.manifest.v1+json
-  Platform:    unknown/unknown
-  Annotations: 
-    vnd.docker.reference.digest: sha256:ef123916558c3f984081d617271f55579051445a1504c6556ccb41726b54a956
-    vnd.docker.reference.type:   attestation-manifest
-INDEX_DIGEST ghcr.io/raphaelmansuy/edgequake:0.24.3 sha256:b4f8f40d8398eb6e4884a684fb604f5d85e2daeec392667a1f33c6bfe7005e24
+ERROR: failed to do request: Head "https://ghcr.io/v2/raphaelmansuy/edgequake/manifests/0.24.3": read tcp 192.168.1.14:54852->20.205.243.164:443: read: operation timed out
 ---- ghcr.io/raphaelmansuy/edgequake-frontend:0.24.3 ----
 Name:      ghcr.io/raphaelmansuy/edgequake-frontend:0.24.3
 MediaType: application/vnd.oci.image.index.v1+json
@@ -101,9 +75,7 @@ Manifests:
   MediaType:   application/vnd.oci.image.manifest.v1+json
   Platform:    unknown/unknown
   Annotations: 
-    vnd.docker.reference.digest: sha256:4c157491757cadcf27fa0e3449b2119fe4aa8dc589ec73f3ff78d5a33f39002a
-    vnd.docker.reference.type:   attestation-manifest
-INDEX_DIGEST ghcr.io/raphaelmansuy/edgequake-frontend:0.24.3 sha256:621ea204de9e1d153a568400808254031887ab014df280a9b610bb13274a2a23
+    vnd.docker.reference.digest: sha256:4c157491757cadcf27fa0e3449ERROR: failed to do request: Head "https://ghcr.io/v2/raphaelmansuy/edgequake-frontend/manifests/0.24.3": read tcp 192.168.1.14:55196->20.205.243.164:443: read: operation timed out
 ---- ghcr.io/raphaelmansuy/edgequake-postgres:0.24.3 ----
 Name:      ghcr.io/raphaelmansuy/edgequake-postgres:0.24.3
 MediaType: application/vnd.oci.image.index.v1+json
@@ -129,8 +101,8 @@ Manifests:
   MediaType:   application/vnd.oci.image.manifest.v1+json
   Platform:    unknown/unknown
   Annotations: 
-    vnd.docker.reference.digest: sha256:fa01d8896a5c5dab88972de06d19e03f05c57fe1d006473b80698cd2f83fc0e4
     vnd.docker.reference.type:   attestation-manifest
+    vnd.docker.reference.digest: sha256:fa01d8896a5c5dab88972de06d19e03f05c57fe1d006473b80698cd2f83fc0e4
 INDEX_DIGEST ghcr.io/raphaelmansuy/edgequake-postgres:0.24.3 sha256:f4a6b1542c5251dedfc857e2b59b74a219223f97898bed601c30eef0be055992
 ---- ghcr.io/raphaelmansuy/edgequake-postgres:0.24.3-pg16 ----
 Name:      ghcr.io/raphaelmansuy/edgequake-postgres:0.24.3-pg16
@@ -195,6 +167,31 @@ Digest:    sha256:f4a6b1542c5251dedfc857e2b59b74a219223f97898bed601c30eef0be0559
            
 Manifests: 
   Name:        ghcr.io/raphaelmansuy/edgequake-postgres:0.24.3-pg18@sha256:1a460a3dd004dedf6c121716de6188b293c3998065c0e6f1bff073ccf13f55c1
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    linux/amd64
+               
+  Name:        ghcr.io/raphaelmansuy/edgequake-postgres:0.24.3-pg18@sha256:e797284d6bf3ce2e736c301c0d03d2315499c22ad0a0e7014fb1abfd068e8816
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    unknown/unknown
+  Annotations: 
+    vnd.docker.reference.digest: sha256:1a460a3dd004dedf6c121716de6188b293c3998065c0e6f1bff073ccf13f55c1
+    vnd.docker.reference.type:   attestation-manifest
+               
+  Name:        ghcr.io/raphaelmansuy/edgequake-postgres:0.24.3-pg18@sha256:fa01d8896a5c5dab88972de06d19e03f05c57fe1d006473b80698cd2f83fc0e4
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    linux/arm64
+               
+  Name:        ghcr.io/raphaelmansuy/edgequake-postgres:0.24.3-pg18@sha256:c04294336af1688489f8b0e0c0d4d9c1b5db979d4058cf5fff2aebcb23f67fee
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    unknown/unknown
+  Annotations: 
+    vnd.docker.reference.digest: sha256:fa01d8896a5c5dab88972de06d19e03f05c57fe1d006473b80698cd2f83fc0e4
+    vnd.docker.reference.type:   attestation-manifest
+INDEX_DIGEST ghcr.io/raphaelmansuy/edgequake-postgres:0.24.3-pg18 sha256:f4a6b1542c5251dedfc857e2b59b74a219223f97898bed601c30eef0be055992
+=== FAIL_FLAG=1 ===
+898bed601c30eef0be055992
+=== FAIL_FLAG=1 ===
+s:0.24.3-pg18@sha256:1a460a3dd004dedf6c121716de6188b293c3998065c0e6f1bff073ccf13f55c1
   MediaType:   application/vnd.oci.image.manifest.v1+json
   Platform:    linux/amd64
                

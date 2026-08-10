@@ -1,6 +1,27 @@
-//! SPEC-109: resolve effective query/chat/vlm reasoning effort for API handlers.
+//! SPEC-109: resolve effective query/chat/vlm/extract reasoning effort for API handlers.
 
 use edgequake_core::{current_defaults, resolve_role_reasoning_effort, LlmRole, Workspace};
+
+/// Resolve clamped reasoning effort for the Extract role (KG entity extraction).
+///
+/// For Ollama thinking models the compiled floor is `"none"` so extract sends
+/// `think: false` instead of Auto `think: true` (SPEC-113).
+pub fn resolve_extract_reasoning_effort(
+    workspace: Option<&Workspace>,
+    provider: &str,
+    model: &str,
+    request_override: Option<&str>,
+    tenant_default: Option<&str>,
+) -> Option<String> {
+    resolve_role_effort(
+        LlmRole::Extract,
+        workspace,
+        provider,
+        model,
+        request_override,
+        tenant_default,
+    )
+}
 
 /// Resolve clamped reasoning effort for the Query role.
 ///

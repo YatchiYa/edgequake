@@ -10,6 +10,7 @@ import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace
 import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
+import { EDGE_PRESETS, RELATION_PRESETS } from '@/constants/kg-schema-presets';
 import { useServerModelDefaults } from '@/hooks/use-server-model-defaults';
 import { setTenantContext } from '@/lib/api/client-context';
 import {
@@ -46,6 +47,9 @@ function initialTenantDraft(): WizardDraft {
     tenantName: '',
     workspaceName: 'Default Workspace',
     entityTypes: [...ENTITY_PRESETS.general.types],
+    relationTypes: [...RELATION_PRESETS.general],
+    relationEdges: EDGE_PRESETS.general.map((e) => ({ ...e })),
+    kgSchemaPreset: 'general',
   };
 }
 
@@ -159,6 +163,12 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
               ? draft.entityTypeColors
               : undefined,
           extraction_language: draft.extractionLanguage ?? undefined,
+          relation_types:
+            draft.relationTypes.length > 0 ? draft.relationTypes : undefined,
+          relation_types_strict: draft.relationTypesStrict,
+          kg_schema_preset: draft.kgSchemaPreset,
+          relation_edges:
+            draft.relationEdges.length > 0 ? draft.relationEdges : undefined,
         });
       } else {
         workspace = await createWorkspace(tenant.id, {
@@ -172,6 +182,12 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
               ? draft.entityTypeColors
               : undefined,
           extraction_language: draft.extractionLanguage ?? undefined,
+          relation_types:
+            draft.relationTypes.length > 0 ? draft.relationTypes : undefined,
+          relation_types_strict: draft.relationTypesStrict,
+          kg_schema_preset: draft.kgSchemaPreset,
+          relation_edges:
+            draft.relationEdges.length > 0 ? draft.relationEdges : undefined,
         });
       }
 

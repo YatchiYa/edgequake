@@ -3,7 +3,10 @@
 //! Single source of truth for JSON output schema text — avoids drift between
 //! `extractor/llm.rs` and `extractor/gleaning.rs`.
 
-use super::entity_type_policy::{json_entity_types_prompt_section, EntityExtractionSchema};
+use super::entity_type_policy::{
+    json_entity_types_prompt_section, json_relation_edges_prompt_section,
+    json_relation_types_prompt_section, EntityExtractionSchema,
+};
 use super::extract_caps::ExtractionCaps;
 use super::language::json_language_instruction;
 
@@ -26,6 +29,8 @@ pub fn json_extraction_prompt(
     language: &str,
 ) -> String {
     let types_section = json_entity_types_prompt_section(schema);
+    let relation_section = json_relation_types_prompt_section(schema);
+    let edges_section = json_relation_edges_prompt_section(schema);
     let caps = ExtractionCaps::from_env();
     let limits = caps.prompt_quantity_limits_section();
     let language_section = json_language_instruction(language);
@@ -34,6 +39,8 @@ pub fn json_extraction_prompt(
         r#"Extract entities and relationships from the following text.
 
 {types_section}
+{relation_section}
+{edges_section}
 
 {limits}
 
@@ -61,6 +68,8 @@ pub fn json_gleaning_prompt(
 ) -> String {
     let prev_entities_str = previous_entities.join(", ");
     let types_section = json_entity_types_prompt_section(schema);
+    let relation_section = json_relation_types_prompt_section(schema);
+    let edges_section = json_relation_edges_prompt_section(schema);
     let caps = ExtractionCaps::from_env();
     let limits = caps.prompt_quantity_limits_section();
     let language_section = json_language_instruction(language);
@@ -81,6 +90,8 @@ Focus on:
 - Do **not** add UUIDs, GUIDs, hashes, ARNs, or other opaque machine IDs as entity names
 
 {types_section}
+{relation_section}
+{edges_section}
 
 {limits}
 
@@ -142,6 +153,9 @@ mod tests {
         let schema = EntityExtractionSchema {
             types: vec!["API_OR_INTERFACE".into(), "OTHER".into()],
             strict: true,
+            relation_types: Vec::new(),
+            relation_strict: true,
+            relation_edges: Vec::new(),
         };
         let prompt = json_gleaning_prompt("x", &[], &schema, "English");
         assert!(prompt.contains("API_OR_INTERFACE"));

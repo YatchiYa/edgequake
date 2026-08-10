@@ -20,16 +20,15 @@ import {
   WorkspaceNotFound,
 } from '@/components/workspace/workspace-deeplink-states';
 import { WorkspaceEntityTypesCard } from '@/components/workspace/workspace-entity-types-card';
+import { WorkspaceRelationTypesCard } from '@/components/workspace/workspace-relation-types-card';
 import { WorkspaceExtractionLanguageCard } from '@/components/workspace/workspace-extraction-language-card';
 import { WorkspacePageHeader } from '@/components/workspace/workspace-page-header';
-import { ProviderStatusHub } from '@/components/settings/provider-status-hub';
 import { WorkspaceActionsCard } from '@/components/workspace/workspace-actions-card';
 import { WorkspaceExtendedModelConfig } from '@/components/workspace/workspace-extended-model-config';
 import { WorkspaceModelConfigGrid } from '@/components/workspace/workspace-model-config-grid';
 import { WorkspaceStatusFooter } from '@/components/workspace/workspace-status-footer';
 import { WorkspaceStatsCards } from '@/components/workspace/workspace-stats-cards';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
-import { refreshDynamicModels } from '@/hooks/use-providers';
 import { useWorkspaceDetailQueries } from '@/hooks/use-workspace-detail-queries';
 import { useWorkspaceSlugResolver } from '@/hooks/use-workspace-slug-resolver';
 import { Card, CardContent } from '@/components/ui/card';
@@ -63,10 +62,8 @@ export default function WorkspacePage() {
   const {
     workspace,
     stats,
-    providerHealth,
     isLoadingWorkspace,
     isLoadingStats,
-    isLoadingHealth,
     refetchWorkspace,
   } = useWorkspaceDetailQueries(selectedTenantId, selectedWorkspaceId, {
     enabled: isReady,
@@ -210,7 +207,7 @@ export default function WorkspacePage() {
     : [...ENTITY_PRESETS.general.types];
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto space-y-4 p-4 md:p-6">
       <WorkspacePageHeader
         workspace={workspace}
         onRefresh={() => refetchWorkspace()}
@@ -253,23 +250,22 @@ export default function WorkspacePage() {
         onLanguageChange={() => {}}
       />
 
-      <WorkspaceEntityTypesCard
-        isEditing={false}
-        workspace={workspace}
-        selectedTypes={entityTypes}
-        onTypesChange={() => {}}
-        strictLimit={workspace.entity_types_strict ?? true}
-        onStrictLimitChange={() => {}}
-        extractionLanguage={workspace.extraction_language ?? null}
-      />
+      <div
+        className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start"
+        data-testid="workspace-kg-schema-row"
+      >
+        <WorkspaceEntityTypesCard
+          isEditing={false}
+          workspace={workspace}
+          selectedTypes={entityTypes}
+          onTypesChange={() => {}}
+          strictLimit={workspace.entity_types_strict ?? true}
+          onStrictLimitChange={() => {}}
+          extractionLanguage={workspace.extraction_language ?? null}
+        />
 
-      <ProviderStatusHub
-        providers={providerHealth}
-        isLoading={isLoadingHealth}
-        onRefresh={() => {
-          void refreshDynamicModels(queryClient);
-        }}
-      />
+        <WorkspaceRelationTypesCard workspace={workspace} />
+      </div>
 
       <WorkspaceActionsCard
         workspace={workspace}

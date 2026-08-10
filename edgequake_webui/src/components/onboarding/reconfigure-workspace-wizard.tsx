@@ -276,6 +276,10 @@ export function ReconfigureWorkspaceWizard({
         entityTypes: draft.entityTypes,
         entityTypesStrict: draft.entityTypesStrict,
         entityTypeColors: draft.entityTypeColors,
+        relationTypes: draft.relationTypes,
+        relationTypesStrict: draft.relationTypesStrict,
+        kgSchemaPreset: draft.kgSchemaPreset,
+        relationEdges: draft.relationEdges,
         reasoningEffort: draft.reasoningEffort,
       });
       const updated = await updateWorkspace(tenantId, workspace.id, payload);

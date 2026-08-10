@@ -323,43 +323,41 @@ export function RebuildEmbeddingsButton({
   if (variant === 'card') {
     return (
       <>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <RotateCcw className="h-4 w-4 text-primary" />
+        <Card className="h-full gap-2 py-3 shadow-none">
+          <CardHeader className="px-3 pb-0 gap-1">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <RotateCcw className="h-3.5 w-3.5 text-primary" />
               {t('workspace.rebuild.card.title', 'Workspace Embeddings')}
             </CardTitle>
-            <CardDescription className="text-sm">
+            <CardDescription className="text-xs leading-snug">
               {t(
                 'workspace.rebuild.card.description',
                 'Rebuild vector embeddings when changing embedding models or providers.'
               )}
             </CardDescription>
           </CardHeader>
-          <CardContent className="pt-0">
-            <div className="space-y-3">
-              {selectedWorkspace && (
-                <div className="rounded-md border p-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">
-                      {t('workspace.rebuild.card.current', 'Current Model:')}
-                    </span>
-                    <span className="font-mono text-xs">
-                      {selectedWorkspace.embedding_provider}/{selectedWorkspace.embedding_model}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-muted-foreground">
-                      {t('workspace.rebuild.card.dimension', 'Dimension:')}
-                    </span>
-                    <span className="font-mono text-xs">
-                      {selectedWorkspace.embedding_dimension}
-                    </span>
-                  </div>
+          <CardContent className="flex flex-1 flex-col gap-2 px-3 pt-0">
+            {selectedWorkspace ? (
+              <div className="rounded-md border bg-muted/30 px-2.5 py-1.5 text-xs space-y-0.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground shrink-0">
+                    {t('workspace.rebuild.card.current', 'Current Model:')}
+                  </span>
+                  <span className="font-mono truncate text-right">
+                    {selectedWorkspace.embedding_provider}/{selectedWorkspace.embedding_model}
+                  </span>
                 </div>
-              )}
-              {confirmDialog}
-            </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">
+                    {t('workspace.rebuild.card.dimension', 'Dimension:')}
+                  </span>
+                  <span className="font-mono">
+                    {selectedWorkspace.embedding_dimension}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+            <div className="mt-auto">{confirmDialog}</div>
           </CardContent>
         </Card>
         

@@ -93,4 +93,40 @@ describe('workspace-config-diff', () => {
     expect(diff.rebuildHints.embeddings).toBe(true);
     expect(diff.rebuildHints.vision).toBe(true);
   });
+
+  it('SPEC-114b flags typed edge changes and suggests KG rebuild', () => {
+    const baseline = {
+      ...base,
+      relationEdges: [
+        { source: 'PERSON', relation: 'WORKS_AT', target: 'ORGANIZATION' },
+      ],
+    };
+    const draft = {
+      ...base,
+      relationEdges: [
+        { source: 'PERSON', relation: 'LOCATED_IN', target: 'LOCATION' },
+      ],
+    };
+    const diff = diffWorkspaceConfig(baseline, draft, { documentCount: 3 });
+    expect(diff.changedKeys).toContain('relationEdges');
+    expect(diff.rebuildHints.extraction).toBe(true);
+  });
+
+  it('SPEC-114 flags relation schema changes and suggests KG rebuild', () => {
+    const draft: WorkspaceConfigSnapshot = {
+      ...base,
+      relationTypes: ['WORKS_AT', 'PART_OF'],
+      relationTypesStrict: false,
+      kgSchemaPreset: 'manufacturing',
+    };
+    const diff = diffWorkspaceConfig(
+      { ...base, relationTypes: [], relationTypesStrict: true },
+      draft,
+      { documentCount: 3 },
+    );
+    expect(diff.changedKeys).toEqual(
+      expect.arrayContaining(['relationTypes', 'relationTypesStrict', 'kgSchemaPreset']),
+    );
+    expect(diff.rebuildHints.extraction).toBe(true);
+  });
 });

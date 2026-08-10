@@ -3,8 +3,8 @@
 use async_trait::async_trait;
 
 use super::{
-    assign_token_usage, extraction_completion_options, ConfigurableEntitySchema, EntityExtractor,
-    ExtractionResult,
+    assign_token_usage, extraction_completion_options_with_effort, ConfigurableEntitySchema,
+    EntityExtractor, ExtractionResult,
 };
 use crate::chunker::TextChunk;
 use crate::error::{PipelineError, Result};
@@ -40,6 +40,10 @@ where
     entity_schema: crate::prompts::EntityExtractionSchema,
     /// Natural-language output language for entity/relationship string values (SPEC-096).
     language: String,
+    /// Desired reasoning effort for extract (SPEC-109 / SPEC-113 think-off).
+    ///
+    /// When `None`, provider-aware flooring applies (`none` for Ollama/LM Studio).
+    reasoning_effort: Option<String>,
 }
 
 impl<L> LLMExtractor<L>
@@ -52,6 +56,7 @@ where
             llm_provider,
             entity_schema: crate::prompts::EntityExtractionSchema::server_default(),
             language: crate::prompts::DEFAULT_EXTRACTION_LANGUAGE.to_string(),
+            reasoning_effort: None,
         }
     }
 }
@@ -82,6 +87,14 @@ where
     /// Set natural-language output language (SPEC-096).
     pub fn with_language(mut self, language: impl Into<String>) -> Self {
         self.language = language.into();
+        self
+    }
+
+    /// Set desired extract reasoning effort (e.g. `"none"` to disable Ollama think).
+    pub fn with_reasoning_effort(mut self, effort: Option<String>) -> Self {
+        self.reasoning_effort = effort
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         self
     }
 
@@ -125,12 +138,16 @@ where
     async fn extract(&self, chunk: &TextChunk) -> Result<ExtractionResult> {
         let prompt = self.build_prompt(chunk);
 
-        // WHY reasoning_effort="none" + explicit max_tokens (when model accepts it):
-        // Reasoning models (gpt-5-nano, gpt-5-mini, o-series, mistral-small) exhaust
-        // completion_tokens on chain-of-thought when no limit is set.
-        // SPEC-047: mistral-large-latest rejects reasoning_effort → omit via
-        // extraction_completion_options() model gate.
-        let options = extraction_completion_options(self.llm_provider.model(), 16384);
+        // WHY provider-aware effort + max_tokens:
+        // - Cloud reasoning models exhaust completion_tokens on CoT without a floor.
+        // - Ollama thinking models default think:true when effort is unset (SPEC-113 Auto).
+        // - Local extract floors to "none" → wire think:false (edgequake-llm ≥0.10.7).
+        let options = extraction_completion_options_with_effort(
+            self.llm_provider.model(),
+            16384,
+            self.reasoning_effort.as_deref(),
+            self.llm_provider.name(),
+        );
 
         let response = self
             .llm_provider
@@ -138,7 +155,38 @@ where
             .await
             .map_err(|e| PipelineError::ExtractionError(format!("LLM error: {}", e)))?;
 
-        let mut result = self.parse_response(&response.content, &chunk.id)?;
+        let mut result = match self.parse_response(&response.content, &chunk.id) {
+            Ok(r) => r,
+            Err(parse_err) => {
+                // Instructor-style repair: one corrective turn with validator errors.
+                tracing::warn!(
+                    chunk_id = %chunk.id,
+                    error = %parse_err,
+                    "Extract JSON parse failed — attempting repair turn"
+                );
+                let repair_prompt = format!(
+                    "Your previous response was not valid extraction JSON.\n\
+                     Validator error: {parse_err}\n\n\
+                     Return ONLY a JSON object with keys \"entities\" and \"relationships\".\n\
+                     No markdown fences, no commentary.\n\n\
+                     Original task:\n{prompt}"
+                );
+                let repair = self
+                    .llm_provider
+                    .complete_with_options(&repair_prompt, &options)
+                    .await
+                    .map_err(|e| {
+                        PipelineError::ExtractionError(format!(
+                            "LLM repair error: {e}; prior parse: {parse_err}"
+                        ))
+                    })?;
+                self.parse_response(&repair.content, &chunk.id).map_err(|e| {
+                    PipelineError::ExtractionError(format!(
+                        "Invalid JSON after repair: {e}; first: {parse_err}"
+                    ))
+                })?
+            }
+        };
 
         assign_token_usage(
             &mut result,

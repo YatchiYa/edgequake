@@ -5,12 +5,13 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use super::completion_options::extraction_completion_options;
+use super::completion_options::extraction_completion_options_with_effort;
 use super::{EntityExtractor, ExtractedEntity, ExtractedRelationship, ExtractionResult};
 use crate::chunker::TextChunk;
 use crate::error::{PipelineError, Result};
 use crate::prompts::{
-    enforce_entity_type, EntityExtractionSchema, JsonExtractionParser, JsonParseOptions,
+    enforce_entity_type, enforce_relationship_against_schema, EntityExtractionSchema,
+    JsonExtractionParser, JsonParseOptions,
 };
 
 /// Configuration for gleaning (re-extraction).
@@ -63,6 +64,8 @@ pub struct GleaningExtractor {
     config: GleaningConfig,
     /// Natural-language output language (must match base extractor; SPEC-096).
     language: String,
+    /// Desired reasoning effort for gleaning LLM calls (SPEC-113 think-off).
+    reasoning_effort: Option<String>,
 }
 
 impl GleaningExtractor {
@@ -77,6 +80,7 @@ impl GleaningExtractor {
             entity_schema: EntityExtractionSchema::server_default(),
             config: GleaningConfig::default(),
             language: crate::prompts::DEFAULT_EXTRACTION_LANGUAGE.to_string(),
+            reasoning_effort: None,
         }
     }
 
@@ -89,6 +93,14 @@ impl GleaningExtractor {
     /// Set natural-language output language (SPEC-096).
     pub fn with_language(mut self, language: impl Into<String>) -> Self {
         self.language = language.into();
+        self
+    }
+
+    /// Set desired gleaning reasoning effort (mirrors base extract).
+    pub fn with_reasoning_effort(mut self, effort: Option<String>) -> Self {
+        self.reasoning_effort = effort
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         self
     }
 
@@ -137,6 +149,23 @@ impl GleaningExtractor {
         for entity in entities.iter_mut() {
             let (enforced, _) = enforce_entity_type(&entity.entity_type, &self.entity_schema);
             entity.entity_type = enforced;
+        }
+    }
+
+    fn apply_relation_schema_to_relationships(
+        &self,
+        relationships: &mut [ExtractedRelationship],
+        name_to_type: &std::collections::HashMap<String, String>,
+    ) {
+        for rel in relationships.iter_mut() {
+            let (enforced, _) = enforce_relationship_against_schema(
+                &rel.source,
+                &rel.target,
+                &rel.relation_type,
+                name_to_type,
+                &self.entity_schema,
+            );
+            rel.relation_type = enforced;
         }
     }
 
@@ -214,8 +243,13 @@ impl EntityExtractor for GleaningExtractor {
             // Build and execute gleaning prompt
             let gleaning_prompt = self.build_gleaning_prompt(chunk, &entity_names);
 
-            // C-17: share extraction CompletionOptions (temp=0, reasoning=none).
-            let options = extraction_completion_options(self.llm_provider.model(), 16_384);
+            // C-17: share extraction CompletionOptions (temp=0, provider-aware think-off).
+            let options = extraction_completion_options_with_effort(
+                self.llm_provider.model(),
+                16_384,
+                self.reasoning_effort.as_deref(),
+                self.llm_provider.name(),
+            );
             let response = self
                 .llm_provider
                 .complete_with_options(&gleaning_prompt, &options)
@@ -257,6 +291,12 @@ impl EntityExtractor for GleaningExtractor {
 
         // Defense in depth: re-apply schema after merge (base pass + gleaning).
         self.apply_entity_schema_to_entities(&mut result.entities);
+        let name_to_type: std::collections::HashMap<String, String> = result
+            .entities
+            .iter()
+            .map(|e| (e.name.clone(), e.entity_type.clone()))
+            .collect();
+        self.apply_relation_schema_to_relationships(&mut result.relationships, &name_to_type);
 
         // Record gleaning metadata
         result.metadata.insert(
@@ -289,6 +329,9 @@ mod tests {
                 "OTHER".into(),
             ],
             strict: true,
+            relation_types: Vec::new(),
+            relation_strict: true,
+            relation_edges: Vec::new(),
         }
     }
 

@@ -644,6 +644,117 @@ pub async fn cleanup_stale_checkpoints(kv: &Arc<dyn KVStorage>) {
     }
 }
 
+/// Suffix for per-chunk mid-extract checkpoint (`{document_id}-chunk-extract-partial`).
+pub const PARTIAL_CHUNK_CHECKPOINT_SUFFIX: &str = "-chunk-extract-partial";
+
+/// Incremental per-chunk extraction state (survives mid-document crash).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PartialChunkCheckpoint {
+    pub workspace_id: String,
+    pub extraction_provider: String,
+    pub content_hash: String,
+    pub created_at_epoch: u64,
+    /// chunk_id → extraction result
+    pub completed: std::collections::HashMap<String, edgequake_pipeline::ExtractionResult>,
+}
+
+fn partial_chunk_key(document_id: &str) -> String {
+    format!("{document_id}{PARTIAL_CHUNK_CHECKPOINT_SUFFIX}")
+}
+
+/// Load mid-extract per-chunk results when content/provider still match.
+pub async fn load_partial_chunk_checkpoint(
+    kv: &Arc<dyn KVStorage>,
+    document_id: &str,
+    workspace_id: &str,
+    extraction_provider: &str,
+    content: &str,
+) -> Option<std::collections::HashMap<String, edgequake_pipeline::ExtractionResult>> {
+    let key = partial_chunk_key(document_id);
+    let value = kv.get_by_id(&key).await.ok().flatten()?;
+    let parsed: PartialChunkCheckpoint = serde_json::from_value(value).ok()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if now.saturating_sub(parsed.created_at_epoch) > CHECKPOINT_MAX_AGE_SECS {
+        warn!(document_id, "Partial chunk checkpoint expired — ignoring");
+        return None;
+    }
+    let hash = PipelineCheckpoint::compute_content_hash(content);
+    if parsed.workspace_id != workspace_id
+        || parsed.extraction_provider != extraction_provider
+        || parsed.content_hash != hash
+    {
+        debug!(document_id, "Partial chunk checkpoint stale — ignoring");
+        return None;
+    }
+    if parsed.completed.is_empty() {
+        return None;
+    }
+    info!(
+        document_id,
+        resumed_chunks = parsed.completed.len(),
+        "Loaded partial chunk extraction checkpoint"
+    );
+    Some(parsed.completed)
+}
+
+/// Upsert one completed chunk into the partial checkpoint (best-effort).
+pub async fn save_partial_chunk_extraction(
+    kv: &Arc<dyn KVStorage>,
+    document_id: &str,
+    workspace_id: &str,
+    extraction_provider: &str,
+    content: &str,
+    chunk_id: &str,
+    result: edgequake_pipeline::ExtractionResult,
+) {
+    let key = partial_chunk_key(document_id);
+    let hash = PipelineCheckpoint::compute_content_hash(content);
+    let mut state = match kv.get_by_id(&key).await.ok().flatten() {
+        Some(raw) => serde_json::from_value::<PartialChunkCheckpoint>(raw).unwrap_or_default(),
+        None => PartialChunkCheckpoint::default(),
+    };
+    if state.content_hash != hash || state.workspace_id != workspace_id {
+        state = PartialChunkCheckpoint {
+            workspace_id: workspace_id.to_string(),
+            extraction_provider: extraction_provider.to_string(),
+            content_hash: hash,
+            created_at_epoch: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+            completed: Default::default(),
+        };
+    }
+    state.extraction_provider = extraction_provider.to_string();
+    state.completed.insert(chunk_id.to_string(), result);
+    match serde_json::to_value(&state) {
+        Ok(value) => {
+            let approx = serde_json::to_vec(&value).map(|b| b.len()).unwrap_or(0);
+            if approx > CHECKPOINT_MAX_SERIALIZED_BYTES {
+                warn!(
+                    document_id,
+                    size = approx,
+                    "Partial chunk checkpoint too large — skipping write"
+                );
+                return;
+            }
+            let _ = kv.upsert(&[(key, value)]).await;
+        }
+        Err(e) => {
+            warn!(document_id, error = %e, "Failed to serialize partial chunk checkpoint");
+        }
+    }
+}
+
+/// Clear mid-extract partial checkpoint (after full success or force-fresh).
+pub async fn clear_partial_chunk_checkpoint(kv: &Arc<dyn KVStorage>, document_id: &str) {
+    let key = partial_chunk_key(document_id);
+    let _ = kv.delete(std::slice::from_ref(&key)).await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1056,6 +1167,29 @@ mod tests {
         clear_extraction_snapshot(&kv, "doc-p7e").await;
         assert!(
             load_extraction_snapshot(&kv, "doc-p7e", "ws", "openai", "ollama", text)
+                .await
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn partial_chunk_checkpoint_roundtrip() {
+        use edgequake_pipeline::ExtractionResult;
+        use edgequake_storage::MemoryKVStorage;
+
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("partial"));
+        let result = ExtractionResult::new("c1");
+        save_partial_chunk_extraction(&kv, "doc1", "ws", "ollama", "hello", "c1", result).await;
+        let loaded = load_partial_chunk_checkpoint(&kv, "doc1", "ws", "ollama", "hello").await;
+        assert!(loaded.as_ref().unwrap().contains_key("c1"));
+        assert!(
+            load_partial_chunk_checkpoint(&kv, "doc1", "ws", "ollama", "other")
+                .await
+                .is_none()
+        );
+        clear_partial_chunk_checkpoint(&kv, "doc1").await;
+        assert!(
+            load_partial_chunk_checkpoint(&kv, "doc1", "ws", "ollama", "hello")
                 .await
                 .is_none()
         );

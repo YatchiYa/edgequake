@@ -32,7 +32,7 @@ pub const PROVIDER_BUDGET_ENV: &str = "EDGEQUAKE_PROVIDER_BUDGET";
 /// Legacy env fallback (pre-QW1 process semaphore size).
 pub const LOCAL_MAX_INFLIGHT_ENV: &str = "EDGEQUAKE_LOCAL_MAX_INFLIGHT";
 /// Default budget for a local single-GPU provider when nothing is configured.
-pub const DEFAULT_PROVIDER_BUDGET: u16 = 2;
+pub const DEFAULT_PROVIDER_BUDGET: u16 = 1;
 /// Hard ceiling for any configured budget (migration CHECK agrees).
 pub const MAX_PROVIDER_BUDGET: u16 = 64;
 

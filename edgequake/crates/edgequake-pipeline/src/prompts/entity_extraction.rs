@@ -249,6 +249,9 @@ mod tests {
         EntityExtractionSchema {
             types: types.into_iter().map(str::to_string).collect(),
             strict: true,
+            relation_types: Vec::new(),
+            relation_strict: true,
+            relation_edges: Vec::new(),
         }
     }
 

@@ -362,38 +362,80 @@ impl DocumentTaskProcessor {
                     update.cumulative_cost_usd,
                 );
 
-                // OODA-PERF-01: Update document metadata every 3 chunks for UI polling
-                // WHY: Reduce KV writes while maintaining visibility (update ~every 3-5 seconds)
-                let should_update_metadata = update.chunk_index.is_multiple_of(3)
-                    || update.chunk_index == update.total_chunks - 1;
+                // Heartbeat: always patch metadata so long LLM calls do not freeze at 0%.
+                let should_update_metadata = true;
                 if should_update_metadata {
                     let doc_id_clone = doc_id_for_metadata.clone();
                     let kv_clone = Arc::clone(&kv_storage_for_callback);
                     let chunk_idx = update.chunk_index;
                     let total = update.total_chunks;
+                    let completed = update.completed_chunks;
+                    let eta = update.eta_seconds;
+                    let attempt = update.attempt;
+                    let phase = format!("{:?}", update.phase);
+                    let gate_wait_ms = if update.gate_wait_ms > 0 {
+                        update.gate_wait_ms
+                    } else {
+                        crate::local_inference_gate::last_local_gate_wait_ms()
+                    };
 
                     // Fire-and-forget metadata update to avoid blocking extraction
                     tokio::spawn(async move {
-                        let progress_pct =
-                            ((chunk_idx as f64 / total as f64) * 100.0).round() as u32;
+                        let progress_pct = if total > 0 {
+                            ((completed as f64 / total as f64) * 100.0).round() as u32
+                        } else {
+                            0
+                        };
+                        let eta_part = if eta > 0 {
+                            format!(" — ETA ~{}s", eta)
+                        } else {
+                            String::new()
+                        };
+                        let gate_part = if gate_wait_ms > 50 {
+                            format!(" — gate wait {}ms", gate_wait_ms)
+                        } else {
+                            String::new()
+                        };
+                        let msg = if phase.contains("Started") || phase.contains("Retrying") {
+                            format!(
+                                "Extracting entities: chunk {}/{} in flight (attempt {}, {}%){}{}",
+                                chunk_idx + 1,
+                                total,
+                                attempt,
+                                progress_pct,
+                                eta_part,
+                                gate_part
+                            )
+                        } else {
+                            format!(
+                                "Extracting entities: chunk {}/{} ({}%){}{}",
+                                chunk_idx + 1,
+                                total,
+                                progress_pct,
+                                eta_part,
+                                gate_part
+                            )
+                        };
                         let _ = crate::services::patch_document_metadata(
                             &kv_clone,
                             &doc_id_clone,
                             |updated| {
                                 updated.insert("current_stage".to_string(), json!("extracting"));
-                                updated.insert(
-                                    "stage_message".to_string(),
-                                    json!(format!(
-                                        "Extracting entities: chunk {}/{} ({}%)",
-                                        chunk_idx + 1,
-                                        total,
-                                        progress_pct
-                                    )),
-                                );
+                                updated.insert("stage_message".to_string(), json!(msg));
                                 updated.insert(
                                     "stage_progress".to_string(),
                                     json!(progress_pct as f64 / 100.0),
                                 );
+                                updated.insert(
+                                    "extract_eta_seconds".to_string(),
+                                    json!(eta),
+                                );
+                                if gate_wait_ms > 0 {
+                                    updated.insert(
+                                        "local_gate_wait_ms".to_string(),
+                                        json!(gate_wait_ms),
+                                    );
+                                }
                                 updated.insert(
                                     "updated_at".to_string(),
                                     json!(chrono::Utc::now().to_rfc3339()),

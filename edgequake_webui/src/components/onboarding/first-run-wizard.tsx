@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
+import { EDGE_PRESETS, RELATION_PRESETS } from '@/constants/kg-schema-presets';
 import { useServerModelDefaults } from '@/hooks/use-server-model-defaults';
 import { useSetupStatus } from '@/hooks/use-setup-status';
 import { login } from '@/lib/api/edgequake';
@@ -55,6 +56,9 @@ function initialFirstRunDraft(): WizardDraft {
     tenantName: 'My Organization',
     workspaceName: 'Default Workspace',
     entityTypes: [...ENTITY_PRESETS.general.types],
+    relationTypes: [...RELATION_PRESETS.general],
+    relationEdges: EDGE_PRESETS.general.map((e) => ({ ...e })),
+    kgSchemaPreset: 'general',
   };
 }
 

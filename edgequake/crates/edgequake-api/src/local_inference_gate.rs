@@ -7,7 +7,7 @@
 //! The process-local semaphore remains only as the build-time fallback for
 //! contexts where no pool exists (unit tests, non-Postgres builds).
 //!
-//! Env: `EDGEQUAKE_PROVIDER_BUDGET` (default 2; `0` disables) — falls back to
+//! Env: `EDGEQUAKE_PROVIDER_BUDGET` (default 1; `0` disables) — falls back to
 //! legacy `EDGEQUAKE_LOCAL_MAX_INFLIGHT` when unset.
 
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
@@ -20,7 +20,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 pub const LOCAL_MAX_INFLIGHT_ENV: &str = edgequake_tasks::LOCAL_MAX_INFLIGHT_ENV;
 
 /// Default in-flight local LLM+embed calls when env is unset.
-pub const DEFAULT_LOCAL_MAX_INFLIGHT: usize = 2;
+pub const DEFAULT_LOCAL_MAX_INFLIGHT: usize = 1;
 
 static GATE: LazyLock<LocalInferenceGate> = LazyLock::new(LocalInferenceGate::from_env);
 
@@ -258,7 +258,7 @@ pub fn install_provider_budget(budget: SharedProviderBudget) {
     global_local_inference_gate().install_provider_budget(budget);
 }
 
-/// Parse `EDGEQUAKE_LOCAL_MAX_INFLIGHT` (`0` disables; default 2; max 32).
+/// Parse `EDGEQUAKE_LOCAL_MAX_INFLIGHT` (`0` disables; default 1; max 32).
 pub fn parse_local_max_inflight(raw: &str) -> usize {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -273,9 +273,145 @@ pub fn parse_local_max_inflight(raw: &str) -> usize {
 
 /// Acquire an admission permit for a local provider call (drop to release).
 pub async fn acquire_local_inference_permit(provider_name: &str) -> Option<LocalInferencePermit> {
-    global_local_inference_gate()
+    // Circuit open → park before taking a scarce slot (releases connection pressure).
+    global_local_chat_circuit()
+        .wait_until_closed(provider_name)
+        .await;
+    let before = Instant::now();
+    let permit = global_local_inference_gate()
         .acquire_for_provider(provider_name)
-        .await
+        .await;
+    if permit.is_some() {
+        let wait_ms = before.elapsed().as_millis() as u64;
+        if wait_ms > 50 {
+            record_local_gate_wait_ms(wait_ms);
+            tracing::debug!(
+                provider = provider_name,
+                gate_wait_ms = wait_ms,
+                "Local inference gate wait"
+            );
+        }
+    }
+    permit
+}
+
+/// Last observed local gate wait (ms) — for Active Run stage messages.
+static LAST_GATE_WAIT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn record_local_gate_wait_ms(ms: u64) {
+    LAST_GATE_WAIT_MS.store(ms, std::sync::atomic::Ordering::Relaxed);
+    edgequake_observability::metrics::record_local_gate_wait_ms(ms);
+}
+
+/// Snapshot the last gate wait for operator UX.
+pub fn last_local_gate_wait_ms() -> u64 {
+    LAST_GATE_WAIT_MS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Circuit breaker for local chat: open after consecutive network failures.
+#[derive(Debug)]
+pub struct LocalChatCircuit {
+    consecutive_failures: std::sync::atomic::AtomicU32,
+    open_until: Mutex<Option<Instant>>,
+    failure_threshold: u32,
+    open_for: Duration,
+}
+
+impl LocalChatCircuit {
+    pub fn new(failure_threshold: u32, open_for: Duration) -> Self {
+        Self {
+            consecutive_failures: std::sync::atomic::AtomicU32::new(0),
+            open_until: Mutex::new(None),
+            failure_threshold: failure_threshold.max(1),
+            open_for,
+        }
+    }
+
+    pub fn from_env() -> Self {
+        let threshold = std::env::var("EDGEQUAKE_LOCAL_CIRCUIT_FAILURES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(3);
+        let open_secs = std::env::var("EDGEQUAKE_LOCAL_CIRCUIT_OPEN_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(30);
+        Self::new(threshold, Duration::from_secs(open_secs))
+    }
+
+    pub fn is_open(&self) -> bool {
+        let guard = self.open_until.lock().expect("circuit mutex");
+        match *guard {
+            Some(until) if Instant::now() < until => true,
+            _ => false,
+        }
+    }
+
+    pub async fn wait_until_closed(&self, provider_name: &str) {
+        if !edgequake_pipeline::is_local_extraction_provider(provider_name) {
+            return;
+        }
+        while self.is_open() {
+            tracing::warn!(
+                provider = provider_name,
+                "Local chat circuit open (provider_unavailable) — pausing new chunk starts"
+            );
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    }
+
+    pub fn record_success(&self) {
+        self.consecutive_failures
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        if let Ok(mut g) = self.open_until.lock() {
+            *g = None;
+        }
+    }
+
+    pub fn record_network_failure(&self) {
+        let n = self
+            .consecutive_failures
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
+        edgequake_observability::metrics::record_ollama_network_error();
+        if n >= self.failure_threshold {
+            if let Ok(mut g) = self.open_until.lock() {
+                *g = Some(Instant::now() + self.open_for);
+            }
+            tracing::error!(
+                consecutive = n,
+                open_secs = self.open_for.as_secs(),
+                "Local chat circuit opened after consecutive network failures"
+            );
+        }
+    }
+}
+
+static LOCAL_CHAT_CIRCUIT: LazyLock<LocalChatCircuit> =
+    LazyLock::new(LocalChatCircuit::from_env);
+
+/// Process-wide local chat circuit breaker.
+pub fn global_local_chat_circuit() -> &'static LocalChatCircuit {
+    &LOCAL_CHAT_CIRCUIT
+}
+
+/// Record a successful local chat/complete (closes circuit).
+pub fn record_local_chat_success(provider_name: &str) {
+    if edgequake_pipeline::is_local_extraction_provider(provider_name) {
+        global_local_chat_circuit().record_success();
+    }
+}
+
+/// Record a local network/transport failure (may open circuit).
+pub fn record_local_chat_network_failure(provider_name: &str, error: &str) {
+    if !edgequake_pipeline::is_local_extraction_provider(provider_name) {
+        return;
+    }
+    if edgequake_pipeline::is_local_provider_overload_error(error)
+        || error.to_ascii_lowercase().contains("timeout")
+    {
+        global_local_chat_circuit().record_network_failure();
+    }
 }
 
 #[cfg(test)]
@@ -290,6 +426,18 @@ mod tests {
         assert_eq!(parse_local_max_inflight("2"), 2);
         assert_eq!(parse_local_max_inflight("99"), 32);
         assert_eq!(parse_local_max_inflight("nope"), DEFAULT_LOCAL_MAX_INFLIGHT);
+    }
+
+    #[test]
+    fn circuit_opens_after_threshold_network_failures() {
+        let c = LocalChatCircuit::new(2, Duration::from_secs(60));
+        assert!(!c.is_open());
+        c.record_network_failure();
+        assert!(!c.is_open());
+        c.record_network_failure();
+        assert!(c.is_open());
+        c.record_success();
+        assert!(!c.is_open());
     }
 
     #[tokio::test]

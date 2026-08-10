@@ -107,9 +107,9 @@ pub use error::{
 pub use extractor::{
     assign_token_usage, effective_temperature_for_model, extraction_completion_options,
     extraction_completion_options_with_effort, recommended_chunk_size_for_bytes,
-    ConfigurableEntitySchema, EntityExtractor, ExtractedEntity, ExtractedRelationship,
-    ExtractionResult, GleaningConfig, GleaningExtractor, LLMExtractor, SOTAExtractor,
-    SimpleExtractor,
+    resolve_extraction_reasoning_effort, structured_extract_effort_floor, ConfigurableEntitySchema,
+    EntityExtractor, ExtractedEntity, ExtractedRelationship, ExtractionResult, GleaningConfig,
+    GleaningExtractor, LLMExtractor, SOTAExtractor, SimpleExtractor,
 };
 pub use ingestion_pipeline::{
     build_chunker_config, build_ingestion_pipeline, build_ingestion_pipeline_simple,
@@ -177,6 +177,9 @@ pub use pipeline::{
     default_max_concurrent_for_provider,
     is_local_extraction_provider,
     is_local_provider_overload_error,
+    classify_extract_error,
+    extract_retry_budget,
+    ExtractErrorClass,
     // SPEC-091 QW2: admission resolver SSOT (LAW-Q1)
     queue_target_wait_secs_from_env,
     resolve_admission_plan,
@@ -189,7 +192,9 @@ pub use pipeline::{
     AdmissionPlan,
     ChunkErrorInfo,
     ChunkProgressCallback,
+    ChunkProgressPhase,
     ChunkProgressUpdate,
+    ChunkExtractedCallback,
     CostBreakdownStats,
     EmbedProgressCallback,
     EmbedProgressUpdate,

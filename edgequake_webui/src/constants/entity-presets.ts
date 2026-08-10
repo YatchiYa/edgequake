@@ -3,12 +3,15 @@
  * @description Domain entity type presets for workspace creation.
  *
  * Each preset provides a curated set of entity types suited for a specific domain.
- * The General preset matches backend default_entity_types() exactly.
+ * The General preset matches backend `default_entity_types()` exactly (SPEC-114).
+ * Relation lists live in `kg-schema-presets.ts`.
  *
  * @implements SPEC-085: Custom entity configuration from UI
+ * @implements SPEC-114: General ≡ Rust defaults
  */
 
 export type PresetKey =
+  | 'blank'
   | 'general'
   | 'manufacturing'
   | 'healthcare'
@@ -36,20 +39,31 @@ export interface EntityPreset {
  * @implements SPEC-085: Domain presets for common industries
  */
 export const ENTITY_PRESETS: Record<Exclude<PresetKey, 'custom'>, EntityPreset> = {
+  /** Empty slate — start with no entities/relations/edges and add what you need. */
+  blank: {
+    labelKey: 'entityTypes.presets.blank',
+    labelFallback: 'Blank',
+    icon: 'SquareDashed',
+    types: [],
+  },
   general: {
     labelKey: 'entityTypes.presets.general',
     labelFallback: 'General',
     icon: 'Globe',
+    // Must match edgequake-pipeline `default_entity_types()` (SPEC-114 LAW-114-4).
     types: [
       'PERSON',
+      'CREATURE',
       'ORGANIZATION',
       'LOCATION',
       'EVENT',
       'CONCEPT',
-      'TECHNOLOGY',
-      'PRODUCT',
-      'DATE',
-      'DOCUMENT',
+      'METHOD',
+      'CONTENT',
+      'DATA',
+      'ARTIFACT',
+      'NATURALOBJECT',
+      'OTHER',
     ],
   },
   manufacturing: {

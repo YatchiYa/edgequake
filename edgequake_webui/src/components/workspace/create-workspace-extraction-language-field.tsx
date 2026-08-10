@@ -20,11 +20,14 @@ import { useTranslation } from 'react-i18next';
 export interface CreateWorkspaceExtractionLanguageFieldProps {
   value: string | null;
   onChange: (language: string | null) => void;
+  /** Hide long description; tighten vertical rhythm for wizard steps. */
+  compact?: boolean;
 }
 
 export function CreateWorkspaceExtractionLanguageField({
   value,
   onChange,
+  compact = false,
 }: CreateWorkspaceExtractionLanguageFieldProps) {
   const { t } = useTranslation();
   const selectValue =
@@ -34,16 +37,32 @@ export function CreateWorkspaceExtractionLanguageField({
   const serverDefaultLabel = formatServerDefaultExtractionLanguageLabel(t);
 
   return (
-    <div className="space-y-2">
-      <label className="text-sm font-medium">
-        {t('workspace.extractionLanguage.title', 'Extraction Language')}
-      </label>
-      <p className="text-xs text-muted-foreground">
-        {t(
-          'workspace.extractionLanguage.description',
-          'Language used for entity names, descriptions, and relationship text during extraction.',
-        )}
-      </p>
+    <div className={compact ? 'space-y-1.5' : 'space-y-2'}>
+      {compact ? (
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+          <label className="text-sm font-medium">
+            {t('workspace.extractionLanguage.title', 'Extraction Language')}
+          </label>
+          <p className="text-[11px] text-muted-foreground">
+            {t(
+              'workspace.extractionLanguage.descriptionShort',
+              'Names and relationship text language.',
+            )}
+          </p>
+        </div>
+      ) : (
+        <>
+          <label className="text-sm font-medium">
+            {t('workspace.extractionLanguage.title', 'Extraction Language')}
+          </label>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'workspace.extractionLanguage.description',
+              'Language used for entity names, descriptions, and relationship text during extraction.',
+            )}
+          </p>
+        </>
+      )}
       <Select
         value={selectValue}
         onValueChange={(v) => {
@@ -51,7 +70,7 @@ export function CreateWorkspaceExtractionLanguageField({
         }}
       >
         <SelectTrigger
-          className="w-full"
+          className={compact ? 'w-full h-9' : 'w-full'}
           data-testid="create-workspace-extraction-language"
         >
           <SelectValue

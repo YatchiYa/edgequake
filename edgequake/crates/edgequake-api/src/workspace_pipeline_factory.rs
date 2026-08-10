@@ -129,6 +129,24 @@ impl WorkspacePipelineFactory {
                     "Resolved workspace-specific ingestion pipeline"
                 );
 
+                // Adaptive routing guardrail: large local thinking models on big docs.
+                if is_slow_local_provider(&extract_role.provider) {
+                    let model_l = extract_role.model.to_ascii_lowercase();
+                    let looks_heavy = model_l.contains("35b")
+                        || model_l.contains("32b")
+                        || model_l.contains("70b")
+                        || model_l.contains("thinking")
+                        || model_l.contains("reason");
+                    if looks_heavy {
+                        warn!(
+                            workspace_id = workspace_id,
+                            extract_model = %extract_role.model,
+                            "Local heavy/thinking extract model — prefer gemma4/cloud for bulk PDFs \
+                             (see docs/operations/local-extract-reliability.md)"
+                        );
+                    }
+                }
+
                 let entity_schema =
                     edgequake_pipeline::prompts::EntityExtractionSchema::from_workspace_metadata(
                         &ws.metadata,
@@ -156,7 +174,23 @@ impl WorkspacePipelineFactory {
                     extraction_language_source = language_source,
                     "Resolved extraction language for ingestion pipeline"
                 );
-                let options = options.with_extraction_language(extraction_language);
+                let extract_effort = crate::services::resolve_extract_reasoning_effort(
+                    Some(&ws),
+                    &extract_role.provider,
+                    &extract_role.model,
+                    None,
+                    None,
+                );
+                info!(
+                    workspace_id = workspace_id,
+                    extract_provider = %extract_role.provider,
+                    extract_model = %extract_role.model,
+                    extract_reasoning_effort = extract_effort.as_deref().unwrap_or("(none)"),
+                    "Resolved extract reasoning effort for ingestion pipeline"
+                );
+                let options = options
+                    .with_extraction_language(extraction_language)
+                    .with_reasoning_effort(extract_effort);
                 Ok(Arc::new(build_ingestion_pipeline(
                     llm,
                     embedding,

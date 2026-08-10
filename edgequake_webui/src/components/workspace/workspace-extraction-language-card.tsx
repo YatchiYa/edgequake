@@ -55,30 +55,50 @@ export function WorkspaceExtractionLanguageCard({
   const serverDefaultLabel = formatServerDefaultExtractionLanguageLabel(t);
 
   return (
-    <Card data-testid="workspace-extraction-language-card">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Languages className="h-5 w-5 text-indigo-600" />
-          {t('workspace.extractionLanguage.title', 'Extraction Language')}
-        </CardTitle>
-        <CardDescription>
-          {t(
-            'workspace.extractionLanguage.description',
-            'Language used for entity names, descriptions, and relationship text during extraction.',
-          )}
-        </CardDescription>
-        <p
-          className="text-xs text-muted-foreground pt-1"
-          data-testid="extraction-language-future-only-hint"
-        >
-          {t(
-            'workspace.extractionLanguage.futureOnlyHint',
-            'Applies to future document ingestions. Use Rebuild Knowledge Graph to re-extract existing documents.',
-          )}
-        </p>
+    <Card className="gap-2 py-4" data-testid="workspace-extraction-language-card">
+      <CardHeader className="flex flex-col gap-2 px-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Languages className="h-4 w-4 text-indigo-600" />
+            {t('workspace.extractionLanguage.title', 'Extraction Language')}
+          </CardTitle>
+          <CardDescription className="text-xs leading-snug">
+            {t(
+              'workspace.extractionLanguage.description',
+              'Language used for entity names, descriptions, and relationship text during extraction.',
+            )}
+          </CardDescription>
+          <p
+            className="text-[11px] text-muted-foreground"
+            data-testid="extraction-language-future-only-hint"
+          >
+            {t(
+              'workspace.extractionLanguage.futureOnlyHint',
+              'Applies to future document ingestions. Use Rebuild Knowledge Graph to re-extract existing documents.',
+            )}
+          </p>
+        </div>
+        {!isEditing ? (
+          configured ? (
+            <Badge
+              variant="secondary"
+              className="w-fit shrink-0 text-sm"
+              data-testid="ws-extraction-language-value"
+            >
+              {configured}
+            </Badge>
+          ) : (
+            <p
+              className="w-fit shrink-0 text-sm text-muted-foreground"
+              data-testid="ws-extraction-language-value"
+            >
+              {serverDefaultLabel}
+            </p>
+          )
+        ) : null}
       </CardHeader>
-      <CardContent>
-        {isEditing ? (
+      {isEditing ? (
+        <CardContent className="px-4">
           <Select
             value={selectValue}
             onValueChange={(value) => {
@@ -107,23 +127,8 @@ export function WorkspaceExtractionLanguageCard({
               ))}
             </SelectContent>
           </Select>
-        ) : configured ? (
-          <Badge
-            variant="secondary"
-            className="text-sm"
-            data-testid="ws-extraction-language-value"
-          >
-            {configured}
-          </Badge>
-        ) : (
-          <p
-            className="text-sm text-muted-foreground"
-            data-testid="ws-extraction-language-value"
-          >
-            {serverDefaultLabel}
-          </p>
-        )}
-      </CardContent>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

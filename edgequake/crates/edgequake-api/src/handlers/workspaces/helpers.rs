@@ -106,6 +106,28 @@ pub(super) fn workspace_to_response(workspace: &Workspace) -> WorkspaceResponse 
         entity_type_colors: workspace.metadata.get("entity_type_colors").and_then(|v| {
             serde_json::from_value::<std::collections::HashMap<String, String>>(v.clone()).ok()
         }),
+        // SPEC-114: relation types + schema preset
+        relation_types: workspace
+            .metadata
+            .get("relation_types")
+            .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok()),
+        relation_types_strict: workspace
+            .metadata
+            .get("relation_types_strict")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+        kg_schema_preset: workspace
+            .metadata
+            .get("kg_schema_preset")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        relation_edges: workspace.metadata.get("relation_edges").and_then(|v| {
+            serde_json::from_value::<Vec<crate::handlers::workspaces_types::RelationEdgeDto>>(
+                v.clone(),
+            )
+            .ok()
+            .filter(|e| !e.is_empty())
+        }),
         default_reasoning_effort: workspace
             .metadata
             .get("default_reasoning_effort")

@@ -120,6 +120,22 @@ const CHANGE_LABEL_KEYS: Record<
     key: 'onboarding.impactStrict',
     fallback: 'Strict entity types',
   },
+  relationTypes: {
+    key: 'onboarding.impactRelationTypes',
+    fallback: 'Relation types',
+  },
+  relationTypesStrict: {
+    key: 'onboarding.impactRelationStrict',
+    fallback: 'Strict relation types',
+  },
+  kgSchemaPreset: {
+    key: 'onboarding.impactKgSchemaPreset',
+    fallback: 'KG schema domain',
+  },
+  relationEdges: {
+    key: 'onboarding.impactRelationEdges',
+    fallback: 'Typed edges',
+  },
 };
 
 export function ReviewStep({
@@ -325,6 +341,28 @@ export function ReviewStep({
           }
         />
         <Row label={t('workspace.entityTypes', 'Entity types')} value={entitySample} />
+        <Row
+          label={t('workspace.relationTypes', 'Relation types')}
+          value={
+            draft.relationTypes.length === 0
+              ? t('relationTypes.freeForm', 'Free-form')
+              : draft.relationTypes.length <= 3
+                ? draft.relationTypes.join(', ')
+                : `${draft.relationTypes.slice(0, 3).join(', ')} +${draft.relationTypes.length - 3}`
+          }
+        />
+        <Row
+          label={t('workspace.relationEdges', 'Typed edges')}
+          value={
+            (draft.relationEdges?.length ?? 0) === 0
+              ? t('kgSchema.edgesUnconstrained', 'Unconstrained endpoints')
+              : draft.relationEdges.length <= 2
+                ? draft.relationEdges
+                    .map((e) => `${e.source}—${e.relation}→${e.target}`)
+                    .join('; ')
+                : `${draft.relationEdges.length} edges`
+          }
+        />
         {hideWorkspaceIdentity ? (
           <Row
             label={t('onboarding.strictMode', 'Strict')}

@@ -40,35 +40,40 @@ export function WorkspaceActionsCard({
           includeVision: includeVisionPending,
         })
       : null;
+  const showRebuildBanner = Boolean(messageKey && pendingRebuild);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Settings className="h-5 w-5" />
+    <Card className="gap-3 py-4" data-testid="workspace-actions-card">
+      <CardHeader className="px-4 pb-0 gap-1">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Settings className="h-4 w-4" />
           {t("workspace.actions", "Workspace Actions")}
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-xs">
           {t(
             "workspace.actionsDesc",
             "Manage workspace data and re-process documents.",
           )}
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* SPEC-100: always reserve rebuild banner strip (never null→tall CLS). */}
+      <CardContent className="space-y-3 px-4">
+        {/*
+          SPEC-100: slot always mounted. Empty state collapses (no 5.5rem blank).
+          Banner appears after user Apply (interaction window) — avoid permanent dead air.
+        */}
         <div
-          className="min-h-[5.5rem]"
+          className="min-h-0"
           data-testid="spec100-workspace-rebuild-slot"
+          data-reserved={showRebuildBanner ? "banner" : "collapsed"}
         >
-          {messageKey && pendingRebuild ? (
-            <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-              <div className="flex-1">
-                <p className="font-medium text-amber-800 dark:text-amber-200">
+          {showRebuildBanner && pendingRebuild && messageKey ? (
+            <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
                   {t("workspace.rebuildPending", "Rebuild Required")}
                 </p>
-                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                <p className="text-xs text-amber-700 dark:text-amber-300">
                   {t(
                     messageKey,
                     getPendingRebuildDefaultMessage(
@@ -79,12 +84,10 @@ export function WorkspaceActionsCard({
                 </p>
               </div>
             </div>
-          ) : (
-            <div className="h-[5.5rem]" aria-hidden />
-          )}
+          ) : null}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-stretch">
           <RebuildEmbeddingsButton
             variant="card"
             onComplete={onRebuildComplete}
@@ -96,48 +99,47 @@ export function WorkspaceActionsCard({
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-          <Card className="border-dashed">
-            <CardContent className="pt-6">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    {t("workspace.id", "Workspace ID")}
-                  </span>
-                  <code className="max-w-[60%] break-all rounded bg-muted px-2 py-1 text-right text-xs">
-                    {workspace.id}
-                  </code>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    {t("workspace.slug", "Slug")}
-                  </span>
-                  <code className="max-w-[60%] break-all rounded bg-muted px-2 py-1 text-right text-xs">
-                    {workspace.slug || "-"}
-                  </code>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    {t("workspace.created", "Created")}
-                  </span>
-                  <span className="text-sm">
-                    {new Date(workspace.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    {t("workspace.updated", "Updated")}
-                  </span>
-                  <span className="text-sm">
-                    {workspace.updated_at
-                      ? new Date(workspace.updated_at).toLocaleDateString()
-                      : "-"}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <dl
+          className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-dashed bg-muted/20 px-3 py-2.5 text-xs sm:grid-cols-4"
+          data-testid="workspace-metadata"
+        >
+          <div className="min-w-0 space-y-0.5">
+            <dt className="text-muted-foreground">
+              {t("workspace.id", "Workspace ID")}
+            </dt>
+            <dd>
+              <code className="block truncate font-mono text-[11px]" title={workspace.id}>
+                {workspace.id}
+              </code>
+            </dd>
+          </div>
+          <div className="min-w-0 space-y-0.5">
+            <dt className="text-muted-foreground">
+              {t("workspace.slug", "Slug")}
+            </dt>
+            <dd>
+              <code className="font-mono text-[11px]">
+                {workspace.slug || "-"}
+              </code>
+            </dd>
+          </div>
+          <div className="min-w-0 space-y-0.5">
+            <dt className="text-muted-foreground">
+              {t("workspace.created", "Created")}
+            </dt>
+            <dd>{new Date(workspace.created_at).toLocaleDateString()}</dd>
+          </div>
+          <div className="min-w-0 space-y-0.5">
+            <dt className="text-muted-foreground">
+              {t("workspace.updated", "Updated")}
+            </dt>
+            <dd>
+              {workspace.updated_at
+                ? new Date(workspace.updated_at).toLocaleDateString()
+                : "-"}
+            </dd>
+          </div>
+        </dl>
       </CardContent>
     </Card>
   );

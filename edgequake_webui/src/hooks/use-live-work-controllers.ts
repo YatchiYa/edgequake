@@ -10,6 +10,7 @@ import {
   filterRunsExcludingQueuingSession,
   shouldShowReprocessQueuingPanel,
 } from "@/lib/documents/progress-admit";
+import { hasPanelVisibleActiveRuns } from "@/lib/pipeline/active-runs-partition";
 import {
   buildIngestionRunViews,
   type IngestionRunView,
@@ -49,7 +50,11 @@ export interface LiveWorkControllers {
   allRuns: IngestionRunView[];
 }
 
-export function useLiveWorkControllers(
+/**
+ * Pure live-work derivation (unit-testable SSOT for the hook).
+ * Ordinary Failed runs do not open ActiveRuns / feedback zone.
+ */
+export function deriveLiveWorkControllers(
   input: UseLiveWorkControllersInput,
 ): LiveWorkControllers {
   const {
@@ -62,86 +67,70 @@ export function useLiveWorkControllers(
     stuckDocIds,
   } = input;
 
-  const runViewOpts = useMemo(() => {
-    const pending =
-      pipelineStatus?.pending_tasks ?? pipelineStatus?.queued_tasks ?? 0;
-    const processing =
-      pipelineStatus?.processing_tasks ?? pipelineStatus?.running_tasks ?? 0;
-    return {
-      hasQueueCoverage: hasQueueCoverage(pipelineStatus, pending, processing),
-    };
-  }, [pipelineStatus]);
+  const pending =
+    pipelineStatus?.pending_tasks ?? pipelineStatus?.queued_tasks ?? 0;
+  const processing =
+    pipelineStatus?.processing_tasks ?? pipelineStatus?.running_tasks ?? 0;
+  const runViewOpts = {
+    hasQueueCoverage: hasQueueCoverage(pipelineStatus, pending, processing),
+  };
 
-  const isLiveRunIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const run of buildIngestionRunViews(documents, runViewOpts).values()) {
-      if (
-        run.stageStatus === "active" ||
-        run.stageStatus === "pending" ||
-        run.stage === "stopping"
-      ) {
-        ids.add(run.documentId);
-      }
+  const runViews = buildIngestionRunViews(documents, runViewOpts);
+  const isLiveRunIds = new Set<string>();
+  for (const run of runViews.values()) {
+    if (
+      run.stageStatus === "active" ||
+      run.stageStatus === "pending" ||
+      run.stage === "stopping"
+    ) {
+      isLiveRunIds.add(run.documentId);
     }
-    return ids;
-  }, [documents, runViewOpts]);
+  }
 
-  const allRuns = useMemo(
-    () => [...buildIngestionRunViews(documents, runViewOpts).values()],
-    [documents, runViewOpts],
+  const allRuns = [...runViews.values()];
+
+  const stagesByDocId = new Map<string, string | null | undefined>();
+  for (const doc of documents ?? []) {
+    stagesByDocId.set(doc.id, doc.current_stage);
+  }
+
+  const queuingSessionDocIds = documentIdsWithQueuingSession(
+    reprocessEntries,
+    stagesByDocId,
   );
 
-  const stagesByDocId = useMemo(() => {
-    const map = new Map<string, string | null | undefined>();
-    for (const doc of documents ?? []) {
-      map.set(doc.id, doc.current_stage);
-    }
-    return map;
-  }, [documents]);
-
-  const queuingSessionDocIds = useMemo(
-    () => documentIdsWithQueuingSession(reprocessEntries, stagesByDocId),
-    [reprocessEntries, stagesByDocId],
+  const activeRunsForPanel = filterRunsExcludingQueuingSession(
+    allRuns,
+    queuingSessionDocIds,
   );
 
-  const activeRunsForPanel = useMemo(
-    () => filterRunsExcludingQueuingSession(allRuns, queuingSessionDocIds),
-    [allRuns, queuingSessionDocIds],
-  );
-
-  const showActiveRuns = activeRunsForPanel.length > 0;
-
-  const activeRunsDisplayed = useMemo(() => {
-    if (pipelineUiAlertMode !== "stuck" || !stuckDocIds || stuckDocIds.size === 0) {
-      return activeRunsForPanel;
-    }
+  let activeRunsDisplayed = activeRunsForPanel;
+  if (
+    pipelineUiAlertMode === "stuck" &&
+    stuckDocIds &&
+    stuckDocIds.size > 0
+  ) {
     const stuckRuns = activeRunsForPanel.filter((r) =>
       stuckDocIds.has(r.documentId),
     );
-    return stuckRuns.length > 0 ? stuckRuns : activeRunsForPanel;
-  }, [activeRunsForPanel, pipelineUiAlertMode, stuckDocIds]);
+    activeRunsDisplayed =
+      stuckRuns.length > 0 ? stuckRuns : activeRunsForPanel;
+  }
 
-  const sessionReprocessEntries = useMemo(
-    () =>
-      reprocessEntries.filter((entry) => {
-        if (shouldShowReprocessQueuingPanel(entry.trackId)) return true;
-        if (shouldUsePdfReprocessPanel(Boolean(entry.isPdf), entry.mode)) {
-          return true;
-        }
-        if (!showActiveRuns) return true;
-        return !activeRunsDisplayed.some((r) => r.documentId === entry.documentId);
-      }),
-    [reprocessEntries, showActiveRuns, activeRunsDisplayed],
-  );
+  // SSOT with ActiveRunsPanel: ordinary Failed must not open the zone.
+  const showActiveRuns = hasPanelVisibleActiveRuns(activeRunsDisplayed);
 
-  const clientOnlyUploads = useMemo(
-    () => uploadingFiles.filter((f) => !f.trackId),
-    [uploadingFiles],
-  );
-  const trackedUploads = useMemo(
-    () => uploadingFiles.filter((f) => Boolean(f.trackId)),
-    [uploadingFiles],
-  );
+  const sessionReprocessEntries = reprocessEntries.filter((entry) => {
+    if (shouldShowReprocessQueuingPanel(entry.trackId)) return true;
+    if (shouldUsePdfReprocessPanel(Boolean(entry.isPdf), entry.mode)) {
+      return true;
+    }
+    if (!showActiveRuns) return true;
+    return !activeRunsDisplayed.some((r) => r.documentId === entry.documentId);
+  });
+
+  const clientOnlyUploads = uploadingFiles.filter((f) => !f.trackId);
+  const trackedUploads = uploadingFiles.filter((f) => Boolean(f.trackId));
   const showUploadList =
     clientOnlyUploads.length > 0 ||
     (trackedUploads.length > 0 && !showActiveRuns);
@@ -163,4 +152,40 @@ export function useLiveWorkControllers(
     sessionReprocessEntries,
     allRuns,
   };
+}
+
+export function useLiveWorkControllers(
+  input: UseLiveWorkControllersInput,
+): LiveWorkControllers {
+  const {
+    documents,
+    pipelineStatus,
+    uploadingFiles,
+    reprocessEntries,
+    deleteSessionCount,
+    pipelineUiAlertMode,
+    stuckDocIds,
+  } = input;
+
+  return useMemo(
+    () =>
+      deriveLiveWorkControllers({
+        documents,
+        pipelineStatus,
+        uploadingFiles,
+        reprocessEntries,
+        deleteSessionCount,
+        pipelineUiAlertMode,
+        stuckDocIds,
+      }),
+    [
+      documents,
+      pipelineStatus,
+      uploadingFiles,
+      reprocessEntries,
+      deleteSessionCount,
+      pipelineUiAlertMode,
+      stuckDocIds,
+    ],
+  );
 }

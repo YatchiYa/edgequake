@@ -31,65 +31,26 @@ import {
   rememberCancelledFromStage,
 } from "@/lib/pipeline/cancelled-active-run-dismiss";
 import {
+  isOrphanFailedAttention,
+  partitionActiveRuns,
+} from "@/lib/pipeline/active-runs-partition";
+import {
   shouldNestPdfPageMeter,
   type IngestionRunView,
 } from "@/lib/pipeline/ingestion-run-view";
+
+// Re-export partition SSOT for existing test / call-site imports.
+export {
+  hasPanelVisibleActiveRuns,
+  isOrphanFailedAttention,
+  isLiveWorkingOrQueued,
+  partitionActiveRuns,
+} from "@/lib/pipeline/active-runs-partition";
 
 interface ActiveRunsPanelProps {
   runs: IngestionRunView[];
   /** Delete/remove a failed attention shell (orphan staging re-upload class). */
   onDismissFailed?: (documentId: string) => void;
-}
-
-export function isOrphanFailedAttention(run: IngestionRunView): boolean {
-  return (
-    run.stageStatus === "failed" &&
-    /re-upload|interrupted|orphaned staging|document received,\s*starting processing|prior interrupted/i.test(
-      run.message,
-    )
-  );
-}
-
-/**
- * Live work + brief cancelled acknowledgement (TTL applied later).
- * Stopping always stays; cancelled passes partition then retention filter.
- */
-export function isLiveWorkingOrQueued(run: IngestionRunView): boolean {
-  if (isOrphanFailedAttention(run)) return false;
-  // LAW-28: keep Stopping… / Cancelled on ActiveRuns (TTL applied later).
-  if (
-    run.stage === "stopping" ||
-    run.stage === "cancelled" ||
-    run.stageStatus === "stopping" ||
-    run.stageStatus === "cancelled"
-  ) {
-    return true;
-  }
-  return (
-    run.stageStatus === "active" ||
-    run.stageStatus === "pending" ||
-    (Boolean(run.trackId) &&
-      run.stage !== "completed" &&
-      run.stage !== "failed" &&
-      run.stageStatus !== "failed")
-  );
-}
-
-/** Split live work from orphan attention shells (testable SSOT). */
-export function partitionActiveRuns(runs: IngestionRunView[]): {
-  working: IngestionRunView[];
-  attention: IngestionRunView[];
-} {
-  const working: IngestionRunView[] = [];
-  const attention: IngestionRunView[] = [];
-  for (const run of runs) {
-    if (isOrphanFailedAttention(run)) {
-      attention.push(run);
-    } else if (isLiveWorkingOrQueued(run)) {
-      working.push(run);
-    }
-  }
-  return { working, attention };
 }
 
 /** Honest section title — never "Queued run" for cancelled-only. */

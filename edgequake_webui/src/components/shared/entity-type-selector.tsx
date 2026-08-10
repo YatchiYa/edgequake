@@ -27,6 +27,7 @@ import {
     deduplicateTypes,
     normalizeEntityType,
 } from '@/constants/entity-presets';
+import { cn } from '@/lib/utils';
 import {
     detectCanonicalPreset,
     getPresetTypes,
@@ -83,12 +84,20 @@ export interface EntityTypeSelectorProps {
    */
   compactPresets?: boolean;
   /**
+   * When true, hide domain preset UI entirely (parent owns domain — SPEC-114).
+   */
+  hidePresets?: boolean;
+  /** Optional className for the chip scroll area (SPEC-114 wide layout). */
+  chipAreaClassName?: string;
+  /**
    * SPEC-102 — optional entity-type color overrides (controlled).
    * When omitted, chips show default colors without edit.
    */
   colors?: Record<string, string>;
   /** Called when a type color changes / resets (omit = read-only swatches). */
   onColorsChange?: (colors: Record<string, string>) => void;
+  /** Compact spacing for dense wizard columns (SPEC-114 layout). */
+  density?: 'default' | 'compact';
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -112,8 +121,11 @@ export function EntityTypeSelector({
   onStrictLimitChange,
   extractionLanguage = null,
   compactPresets = false,
+  hidePresets = false,
+  chipAreaClassName,
   colors,
   onColorsChange,
+  density = 'default',
 }: EntityTypeSelectorProps) {
   const { t } = useTranslation();
   const [customInput, setCustomInput] = useState('');
@@ -121,6 +133,8 @@ export function EntityTypeSelector({
   const [presetsOpen, setPresetsOpen] = useState(!compactPresets);
   const colorMap = colors ?? {};
   const colorsEditable = Boolean(onColorsChange) && !readOnly;
+  const isCompact = density === 'compact';
+  const stackGap = isCompact ? 'space-y-2' : 'space-y-3';
 
   const activePreset: PresetKey = useMemo(
     () => detectCanonicalPreset(value),
@@ -195,23 +209,25 @@ export function EntityTypeSelector({
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div
-      className="space-y-3"
+      className={stackGap}
       data-testid="entity-type-selector"
       aria-label={t('entityTypes.selectorLabel', 'Entity type selector')}
     >
-      <Tabs defaultValue="basic" className="space-y-3">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="basic" data-testid="entity-tab-basic">
-            {t('entityTypes.tabPresets', 'Presets')}
+      <Tabs defaultValue="basic" className={stackGap}>
+        <TabsList className="grid w-full grid-cols-2 h-8">
+          <TabsTrigger value="basic" data-testid="entity-tab-basic" className="text-xs">
+            {hidePresets
+              ? t('entityTypes.tabList', 'List')
+              : t('entityTypes.tabPresets', 'Presets')}
           </TabsTrigger>
-          <TabsTrigger value="advanced" data-testid="entity-tab-advanced">
+          <TabsTrigger value="advanced" data-testid="entity-tab-advanced" className="text-xs">
             {t('entityTypes.tabBulkEdit', 'Bulk edit')}
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="basic" className="space-y-3 m-0">
+        <TabsContent value="basic" className={`${stackGap} m-0`}>
           {/* Preset buttons — compact: summary + disclosure */}
-          <div className="space-y-1.5">
+          {!hidePresets && <div className="space-y-1.5">
             {compactPresets ? (
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground" data-testid="entity-preset-summary">
@@ -285,16 +301,22 @@ export function EntityTypeSelector({
                 )}
               </div>
             ) : null}
-          </div>
+          </div>}
 
           {/* Active type chips */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-muted-foreground">
-                {t('entityTypes.typesLabel', 'Entity Types')}
-              </p>
+              {!hidePresets || !isCompact ? (
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t('entityTypes.typesLabel', 'Entity Types')}
+                </p>
+              ) : (
+                <span className="sr-only">
+                  {t('entityTypes.typesLabel', 'Entity Types')}
+                </span>
+              )}
               <span
-                className={`text-xs ${atMax ? 'text-destructive' : 'text-muted-foreground'}`}
+                className={`text-xs ${atMax ? 'text-destructive' : 'text-muted-foreground'} ml-auto`}
                 aria-live="polite"
               >
                 {value.length}/{MAX_ENTITY_TYPES}
@@ -302,7 +324,10 @@ export function EntityTypeSelector({
             </div>
 
             <div
-              className="min-h-10 max-h-24 overflow-y-auto flex flex-wrap gap-1.5 p-2 rounded-md border bg-background"
+              className={cn(
+                'min-h-10 max-h-24 overflow-y-auto flex flex-wrap gap-1.5 p-2 rounded-md border bg-background',
+                chipAreaClassName,
+              )}
               data-testid="entity-types-chips"
             >
               {value.length === 0 && (
@@ -364,8 +389,8 @@ export function EntityTypeSelector({
             )}
           </div>
 
-          {onStrictLimitChange && (
-            <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3">
+          {onStrictLimitChange && value.length > 0 && (
+            <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-2">
               <Checkbox
                 id="entity-types-strict-limit"
                 checked={strictLimit}
@@ -374,8 +399,9 @@ export function EntityTypeSelector({
                 }
                 disabled={readOnly}
                 data-testid="entity-types-strict-checkbox"
+                className="mt-0.5"
               />
-              <div className="space-y-0.5">
+              <div className="space-y-0.5 min-w-0">
                 <Label
                   htmlFor="entity-types-strict-limit"
                   className="text-xs font-medium leading-snug cursor-pointer"
@@ -385,22 +411,26 @@ export function EntityTypeSelector({
                     'Limit extraction to listed types (classify others as OTHER)'
                   )}
                 </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t(
-                    'entityTypes.strictLimitHint',
-                    'When off, the model may use additional type labels; unknown types are not forced into OTHER.'
-                  )}
-                </p>
+                {!isCompact ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      'entityTypes.strictLimitHint',
+                      'When off, the model may use additional type labels; unknown types are not forced into OTHER.'
+                    )}
+                  </p>
+                ) : null}
               </div>
             </div>
           )}
 
           {/* Add custom type */}
           {!readOnly && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">
-                {t('entityTypes.addCustom', 'Add Custom Type')}
-              </p>
+            <div className="space-y-1">
+              {!isCompact ? (
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t('entityTypes.addCustom', 'Add Custom Type')}
+                </p>
+              ) : null}
               <div className="flex gap-2">
                 <Input
                   placeholder={t('entityTypes.addPlaceholder', 'e.g. CIRCUIT_BOARD')}

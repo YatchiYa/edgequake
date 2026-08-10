@@ -43,20 +43,20 @@ export function WorkspaceEntityTypesCard({
   const { t } = useTranslation();
 
   return (
-    <Card data-testid="workspace-entity-types-card">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Tags className="h-5 w-5 text-indigo-600" />
+    <Card className="gap-2 py-4 h-full" data-testid="workspace-entity-types-card">
+      <CardHeader className="px-4 pb-0 gap-1">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Tags className="h-4 w-4 text-indigo-600" />
           {t('entityTypes.title', 'Entity Types')}
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-xs leading-snug">
           {t(
             'entityTypes.futureOnlyHint',
             'Applies to future document ingestions. Use Rebuild Knowledge Graph to re-extract existing documents.'
           )}
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4">
         {isEditing ? (
           <EntityTypeSelector
             value={selectedTypes}
@@ -66,7 +66,7 @@ export function WorkspaceEntityTypesCard({
             extractionLanguage={extractionLanguage}
           />
         ) : workspace.entity_types && workspace.entity_types.length > 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div className="flex flex-wrap gap-1.5">
               {workspace.entity_types.map((type) => (
                 <Badge
@@ -86,17 +86,17 @@ export function WorkspaceEntityTypesCard({
             </p>
           </div>
         ) : (
-          <div className="text-sm text-muted-foreground space-y-1">
-            <span className="font-medium">
+          <div className="space-y-1.5 rounded-md border border-dashed bg-muted/20 px-2.5 py-2 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground/80">
               {t('entityTypes.defaults', 'Using server defaults:')}
             </span>{' '}
-            <span className="font-mono text-xs">
+            <span className="font-mono">
               {t(
                 'entityTypes.defaultsHint',
-                'PERSON, ORGANIZATION, LOCATION, EVENT, CONCEPT, TECHNOLOGY, PRODUCT, DATE, DOCUMENT'
+                'PERSON, CREATURE, ORGANIZATION, LOCATION, EVENT, CONCEPT, METHOD, CONTENT, DATA, ARTIFACT, NATURALOBJECT, OTHER'
               )}
             </span>
-            <p className="text-xs" data-testid="entity-types-strict-status">
+            <p data-testid="entity-types-strict-status">
               {workspace.entity_types_strict !== false
                 ? t('entityTypes.strictOn', 'Strict limit: on (unknown types → OTHER)')
                 : t('entityTypes.strictOff', 'Strict limit: off (free-form types allowed)')}

@@ -145,6 +145,10 @@ impl Pipeline {
                             cumulative_cost_usd: cumulative_cost,
                             avg_time_per_chunk_ms: avg_time_ms,
                             eta_seconds,
+                            phase: super::ChunkProgressPhase::Completed,
+                            attempt: 1,
+                            completed_chunks: chunk_index + 1,
+                            gate_wait_ms: 0,
                         };
 
                         callback(update);
@@ -203,7 +207,15 @@ impl Pipeline {
     /// - **UC2305**: System continues processing when individual chunks fail
     #[tracing::instrument(
         name = "pipeline_chunk_extraction",
-        skip(self, chunks, extractor, progress_callback, cancel_token),
+        skip(
+            self,
+            chunks,
+            extractor,
+            progress_callback,
+            cancel_token,
+            resume_by_chunk_id,
+            on_chunk_extracted
+        ),
         fields(
             chunk_count = chunks.len(),
             error.code = tracing::field::Empty,
@@ -215,8 +227,14 @@ impl Pipeline {
         extractor: &Arc<dyn EntityExtractor>,
         progress_callback: Option<ChunkProgressCallback>,
         cancel_token: Option<CancellationToken>,
+        resume_by_chunk_id: Option<
+            std::collections::HashMap<String, crate::extractor::ExtractionResult>,
+        >,
+        on_chunk_extracted: Option<super::ChunkExtractedCallback>,
     ) -> crate::error::ResilientExtractionResult {
         use crate::error::{ChunkExtractionOutcome, ChunkFailure, ResilientExtractionResult};
+        let resume_by_chunk_id = std::sync::Arc::new(resume_by_chunk_id.unwrap_or_default());
+        let on_chunk_extracted = on_chunk_extracted.clone();
 
         let semaphore = Arc::new(tokio::sync::Semaphore::new(
             self.config.max_concurrent_extractions,
@@ -262,6 +280,8 @@ impl Pipeline {
                 let completed_chunks = completed_chunks.clone();
                 let model_pricing = model_pricing.clone();
                 let cancel_token = cancel_token.clone();
+                let resume_by_chunk_id = resume_by_chunk_id.clone();
+                let on_chunk_extracted = on_chunk_extracted.clone();
 
                 async move {
                     let chunk_start = std::time::Instant::now();
@@ -278,6 +298,38 @@ impl Pipeline {
                                 processing_time_ms: 0,
                             });
                         }
+                    }
+
+                    // Mid-doc resume: skip LLM when this chunk was already extracted.
+                    if let Some(prior) = resume_by_chunk_id.get(&chunk.id).cloned() {
+                        let completed =
+                            completed_chunks.fetch_add(1, Ordering::Relaxed) + 1;
+                        if let Some(ref callback) = progress_callback {
+                            callback(ChunkProgressUpdate {
+                                chunk_index,
+                                total_chunks,
+                                chunk_preview: "[resumed]".to_string(),
+                                processing_time_ms: 0,
+                                input_tokens: prior.input_tokens,
+                                output_tokens: prior.output_tokens,
+                                chunk_cost_usd: 0.0,
+                                cumulative_input_tokens: cumulative_input_tokens
+                                    .load(Ordering::Relaxed),
+                                cumulative_output_tokens: cumulative_output_tokens
+                                    .load(Ordering::Relaxed),
+                                cumulative_cost_usd: 0.0,
+                                avg_time_per_chunk_ms: 0.0,
+                                eta_seconds: 0,
+                                phase: super::ChunkProgressPhase::Completed,
+                                attempt: 0,
+                                completed_chunks: completed as usize,
+                                gate_wait_ms: 0,
+                            });
+                        }
+                        return ChunkExtractionOutcome::Success {
+                            chunk_index,
+                            result: prior,
+                        };
                     }
 
                     // Acquire permit (released on drop)
@@ -308,6 +360,59 @@ impl Pipeline {
                                 last_error = "Task cancelled".to_string();
                                 break;
                             }
+                        }
+
+                        // Heartbeat: in-flight / retry so UI does not freeze at 0%.
+                        if let Some(ref callback) = progress_callback {
+                            let done = completed_chunks.load(Ordering::Relaxed) as usize;
+                            let total_time = cumulative_time_ms.load(Ordering::Relaxed);
+                            let avg_time_ms = if done > 0 {
+                                total_time as f64 / done as f64
+                            } else {
+                                0.0
+                            };
+                            let remaining = total_chunks.saturating_sub(done);
+                            let eta_seconds = if avg_time_ms > 0.0 {
+                                ((avg_time_ms * remaining as f64) / 1000.0) as u64
+                            } else {
+                                0
+                            };
+                            let preview = if chunk.content.len() > 100 {
+                                let truncate_at = chunk
+                                    .content
+                                    .char_indices()
+                                    .nth(97)
+                                    .map(|(idx, _)| idx)
+                                    .unwrap_or(chunk.content.len());
+                                format!("{}...", &chunk.content[..truncate_at])
+                            } else {
+                                chunk.content.clone()
+                            };
+                            let phase = if attempt == 1 {
+                                super::ChunkProgressPhase::Started
+                            } else {
+                                super::ChunkProgressPhase::Retrying
+                            };
+                            callback(ChunkProgressUpdate {
+                                chunk_index,
+                                total_chunks,
+                                chunk_preview: preview,
+                                processing_time_ms: chunk_start.elapsed().as_millis() as u64,
+                                input_tokens: 0,
+                                output_tokens: 0,
+                                chunk_cost_usd: 0.0,
+                                cumulative_input_tokens: cumulative_input_tokens
+                                    .load(Ordering::Relaxed),
+                                cumulative_output_tokens: cumulative_output_tokens
+                                    .load(Ordering::Relaxed),
+                                cumulative_cost_usd: 0.0,
+                                avg_time_per_chunk_ms: avg_time_ms,
+                                eta_seconds,
+                                phase,
+                                attempt,
+                                completed_chunks: done,
+                                gate_wait_ms: 0,
+                            });
                         }
 
                         let extraction_future = extractor.extract(&chunk);
@@ -393,9 +498,16 @@ impl Pipeline {
                                         cumulative_cost_usd: cumulative_cost,
                                         avg_time_per_chunk_ms: avg_time_ms,
                                         eta_seconds,
+                                        phase: super::ChunkProgressPhase::Completed,
+                                        attempt,
+                                        completed_chunks: completed as usize,
+                                        gate_wait_ms: 0,
                                     });
                                 }
 
+                                if let Some(ref sink) = on_chunk_extracted {
+                                    sink(chunk.id.clone(), result.clone());
+                                }
                                 return ChunkExtractionOutcome::Success {
                                     chunk_index,
                                     result,
@@ -432,23 +544,40 @@ impl Pipeline {
                             }
                         }
 
-                        // Exponential backoff before retry (longer for local overload)
-                        if attempt < max_retries {
-                            let delay_ms = crate::pipeline::retry_delay_ms_for_chunk_error(
-                                initial_delay_ms,
-                                attempt,
-                                &last_error,
-                            );
-                            if crate::pipeline::is_local_provider_overload_error(&last_error) {
-                                tracing::warn!(
-                                    chunk_index = chunk_index,
-                                    delay_ms = delay_ms,
-                                    attempt = attempt,
-                                    "Local LLM overload detected — backing off before retry"
-                                );
+                        let err_class = crate::pipeline::classify_extract_error(&last_error);
+                        let budget = crate::pipeline::extract_retry_budget(err_class, max_retries);
+                        let reason = match err_class {
+                            crate::pipeline::ExtractErrorClass::Transient if was_timeout => {
+                                "timeout"
                             }
-                            tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                            crate::pipeline::ExtractErrorClass::Transient => "network",
+                            crate::pipeline::ExtractErrorClass::Parse => "parse",
+                            crate::pipeline::ExtractErrorClass::Permanent => "permanent",
+                        };
+                        edgequake_observability::metrics::record_extract_retry(reason);
+
+                        // Permanent / exhausted parse budget → stop early.
+                        if err_class == crate::pipeline::ExtractErrorClass::Permanent
+                            || attempt >= budget
+                        {
+                            break;
                         }
+
+                        // Exponential backoff before retry (longer for local overload)
+                        let delay_ms = crate::pipeline::retry_delay_ms_for_chunk_error(
+                            initial_delay_ms,
+                            attempt,
+                            &last_error,
+                        );
+                        if crate::pipeline::is_local_provider_overload_error(&last_error) {
+                            tracing::warn!(
+                                chunk_index = chunk_index,
+                                delay_ms = delay_ms,
+                                attempt = attempt,
+                                "Local LLM overload detected — backing off before retry"
+                            );
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                     }
 
                     // FAILURE PATH (all retries exhausted)

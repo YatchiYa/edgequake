@@ -13,7 +13,11 @@ export type WorkspaceConfigChangedKey =
   | 'extractionLanguage'
   | 'entityTypes'
   | 'entityTypesStrict'
-  | 'entityTypeColors';
+  | 'entityTypeColors'
+  | 'relationTypes'
+  | 'relationTypesStrict'
+  | 'kgSchemaPreset'
+  | 'relationEdges';
 
 export interface WorkspaceConfigSnapshot {
   useServerDefaults: boolean;
@@ -25,6 +29,10 @@ export interface WorkspaceConfigSnapshot {
   entityTypes: string[];
   entityTypesStrict: boolean;
   entityTypeColors?: Record<string, string>;
+  relationTypes?: string[];
+  relationTypesStrict?: boolean;
+  kgSchemaPreset?: string;
+  relationEdges?: Array<{ source: string; relation: string; target: string }>;
 }
 
 export interface WorkspaceRebuildHints {
@@ -60,6 +68,19 @@ function entityTypeColorsKey(colors?: Record<string, string>): string {
     .map(([k, v]) => `${k.toUpperCase()}=${v.toLowerCase()}`)
     .sort()
     .join('|');
+}
+
+function relationEdgesKey(
+  edges?: Array<{ source: string; relation: string; target: string }>,
+): string {
+  if (!edges?.length) return '';
+  return edges
+    .map(
+      (e) =>
+        `${e.source.trim().toUpperCase()}|${e.relation.trim().toUpperCase()}|${e.target.trim().toUpperCase()}`,
+    )
+    .sort()
+    .join(';');
 }
 
 function modelsDiffer(
@@ -132,14 +153,37 @@ export function diffWorkspaceConfig(
   ) {
     changedKeys.push('entityTypeColors');
   }
+  if (
+    entityTypesKey(baseline.relationTypes ?? []) !==
+    entityTypesKey(draft.relationTypes ?? [])
+  ) {
+    changedKeys.push('relationTypes');
+  }
+  if ((baseline.relationTypesStrict ?? true) !== (draft.relationTypesStrict ?? true)) {
+    changedKeys.push('relationTypesStrict');
+  }
+  if ((baseline.kgSchemaPreset ?? '') !== (draft.kgSchemaPreset ?? '')) {
+    changedKeys.push('kgSchemaPreset');
+  }
+  if (
+    relationEdgesKey(baseline.relationEdges) !== relationEdgesKey(draft.relationEdges)
+  ) {
+    changedKeys.push('relationEdges');
+  }
 
   const docs = opts.documentCount ?? 0;
   const modelChanged = (key: WorkspaceConfigChangedKey) => changedKeys.includes(key);
+  const schemaChanged =
+    modelChanged('entityTypes') ||
+    modelChanged('relationTypes') ||
+    modelChanged('relationEdges') ||
+    modelChanged('extractionLanguage');
 
   // Rebuild hints only when there are documents to rebuild (EC-101-16…18).
+  // SPEC-114: schema changes also suggest KG rebuild (honest future-only apply).
   const rebuildHints: WorkspaceRebuildHints = {
     embeddings: docs > 0 && modelChanged('embedding'),
-    extraction: docs > 0 && modelChanged('llm'),
+    extraction: docs > 0 && (modelChanged('llm') || schemaChanged),
     vision: docs > 0 && modelChanged('vision'),
   };
 

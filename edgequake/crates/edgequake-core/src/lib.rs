@@ -39,6 +39,7 @@ pub mod cache;
 pub mod config;
 pub mod conversation_service;
 pub mod entity_type_colors;
+pub mod type_list;
 pub mod env;
 pub mod error;
 pub mod graph_mapping;

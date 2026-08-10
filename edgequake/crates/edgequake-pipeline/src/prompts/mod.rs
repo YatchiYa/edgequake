@@ -38,8 +38,11 @@ mod summarization;
 
 pub use entity_extraction::EntityExtractionPrompts;
 pub use entity_type_policy::{
-    enforce_entity_type, json_entity_types_prompt_section, normalize_type_token,
-    sota_entity_type_instruction, EntityExtractionSchema, METADATA_ENTITY_TYPES_STRICT,
+    enforce_entity_type, enforce_relation_edge, enforce_relation_type,
+    enforce_relationship_against_schema, json_entity_types_prompt_section,
+    json_relation_edges_prompt_section, json_relation_types_prompt_section, normalize_type_token,
+    sota_entity_type_instruction, EntityExtractionSchema, RelationEdge,
+    METADATA_ENTITY_TYPES_STRICT, METADATA_RELATION_TYPES_STRICT,
 };
 pub use extract_caps::{
     apply_default_extraction_caps, apply_extraction_caps, ExtractionCaps,

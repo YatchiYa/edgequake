@@ -9,6 +9,7 @@ import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace
 import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
+import { EDGE_PRESETS, RELATION_PRESETS } from '@/constants/kg-schema-presets';
 import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
 import { createWorkspace } from '@/lib/api/edgequake';
 import { buildWorkspaceModelPayload } from '@/lib/onboarding/model-payload';
@@ -38,6 +39,9 @@ function initialWorkspaceDraft(): WizardDraft {
   return {
     ...EMPTY_WIZARD_DRAFT,
     entityTypes: [...ENTITY_PRESETS.general.types],
+    relationTypes: [...RELATION_PRESETS.general],
+    relationEdges: EDGE_PRESETS.general.map((e) => ({ ...e })),
+    kgSchemaPreset: 'general',
   };
 }
 
@@ -159,6 +163,12 @@ export function CreateWorkspaceWizard({
           Object.keys(draft.entityTypeColors).length > 0
             ? draft.entityTypeColors
             : undefined,
+        relation_types:
+          draft.relationTypes.length > 0 ? draft.relationTypes : undefined,
+        relation_types_strict: draft.relationTypesStrict,
+        kg_schema_preset: draft.kgSchemaPreset,
+        relation_edges:
+          draft.relationEdges.length > 0 ? draft.relationEdges : undefined,
       });
       // Success toast + navigation CTA owned by caller (header / tenant-guard).
       onCreated?.(workspace);

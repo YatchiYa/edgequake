@@ -191,9 +191,26 @@ pub fn resolve_role_reasoning_effort(
     }
 
     let effective = if let Some(ref d) = desired {
-        edgequake_llm::clamp_reasoning_effort(provider, model, Some(d.as_str()))
+        let clamped = edgequake_llm::clamp_reasoning_effort(provider, model, Some(d.as_str()));
+        // Ollama has no static effort ladder — pass through so extract can send think:false.
+        clamped.or_else(|| {
+            let p = provider.to_ascii_lowercase();
+            if p.contains("ollama") || p.contains("lmstudio") || p.contains("lm-studio") {
+                Some(d.trim().to_ascii_lowercase())
+            } else {
+                None
+            }
+        })
     } else if role_uses_structured_effort_floor(role) {
-        edgequake_llm::lowest_for_structured_output(provider, model)
+        edgequake_llm::lowest_for_structured_output(provider, model).or_else(|| {
+            let p = provider.to_ascii_lowercase();
+            if p.contains("ollama") || p.contains("lmstudio") || p.contains("lm-studio") {
+                // Structured extract must not use Ollama Auto (think:true).
+                Some("none".to_string())
+            } else {
+                None
+            }
+        })
     } else {
         None // query/chat Auto
     };
@@ -525,6 +542,23 @@ mod tests {
             None,
         );
         assert_eq!(resolved.effective.as_deref(), Some("minimal"));
+        assert_eq!(resolved.source, "compiled_default");
+    }
+
+    #[test]
+    fn resolve_extract_effort_ollama_qwen_floors_to_none() {
+        let ws = sample_workspace(HashMap::new());
+        let resolved = resolve_role_reasoning_effort(
+            LlmRole::Extract,
+            "ollama",
+            "qwen3.6:35b-a3b",
+            &ws,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(resolved.effective.as_deref(), Some("none"));
         assert_eq!(resolved.source, "compiled_default");
     }
 

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use edgequake_llm::traits::ChatMessage;
 
 use super::{
-    assign_token_usage, extraction_completion_options, recommended_chunk_size_for_bytes,
+    assign_token_usage, extraction_completion_options_with_effort, recommended_chunk_size_for_bytes,
     ConfigurableEntitySchema, EntityExtractor, ExtractionResult,
 };
 use crate::chunker::TextChunk;
@@ -25,6 +25,7 @@ where
     prompts: crate::prompts::EntityExtractionPrompts,
     parser: crate::prompts::HybridExtractionParser,
     language: String,
+    reasoning_effort: Option<String>,
 }
 
 impl<L> SOTAExtractor<L>
@@ -39,6 +40,7 @@ where
             prompts: crate::prompts::EntityExtractionPrompts::default(),
             parser: crate::prompts::HybridExtractionParser::new(true),
             language: "English".to_string(),
+            reasoning_effort: None,
         }
     }
 }
@@ -74,6 +76,14 @@ where
     /// Set output language.
     pub fn with_language(mut self, language: impl Into<String>) -> Self {
         self.language = language.into();
+        self
+    }
+
+    /// Set desired extract reasoning effort (SPEC-113 think-off for local models).
+    pub fn with_reasoning_effort(mut self, effort: Option<String>) -> Self {
+        self.reasoning_effort = effort
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         self
     }
 
@@ -295,14 +305,14 @@ where
         for attempt in 1..=MAX_RETRIES {
             // Create completion options with adaptive max_tokens.
             //
-            // WHY reasoning_effort="none": Reasoning models (gpt-5-nano, gpt-5-mini, o-series)
-            // allocate their entire completion budget to chain-of-thought by default. When
-            // max_tokens=8192 and reasoning_tokens=8192, output tokens = 0 → empty response
-            // → "Invalid JSON: EOF while parsing a value". Setting reasoning_effort="none"
-            // disables CoT for extraction tasks where structured JSON output is required.
-            // Non-reasoning models silently ignore this field.
-            let options =
-                extraction_completion_options(self.llm_provider.model(), current_max_tokens);
+            // Provider-aware effort: cloud floors via registry; Ollama floors to "none"
+            // so thinking-capable models get think:false (not Auto think:true).
+            let options = extraction_completion_options_with_effort(
+                self.llm_provider.model(),
+                current_max_tokens,
+                self.reasoning_effort.as_deref(),
+                self.llm_provider.name(),
+            );
 
             tracing::debug!(
                 attempt = attempt,
@@ -502,6 +512,29 @@ where
                             );
                         }
                         entity.entity_type = enforced;
+                    }
+                    let name_to_type: std::collections::HashMap<String, String> = result
+                        .entities
+                        .iter()
+                        .map(|e| (e.name.clone(), e.entity_type.clone()))
+                        .collect();
+                    for rel in &mut result.relationships {
+                        let (enforced, remapped) =
+                            crate::prompts::enforce_relationship_against_schema(
+                                &rel.source,
+                                &rel.target,
+                                &rel.relation_type,
+                                &name_to_type,
+                                &self.entity_schema,
+                            );
+                        if remapped {
+                            tracing::debug!(
+                                raw_type = %rel.relation_type,
+                                enforced = %enforced,
+                                "Remapped SOTA relationship type to workspace schema"
+                            );
+                        }
+                        rel.relation_type = enforced;
                     }
                     // Add token usage from response
                     assign_token_usage(

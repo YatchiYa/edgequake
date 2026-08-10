@@ -103,6 +103,10 @@ describe('model-payload', () => {
       entity_types_strict: true,
       extraction_language: 'none',
       entity_type_colors: {},
+      relation_types: [],
+      relation_types_strict: true,
+      kg_schema_preset: 'custom',
+      relation_edges: [],
     });
   });
 

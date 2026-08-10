@@ -284,7 +284,9 @@ pub use query_execution::{
 pub use query_generation::{execute_full_query, execute_legacy_query_response};
 pub use query_request_builder::{build_engine_request, QueryExecutionParams};
 pub use query_stats_mapper::from_engine_stats as map_engine_query_stats;
-pub use reasoning_effort_resolve::{resolve_query_reasoning_effort, resolve_vlm_reasoning_effort};
+pub use reasoning_effort_resolve::{
+    resolve_extract_reasoning_effort, resolve_query_reasoning_effort, resolve_vlm_reasoning_effort,
+};
 pub use reprocess_admission::{
     evaluate_reprocess_admission, is_reprocess_completed_status, is_reprocess_inflight_status,
     is_reprocess_lifecycle_exclusive, is_reprocess_orphan_waiting_status,

@@ -230,10 +230,35 @@ pub struct ChunkProgressUpdate {
     pub avg_time_per_chunk_ms: f64,
     /// Estimated remaining time in seconds.
     pub eta_seconds: u64,
+    /// Heartbeat phase — Started/Retrying keep UI alive during long LLM calls.
+    pub phase: ChunkProgressPhase,
+    /// Attempt number (1-based) for the current chunk.
+    pub attempt: u32,
+    /// Chunks fully completed so far (for in-flight progress %).
+    pub completed_chunks: usize,
+    /// Last observed local gate wait in milliseconds (0 if unknown).
+    pub gate_wait_ms: u64,
+}
+
+/// Lifecycle phase for [`ChunkProgressUpdate`] heartbeats.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ChunkProgressPhase {
+    /// Chunk extraction finished successfully.
+    #[default]
+    Completed,
+    /// Chunk extraction about to start / in flight.
+    Started,
+    /// Retrying after a transient failure.
+    Retrying,
 }
 
 /// Callback function type for chunk progress updates.
 pub type ChunkProgressCallback = Arc<dyn Fn(ChunkProgressUpdate) + Send + Sync>;
+
+/// Fired after a chunk extraction succeeds (for per-chunk durable checkpoint).
+pub type ChunkExtractedCallback = Arc<
+    dyn Fn(String, crate::extractor::ExtractionResult) + Send + Sync,
+>;
 
 /// Progress update emitted during the embedding generation phase.
 #[derive(Debug, Clone)]

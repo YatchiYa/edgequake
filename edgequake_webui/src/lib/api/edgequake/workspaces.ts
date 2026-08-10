@@ -211,6 +211,14 @@ export interface UpdateWorkspaceRequest {
    * Empty object clears overrides.
    */
   entity_type_colors?: Record<string, string>;
+  /** Relation type allow-list (SPEC-114). Empty clears (free-form). */
+  relation_types?: string[];
+  /** Strict relation type enforcement (SPEC-114). */
+  relation_types_strict?: boolean;
+  /** Domain preset id (SPEC-114). */
+  kg_schema_preset?: string;
+  /** Typed edges (SPEC-114b). Empty clears. */
+  relation_edges?: Array<{ source: string; relation: string; target: string }>;
   /** SPEC-109: workspace default reasoning effort. */
   default_reasoning_effort?: string;
   /** SPEC-109: merge llm_roles metadata (extract/query effort). */

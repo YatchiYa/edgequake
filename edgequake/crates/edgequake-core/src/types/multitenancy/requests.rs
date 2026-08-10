@@ -77,18 +77,13 @@ pub struct CreateWorkspaceRequest {
     ///
     /// If None, uses [`edgequake_pipeline::prompts::default_entity_types()`].
     /// Types are normalized to UPPERCASE_UNDERSCORED and deduplicated.
-    /// Maximum 20 types per workspace.
+    /// Maximum 50 types per workspace.
     ///
-    /// ## Presets
-    ///
-    /// Common domain presets are available in the UI:
-    /// - **General**: PERSON, ORGANIZATION, LOCATION, EVENT, CONCEPT, TECHNOLOGY, PRODUCT, DATE, DOCUMENT
-    /// - **Manufacturing**: adds MACHINE, COMPONENT, DEFECT, MEASUREMENT, PROCESS, MATERIAL
-    /// - **Healthcare**: adds SYMPTOM, DRUG, DIAGNOSIS, PROCEDURE, PATIENT, CONDITION
-    /// - **Legal**: adds CONTRACT, CLAUSE, PARTY, REGULATION, JURISDICTION, CASE
-    /// - **Research**: adds PAPER, METHOD, DATASET, HYPOTHESIS, FINDING, METRIC
+    /// Domain presets (entity + relation) live in the WebUI `kg-schema-presets`
+    /// catalog (SPEC-114). General entities match server `default_entity_types()`.
     ///
     /// @implements SPEC-085: Custom entity configuration from UI
+    /// @implements SPEC-114: paired with relation_types
     pub entity_types: Option<Vec<String>>,
 
     /// When true (default), unknown extracted types remap to OTHER/CONCEPT.
@@ -104,6 +99,19 @@ pub struct CreateWorkspaceRequest {
     /// Custom entity-type → hex color map for graph visualization (SPEC-102).
     /// Keys normalized UPPERCASE; values `#RGB` / `#RRGGBB`. Empty map clears.
     pub entity_type_colors: Option<HashMap<String, String>>,
+
+    /// Relation type allow-list for extraction (SPEC-114).
+    /// Empty/None → free-form relation labels (backward compatible).
+    pub relation_types: Option<Vec<String>>,
+
+    /// When true (default when list non-empty), unknown relations remap.
+    pub relation_types_strict: Option<bool>,
+
+    /// Optional domain preset id for UX honesty (`general`…`finance`/`custom`).
+    pub kg_schema_preset: Option<String>,
+
+    /// Typed edge constraints (SPEC-114b). Empty/None → unconstrained endpoints.
+    pub relation_edges: Option<Vec<crate::type_list::RelationEdge>>,
 
     /// SPEC-109: workspace metadata `default_reasoning_effort`.
     pub default_reasoning_effort: Option<String>,
@@ -322,6 +330,19 @@ pub struct UpdateWorkspaceRequest {
     /// Custom entity-type → hex color map (SPEC-102). Omit = leave unchanged;
     /// empty map clears metadata key.
     pub entity_type_colors: Option<HashMap<String, String>>,
+
+    /// Relation type allow-list (SPEC-114). Omit = leave unchanged;
+    /// empty list clears (free-form).
+    pub relation_types: Option<Vec<String>>,
+
+    /// Strict relation type enforcement (SPEC-114).
+    pub relation_types_strict: Option<bool>,
+
+    /// Domain preset id (SPEC-114). `""` / `"none"` clears.
+    pub kg_schema_preset: Option<String>,
+
+    /// Typed edge constraints (SPEC-114b). Omit = leave unchanged; empty clears.
+    pub relation_edges: Option<Vec<crate::type_list::RelationEdge>>,
 
     /// SPEC-109: set/clear workspace `default_reasoning_effort` metadata.
     /// Empty string / `"none"` / `"auto"` clears.

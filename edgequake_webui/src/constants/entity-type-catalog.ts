@@ -90,6 +90,79 @@ export const ENTITY_TYPE_CATALOG: Record<string, LocalizedTokens> = {
     Italian: 'CONCETTO',
     Russian: 'КОНЦЕПЦИЯ',
   },
+  // SPEC-114: Rust default_entity_types() tokens (General preset parity)
+  CREATURE: {
+    English: 'CREATURE',
+    French: 'CREATURE',
+    Chinese: '生物',
+    Japanese: '生物',
+    Korean: '생물',
+    Spanish: 'CRIATURA',
+    German: 'GESCHOEPF',
+    Portuguese: 'CRIATURA',
+    Italian: 'CREATURA',
+    Russian: 'СУЩЕСТВО',
+  },
+  CONTENT: {
+    English: 'CONTENT',
+    French: 'CONTENU',
+    Chinese: '内容',
+    Japanese: 'コンテンツ',
+    Korean: '콘텐츠',
+    Spanish: 'CONTENIDO',
+    German: 'INHALT',
+    Portuguese: 'CONTEUDO',
+    Italian: 'CONTENUTO',
+    Russian: 'СОДЕРЖАНИЕ',
+  },
+  DATA: {
+    English: 'DATA',
+    French: 'DONNEES',
+    Chinese: '数据',
+    Japanese: 'データ',
+    Korean: '데이터',
+    Spanish: 'DATOS',
+    German: 'DATEN',
+    Portuguese: 'DADOS',
+    Italian: 'DATI',
+    Russian: 'ДАННЫЕ',
+  },
+  ARTIFACT: {
+    English: 'ARTIFACT',
+    French: 'ARTEFACT',
+    Chinese: '制品',
+    Japanese: 'アーティファクト',
+    Korean: '아티팩트',
+    Spanish: 'ARTEFACTO',
+    German: 'ARTEFAKT',
+    Portuguese: 'ARTEFATO',
+    Italian: 'ARTEFATTO',
+    Russian: 'АРТЕФАКТ',
+  },
+  NATURALOBJECT: {
+    English: 'NATURALOBJECT',
+    French: 'OBJET_NATUREL',
+    Chinese: '自然物',
+    Japanese: '自然物',
+    Korean: '자연물',
+    Spanish: 'OBJETO_NATURAL',
+    German: 'NATUROBJEKT',
+    Portuguese: 'OBJETO_NATURAL',
+    Italian: 'OGGETTO_NATURALE',
+    Russian: 'ПРИРОДНЫЙ_ОБЪЕКТ',
+  },
+  OTHER: {
+    English: 'OTHER',
+    French: 'AUTRE',
+    Chinese: '其他',
+    Japanese: 'その他',
+    Korean: '기타',
+    Spanish: 'OTRO',
+    German: 'SONSTIGES',
+    Portuguese: 'OUTRO',
+    Italian: 'ALTRO',
+    Russian: 'ПРОЧЕЕ',
+  },
   TECHNOLOGY: {
     English: 'TECHNOLOGY',
     French: 'TECHNOLOGIE',
@@ -476,13 +549,22 @@ export const ENTITY_TYPE_CATALOG: Record<string, LocalizedTokens> = {
   },
 };
 
-/** Reverse index: any localized token → canonical English key. */
+/**
+ * Reverse index: any localized token → canonical English key.
+ * English keys always win (SPEC-114): e.g. Portuguese DATE→DATA must not
+ * steal the English DATA entity type.
+ */
 const TOKEN_TO_CANONICAL: Map<string, string> = (() => {
   const map = new Map<string, string>();
+  for (const canonical of Object.keys(ENTITY_TYPE_CATALOG)) {
+    map.set(normalizeEntityType(canonical), canonical);
+  }
   for (const [canonical, locales] of Object.entries(ENTITY_TYPE_CATALOG)) {
-    map.set(canonical, canonical);
     for (const token of Object.values(locales)) {
-      if (token) map.set(normalizeEntityType(token), canonical);
+      if (!token) continue;
+      const normalized = normalizeEntityType(token);
+      if (map.has(normalized)) continue;
+      map.set(normalized, canonical);
     }
   }
   return map;

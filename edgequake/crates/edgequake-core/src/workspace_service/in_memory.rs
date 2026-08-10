@@ -356,26 +356,36 @@ impl WorkspaceService for InMemoryWorkspaceService {
             );
         }
 
-        // SPEC-085: entity types on create
-        if let Some(entity_types) = request.entity_types {
-            let normalized: Vec<String> = entity_types
-                .iter()
-                .map(|t| t.trim().to_uppercase().replace([' ', '-'], "_"))
-                .filter(|t| !t.is_empty())
-                .collect();
-            if !normalized.is_empty() {
-                workspace
-                    .metadata
-                    .insert("entity_types".to_string(), serde_json::json!(normalized));
-            }
-        }
-        if let Some(strict) = request.entity_types_strict {
-            if !strict {
-                workspace
-                    .metadata
-                    .insert("entity_types_strict".to_string(), serde_json::json!(false));
-            }
-        }
+        // SPEC-085 / SPEC-114: type allow-lists on create
+        crate::type_list::apply_type_list_metadata(
+            &mut workspace.metadata,
+            "entity_types",
+            request.entity_types,
+        );
+        crate::type_list::apply_type_list_strict_metadata(
+            &mut workspace.metadata,
+            "entity_types_strict",
+            request.entity_types_strict,
+        );
+        crate::type_list::apply_type_list_metadata(
+            &mut workspace.metadata,
+            "relation_types",
+            request.relation_types,
+        );
+        crate::type_list::apply_type_list_strict_metadata(
+            &mut workspace.metadata,
+            "relation_types_strict",
+            request.relation_types_strict,
+        );
+        crate::type_list::apply_kg_schema_preset_metadata(
+            &mut workspace.metadata,
+            request.kg_schema_preset,
+        )
+        .map_err(Error::validation)?;
+        crate::type_list::apply_relation_edges_metadata(
+            &mut workspace.metadata,
+            request.relation_edges,
+        );
         // SPEC-096: extraction language
         apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
         // SPEC-102: entity type colors
@@ -558,30 +568,36 @@ impl WorkspaceService for InMemoryWorkspaceService {
             tenant_emb,
         );
 
-        // SPEC-085 / GitHub #216: entity type updates (mirror Postgres impl)
-        if let Some(entity_types) = request.entity_types {
-            let normalized: Vec<String> = entity_types
-                .iter()
-                .map(|t| t.trim().to_uppercase().replace([' ', '-'], "_"))
-                .filter(|t| !t.is_empty())
-                .collect();
-            if normalized.is_empty() {
-                workspace.metadata.remove("entity_types");
-            } else {
-                workspace
-                    .metadata
-                    .insert("entity_types".to_string(), serde_json::json!(normalized));
-            }
-        }
-        if let Some(strict) = request.entity_types_strict {
-            if strict {
-                workspace.metadata.remove("entity_types_strict");
-            } else {
-                workspace
-                    .metadata
-                    .insert("entity_types_strict".to_string(), serde_json::json!(false));
-            }
-        }
+        // SPEC-085 / SPEC-114 / GitHub #216: type allow-list updates
+        crate::type_list::apply_type_list_metadata(
+            &mut workspace.metadata,
+            "entity_types",
+            request.entity_types,
+        );
+        crate::type_list::apply_type_list_strict_metadata(
+            &mut workspace.metadata,
+            "entity_types_strict",
+            request.entity_types_strict,
+        );
+        crate::type_list::apply_type_list_metadata(
+            &mut workspace.metadata,
+            "relation_types",
+            request.relation_types,
+        );
+        crate::type_list::apply_type_list_strict_metadata(
+            &mut workspace.metadata,
+            "relation_types_strict",
+            request.relation_types_strict,
+        );
+        crate::type_list::apply_kg_schema_preset_metadata(
+            &mut workspace.metadata,
+            request.kg_schema_preset,
+        )
+        .map_err(Error::validation)?;
+        crate::type_list::apply_relation_edges_metadata(
+            &mut workspace.metadata,
+            request.relation_edges,
+        );
         apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
         crate::entity_type_colors::apply_entity_type_colors_metadata(
             &mut workspace.metadata,
@@ -958,6 +974,10 @@ mod tests {
             entity_types_strict: None,
             extraction_language: None,
             entity_type_colors: None,
+            relation_types: None,
+            relation_types_strict: None,
+            kg_schema_preset: None,
+            relation_edges: None,
             default_reasoning_effort: None,
             llm_roles: None,
         };
@@ -1086,7 +1106,11 @@ mod tests {
                 entity_types_strict: None,
                 extraction_language: None,
                 entity_type_colors: None,
-                default_reasoning_effort: None,
+            relation_types: None,
+            relation_types_strict: None,
+            kg_schema_preset: None,
+            relation_edges: None,
+            default_reasoning_effort: None,
                 llm_roles: None,
             };
             service
@@ -1113,6 +1137,10 @@ mod tests {
             entity_types_strict: None,
             extraction_language: None,
             entity_type_colors: None,
+            relation_types: None,
+            relation_types_strict: None,
+            kg_schema_preset: None,
+            relation_edges: None,
             default_reasoning_effort: None,
             llm_roles: None,
         };

@@ -122,12 +122,17 @@ impl Pipeline {
             progress_callback,
             None,
             None,
+            None,
+            None,
         )
         .await
     }
 
     /// Process a document with resilient chunk-level error handling and
     /// cooperative cancellation support.
+    ///
+    /// `resume_by_chunk_id`: skip LLM for chunks already extracted (mid-doc resume).
+    /// `on_chunk_extracted`: durable per-chunk checkpoint hook after each success.
     pub async fn process_with_resilience_cancellable(
         &self,
         document_id: &str,
@@ -135,6 +140,10 @@ impl Pipeline {
         progress_callback: Option<ChunkProgressCallback>,
         cancel_token: Option<CancellationToken>,
         embed_progress: Option<EmbedProgressCallback>,
+        resume_by_chunk_id: Option<
+            std::collections::HashMap<String, crate::extractor::ExtractionResult>,
+        >,
+        on_chunk_extracted: Option<crate::pipeline::types::ChunkExtractedCallback>,
     ) -> Result<ProcessingResult> {
         let start = Instant::now();
 
@@ -150,6 +159,8 @@ impl Pipeline {
                         extractor,
                         progress_callback,
                         cancel_token.clone(),
+                        resume_by_chunk_id,
+                        on_chunk_extracted,
                     )
                     .await;
 

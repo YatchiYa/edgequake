@@ -57,6 +57,10 @@ const PROVIDER_SLOT_ACQUIRE: &str = "edgequake_provider_slot_acquire_total";
 const PROVIDER_SLOTS_INFLIGHT: &str = "edgequake_provider_slots_inflight";
 /// SPEC-091 WP0 (LAW-WP3): wall time a provider_slot lease is held (≠ stage wall).
 const PROVIDER_SLOT_HOLD_DURATION: &str = "edgequake_provider_slot_hold_duration_seconds";
+const LOCAL_GATE_WAIT_MS: &str = "edgequake_local_gate_wait_ms";
+const OLLAMA_NETWORK_ERRORS: &str = "edgequake_ollama_network_error_total";
+const EXTRACT_RETRY_TOTAL: &str = "edgequake_extract_retry_total";
+const EXTRACT_THINK_TOKENS: &str = "edgequake_extract_think_tokens_total";
 
 /// Pre-register metric metadata so `/metrics` is never an empty body before first request.
 fn describe_http_metrics() {
@@ -239,6 +243,23 @@ fn describe_http_metrics() {
         PROVIDER_SLOT_HOLD_DURATION,
         Unit::Seconds,
         "SPEC-091 WP0: provider_slot lease hold duration (infer calls only; ≠ ingest stage wall)"
+    );
+    describe_histogram!(
+        LOCAL_GATE_WAIT_MS,
+        Unit::Milliseconds,
+        "Wait time before acquiring a local inference gate slot"
+    );
+    describe_counter!(
+        OLLAMA_NETWORK_ERRORS,
+        "Local Ollama/LM Studio network/transport failures"
+    );
+    describe_counter!(
+        EXTRACT_RETRY_TOTAL,
+        "Entity extraction chunk retries by reason"
+    );
+    describe_counter!(
+        EXTRACT_THINK_TOKENS,
+        "Thinking/reasoning tokens observed during extract"
     );
 }
 
@@ -571,6 +592,33 @@ pub fn record_provider_slot_hold_duration(provider: &str, duration_secs: f64) {
         "provider" => provider.to_string()
     )
     .record(duration_secs.max(0.0));
+}
+
+/// Local inference gate wait time (ms) before a slot was acquired.
+pub fn record_local_gate_wait_ms(wait_ms: u64) {
+    init_metrics();
+    histogram!(LOCAL_GATE_WAIT_MS).record(wait_ms as f64);
+}
+
+/// Ollama/local network transport failures during extract/chat.
+pub fn record_ollama_network_error() {
+    init_metrics();
+    counter!(OLLAMA_NETWORK_ERRORS).increment(1);
+}
+
+/// Extract retry counter by reason (`network` | `timeout` | `parse` | `other`).
+pub fn record_extract_retry(reason: &str) {
+    init_metrics();
+    counter!(EXTRACT_RETRY_TOTAL, "reason" => reason.to_string()).increment(1);
+}
+
+/// Thinking/reasoning tokens observed on extract responses (when present).
+pub fn record_extract_think_tokens(n: u64) {
+    if n == 0 {
+        return;
+    }
+    init_metrics();
+    counter!(EXTRACT_THINK_TOKENS).increment(n);
 }
 
 /// Record chunk strategy degradation (SPEC-046 OPS-P0.1).

@@ -171,6 +171,20 @@ export interface Workspace {
    * @implements SPEC-102 / FEAT-102
    */
   entity_type_colors?: Record<string, string>;
+  /**
+   * Relation type allow-list for extraction (SPEC-114).
+   * Absent/empty means free-form relation labels.
+   */
+  relation_types?: string[];
+  /** When true, unknown relations remap (default true when list present). */
+  relation_types_strict?: boolean;
+  /** Domain preset id for UX honesty (SPEC-114). */
+  kg_schema_preset?: string | null;
+  /**
+   * Typed edge constraints (SPEC-114b).
+   * Absent/empty means unconstrained endpoints.
+   */
+  relation_edges?: Array<{ source: string; relation: string; target: string }>;
   /** SPEC-109: workspace default reasoning effort. */
   default_reasoning_effort?: string | null;
   /** SPEC-109: per-role LLM overrides including reasoning_effort. */
@@ -253,6 +267,14 @@ export interface CreateWorkspaceRequest {
    * Custom entity-type → hex color map (SPEC-102).
    */
   entity_type_colors?: Record<string, string>;
+  /** Relation type allow-list (SPEC-114). */
+  relation_types?: string[];
+  /** Strict relation types (SPEC-114). */
+  relation_types_strict?: boolean;
+  /** Domain preset id (SPEC-114). */
+  kg_schema_preset?: string;
+  /** Typed edges (SPEC-114b). */
+  relation_edges?: Array<{ source: string; relation: string; target: string }>;
 }
 
 /**

@@ -116,6 +116,11 @@ export function buildWorkspaceUpdatePayload(args: {
   entityTypes: string[];
   entityTypesStrict: boolean;
   entityTypeColors?: Record<string, string>;
+  /** SPEC-114 / 114b */
+  relationTypes?: string[];
+  relationTypesStrict?: boolean;
+  kgSchemaPreset?: string;
+  relationEdges?: Array<{ source: string; relation: string; target: string }>;
   reasoningEffort?: string;
 }): {
   llm_model: string;
@@ -130,13 +135,27 @@ export function buildWorkspaceUpdatePayload(args: {
   entity_types_strict: boolean;
   extraction_language: string;
   entity_type_colors: Record<string, string>;
+  relation_types: string[];
+  relation_types_strict: boolean;
+  kg_schema_preset: string;
+  relation_edges: Array<{ source: string; relation: string; target: string }>;
   default_reasoning_effort?: string;
 } {
   const entity_type_colors = args.entityTypeColors ?? {};
+  const relation_types = args.relationTypes ?? [];
+  const relation_types_strict = args.relationTypesStrict ?? true;
+  const kg_schema_preset = args.kgSchemaPreset?.trim() || 'custom';
+  const relation_edges = args.relationEdges ?? [];
   const effort =
     args.reasoningEffort?.trim() && args.reasoningEffort.trim().length > 0
       ? args.reasoningEffort.trim()
       : undefined;
+  const schemaFields = {
+    relation_types,
+    relation_types_strict,
+    kg_schema_preset,
+    relation_edges,
+  };
   if (args.useServerDefaults) {
     return {
       llm_model: '',
@@ -151,6 +170,7 @@ export function buildWorkspaceUpdatePayload(args: {
       entity_types_strict: args.entityTypesStrict,
       extraction_language: extractionLanguageToUpdatePayload(args.extractionLanguage),
       entity_type_colors,
+      ...schemaFields,
       ...(effort ? { default_reasoning_effort: effort } : {}),
     };
   }
@@ -169,6 +189,7 @@ export function buildWorkspaceUpdatePayload(args: {
     entity_types_strict: args.entityTypesStrict,
     extraction_language: extractionLanguageToUpdatePayload(args.extractionLanguage),
     entity_type_colors,
+    ...schemaFields,
     ...(effort ? { default_reasoning_effort: effort } : {}),
   };
 }

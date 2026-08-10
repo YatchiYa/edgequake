@@ -28,17 +28,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ProviderStatusHub } from '@/components/settings/provider-status-hub';
 import { WorkspaceActionsCard } from '@/components/workspace/workspace-actions-card';
 import { WorkspaceExtendedModelConfig } from '@/components/workspace/workspace-extended-model-config';
 import { WorkspaceModelConfigGrid } from '@/components/workspace/workspace-model-config-grid';
 import { WorkspaceStatusFooter } from '@/components/workspace/workspace-status-footer';
 import { WorkspaceEntityTypesCard } from '@/components/workspace/workspace-entity-types-card';
+import { WorkspaceRelationTypesCard } from '@/components/workspace/workspace-relation-types-card';
 import { WorkspaceExtractionLanguageCard } from '@/components/workspace/workspace-extraction-language-card';
 import { WorkspacePageHeader } from '@/components/workspace/workspace-page-header';
 import { WorkspaceStatsCards } from '@/components/workspace/workspace-stats-cards';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
-import { refreshDynamicModels } from '@/hooks/use-providers';
 import { useWorkspaceDetailQueries } from '@/hooks/use-workspace-detail-queries';
 import { useWorkspaceTenantValidator } from '@/hooks/use-workspace-tenant-validator';
 import { deleteWorkspace } from '@/lib/api/edgequake';
@@ -102,10 +101,8 @@ export default function WorkspacePage() {
   const {
     workspace,
     stats,
-    providerHealth,
     isLoadingWorkspace,
     isLoadingStats,
-    isLoadingHealth,
     refetchWorkspace,
   } = useWorkspaceDetailQueries(selectedTenantId, selectedWorkspaceId);
 
@@ -248,7 +245,7 @@ export default function WorkspacePage() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="container mx-auto space-y-4 p-4 md:p-6">
         <WorkspacePageHeader
           workspace={workspace}
           onRefresh={() => refetchWorkspace()}
@@ -291,23 +288,22 @@ export default function WorkspacePage() {
           onLanguageChange={() => {}}
         />
 
-        <WorkspaceEntityTypesCard
-          isEditing={false}
-          workspace={workspace}
-          selectedTypes={entityTypes}
-          onTypesChange={() => {}}
-          strictLimit={workspace.entity_types_strict ?? true}
-          onStrictLimitChange={() => {}}
-          extractionLanguage={workspace.extraction_language ?? null}
-        />
+        <div
+          className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start"
+          data-testid="workspace-kg-schema-row"
+        >
+          <WorkspaceEntityTypesCard
+            isEditing={false}
+            workspace={workspace}
+            selectedTypes={entityTypes}
+            onTypesChange={() => {}}
+            strictLimit={workspace.entity_types_strict ?? true}
+            onStrictLimitChange={() => {}}
+            extractionLanguage={workspace.extraction_language ?? null}
+          />
 
-        <ProviderStatusHub
-          providers={providerHealth}
-          isLoading={isLoadingHealth}
-          onRefresh={() => {
-            void refreshDynamicModels(queryClient);
-          }}
-        />
+          <WorkspaceRelationTypesCard workspace={workspace} />
+        </div>
 
         <WorkspaceActionsCard
           workspace={workspace}
@@ -324,23 +320,23 @@ export default function WorkspacePage() {
 
         <WorkspaceStatusFooter />
 
-        <Card className="border-destructive/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
-              <Trash2 className="h-5 w-5" />
-              {t('workspace.dangerZone', 'Danger Zone')}
-            </CardTitle>
-            <CardDescription>
-              {t(
-                'workspace.deleteWarning',
-                'Deleting a workspace permanently removes all documents, entities, relationships, and embeddings. This action cannot be undone.',
-              )}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+        <Card className="gap-2 border-destructive/50 py-4">
+          <CardHeader className="flex flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 space-y-1">
+              <CardTitle className="flex items-center gap-2 text-base text-destructive">
+                <Trash2 className="h-4 w-4" />
+                {t('workspace.dangerZone', 'Danger Zone')}
+              </CardTitle>
+              <CardDescription className="text-xs">
+                {t(
+                  'workspace.deleteWarning',
+                  'Deleting a workspace permanently removes all documents, entities, relationships, and embeddings. This action cannot be undone.',
+                )}
+              </CardDescription>
+            </div>
             <Button
               variant="destructive"
-              className="w-full sm:w-auto"
+              className="w-full shrink-0 sm:w-auto"
               aria-label={t('workspace.deleteButtonAria', 'Delete workspace {{name}}', {
                 name: workspace.name,
               })}
@@ -349,7 +345,7 @@ export default function WorkspacePage() {
               <Trash2 className="h-4 w-4 mr-2" />
               {t('workspace.deleteButton', 'Delete this workspace')}
             </Button>
-          </CardContent>
+          </CardHeader>
         </Card>
       </div>
 

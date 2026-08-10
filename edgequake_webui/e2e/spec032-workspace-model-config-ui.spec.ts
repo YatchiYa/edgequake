@@ -150,7 +150,10 @@ test.describe("@load SPEC-032: Workspace Configuration UI", () => {
       expect(hasEmbeddingSection).toBe(true);
     });
 
-    test("workspace page shows provider status", async ({ page, request }) => {
+    test("workspace page shows model configuration (provider hub removed)", async ({
+      page,
+      request,
+    }) => {
       // Get workspace slug
       const tenantsResponse = await request.get(
         `${BACKEND_URL}/api/v1/tenants`
@@ -173,17 +176,14 @@ test.describe("@load SPEC-032: Workspace Configuration UI", () => {
 
       const workspaceSlug = workspaces.items[0].slug;
 
-      // Navigate to workspace page
       await page.goto(`/w/${workspaceSlug}/workspace`, {
         waitUntil: "domcontentloaded",
       });
 
-      // Look for provider status section
-      const providerText = page.getByText(/provider|status/i);
-      const hasProviderStatus = (await providerText.count()) > 0;
-
-      // At minimum, page should display some provider info
-      expect(hasProviderStatus).toBe(true);
+      // Provider Status hub was removed from workspace; model config remains.
+      await expect(page.getByTestId("provider-status-hub")).toHaveCount(0);
+      const pageContent = await page.content();
+      expect(pageContent.toLowerCase()).toMatch(/llm|embedding|model/);
     });
   });
 

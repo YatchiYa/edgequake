@@ -130,7 +130,10 @@ export function WizardShell({
       >
         <DialogContent
           className={cn(
-            'sm:max-w-lg max-h-[90vh] flex flex-col gap-0 overflow-hidden p-0',
+            // SPEC-114 layout: DialogContent defaults to `grid` — force a column flex
+            // shell so sticky chrome + scroll body + footer share max height correctly.
+            '!flex !flex-col gap-0 overflow-hidden p-0',
+            'max-h-[min(92vh,56rem)] w-[calc(100%-1.5rem)] sm:!max-w-5xl lg:!max-w-7xl',
             className,
           )}
           data-testid={testId}
@@ -153,7 +156,8 @@ export function WizardShell({
             }
           }}
         >
-          <div className="space-y-3 overflow-y-auto px-6 pt-6 pb-2 min-h-0 flex-1">
+          {/* Sticky chrome — stays visible while step body scrolls */}
+          <div className="shrink-0 space-y-3 border-b px-6 pt-6 pb-3">
             <DialogHeader>
               {/* Do not pass a custom `id` — Radix TitleWarning looks up context.titleId. */}
               <DialogTitle>{title}</DialogTitle>
@@ -205,9 +209,13 @@ export function WizardShell({
                 </p>
               ) : null}
             </div>
+          </div>
 
+          <div
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4"
+            data-testid="wizard-step-scroll"
+          >
             <div
-              className="py-1"
               data-testid="wizard-step-body"
               role="group"
               aria-labelledby={stepTitleId}
@@ -216,7 +224,7 @@ export function WizardShell({
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-2 border-t bg-background px-6 py-4 shrink-0 max-sm:flex-col">
+          <DialogFooter className="relative z-10 gap-2 sm:gap-2 border-t bg-background px-6 py-3 shrink-0 max-sm:flex-col shadow-[0_-4px_12px_-8px_rgba(0,0,0,0.12)]">
             {!hideCancel ? (
               <Button
                 type="button"

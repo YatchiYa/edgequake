@@ -338,10 +338,14 @@ ifeq ($(EDGEQUAKE_DEFAULT_LLM_PROVIDER),$(filter $(EDGEQUAKE_DEFAULT_LLM_PROVIDE
   EDGEQUAKE_PDF_CONCURRENCY ?= 1
   EDGEQUAKE_PDF_VISION_JOBS ?= 1
   EDGEQUAKE_MM_IMAGE_CONCURRENCY ?= 1
-  EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS ?= 2
+  # Serial local extract: Ollama `-np 1` + gate budget 1 (reliability plan).
+  EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS ?= 1
   EDGEQUAKE_EMBED_MAX_ASYNC ?= 1
-  EDGEQUAKE_MERGE_MAX_ASYNC ?= 2
-  EDGEQUAKE_LOCAL_MAX_INFLIGHT ?= 2
+  EDGEQUAKE_MERGE_MAX_ASYNC ?= 1
+  EDGEQUAKE_LOCAL_MAX_INFLIGHT ?= 1
+  EDGEQUAKE_PROVIDER_BUDGET ?= 1
+  EDGEQUAKE_EXTRACT_REASONING_EFFORT ?= none
+  OLLAMA_CONTEXT_LENGTH ?= 8192
   # Leave headroom for interactive HTTP reads under gemma4 ingest.
   DATABASE_POOL_SIZE ?= 16
 else
@@ -354,8 +358,14 @@ else
   EDGEQUAKE_EMBED_MAX_ASYNC ?= 8
   EDGEQUAKE_MERGE_MAX_ASYNC ?= 8
   EDGEQUAKE_LOCAL_MAX_INFLIGHT ?= 0
+  EDGEQUAKE_PROVIDER_BUDGET ?= 0
   DATABASE_POOL_SIZE ?= 32
 endif
+
+# Always pin extract think-off + modest Ollama ctx when unset (safe for hybrid too).
+EDGEQUAKE_EXTRACT_REASONING_EFFORT ?= none
+OLLAMA_CONTEXT_LENGTH ?= 8192
+EDGEQUAKE_PROVIDER_BUDGET ?= 1
 
 export WORKER_THREADS MAX_TASKS_PER_TENANT \
 	EDGEQUAKE_PDF_CONCURRENCY EDGEQUAKE_PDF_VISION_JOBS \
@@ -368,7 +378,9 @@ export WORKER_THREADS MAX_TASKS_PER_TENANT \
 	EDGEQUAKE_EMBED_MAX_ASYNC EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE \
 	EDGEQUAKE_MERGE_MAX_ASYNC EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY \
 	EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD \
-	EDGEQUAKE_GRAPH_UPSERT_CHUNK EDGEQUAKE_LOCAL_MAX_INFLIGHT DATABASE_POOL_SIZE
+	EDGEQUAKE_GRAPH_UPSERT_CHUNK EDGEQUAKE_LOCAL_MAX_INFLIGHT \
+	EDGEQUAKE_PROVIDER_BUDGET EDGEQUAKE_EXTRACT_REASONING_EFFORT \
+	OLLAMA_CONTEXT_LENGTH DATABASE_POOL_SIZE
 
 # Shared exports appended to /tmp/edgequake-start.sh by backend-bg.
 # SPEC-047: also pin VLM + chart modality so bench restarts do not silently drop MV-32.
@@ -379,6 +391,9 @@ printf '%s\n' "export EDGEQUAKE_PDF_CONCURRENCY=\"$(EDGEQUAKE_PDF_CONCURRENCY)\"
 printf '%s\n' "export EDGEQUAKE_PDF_VISION_JOBS=\"$(EDGEQUAKE_PDF_VISION_JOBS)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_MM_IMAGE_CONCURRENCY=\"$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS=\"$(EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_PROVIDER_BUDGET=\"$${EDGEQUAKE_PROVIDER_BUDGET:-$(EDGEQUAKE_PROVIDER_BUDGET)}\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_EXTRACT_REASONING_EFFORT=\"$${EDGEQUAKE_EXTRACT_REASONING_EFFORT:-$(EDGEQUAKE_EXTRACT_REASONING_EFFORT)}\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export OLLAMA_CONTEXT_LENGTH=\"$${OLLAMA_CONTEXT_LENGTH:-$(OLLAMA_CONTEXT_LENGTH)}\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_MEM_LIMIT=\"$(EDGEQUAKE_MEM_LIMIT)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_NATIVE_GRAPH_WRITES=\"$(EDGEQUAKE_NATIVE_GRAPH_WRITES)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_COMMUNITY_GLOBAL=\"$(EDGEQUAKE_COMMUNITY_GLOBAL)\"" >> /tmp/edgequake-start.sh; \
@@ -2388,6 +2403,53 @@ spec013-e2e-mistral-live: db-wait ## Live Mistral document ingest (MISTRAL_API_K
 	[ -n "$$_DB" ] || { echo "$(RED)✗ DATABASE_URL required$(RESET)"; exit 1; }; \
 	cd $(BACKEND_DIR) && DATABASE_URL="$$_DB" cargo test -p edgequake-api --features postgres \
 		--test e2e_spec013_mistral_live -- --ignored --nocapture
+
+spec114-e2e-mistral-extract: db-wait ## SPEC-114 live Mistral extract under KG schema (MISTRAL_API_KEY + PostgreSQL)
+	@echo "$(BLUE)SPEC-114 live Mistral extract (PostgreSQL, mistral-small-latest)...$(RESET)"
+	@if [ -z "$(MISTRAL_API_KEY)" ] && [ -z "$$MISTRAL_API_KEY" ]; then \
+		echo "$(RED)✗ MISTRAL_API_KEY required for spec114-e2e-mistral-extract$(RESET)"; exit 1; \
+	fi
+	@_DB=$$(cat /tmp/edgequake-db-url 2>/dev/null); \
+	[ -n "$$_DB" ] || _DB="$(DATABASE_URL)"; \
+	[ -n "$$_DB" ] || { echo "$(RED)✗ DATABASE_URL required$(RESET)"; exit 1; }; \
+	cd $(BACKEND_DIR) && DATABASE_URL="$$_DB" MISTRAL_API_KEY="$${MISTRAL_API_KEY:-$(MISTRAL_API_KEY)}" \
+		EDGEQUAKE_LLM_PROVIDER=mistral \
+		EDGEQUAKE_EXTRACT_REASONING_EFFORT=none \
+		cargo test -p edgequake-api --features postgres \
+		--test e2e_spec114_mistral_extract -- --ignored --nocapture --test-threads=1
+
+spec114-e2e-ollama-extract: db-wait ## SPEC-114 live Ollama extract (qwen3.6:35b-a3b + PostgreSQL)
+	@echo "$(BLUE)SPEC-114 live Ollama extract (PostgreSQL, qwen3.6:35b-a3b)...$(RESET)"
+	@_DB=$$(cat /tmp/edgequake-db-url 2>/dev/null); \
+	[ -n "$$_DB" ] || _DB="$(DATABASE_URL)"; \
+	[ -n "$$_DB" ] || { echo "$(RED)✗ DATABASE_URL required$(RESET)"; exit 1; }; \
+	_HOST="$${OLLAMA_HOST:-http://localhost:11434}"; \
+	curl -sf "$$_HOST/api/tags" >/dev/null 2>&1 || { \
+		echo "$(RED)✗ Ollama not reachable at $$_HOST$(RESET)"; exit 1; \
+	}; \
+	cd $(BACKEND_DIR) && DATABASE_URL="$$_DB" OLLAMA_HOST="$$_HOST" \
+		EDGEQUAKE_LLM_PROVIDER=ollama \
+		EDGEQUAKE_EMBEDDING_PROVIDER=ollama \
+		EDGEQUAKE_LLM_MODEL=qwen3.6:35b-a3b \
+		EDGEQUAKE_EXTRACT_REASONING_EFFORT=none \
+		EDGEQUAKE_REASONING_EFFORT=none \
+		cargo test -p edgequake-api --features postgres \
+		--test e2e_spec114_ollama_extract -- --ignored --nocapture --test-threads=1
+
+spec114-e2e-live-extract: db-wait ## SPEC-114 live extract — Mistral and/or Ollama (skip missing)
+	@echo "$(BLUE)SPEC-114 live extract matrix (Mistral + Ollama)...$(RESET)"
+	@if [ -n "$(MISTRAL_API_KEY)" ] || [ -n "$$MISTRAL_API_KEY" ]; then \
+		$(MAKE) spec114-e2e-mistral-extract --no-print-directory; \
+	else \
+		echo "$(YELLOW)→ Skipping Mistral live extract (MISTRAL_API_KEY not set)$(RESET)"; \
+	fi
+	@_HOST="$${OLLAMA_HOST:-http://localhost:11434}"; \
+	if curl -sf "$$_HOST/api/tags" >/dev/null 2>&1; then \
+		$(MAKE) spec114-e2e-ollama-extract --no-print-directory; \
+	else \
+		echo "$(YELLOW)→ Skipping Ollama live extract (Ollama not reachable at $$_HOST)$(RESET)"; \
+	fi
+	@echo "$(GREEN)✓ SPEC-114 live extract gate finished$(RESET)"
 
 spec013-e2e-mistral: spec013-e2e-rust ## Rust + Playwright + Mistral workspace/live (start spec013-mistral-backend-bg first)
 	@if [ -n "$(MISTRAL_API_KEY)" ] || [ -n "$$MISTRAL_API_KEY" ]; then \

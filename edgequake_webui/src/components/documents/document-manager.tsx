@@ -780,9 +780,11 @@ export function DocumentManager() {
           className="shrink-0 overflow-y-auto border-b bg-background"
           style={{
             maxHeight: '35vh',
-            // Keep a stable floor whenever the zone is shown so skeleton→live
-            // (and soft refresh) do not change inventory geometry (CLS).
-            minHeight: FEEDBACK_ZONE_RESERVE_MIN_PX,
+            // CLS floor only while skeleton reservation is active. Live content
+            // sizes naturally; ordinary Failed must not hold an empty 208px band.
+            ...(reserveFeedbackSlot
+              ? { minHeight: FEEDBACK_ZONE_RESERVE_MIN_PX }
+              : {}),
           }}
           data-testid="spec051-feedback-zone"
           data-reserved={reserveFeedbackSlot ? 'true' : 'false'}

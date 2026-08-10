@@ -89,9 +89,9 @@ pub const DEFAULT_MAX_CONCURRENT_EXTRACTIONS: usize = 16;
 
 /// Concurrent extractions for local providers (Ollama / LM Studio).
 ///
-/// WHY 2: Local inference is typically single-slot (`-np 1`); 16-way fan-out
-/// queues work until every chunk exceeds the timeout. Vision/PDF already uses 1–2.
-pub const LOCAL_MAX_CONCURRENT_EXTRACTIONS: usize = 2;
+/// WHY 1: Local inference is typically single-slot (`-np 1`); fan-out >1
+/// queues work until chunks time out and storms Ollama connections.
+pub const LOCAL_MAX_CONCURRENT_EXTRACTIONS: usize = 1;
 
 /// Hard cap on concurrent extractions (SPEC-046 OPS-P1.6 — OOM / LLM storm guard).
 pub const MAX_CONCURRENT_EXTRACTIONS_CAP: usize = 32;
@@ -217,7 +217,7 @@ pub fn apply_local_concurrency_safety_clamp(
 /// Local Ollama/LM Studio worker-pool ceilings (unless high-concurrency opt-out).
 pub const LOCAL_WORKER_THREADS_CAP: usize = 4;
 /// Local ingest fairness lane cap (Pdf/Insert) — protects LLM/vision.
-pub const LOCAL_MAX_INGEST_TASKS_PER_TENANT_CAP: usize = 2;
+pub const LOCAL_MAX_INGEST_TASKS_PER_TENANT_CAP: usize = 1;
 /// Local lifecycle fairness lane default (Deletion/Wipe) — DB/graph bound.
 pub const LOCAL_DEFAULT_LIFECYCLE_TASKS_PER_TENANT: usize = 4;
 pub const LOCAL_MAX_LIFECYCLE_TASKS_PER_TENANT_CAP: usize = 4;
@@ -315,6 +315,49 @@ pub fn is_local_provider_overload_error(error: &str) -> bool {
         || lower.contains("server busy")
         || lower.contains("503")
         || lower.contains("too many requests")
+}
+
+/// Taxonomy for extract retry budgets (transient vs parse vs permanent).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtractErrorClass {
+    /// Network / overload / timeout — full retry budget.
+    Transient,
+    /// JSON/schema parse failure — limited retries (repair turn handles most).
+    Parse,
+    /// Non-retryable business / enforce failure.
+    Permanent,
+}
+
+/// Classify a chunk extraction error for retry policy.
+pub fn classify_extract_error(error: &str) -> ExtractErrorClass {
+    let lower = error.to_ascii_lowercase();
+    if is_local_provider_overload_error(error)
+        || lower.contains("timeout")
+        || lower.contains("provider_unavailable")
+        || lower.contains("circuit")
+    {
+        return ExtractErrorClass::Transient;
+    }
+    if lower.contains("invalid json")
+        || lower.contains("parse")
+        || lower.contains("schema")
+        || lower.contains("empty response")
+    {
+        return ExtractErrorClass::Parse;
+    }
+    if lower.contains("cancelled") || lower.contains("enforce") {
+        return ExtractErrorClass::Permanent;
+    }
+    ExtractErrorClass::Transient
+}
+
+/// Max attempts for a classified error (includes the first try).
+pub fn extract_retry_budget(class: ExtractErrorClass, configured_max: u32) -> u32 {
+    match class {
+        ExtractErrorClass::Transient => configured_max.max(1),
+        ExtractErrorClass::Parse => configured_max.min(2).max(1),
+        ExtractErrorClass::Permanent => 1,
+    }
 }
 
 /// Compute exponential backoff delay, stretching the base for local overload errors.
@@ -701,8 +744,8 @@ mod tests {
         assert!(clamped);
 
         let (effective, clamped) = apply_local_concurrency_safety_clamp("ollama", 2);
-        assert_eq!(effective, 2);
-        assert!(!clamped);
+        assert_eq!(effective, LOCAL_MAX_CONCURRENT_EXTRACTIONS);
+        assert!(clamped);
 
         let (effective, clamped) = apply_local_concurrency_safety_clamp("openai", 32);
         assert_eq!(effective, 32);
@@ -785,6 +828,25 @@ mod tests {
         assert_eq!(delay2, LOCAL_OVERLOAD_RETRY_DELAY_MS * 2);
         let normal = retry_delay_ms_for_chunk_error(1_000, 1, "parse error");
         assert_eq!(normal, 1_000);
+    }
+
+    #[test]
+    fn classify_extract_error_taxonomy() {
+        assert_eq!(
+            classify_extract_error("Network error: connection refused"),
+            ExtractErrorClass::Transient
+        );
+        assert_eq!(
+            classify_extract_error("Invalid JSON: empty response"),
+            ExtractErrorClass::Parse
+        );
+        assert_eq!(
+            classify_extract_error("Task cancelled"),
+            ExtractErrorClass::Permanent
+        );
+        assert_eq!(extract_retry_budget(ExtractErrorClass::Parse, 5), 2);
+        assert_eq!(extract_retry_budget(ExtractErrorClass::Permanent, 5), 1);
+        assert_eq!(extract_retry_budget(ExtractErrorClass::Transient, 5), 5);
     }
 
     #[test]

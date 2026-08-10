@@ -82,6 +82,34 @@ describe('reconfigure persist payload', () => {
     expect(prefill.draft.useServerDefaults).toBe(false);
     expect(prefill.llm?.provider).toBe('ollama');
   });
+
+  it('prefill seeds relation defaults when kg_schema_preset names a domain', () => {
+    const prefill = prefillReconfigureFromWorkspace(
+      baseWorkspace({
+        kg_schema_preset: 'manufacturing',
+        entity_types: undefined,
+        relation_types: [],
+      }),
+    );
+    expect(prefill.draft.relationTypes).toContain('PART_OF');
+    expect(prefill.draft.relationEdges.some((e) => e.relation === 'HAS_DEFECT')).toBe(
+      true,
+    );
+    expect(prefill.draft.kgSchemaPreset).toBe('manufacturing');
+    expect(prefill.snapshot.relationTypes).toEqual(prefill.draft.relationTypes);
+    expect(prefill.snapshot.relationEdges).toEqual(prefill.draft.relationEdges);
+  });
+
+  it('prefill keeps free-form relations when no named domain preset', () => {
+    const prefill = prefillReconfigureFromWorkspace(
+      baseWorkspace({
+        kg_schema_preset: undefined,
+        entity_types: ['PERSON'],
+        relation_types: [],
+      }),
+    );
+    expect(prefill.draft.relationTypes).toEqual([]);
+  });
 });
 
 describe('embedding live catalog onChange contract', () => {

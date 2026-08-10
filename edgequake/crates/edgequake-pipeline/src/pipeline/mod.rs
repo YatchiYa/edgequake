@@ -34,6 +34,7 @@ pub use config::{
     clamp_max_concurrent_extractions, clamp_max_gleaning, default_chunk_timeout_for_provider,
     default_max_concurrent_for_provider, is_local_extraction_provider,
     is_local_provider_overload_error, resolve_extract_provider_name_for_fairness,
+    classify_extract_error, extract_retry_budget, ExtractErrorClass,
     resolve_extract_provider_name_for_fairness_from, resolve_gleaning_for_provider,
     resolve_worker_pool_limits, resolve_worker_pool_limits_from, retry_delay_ms_for_chunk_error,
     IngestProfile, PipelineConfig, WorkerPoolLimits, ALLOW_LOCAL_HIGH_CONCURRENCY_ENV,
@@ -46,7 +47,7 @@ pub use config::{
     MAX_GLEANING_CAP, MAX_RETRY_DELAY_MS, MIN_CHUNK_TIMEOUT_SECS,
 };
 pub use types::{
-    ChunkErrorInfo, ChunkProgressCallback, ChunkProgressUpdate, CostBreakdownStats,
+    ChunkErrorInfo, ChunkExtractedCallback, ChunkProgressCallback, ChunkProgressPhase, ChunkProgressUpdate, CostBreakdownStats,
     EmbedProgressCallback, EmbedProgressUpdate, ProcessingResult, ProcessingStats,
 };
 

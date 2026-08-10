@@ -30,6 +30,8 @@ use tower::ServiceExt;
 #[cfg(feature = "postgres")]
 pub mod spec013_postgres;
 #[cfg(feature = "postgres")]
+pub mod spec114_live_extract;
+#[cfg(feature = "postgres")]
 pub mod test_db;
 
 pub mod oidc_wiremock;
@@ -267,6 +269,11 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
 
     use edgequake_llm::MockProvider;
     std::env::set_var("EDGEQUAKE_ALLOW_TEST_PROVIDER_OVERRIDE", "1");
+    // Memory worker harness has no PgPool → typed embedding/chunk indexes are
+    // unavailable. Force legacy vector + KV chunk text so persist does not
+    // fail-closed on SPEC-091 typed/relational defaults.
+    std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "legacy_tables");
+    std::env::set_var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY", "kv");
     let mock_provider = Arc::new(MockProvider::new());
     for _ in 0..32 {
         mock_provider
@@ -344,19 +351,35 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
 
 /// Worker-backed test app with custom LLM mock responses queued before extraction JSON.
 pub async fn create_test_app_with_llm_responses(extra_responses: &[&str]) -> WorkerAppGuard {
+    let mut queued = Vec::with_capacity(extra_responses.len() + 32);
+    queued.extend_from_slice(extra_responses);
+    for _ in 0..32 {
+        queued.push(SPEC021_WORKER_EXTRACTION_JSON);
+    }
+    create_test_app_with_mock_queue(&queued).await
+}
+
+/// Worker-backed app that serves **only** the given extraction JSON (repeated).
+///
+/// Use for SPEC-114 schema enforcement ingest tests where SARAH_CHEN/`LEADS`
+/// fixtures would pollute graph asserts.
+pub async fn create_test_app_with_extraction_only(extraction_json: &str) -> WorkerAppGuard {
+    let queued: Vec<&str> = std::iter::repeat(extraction_json).take(48).collect();
+    create_test_app_with_mock_queue(&queued).await
+}
+
+async fn create_test_app_with_mock_queue(responses: &[&str]) -> WorkerAppGuard {
     let serialize = TEST_WORKER_GUARD.lock().await;
     shutdown_test_worker_pool().await;
 
     use edgequake_llm::MockProvider;
     std::env::set_var("EDGEQUAKE_ALLOW_TEST_PROVIDER_OVERRIDE", "1");
+    // See create_test_app_with_workers — memory harness cannot satisfy typed wiring.
+    std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "legacy_tables");
+    std::env::set_var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY", "kv");
     let mock_provider = Arc::new(MockProvider::new());
-    for response in extra_responses {
+    for response in responses {
         mock_provider.add_response(*response).await;
-    }
-    for _ in 0..32 {
-        mock_provider
-            .add_response(SPEC021_WORKER_EXTRACTION_JSON)
-            .await;
     }
     let mut state = AppState::build_test_state(mock_provider.clone());
     edgequake_api::safety_limits::set_test_provider_override(
@@ -640,15 +663,35 @@ pub async fn upload_document_assert(app: &axum::Router, title: &str, content: &s
 ///
 /// P-G2b: replaces the old "upload returns processed immediately" assumption.
 /// The track-status endpoint returns `{ is_complete, documents: [{status}] }`.
+///
+/// WARNING: without `X-Tenant-ID` + `X-Workspace-ID`, the track handler returns
+/// an empty payload with `is_complete: true` (tenant guard). Prefer
+/// [`wait_for_document_processed_with_tenant`] for schema/graph asserts.
 pub async fn wait_for_document_processed(
     app: &axum::Router,
     track_id: &str,
     timeout: Duration,
 ) -> String {
+    wait_for_document_processed_with_tenant(app, track_id, timeout, None).await
+}
+
+/// Same as [`wait_for_document_processed`], but sends full tenant headers so the
+/// track endpoint returns real document status (not the empty-guard stub).
+pub async fn wait_for_document_processed_with_tenant(
+    app: &axum::Router,
+    track_id: &str,
+    timeout: Duration,
+    scope: Option<(&str, &str, &str)>,
+) -> String {
     let deadline = std::time::Instant::now() + timeout;
+    let uri = format!("/api/v1/documents/track/{}", track_id);
     loop {
-        let (status, body) =
-            get_endpoint(app, &format!("/api/v1/documents/track/{}", track_id)).await;
+        let (status, body) = match scope {
+            Some((tenant_id, user_id, workspace_id)) => {
+                get_with_tenant(app, &uri, tenant_id, user_id, workspace_id).await
+            }
+            None => get_endpoint(app, &uri).await,
+        };
         if status.is_success() {
             let complete = body
                 .get("is_complete")
@@ -664,7 +707,13 @@ pub async fn wait_for_document_processed(
                             .to_string();
                     }
                 }
-                return "completed".to_string();
+                // Empty documents + is_complete is the tenant-guard stub — keep
+                // polling when scoped; unscoped legacy path keeps old behavior.
+                if scope.is_some() {
+                    // fall through to sleep / timeout
+                } else {
+                    return "completed".to_string();
+                }
             }
         }
         if std::time::Instant::now() >= deadline {
@@ -684,7 +733,44 @@ pub async fn upload_and_wait(
     content: &str,
     timeout: Duration,
 ) -> (String, String, String) {
-    let body = upload_document_assert(app, title, content).await;
+    upload_and_wait_with_tenant(app, title, content, timeout, None).await
+}
+
+/// Upload + wait with optional tenant scope on both POST and track poll.
+///
+/// `scope` is `(tenant_id, user_id, workspace_id)`. Use this whenever the test
+/// later asserts graph/document state under the same headers.
+pub async fn upload_and_wait_with_tenant(
+    app: &axum::Router,
+    title: &str,
+    content: &str,
+    timeout: Duration,
+    scope: Option<(&str, &str, &str)>,
+) -> (String, String, String) {
+    let payload = json!({
+        "content": content,
+        "title": title
+    });
+    let (status, body) = match scope {
+        Some((tenant_id, user_id, workspace_id)) => {
+            post_json_with_tenant(
+                app,
+                "/api/v1/documents",
+                &payload,
+                tenant_id,
+                user_id,
+                workspace_id,
+            )
+            .await
+        }
+        None => post_json(app, "/api/v1/documents", &payload).await,
+    };
+    assert!(
+        status == StatusCode::CREATED || status == StatusCode::ACCEPTED,
+        "Upload should return 201 or 202: {} | body={}",
+        status,
+        body
+    );
     let document_id = body
         .get("document_id")
         .and_then(|v| v.as_str())
@@ -700,7 +786,8 @@ pub async fn upload_and_wait(
         "upload response missing document_id"
     );
     assert!(!track_id.is_empty(), "upload response missing track_id");
-    let final_status = wait_for_document_processed(app, &track_id, timeout).await;
+    let final_status =
+        wait_for_document_processed_with_tenant(app, &track_id, timeout, scope).await;
     assert!(
         final_status == "completed"
             || final_status == "processed"

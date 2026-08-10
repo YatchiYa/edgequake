@@ -40,10 +40,10 @@ pub struct ProviderProfile {
 }
 
 impl ProviderProfile {
-    /// Default local profile: single-GPU Ollama (near-serial execution).
+    /// Default local profile: single-GPU Ollama (serial execution).
     pub const LOCAL_DEFAULT: Self = Self {
         kind: ProviderKind::Local,
-        budget: 2,
+        budget: 1,
     };
     /// Default cloud profile: moderate API account (latency-bound).
     pub const CLOUD_DEFAULT: Self = Self {
@@ -101,6 +101,8 @@ pub fn resolve(
     let (threads, extraction, embed, merge, vision) = match profile.kind {
         ProviderKind::Local => (
             (2 * b).clamp(1, 4),
+            // Compute-bound: raise B (and ALLOW_LOCAL_HIGH_CONCURRENCY) for multi-GPU.
+            // Default B=1 → extraction 1 (serial Ollama).
             b.clamp(1, 2),
             (b / 2).clamp(1, 2),
             b.clamp(1, 4),
@@ -152,16 +154,17 @@ mod tests {
     /// legacy resolvers' constants cannot drift from the SSOT without failing.
     #[test]
     fn contract_spec091_admission_resolver_derives_all() {
-        // Local (B=2): extraction 2, threads ≤4, embed 1, merge 2, vision 2.
+        // Local (B=1): extraction 1, threads 2, embed 1, merge 1, vision 1.
         let local = resolve(&ProviderProfile::LOCAL_DEFAULT, 2.0, 600);
         assert_eq!(
             local.extraction_concurrency,
             LOCAL_MAX_CONCURRENT_EXTRACTIONS
         );
-        assert_eq!(local.worker_threads, LOCAL_WORKER_THREADS_CAP);
+        assert_eq!(local.worker_threads, 2);
+        assert!(local.worker_threads <= LOCAL_WORKER_THREADS_CAP);
         assert_eq!(local.embed_max_async, 1);
-        assert_eq!(local.merge_max_async, 2);
-        assert_eq!(local.vision_jobs, 2);
+        assert_eq!(local.merge_max_async, 1);
+        assert_eq!(local.vision_jobs, 1);
 
         // Cloud (B=8): extraction 16, threads 16, embed 8, merge 8, vision 8.
         let cloud = resolve(&ProviderProfile::CLOUD_DEFAULT, 30.0, 600);

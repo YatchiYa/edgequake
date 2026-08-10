@@ -16,6 +16,12 @@ export const MISTRAL_EMBEDDING_DIMENSION = 1024;
 
 export type AuthHeaders = Record<string, string>;
 
+export type RelationEdgeTriple = {
+  source: string;
+  relation: string;
+  target: string;
+};
+
 /** Workspace create payload with explicit Mistral LLM + embedding providers. */
 export function mistralWorkspacePayload(
   name: string,
@@ -25,8 +31,16 @@ export function mistralWorkspacePayload(
     'LOCATION',
     'CONCEPT',
     'OTHER',
-  ]
+  ],
+  options: {
+    relationTypes?: string[];
+    relationEdges?: RelationEdgeTriple[];
+    entityTypesStrict?: boolean;
+    relationTypesStrict?: boolean;
+  } = {}
 ): Record<string, unknown> {
+  const relationTypes = options.relationTypes ?? [];
+  const relationEdges = options.relationEdges ?? [];
   return {
     name,
     llm_provider: 'mistral',
@@ -35,7 +49,29 @@ export function mistralWorkspacePayload(
     embedding_model: MISTRAL_EMBEDDING_MODEL,
     embedding_dimension: MISTRAL_EMBEDDING_DIMENSION,
     entity_types: entityTypes,
+    entity_types_strict: options.entityTypesStrict ?? true,
+    relation_types: relationTypes,
+    relation_types_strict: options.relationTypesStrict ?? true,
+    relation_edges: relationEdges,
+    kg_schema_preset:
+      relationTypes.length === 0 && relationEdges.length === 0
+        ? 'blank'
+        : 'custom',
   };
+}
+
+/** SPEC-114 default Mistral KG schema for live extract / Playwright smoke. */
+export function mistralSpec114ExtractWorkspacePayload(
+  name: string
+): Record<string, unknown> {
+  return mistralWorkspacePayload(name, ['PERSON', 'ORGANIZATION', 'OTHER'], {
+    relationTypes: ['WORKS_AT', 'LOCATED_IN'],
+    relationEdges: [
+      { source: 'PERSON', relation: 'WORKS_AT', target: 'ORGANIZATION' },
+    ],
+    entityTypesStrict: true,
+    relationTypesStrict: true,
+  });
 }
 
 /** Assert workspace JSON from API uses Mistral providers/models. */
@@ -118,6 +154,8 @@ export type Spec013BootstrapContext = {
 export type CreateTenantWorkspaceOptions = {
   /** URL slug for deeplink routes `/w/[slug]/…` */
   slug?: string;
+  /** Override workspace create body (merged after name defaults). */
+  workspacePayload?: Record<string, unknown>;
 };
 
 /** Create tenant + Mistral workspace through the backend API (no UI). */
@@ -140,11 +178,17 @@ export async function createTenantWorkspaceViaApi(
   const workspaceName = `${label} ws ${suffix}`;
   const workspaceSlug =
     options.slug ?? `${label}-ws-${suffix}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const defaultPayload =
+    label.startsWith('spec114') && !label.includes('free-form')
+      ? mistralSpec114ExtractWorkspacePayload(workspaceName)
+      : mistralWorkspacePayload(workspaceName);
   const wsRes = await request.post(
     `${SPEC013_BACKEND}/api/v1/tenants/${tenant.id}/workspaces`,
     {
       data: {
-        ...mistralWorkspacePayload(workspaceName),
+        ...defaultPayload,
+        ...(options.workspacePayload ?? {}),
+        name: workspaceName,
         slug: workspaceSlug,
       },
     }
