@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.24.3"
+    "version": "0.24.4"
   },
   "servers": [
     {
@@ -3156,8 +3156,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_failed"
+        "x-edgequake-v2-job-type": "reprocess_failed",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/scan": {
@@ -8980,8 +8980,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_embeddings",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_embeddings"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -9128,8 +9128,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_all",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_all"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -9652,8 +9652,8 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     }
   },
@@ -18889,6 +18889,20 @@
             "type": "boolean",
             "description": "Error state."
           },
+          "llm_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "LLM model used (lineage). @implements SPEC-032"
+          },
+          "llm_provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "LLM provider used (lineage). @implements SPEC-032"
+          },
           "mode": {
             "type": [
               "string",
@@ -18937,6 +18951,8 @@
           "duration_ms": {},
           "id": {},
           "is_error": {},
+          "llm_model": {},
+          "llm_provider": {},
           "mode": {},
           "parent_id": {},
           "role": {},
@@ -27127,6 +27143,13 @@
             "type": "string",
             "description": "Tenant name."
           },
+          "pdf_parser_backend": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto`)."
+          },
           "plan": {
             "type": "string",
             "description": "Plan type."
@@ -27156,6 +27179,7 @@
           "is_active": {},
           "max_workspaces": {},
           "name": {},
+          "pdf_parser_backend": {},
           "plan": {},
           "slug": {},
           "updated_at": {}
@@ -27783,6 +27807,49 @@
         "type": "object",
         "description": "Request to update a tenant.",
         "properties": {
+          "default_embedding_dimension": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "default_embedding_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_embedding_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_llm_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_llm_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_vision_llm_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_vision_llm_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
             "type": [
               "string",
@@ -27804,6 +27871,13 @@
             ],
             "description": "New tenant name."
           },
+          "pdf_parser_backend": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto` | `none`)."
+          },
           "plan": {
             "type": [
               "string",
@@ -27813,9 +27887,17 @@
           }
         },
         "example": {
+          "default_embedding_dimension": {},
+          "default_embedding_model": {},
+          "default_embedding_provider": {},
+          "default_llm_model": {},
+          "default_llm_provider": {},
+          "default_vision_llm_model": {},
+          "default_vision_llm_provider": {},
           "description": {},
           "is_active": {},
           "name": {},
+          "pdf_parser_backend": {},
           "plan": {}
         }
       },
@@ -28654,6 +28736,12 @@
             "type": "string",
             "description": "Embedding provider (openai, ollama, lmstudio)."
           },
+          "embedding_resolution_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "entity_type_colors": {
             "type": [
               "object",
@@ -28739,6 +28827,13 @@
             "type": "string",
             "description": "LLM provider (openai, ollama, lmstudio)."
           },
+          "llm_resolution_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provenance: `workspace` | `tenant` | `env` | `default`."
+          },
           "llm_roles": {
             "description": "SPEC-109: per-role LLM overrides (incl. reasoning_effort)."
           },
@@ -28784,6 +28879,52 @@
           "relation_types_strict": {
             "type": "boolean",
             "description": "When true, unknown relations remap (default true when list present)."
+          },
+          "resolved_embedding_dimension": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "resolved_embedding_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolved_embedding_provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-123: effective embedding stack with provenance."
+          },
+          "resolved_llm_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolved_llm_provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-123: effective LLM after Request>Workspace>Tenant>Env (LAW-123-8)."
+          },
+          "resolved_vision_llm_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolved_vision_llm_provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-123: effective vision LLM (VLM — not an embedding model)."
           },
           "slug": {
             "type": "string",
@@ -28847,6 +28988,12 @@
               "null"
             ],
             "description": "Vision LLM provider for PDF → Markdown extraction (None if not configured)."
+          },
+          "vision_llm_resolution_source": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "vision_page_system_prompt": {
             "type": [
@@ -29085,7 +29232,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.24.3",
+      "version": "0.24.4",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455)."
     },
     "defaultContentType": "application/json",

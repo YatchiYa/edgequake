@@ -8139,6 +8139,8 @@ export interface components {
          *       "duration_ms": {},
          *       "id": {},
          *       "is_error": {},
+         *       "llm_model": {},
+         *       "llm_provider": {},
          *       "mode": {},
          *       "parent_id": {},
          *       "role": {},
@@ -8171,6 +8173,10 @@ export interface components {
             id: string;
             /** @description Error state. */
             is_error: boolean;
+            /** @description LLM model used (lineage). @implements SPEC-032 */
+            llm_model?: string | null;
+            /** @description LLM provider used (lineage). @implements SPEC-032 */
+            llm_provider?: string | null;
             /** @description Query mode used. */
             mode?: string | null;
             /**
@@ -12497,6 +12503,7 @@ export interface components {
          *       "is_active": {},
          *       "max_workspaces": {},
          *       "name": {},
+         *       "pdf_parser_backend": {},
          *       "plan": {},
          *       "slug": {},
          *       "updated_at": {}
@@ -12542,6 +12549,8 @@ export interface components {
             max_workspaces: number;
             /** @description Tenant name. */
             name: string;
+            /** @description SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto`). */
+            pdf_parser_backend?: string | null;
             /** @description Plan type. */
             plan: string;
             /** @description URL-friendly slug. */
@@ -12884,19 +12893,36 @@ export interface components {
         /**
          * @description Request to update a tenant.
          * @example {
+         *       "default_embedding_dimension": {},
+         *       "default_embedding_model": {},
+         *       "default_embedding_provider": {},
+         *       "default_llm_model": {},
+         *       "default_llm_provider": {},
+         *       "default_vision_llm_model": {},
+         *       "default_vision_llm_provider": {},
          *       "description": {},
          *       "is_active": {},
          *       "name": {},
+         *       "pdf_parser_backend": {},
          *       "plan": {}
          *     }
          */
         UpdateTenantRequest: {
+            default_embedding_dimension?: number | null;
+            default_embedding_model?: string | null;
+            default_embedding_provider?: string | null;
+            default_llm_model?: string | null;
+            default_llm_provider?: string | null;
+            default_vision_llm_model?: string | null;
+            default_vision_llm_provider?: string | null;
             /** @description New description. */
             description?: string | null;
             /** @description Whether the tenant is active. */
             is_active?: boolean | null;
             /** @description New tenant name. */
             name?: string | null;
+            /** @description SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto` | `none`). */
+            pdf_parser_backend?: string | null;
             /** @description New plan. */
             plan?: string | null;
         };
@@ -13278,6 +13304,7 @@ export interface components {
             embedding_model: string;
             /** @description Embedding provider (openai, ollama, lmstudio). */
             embedding_provider: string;
+            embedding_resolution_source?: string | null;
             /** @description Custom entity-type → hex color map for graph visualization (SPEC-102). */
             entity_type_colors?: {
                 [key: string]: string;
@@ -13315,6 +13342,8 @@ export interface components {
             llm_model: string;
             /** @description LLM provider (openai, ollama, lmstudio). */
             llm_provider: string;
+            /** @description Provenance: `workspace` | `tenant` | `env` | `default`. */
+            llm_resolution_source?: string | null;
             /** @description SPEC-109: per-role LLM overrides (incl. reasoning_effort). */
             llm_roles?: unknown;
             /** @description Maximum documents allowed. */
@@ -13329,6 +13358,16 @@ export interface components {
             relation_types?: string[] | null;
             /** @description When true, unknown relations remap (default true when list present). */
             relation_types_strict: boolean;
+            resolved_embedding_dimension?: number | null;
+            resolved_embedding_model?: string | null;
+            /** @description SPEC-123: effective embedding stack with provenance. */
+            resolved_embedding_provider?: string | null;
+            resolved_llm_model?: string | null;
+            /** @description SPEC-123: effective LLM after Request>Workspace>Tenant>Env (LAW-123-8). */
+            resolved_llm_provider?: string | null;
+            resolved_vision_llm_model?: string | null;
+            /** @description SPEC-123: effective vision LLM (VLM — not an embedding model). */
+            resolved_vision_llm_provider?: string | null;
             /** @description URL-friendly slug. */
             slug: string;
             /**
@@ -13348,6 +13387,7 @@ export interface components {
             vision_llm_model?: string | null;
             /** @description Vision LLM provider for PDF → Markdown extraction (None if not configured). */
             vision_llm_provider?: string | null;
+            vision_llm_resolution_source?: string | null;
             vision_page_system_prompt?: string | null;
         };
         /**
