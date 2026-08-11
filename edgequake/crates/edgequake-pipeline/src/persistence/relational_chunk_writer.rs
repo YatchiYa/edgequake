@@ -1,4 +1,5 @@
 //! SPEC-091 W1 — relational chunk writer (single writer site for `chunks` rows).
+//! SPEC-118 — injection composite doc ids map to injection UUID via shared resolver.
 
 use edgequake_storage::traits::domain::{
     Chunk, ChunkId, ChunkRepository, DocumentId, TenantId, UnitOfWork, WorkspaceId,
@@ -8,6 +9,9 @@ use uuid::Uuid;
 
 use crate::pipeline::ProcessingResult;
 
+use super::document_id_resolve::{
+    is_injection_composite_document_id, resolve_relational_document_id,
+};
 use super::IngestionPersistContext;
 
 /// Build domain chunks from a processing result (legacy string ids preserved in metadata).
@@ -16,6 +20,7 @@ pub fn build_relational_chunks(
     result: &ProcessingResult,
 ) -> Result<Vec<Chunk>, StorageError> {
     let document_id = parse_document_id(&ctx.document_id)?;
+    let bridged_injection = is_injection_composite_document_id(&ctx.document_id);
     let tenant_id = ctx
         .tenant_id
         .as_deref()
@@ -40,6 +45,10 @@ pub fn build_relational_chunks(
                 "start_line": chunk.start_line,
                 "end_line": chunk.end_line,
             });
+            // SPEC-118: preserve composite injection artifact id alongside FK UUID.
+            if bridged_injection {
+                metadata["legacy_document_id"] = serde_json::json!(&ctx.document_id);
+            }
             if let Some(file) = ctx.source_file_path.as_deref() {
                 metadata["source_file"] = serde_json::json!(file);
             }
@@ -91,7 +100,8 @@ pub async fn persist_relational_chunks(
 }
 
 fn parse_document_id(raw: &str) -> Result<DocumentId, StorageError> {
-    parse_uuid(raw).map(DocumentId)
+    // SPEC-118: bare UUID or injection::{ws}::{uuid} → relational DocumentId.
+    resolve_relational_document_id(raw)
 }
 
 fn parse_uuid(raw: &str) -> Result<Uuid, StorageError> {
@@ -150,5 +160,39 @@ mod tests {
         let ctx = IngestionPersistContext::new("not-a-uuid", None, None);
         let err = build_relational_chunks(&ctx, &sample_result("not-a-uuid")).unwrap_err();
         assert!(matches!(err, StorageError::InvalidData(_)));
+    }
+
+    #[test]
+    fn contract_spec118_build_chunks_maps_injection_doc_id() {
+        let ws = Uuid::new_v4();
+        let inj = Uuid::new_v4();
+        let composite = format!("injection::{ws}::{inj}");
+        let ctx = IngestionPersistContext::new(composite.clone(), None, None);
+        let chunks = build_relational_chunks(&ctx, &sample_result(&composite)).expect("map");
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].document_id.0, inj);
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .get("legacy_document_id")
+                .and_then(|v| v.as_str()),
+            Some(composite.as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn contract_spec118_persist_injection_composite_document_id() {
+        let ws = Uuid::new_v4();
+        let inj = Uuid::new_v4();
+        let composite = format!("injection::{ws}::{inj}");
+        let ctx = IngestionPersistContext::new(composite.clone(), None, None);
+        let repo = Arc::new(MemoryChunkRepository::new());
+        persist_relational_chunks(repo.as_ref(), &ctx, &sample_result(&composite))
+            .await
+            .expect("injection relational insert");
+
+        let page = repo.scan_from(None, 10).await.expect("scan");
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].document_id.0, inj);
     }
 }

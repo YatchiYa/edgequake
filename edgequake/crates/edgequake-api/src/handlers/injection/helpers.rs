@@ -14,6 +14,26 @@ pub(crate) fn workspace_id_from_tenant(ctx: &TenantContext) -> String {
     ctx.workspace_id_or_default()
 }
 
+/// Load injection metadata: typed-first when `EDGEQUAKE_KV_FAMILY_INJECTION=relational`
+/// (SPEC-091 Wave B6 / SPEC-118), otherwise KV.
+pub(crate) async fn load_injection_meta(
+    state: &AppState,
+    workspace_id: &str,
+    injection_id: &str,
+) -> ApiResult<serde_json::Value> {
+    let meta_key = crate::services::injection_meta_key(workspace_id, injection_id);
+    let val = if crate::services::injection_relational::injections_prefer_relational() {
+        match crate::services::injection_relational::typed_injection_get(injection_id).await {
+            Some(v) => Some(v),
+            None => state.storage.kv_storage.get_by_id(&meta_key).await?,
+        }
+    } else {
+        state.storage.kv_storage.get_by_id(&meta_key).await?
+    }
+    .ok_or_else(|| ApiError::NotFound(format!("Injection {} not found", injection_id)))?;
+    Ok(val)
+}
+
 pub(crate) fn validate_name(name: &str) -> ApiResult<()> {
     if name.is_empty() || name.len() > 100 {
         return Err(ApiError::BadRequest(

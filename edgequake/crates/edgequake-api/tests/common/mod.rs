@@ -272,6 +272,8 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
     // Memory worker harness has no PgPool → typed embedding/chunk indexes are
     // unavailable. Force legacy vector + KV chunk text so persist does not
     // fail-closed on SPEC-091 typed/relational defaults.
+    // SPEC-118: relational injection coverage lives in
+    // `tests/e2e_spec118_injection_relational_pg.rs` (Postgres + authority=relational).
     std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "legacy_tables");
     std::env::set_var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY", "kv");
     let mock_provider = Arc::new(MockProvider::new());

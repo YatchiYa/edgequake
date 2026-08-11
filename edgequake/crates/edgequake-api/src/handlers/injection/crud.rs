@@ -13,9 +13,9 @@ use crate::services::{cleanup_document_graph_data, injection_doc_id, injection_m
 use crate::state::AppState;
 
 use super::helpers::{
-    build_meta, detail_from_meta, enqueue_injection_processing, resolve_injection_context,
-    str_field, str_field_or, validate_content, validate_name, workspace_id_from_tenant,
-    InjectionEnqueueParams,
+    build_meta, detail_from_meta, enqueue_injection_processing, load_injection_meta,
+    resolve_injection_context, str_field, str_field_or, validate_content, validate_name,
+    workspace_id_from_tenant, InjectionEnqueueParams,
 };
 use crate::handlers::injection_types::*;
 
@@ -162,17 +162,7 @@ pub async fn get_injection(
     Path((_workspace_id_path, injection_id)): Path<(String, String)>,
 ) -> ApiResult<Json<InjectionDetailResponse>> {
     let workspace_id = workspace_id_from_tenant(&tenant_ctx);
-    let meta_key = injection_meta_key(&workspace_id, &injection_id);
-    // SPEC-091 Wave B6: typed-first when cut over; KV fallback.
-    let val = if crate::services::injection_relational::injections_prefer_relational() {
-        match crate::services::injection_relational::typed_injection_get(&injection_id).await {
-            Some(v) => Some(v),
-            None => state.storage.kv_storage.get_by_id(&meta_key).await?,
-        }
-    } else {
-        state.storage.kv_storage.get_by_id(&meta_key).await?
-    }
-    .ok_or_else(|| ApiError::NotFound(format!("Injection {} not found", injection_id)))?;
+    let val = load_injection_meta(&state, &workspace_id, &injection_id).await?;
     Ok(Json(detail_from_meta(&val)))
 }
 
@@ -194,12 +184,10 @@ pub async fn delete_injection(
     let workspace_id = workspace_id_from_tenant(&tenant_ctx);
     let meta_key = injection_meta_key(&workspace_id, &injection_id);
 
-    let meta_val = state
-        .storage
-        .kv_storage
-        .get_by_id(&meta_key)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Injection {} not found", injection_id)))?;
+    // SPEC-091 Wave B6 / SPEC-118: typed-first when injection family is relational
+    // (mirrors get_injection). KV-only lookup 404s under product-default relational
+    // family even though the documents row and chunks exist.
+    let meta_val = load_injection_meta(&state, &workspace_id, &injection_id).await?;
 
     let doc_id = injection_doc_id(&workspace_id, &injection_id);
 
@@ -277,12 +265,8 @@ pub async fn update_injection(
     let workspace_id = workspace_id_from_tenant(&tenant_ctx);
     let meta_key = injection_meta_key(&workspace_id, &injection_id);
 
-    let existing = state
-        .storage
-        .kv_storage
-        .get_by_id(&meta_key)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Injection {} not found", injection_id)))?;
+    // SPEC-118: typed-first parity with get/delete under relational injection family.
+    let existing = load_injection_meta(&state, &workspace_id, &injection_id).await?;
 
     let old_name = str_field(&existing, "name");
     let old_content = str_field(&existing, "content");

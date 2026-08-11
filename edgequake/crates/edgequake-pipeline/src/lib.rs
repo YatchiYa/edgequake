@@ -165,9 +165,10 @@ pub use multimodal::{
     MODALITY_EQUATION, MODALITY_FIGURE, MODALITY_TABLE,
 };
 pub use persistence::{
-    build_chunk_vector_batch, persist_processing_result, ChunkVectorBuildOptions,
-    DefaultIngestionPersister, IngestionPersistConfig, IngestionPersistContext,
-    IngestionPersistOutput, IngestionPersistSettings, IngestionPersister,
+    build_chunk_vector_batch, build_relational_chunks, is_injection_composite_document_id,
+    persist_processing_result, persist_relational_chunks, resolve_relational_document_id,
+    ChunkVectorBuildOptions, DefaultIngestionPersister, IngestionPersistConfig,
+    IngestionPersistContext, IngestionPersistOutput, IngestionPersistSettings, IngestionPersister,
 };
 pub use pipeline::{
     allow_local_gleaning,

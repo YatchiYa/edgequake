@@ -17,12 +17,14 @@ use uuid::Uuid;
 
 use crate::pipeline::ProcessingResult;
 
+use super::document_id_resolve::resolve_relational_document_id;
 use super::IngestionPersistContext;
 
 /// Dual-write embedded chunk vectors into `chunk_embeddings`.
 ///
-/// No-op when the document has no embedded chunks, the document id is not a
-/// UUID, or the workspace id is absent/invalid (typed schema requires
+/// No-op when the document has no embedded chunks, the document id cannot be
+/// resolved to a relational UUID (SPEC-118 maps `injection::` composites), or
+/// the workspace id is absent/invalid (typed schema requires
 /// `workspace_id NOT NULL`). This path never fails the ingest by itself: the
 /// caller maps errors per backend policy (warn-only during rollout).
 pub async fn persist_typed_chunk_embeddings(
@@ -31,8 +33,9 @@ pub async fn persist_typed_chunk_embeddings(
     ctx: &IngestionPersistContext,
     result: &ProcessingResult,
 ) -> Result<u64, StorageError> {
-    let doc_uuid = match Uuid::parse_str(&ctx.document_id) {
-        Ok(u) => u,
+    // SPEC-118: share resolve SSOT with relational_chunk_writer (DRY).
+    let doc_uuid = match resolve_relational_document_id(&ctx.document_id) {
+        Ok(DocumentId(u)) => u,
         Err(_) => return Ok(0),
     };
     let ws_uuid = match ctx
