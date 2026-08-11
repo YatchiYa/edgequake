@@ -71,6 +71,12 @@ curl -s http://localhost:8080/health | python3 -m json.tool
 
 > Pin a version: `EDGEQUAKE_VERSION=0.24.3 sh quickstart.sh`
 
+### What's new in 0.24.4
+
+Patch: partner reliability (#370 PDF matrix honesty, #374 legacy_vector_id race, #375 delete citation indexes, #376 injection IDs), SPEC-123 env/config cascade, SPEC-122 admit honesty, SPEC-114/015V/116/117 KG + vision + extract budget. Migrations **145–147**.
+
+Upgrade: **[upgrade-to-0.24.4.md](docs/operations/upgrade-to-0.24.4.md)** · changelog: [CHANGELOG.md](CHANGELOG.md).
+
 ### What's new in 0.24.0
 
 #### Database migration (read this first)

@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.24.4] — 2026-08-11
+
+Patch: partner ingest/delete reliability (#370/#374/#375/#376), env/config cascade (SPEC-123),
+admit honesty (SPEC-122), format matrix (SPEC-121), plus KG/vision/chunk extract train (SPEC-114/015V/116/117).
+Migrations **145–147**. Upgrade: [`docs/operations/upgrade-to-0.24.4.md`](docs/operations/upgrade-to-0.24.4.md).
+
+### Fixed
+- **Issue #376 / SPEC-118 — knowledge injection under relational chunk authority** — `injection::{workspace}::{id}` document IDs are bridged to the injection UUID for relational chunk writers (no longer fail `Uuid::parse_str` on the composite key). Spec: [`specs/118-fix-knowledge-ingestion/`](specs/118-fix-knowledge-ingestion/).
+- **Issue #375 / SPEC-119 — delete/reprocess singular edge citation timeouts** — AGE expression indexes for `source_chunk_id` / `source_document_id` (migration **145** + `ensure_indexes` single-flight). Spec: [`specs/119-delete-process-time/`](specs/119-delete-process-time/).
+- **Issue #374 / SPEC-120 — same-workspace `legacy_vector_id` race** — concurrent entity/relationship mirror upserts absorb `(workspace_id, legacy_vector_id)` conflicts instead of failing the merge. Spec: [`specs/120-race-condition-legacy-vector/`](specs/120-race-condition-legacy-vector/).
+- **Issue #370 / SPEC-121 — PDF/DOCX upload honesty** — product format matrix locked (TXT/MD/JSON/images/PDF supported; DOCX/Excel **not** supported); PDF route messaging + admission validation aligned. Spec: [`specs/121-pdf-docx/`](specs/121-pdf-docx/).
+
+### Added
+- **SPEC-114 relation allowlists + domain presets** — workspace/tenant extract reliability controls for KG relations.
+- **SPEC-015V vision extract toggles + prompt overrides** — e2e gates for VLM extract path configuration.
+- **SPEC-116 / SPEC-117 chunking + extract budget** — per-response entity/record caps; Acc pins `EDGEQUAKE_EXTRACT_CAPS_SELECTION=fifo`.
+- **SPEC-122 admit honesty** — bulk admit≠ready physics without Graph/query pollution; Documents UX concurrency lane hints.
+- **SPEC-123 env/config priority cascade** — Request > Workspace > Tenant > Env for PDF parser + LLM/embedding/vision resolve; GET provenance (`resolved_*` / `*_resolution_source`); FE Resolves-to badges; chat message LLM lineage (migration **147**) + conversations `bypass` mode (migration **146**). Spec: [`specs/123-env-config-priority/`](specs/123-env-config-priority/).
+
+### Changed
+- **WebUI** — header-to-content spacing tighten; documents table layout polish.
+
 ## [0.24.3] — 2026-08-07
 
 Patch: SPEC-112 shared-PostgreSQL connection-pool harden + UTF-8 truncate SSOT.
