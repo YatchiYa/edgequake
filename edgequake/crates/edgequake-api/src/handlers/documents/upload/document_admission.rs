@@ -73,6 +73,10 @@ pub struct DocumentAdmissionInput {
     /// Explicit chunk strategy; auto-selects markdown for `.md` when None.
     pub chunk_strategy: Option<ChunkStrategy>,
     pub chunk_options: Option<ChunkOptions>,
+    /// SPEC-117: optional per-upload extract entity cap.
+    pub extract_max_entities: Option<u32>,
+    /// SPEC-117: optional per-upload extract total-records cap.
+    pub extract_max_records: Option<u32>,
     /// True when content originated from VLM image analysis (SPEC-026 P-07).
     pub multimodal: bool,
     /// Ingest path label, e.g. `"vlm_describe"` for image uploads.
@@ -212,24 +216,30 @@ pub async fn admit_document_for_processing(
 
     // SPEC-025 6.1: task payload references KV only — no duplicate text in JSONB.
     // Create task before metadata write so progress identity = insert-* (068).
+    let mut task_meta = json!({
+        "document_id": document_id,
+        "title": input.title,
+        "tenant_id": tenant_id,
+        "workspace_id": workspace_id,
+        "source_type": input.source_type,
+        "mime_type": input.mime_type,
+        "content_hash": input.content_hash,
+        "file_size_bytes": input.raw_byte_size,
+        "enable_gleaning": input.gleaning.enable_gleaning,
+        "max_gleaning": input.gleaning.max_gleaning,
+        "chunk_strategy": chunk_strategy.as_str(),
+        "chunk_options": chunk_options_json,
+    });
+    // SPEC-117: omit null keys so prepare/factory treat inherit as absent.
+    if let (Some(ents), Some(recs)) = (input.extract_max_entities, input.extract_max_records) {
+        task_meta["extract_max_entities"] = json!(ents);
+        task_meta["extract_max_records"] = json!(recs);
+    }
     let task_data = TextInsertData {
         text: String::new(),
         file_source: input.title.clone(),
         workspace_id: workspace_id.clone(),
-        metadata: Some(json!({
-            "document_id": document_id,
-            "title": input.title,
-            "tenant_id": tenant_id,
-            "workspace_id": workspace_id,
-            "source_type": input.source_type,
-            "mime_type": input.mime_type,
-            "content_hash": input.content_hash,
-            "file_size_bytes": input.raw_byte_size,
-            "enable_gleaning": input.gleaning.enable_gleaning,
-            "max_gleaning": input.gleaning.max_gleaning,
-            "chunk_strategy": chunk_strategy.as_str(),
-            "chunk_options": chunk_options_json,
-        })),
+        metadata: Some(task_meta),
     };
 
     let mut task = Task::new(
@@ -523,12 +533,36 @@ pub fn parse_upload_chunk_fields(
     (strategy, options)
 }
 
+/// SPEC-117 — Validate optional document extract-budget pair (SSOT for all upload paths).
+///
+/// - both omitted → `Ok(None)` (inherit workspace/env)
+/// - both set → validate via [`ExtractionCaps::validate`]
+/// - one set → `Err` (400)
+pub fn parse_document_extract_caps(
+    extract_max_entities: Option<u32>,
+    extract_max_records: Option<u32>,
+) -> Result<Option<edgequake_pipeline::ExtractionCaps>, String> {
+    match (extract_max_entities, extract_max_records) {
+        (None, None) => Ok(None),
+        (Some(_), None) | (None, Some(_)) => Err(
+            "extract_max_entities and extract_max_records must both be set (or both omitted)"
+                .into(),
+        ),
+        (Some(ents), Some(recs)) => Ok(Some(edgequake_pipeline::ExtractionCaps::validate(
+            ents as usize,
+            recs as usize,
+        )?)),
+    }
+}
+
 /// Multipart form fields shared by file and batch upload handlers (DRY).
 #[derive(Debug, Default, Clone)]
 pub struct MultipartUploadFields {
     pub metadata: Option<Value>,
     chunk_strategy_raw: Option<String>,
     chunk_options_raw: Option<Value>,
+    extract_max_entities: Option<u32>,
+    extract_max_records: Option<u32>,
 }
 
 impl MultipartUploadFields {
@@ -542,6 +576,12 @@ impl MultipartUploadFields {
             }
             "chunk_options" if !text.is_empty() => {
                 self.chunk_options_raw = serde_json::from_str(text).ok();
+            }
+            "extract_max_entities" if !text.is_empty() => {
+                self.extract_max_entities = text.trim().parse().ok();
+            }
+            "extract_max_records" if !text.is_empty() => {
+                self.extract_max_records = text.trim().parse().ok();
             }
             _ => {}
         }
@@ -565,6 +605,29 @@ impl MultipartUploadFields {
             }
         }
         (strategy, options, self.metadata.clone())
+    }
+
+    /// SPEC-117: form fields win over metadata envelope keys.
+    pub fn effective_extract_caps(&self) -> Result<(Option<u32>, Option<u32>), String> {
+        let mut ents = self.extract_max_entities;
+        let mut recs = self.extract_max_records;
+        if let Some(ref meta) = self.metadata {
+            if ents.is_none() {
+                ents = meta
+                    .get("extract_max_entities")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32);
+            }
+            if recs.is_none() {
+                recs = meta
+                    .get("extract_max_records")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32);
+            }
+        }
+        // Validate pair shape early (admission still stores Option ints).
+        parse_document_extract_caps(ents, recs)?;
+        Ok((ents, recs))
     }
 }
 
@@ -624,6 +687,43 @@ mod tests {
     }
 
     #[test]
+    fn parse_document_extract_caps_pair_or_omit() {
+        assert!(parse_document_extract_caps(None, None).unwrap().is_none());
+        assert!(parse_document_extract_caps(Some(20), None).is_err());
+        let caps = parse_document_extract_caps(Some(20), Some(50))
+            .unwrap()
+            .expect("caps");
+        assert_eq!(caps.max_entities, 20);
+        assert_eq!(caps.max_total_records, 50);
+    }
+
+    #[test]
+    fn multipart_extract_form_wins_over_metadata() {
+        let mut fields = MultipartUploadFields::default();
+        fields.ingest_text_field(
+            "metadata",
+            r#"{"extract_max_entities":60,"extract_max_records":150}"#,
+        );
+        fields.ingest_text_field("extract_max_entities", "20");
+        fields.ingest_text_field("extract_max_records", "50");
+        let (ents, recs) = fields.effective_extract_caps().unwrap();
+        assert_eq!(ents, Some(20));
+        assert_eq!(recs, Some(50));
+    }
+
+    #[test]
+    fn multipart_extract_falls_back_to_metadata_envelope() {
+        let mut fields = MultipartUploadFields::default();
+        fields.ingest_text_field(
+            "metadata",
+            r#"{"extract_max_entities":60,"extract_max_records":150}"#,
+        );
+        let (ents, recs) = fields.effective_extract_caps().unwrap();
+        assert_eq!(ents, Some(60));
+        assert_eq!(recs, Some(150));
+    }
+
+    #[test]
     fn parse_upload_chunk_fields_accepts_chunk_size_alias() {
         let (_strategy, opts) = parse_upload_chunk_fields(
             None,
@@ -658,6 +758,8 @@ mod tests {
             document_type: Some("markdown"),
             chunk_strategy: None,
             chunk_options: None,
+            extract_max_entities: None,
+            extract_max_records: None,
             multimodal: false,
             ingest_mode: None,
             multimodal_manifest: None,
@@ -684,6 +786,8 @@ mod tests {
             document_type: Some("markdown"),
             chunk_strategy: Some(ChunkStrategy::Recursive),
             chunk_options: None,
+            extract_max_entities: None,
+            extract_max_records: None,
             multimodal: false,
             ingest_mode: None,
             multimodal_manifest: None,

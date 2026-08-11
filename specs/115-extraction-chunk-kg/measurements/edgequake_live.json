@@ -1,0 +1,48 @@
+{
+  "utc": "2026-08-10T14:39:58.400881+00:00",
+  "arms": [
+    {
+      "arm": "B",
+      "sut": "edgequake",
+      "mode": "live-mistral-pipeline",
+      "sample_id": "S1-md",
+      "adaptive": true,
+      "chars": 61547,
+      "chunk_count": 16,
+      "chunk_count_vec": 16,
+      "avg_chunk_tokens": 910.8,
+      "mention_entities": 584,
+      "mention_relations": 322,
+      "unique_nodes_name_norm": 491,
+      "unique_edges_name_norm": 305,
+      "successful_chunks": 0,
+      "failed_chunks": 0,
+      "elapsed_s": 40.03,
+      "llm_model": "mistral-small-latest",
+      "embed_model": "mistral-embed",
+      "note": "U via uppercase+underscore name normalize (approx merger EntityId); not AGE."
+    },
+    {
+      "arm": "A",
+      "sut": "edgequake",
+      "mode": "live-mistral-pipeline",
+      "sample_id": "S1-md",
+      "adaptive": false,
+      "chars": 61547,
+      "chunk_count": 12,
+      "chunk_count_vec": 12,
+      "avg_chunk_tokens": 1233.0,
+      "mention_entities": 439,
+      "mention_relations": 325,
+      "unique_nodes_name_norm": 375,
+      "unique_edges_name_norm": 320,
+      "successful_chunks": 0,
+      "failed_chunks": 0,
+      "elapsed_s": 56.57,
+      "llm_model": "mistral-small-latest",
+      "embed_model": "mistral-embed",
+      "note": "U via uppercase+underscore name normalize (approx merger EntityId); not AGE."
+    }
+  ],
+  "note": "Pipeline-only path (no vector persist). Compare unique_nodes_name_norm to LightRAG unique_nodes."
+}

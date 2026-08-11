@@ -68,15 +68,17 @@ impl LiveScenario {
 
     fn entity_allowlist(self) -> HashSet<&'static str> {
         match self {
-            LiveScenario::EntityOtherPath => ["PERSON", "ORGANIZATION", "OTHER"]
-                .into_iter()
-                .collect(),
+            LiveScenario::EntityOtherPath => {
+                ["PERSON", "ORGANIZATION", "OTHER"].into_iter().collect()
+            }
             _ => ["PERSON", "ORGANIZATION", "OTHER"].into_iter().collect(),
         }
     }
 
     fn relation_allowlist(self) -> HashSet<&'static str> {
-        ["WORKS_AT", "LOCATED_IN", "RELATED_TO"].into_iter().collect()
+        ["WORKS_AT", "LOCATED_IN", "RELATED_TO"]
+            .into_iter()
+            .collect()
     }
 
     fn workspace_json(self, provider: LiveProviderKind, name: &str) -> Value {
@@ -85,12 +87,22 @@ impl LiveScenario {
         match (provider, self) {
             (LiveProviderKind::Mistral, LiveScenario::FreeFormRelations) => {
                 spec013_postgres::mistral_kg_schema_workspace_json(
-                    name, entity, &[], &[], true, true,
+                    name,
+                    entity,
+                    &[],
+                    &[],
+                    true,
+                    true,
                 )
             }
             (LiveProviderKind::Ollama, LiveScenario::FreeFormRelations) => {
                 spec013_postgres::ollama_kg_schema_workspace_json(
-                    name, entity, &[], &[], true, true,
+                    name,
+                    entity,
+                    &[],
+                    &[],
+                    true,
+                    true,
                 )
             }
             (LiveProviderKind::Mistral, LiveScenario::PermissiveRelations) => {
@@ -113,26 +125,22 @@ impl LiveScenario {
                     false,
                 )
             }
-            (LiveProviderKind::Mistral, _) => {
-                spec013_postgres::mistral_kg_schema_workspace_json(
-                    name,
-                    entity,
-                    &["WORKS_AT", "LOCATED_IN"],
-                    edges,
-                    true,
-                    true,
-                )
-            }
-            (LiveProviderKind::Ollama, _) => {
-                spec013_postgres::ollama_kg_schema_workspace_json(
-                    name,
-                    entity,
-                    &["WORKS_AT", "LOCATED_IN"],
-                    edges,
-                    true,
-                    true,
-                )
-            }
+            (LiveProviderKind::Mistral, _) => spec013_postgres::mistral_kg_schema_workspace_json(
+                name,
+                entity,
+                &["WORKS_AT", "LOCATED_IN"],
+                edges,
+                true,
+                true,
+            ),
+            (LiveProviderKind::Ollama, _) => spec013_postgres::ollama_kg_schema_workspace_json(
+                name,
+                entity,
+                &["WORKS_AT", "LOCATED_IN"],
+                edges,
+                true,
+                true,
+            ),
         }
     }
 }
@@ -251,9 +259,7 @@ pub async fn run_live_scenario(
     )
     .await;
     assert!(
-        status == StatusCode::CREATED
-            || status == StatusCode::ACCEPTED
-            || status == StatusCode::OK,
+        status == StatusCode::CREATED || status == StatusCode::ACCEPTED || status == StatusCode::OK,
         "upload: {status} {body:?}"
     );
     let doc_id = body["document_id"]
@@ -326,9 +332,7 @@ fn soft_assert_graph(provider: LiveProviderKind, scenario: LiveScenario, graph: 
     );
 
     assert!(
-        entities
-            .iter()
-            .any(|t| entity_allow.contains(t.as_str())),
+        entities.iter().any(|t| entity_allow.contains(t.as_str())),
         "[{} {}] expected ≥1 allow-listed entity, got {entities:?} graph={graph}",
         provider_label(provider),
         scenario.label()

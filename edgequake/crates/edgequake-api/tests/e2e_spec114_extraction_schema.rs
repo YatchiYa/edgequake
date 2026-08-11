@@ -125,7 +125,10 @@ fn edge_types(graph: &Value) -> HashSet<String> {
                 .and_then(|v| v.as_str())
                 .or_else(|| {
                     e.get("properties")
-                        .and_then(|p| p.get("relationship_type").or_else(|| p.get("relation_type")))
+                        .and_then(|p| {
+                            p.get("relationship_type")
+                                .or_else(|| p.get("relation_type"))
+                        })
                         .and_then(|v| v.as_str())
                 })
                 .map(|s| s.to_uppercase())

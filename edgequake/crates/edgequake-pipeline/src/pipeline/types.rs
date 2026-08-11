@@ -256,9 +256,8 @@ pub enum ChunkProgressPhase {
 pub type ChunkProgressCallback = Arc<dyn Fn(ChunkProgressUpdate) + Send + Sync>;
 
 /// Fired after a chunk extraction succeeds (for per-chunk durable checkpoint).
-pub type ChunkExtractedCallback = Arc<
-    dyn Fn(String, crate::extractor::ExtractionResult) + Send + Sync,
->;
+pub type ChunkExtractedCallback =
+    Arc<dyn Fn(String, crate::extractor::ExtractionResult) + Send + Sync>;
 
 /// Progress update emitted during the embedding generation phase.
 #[derive(Debug, Clone)]

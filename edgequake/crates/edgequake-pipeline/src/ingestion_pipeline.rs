@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use edgequake_llm::traits::{EmbeddingProvider, LLMProvider};
 
+use crate::adaptive_chunking::ChunkingPolicy;
 use crate::chunker::{ChunkOptions, ChunkStrategy, ChunkerConfig};
 use crate::extractor::{EntityExtractor, GleaningConfig, GleaningExtractor, LLMExtractor};
 use crate::pipeline::{Pipeline, PipelineConfig};
-use crate::prompts::EntityExtractionSchema;
+use crate::prompts::{EntityExtractionSchema, ExtractionCaps};
 
 /// Per-document ingestion tuning applied when building a workspace pipeline.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,6 +18,8 @@ pub struct IngestionPipelineOptions {
     pub max_gleaning: usize,
     pub chunk_strategy: ChunkStrategy,
     pub chunk_options: Option<ChunkOptions>,
+    /// Workspace chunking policy (SPEC-116). `None` ≡ Inherit fleet env.
+    pub chunking_policy: Option<ChunkingPolicy>,
     /// When true, use `ChunkStrategy::Pdf` unless an explicit strategy overrides it.
     ///
     /// Set by the API processor when the source document is a PDF and its
@@ -42,6 +45,8 @@ pub struct IngestionPipelineOptions {
     ///
     /// When `None`, extractors apply provider-aware flooring (`none` for Ollama).
     pub reasoning_effort: Option<String>,
+    /// SPEC-117: resolved extract caps (`None` ≡ fleet env / 40/100 at build time).
+    pub extraction_caps: Option<ExtractionCaps>,
 }
 
 impl IngestionPipelineOptions {
@@ -52,12 +57,26 @@ impl IngestionPipelineOptions {
             max_gleaning: 1,
             chunk_strategy: ChunkStrategy::default(),
             chunk_options: None,
+            chunking_policy: None,
             is_pdf_source: false,
             llm_provider: None,
             allow_local_gleaning: false,
             extraction_language: crate::prompts::DEFAULT_EXTRACTION_LANGUAGE.to_string(),
             reasoning_effort: None,
+            extraction_caps: None,
         }
+    }
+
+    /// Set workspace chunking policy (SPEC-116). Document `chunk_options` still win last.
+    pub fn with_chunking_policy(mut self, policy: ChunkingPolicy) -> Self {
+        self.chunking_policy = Some(policy);
+        self
+    }
+
+    /// Set resolved extract caps (SPEC-117).
+    pub fn with_extraction_caps(mut self, caps: ExtractionCaps) -> Self {
+        self.extraction_caps = Some(caps);
+        self
     }
 
     /// Set extraction output language (SPEC-096).
@@ -115,22 +134,36 @@ impl IngestionPipelineOptions {
     }
 }
 
-/// Build chunker config from document size + optional API overrides.
+/// Build chunker config from document size + optional workspace policy + API overrides.
 ///
-/// When `EDGEQUAKE_ADAPTIVE_CHUNKING=0`, uses fixed
-/// `EDGEQUAKE_CHUNK_SIZE` / `EDGEQUAKE_CHUNK_OVERLAP` (defaults 1200/100)
-/// for fair LightRAG-matched Acc ingest. API `ChunkOptions` still win last.
+/// Precedence (SPEC-116 LAW-116-2):
+/// 1. Workspace [`ChunkingPolicy`] (or Inherit → fleet env)
+/// 2. Small-doc floor when effective adaptive + non-Fixed strategy + ≤50KB → max(800)
+/// 3. Document `ChunkOptions` last
 pub fn build_chunker_config(
     document_size_bytes: usize,
     strategy: ChunkStrategy,
     chunk_options: Option<&ChunkOptions>,
 ) -> ChunkerConfig {
-    use crate::adaptive_chunking::{adaptive_chunking_enabled, resolve_base_chunk_size_overlap};
+    build_chunker_config_with_policy(document_size_bytes, strategy, None, chunk_options)
+}
 
-    let (mut chunk_size, chunk_overlap) = resolve_base_chunk_size_overlap(document_size_bytes);
+/// Like [`build_chunker_config`] with explicit workspace [`ChunkingPolicy`].
+pub fn build_chunker_config_with_policy(
+    document_size_bytes: usize,
+    strategy: ChunkStrategy,
+    chunking_policy: Option<&ChunkingPolicy>,
+    chunk_options: Option<&ChunkOptions>,
+) -> ChunkerConfig {
+    use crate::adaptive_chunking::{
+        policy_uses_adaptive, resolve_base_chunk_size_overlap_with_policy,
+    };
+
+    let (mut chunk_size, chunk_overlap) =
+        resolve_base_chunk_size_overlap_with_policy(document_size_bytes, chunking_policy);
 
     // Recursive/markdown/pdf floor when adaptive (legacy LightRAG small-doc path).
-    if adaptive_chunking_enabled()
+    if policy_uses_adaptive(chunking_policy)
         && strategy != ChunkStrategy::Fixed
         && document_size_bytes <= 50_000
     {
@@ -157,9 +190,10 @@ pub fn build_ingestion_pipeline(
     entity_schema: EntityExtractionSchema,
     options: IngestionPipelineOptions,
 ) -> Pipeline {
-    let chunker_config = build_chunker_config(
+    let chunker_config = build_chunker_config_with_policy(
         options.document_size_bytes,
         options.chunk_strategy,
+        options.chunking_policy.as_ref(),
         options.chunk_options.as_ref(),
     );
 
@@ -206,11 +240,20 @@ pub fn build_ingestion_pipeline(
 
     let language = options.extraction_language.clone();
     let effort = options.reasoning_effort.clone();
+    let caps = options
+        .extraction_caps
+        .unwrap_or_else(ExtractionCaps::from_env);
+    tracing::info!(
+        max_entities = caps.max_entities,
+        max_total_records = caps.max_total_records,
+        "Resolved extraction caps for ingestion pipeline"
+    );
     let base_extractor: Arc<dyn EntityExtractor> = Arc::new(
         LLMExtractor::new(llm.clone())
             .with_entity_schema(entity_schema.clone())
             .with_language(language.clone())
-            .with_reasoning_effort(effort.clone()),
+            .with_reasoning_effort(effort.clone())
+            .with_extraction_caps(caps),
     );
 
     let extractor: Arc<dyn EntityExtractor> = if enable_gleaning && max_gleaning > 0 {
@@ -219,6 +262,7 @@ pub fn build_ingestion_pipeline(
                 .with_entity_schema(entity_schema)
                 .with_language(language)
                 .with_reasoning_effort(effort)
+                .with_extraction_caps(caps)
                 .with_config(GleaningConfig {
                     max_gleaning,
                     always_glean: false,

@@ -341,10 +341,7 @@ impl LocalChatCircuit {
 
     pub fn is_open(&self) -> bool {
         let guard = self.open_until.lock().expect("circuit mutex");
-        match *guard {
-            Some(until) if Instant::now() < until => true,
-            _ => false,
-        }
+        matches!(*guard, Some(until) if Instant::now() < until)
     }
 
     pub async fn wait_until_closed(&self, provider_name: &str) {
@@ -387,8 +384,7 @@ impl LocalChatCircuit {
     }
 }
 
-static LOCAL_CHAT_CIRCUIT: LazyLock<LocalChatCircuit> =
-    LazyLock::new(LocalChatCircuit::from_env);
+static LOCAL_CHAT_CIRCUIT: LazyLock<LocalChatCircuit> = LazyLock::new(LocalChatCircuit::from_env);
 
 /// Process-wide local chat circuit breaker.
 pub fn global_local_chat_circuit() -> &'static LocalChatCircuit {

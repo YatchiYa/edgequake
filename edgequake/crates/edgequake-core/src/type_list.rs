@@ -267,7 +267,10 @@ mod tests {
     fn apply_relation_types_strict_sparse() {
         let mut meta = HashMap::new();
         apply_type_list_strict_metadata(&mut meta, "relation_types_strict", Some(false));
-        assert_eq!(meta.get("relation_types_strict"), Some(&serde_json::json!(false)));
+        assert_eq!(
+            meta.get("relation_types_strict"),
+            Some(&serde_json::json!(false))
+        );
         apply_type_list_strict_metadata(&mut meta, "relation_types_strict", Some(true));
         assert!(!meta.contains_key("relation_types_strict"));
     }

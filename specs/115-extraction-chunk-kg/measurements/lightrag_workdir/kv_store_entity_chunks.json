@@ -1,0 +1,3383 @@
+{
+  "LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 12,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "LightRAG"
+  },
+  "Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 3,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Retrieval-Augmented Generation"
+  },
+  "Large Language Model": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Large Language Model"
+  },
+  "Graph Structure": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Graph Structure"
+  },
+  "Dual-Level Retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Dual-Level Retrieval"
+  },
+  "Zirui Guo": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Zirui Guo"
+  },
+  "Lianghao Xia": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Lianghao Xia"
+  },
+  "Yanhua Yu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yanhua Yu"
+  },
+  "Tu Ao": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Tu Ao"
+  },
+  "Chao Huang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Chao Huang"
+  },
+  "Beijing University of Posts and Telecommunications": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Beijing University of Posts and Telecommunications"
+  },
+  "University of Hong Kong": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "University of Hong Kong"
+  },
+  "Incremental Update Algorithm": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 3,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Incremental Update Algorithm"
+  },
+  "Electric Vehicle": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Electric Vehicle"
+  },
+  "Urban Air Quality": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Urban Air Quality"
+  },
+  "Public Transportation Infrastructure": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Public Transportation Infrastructure"
+  },
+  "Chunking": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Chunking"
+  },
+  "Vector Representation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Vector Representation"
+  },
+  "Sudhi et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Sudhi et al. (2024)"
+  },
+  "Es et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Es et al. (2024)"
+  },
+  "Salemi & Zamani (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Salemi & Zamani (2024)"
+  },
+  "Tu et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Tu et al. (2024)"
+  },
+  "Zhao et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Zhao et al. (2024)"
+  },
+  "Lyu et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Lyu et al. (2024)"
+  },
+  "Rampášek et al. (2022)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Rampášek et al. (2022)"
+  },
+  "Open-source Repository": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Open-source Repository"
+  },
+  "GraphRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 7,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "GraphRAG"
+  },
+  "Movie Recommendation Systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Movie Recommendation Systems"
+  },
+  "Mean Squared Error": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Mean Squared Error"
+  },
+  "Root Mean Squared Error": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Root Mean Squared Error"
+  },
+  "Area Under the Curve": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Area Under the Curve"
+  },
+  "F-Measure": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "F-Measure"
+  },
+  "User Engagement Metrics": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "User Engagement Metrics"
+  },
+  "Precision": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Precision"
+  },
+  "Recall": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Recall"
+  },
+  "Mean Average Precision at K": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Mean Average Precision at K"
+  },
+  "Legal Dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 3,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Legal Dataset"
+  },
+  "Token": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Token"
+  },
+  "API Call": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "API Call"
+  },
+  "Community Report": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Community Report"
+  },
+  "Incremental Text Update": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Incremental Text Update"
+  },
+  "C_max": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "C_max"
+  },
+  "C_extract": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "C_extract"
+  },
+  "Retrieval Phase": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Retrieval Phase"
+  },
+  "Answer 1": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Answer 1"
+  },
+  "Answer 2": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Answer 2"
+  },
+  "Retrieval Mechanism": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Retrieval Mechanism"
+  },
+  "Level-2 Communities": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Level-2 Communities"
+  },
+  "Low-Level Retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 3,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Low-Level Retrieval"
+  },
+  "High-Level Retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 3,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "High-Level Retrieval"
+  },
+  "Query Keyword Extraction": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Query Keyword Extraction"
+  },
+  "Keyword Matching": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Keyword Matching"
+  },
+  "Incorporating High-Order Relatedness": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Incorporating High-Order Relatedness"
+  },
+  "Retrieval-Augmented Answer Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Retrieval-Augmented Answer Generation"
+  },
+  "Graph-Based Index Phase": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Graph-Based Index Phase"
+  },
+  "Graph-Based Retrieval Phase": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Graph-Based Retrieval Phase"
+  },
+  "UltraDomain Benchmark": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "UltraDomain Benchmark"
+  },
+  "Agriculture Dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Agriculture Dataset"
+  },
+  "CS Dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "CS Dataset"
+  },
+  "Mix Dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Mix Dataset"
+  },
+  "Vector Database": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Vector Database"
+  },
+  "Yue Yu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yue Yu"
+  },
+  "Wei Ping": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Wei Ping"
+  },
+  "Zihan Liu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Zihan Liu"
+  },
+  "Boxin Wang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Boxin Wang"
+  },
+  "Jiaxuan You": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Jiaxuan You"
+  },
+  "Chao Zhang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Chao Zhang"
+  },
+  "Mohammad Shoeybi": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Mohammad Shoeybi"
+  },
+  "Bryan Catanzaro": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Bryan Catanzaro"
+  },
+  "RankRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "RankRAG"
+  },
+  "Penghao Zhao": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Penghao Zhao"
+  },
+  "Hailin Zhang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Hailin Zhang"
+  },
+  "Qinhan Yu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Qinhan Yu"
+  },
+  "Zhengren Wang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Zhengren Wang"
+  },
+  "Yunteng Geng": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yunteng Geng"
+  },
+  "Fangcheng Fu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Fangcheng Fu"
+  },
+  "Ling Yang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Ling Yang"
+  },
+  "Wentao Zhang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Wentao Zhang"
+  },
+  "Bin Cui": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Bin Cui"
+  },
+  "Retrieval-augmented generation survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Retrieval-augmented generation survey"
+  },
+  "Agriculture dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Agriculture dataset"
+  },
+  "CS dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "CS dataset"
+  },
+  "Legal dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Legal dataset"
+  },
+  "Mix dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Mix dataset"
+  },
+  "NaiveRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 4,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "NaiveRAG"
+  },
+  "Movie recommendation systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Movie recommendation systems"
+  },
+  "Canada": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Canada"
+  },
+  "Australia": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Australia"
+  },
+  "Indigenous perspectives": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Indigenous perspectives"
+  },
+  "Corporate mergers": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Corporate mergers"
+  },
+  "Large language models": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Large language models"
+  },
+  "Prompt templates": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Prompt templates"
+  },
+  "Evaluation criteria": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Evaluation criteria"
+  },
+  "Graph construction prompt": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Graph construction prompt"
+  },
+  "Query generation prompt": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Query generation prompt"
+  },
+  "Keyword extraction prompt": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Keyword extraction prompt"
+  },
+  "RAG evaluation prompt": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "RAG evaluation prompt"
+  },
+  "KDD": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "KDD"
+  },
+  "Recog Function": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Recog Function"
+  },
+  "P Function": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "P Function"
+  },
+  "D Function": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "D Function"
+  },
+  "Raw Text Documents": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Raw Text Documents"
+  },
+  "Knowledge Graphs": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Knowledge Graphs"
+  },
+  "Cardiologists": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Cardiologists"
+  },
+  "Heart Disease": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Heart Disease"
+  },
+  "Text Chunks": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Text Chunks"
+  },
+  "Key-Value Pairs": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Key-Value Pairs"
+  },
+  "Dual-Level Retrieval Paradigm": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Dual-Level Retrieval Paradigm"
+  },
+  "Specific Queries": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Specific Queries"
+  },
+  "Abstract Queries": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Abstract Queries"
+  },
+  "Gao et al., 2023": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Gao et al., 2023"
+  },
+  "Edge et al., 2024": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Edge et al., 2024"
+  },
+  "Graph-Based Text Indexing Paradigm": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Graph-Based Text Indexing Paradigm"
+  },
+  "Node Sets": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Node Sets"
+  },
+  "Edge Sets": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Edge Sets"
+  },
+  "External Databases": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "External Databases"
+  },
+  "Artificial Intelligence": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Artificial Intelligence"
+  },
+  "Modern Education": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Modern Education"
+  },
+  "Pride and Prejudice": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Pride and Prejudice"
+  },
+  "NaiveRAG-High": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "NaiveRAG-High"
+  },
+  "NaiveRAG-Low": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "NaiveRAG-Low"
+  },
+  "NaiveRAG-Origin": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "NaiveRAG-Origin"
+  },
+  "Dual-level Retrieval Paradigm": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Dual-level Retrieval Paradigm"
+  },
+  "Graph-based Text Indexing": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Graph-based Text Indexing"
+  },
+  "Comprehensiveness": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 5,
+    "update_time": 1786372044,
+    "_id": "Comprehensiveness"
+  },
+  "Diversity": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 5,
+    "update_time": 1786372044,
+    "_id": "Diversity"
+  },
+  "Empowerment": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 5,
+    "update_time": 1786372044,
+    "_id": "Empowerment"
+  },
+  "Overall Performance": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Overall Performance"
+  },
+  "Retrieval Component": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Retrieval Component"
+  },
+  "Generation Component": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Generation Component"
+  },
+  "Data Indexer": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Data Indexer"
+  },
+  "Data Retriever": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Data Retriever"
+  },
+  "Knowledge Graph": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Knowledge Graph"
+  },
+  "Graph-Enhanced Entity and Relationship Extraction": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Graph-Enhanced Entity and Relationship Extraction"
+  },
+  "Deduplication": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Deduplication"
+  },
+  "Profiling": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Profiling"
+  },
+  "Recognition": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Recognition"
+  },
+  "External Knowledge Database": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "External Knowledge Database"
+  },
+  "Language Model": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Language Model"
+  },
+  "Graph Structures": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Graph Structures"
+  },
+  "Vector Representations": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Vector Representations"
+  },
+  "Retrieval Accuracy": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Retrieval Accuracy"
+  },
+  "Response Efficiency": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Response Efficiency"
+  },
+  "Adaptability": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Adaptability"
+  },
+  "D": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "D"
+  },
+  "D̂": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "D̂"
+  },
+  "G": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "G"
+  },
+  "R": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "R"
+  },
+  "φ": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "φ"
+  },
+  "ψ": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "ψ"
+  },
+  "q": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "q"
+  },
+  "M": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "M"
+  },
+  "V̂": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "V̂"
+  },
+  "Ē": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Ē"
+  },
+  "Di": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Di"
+  },
+  "Recog": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Recog"
+  },
+  "Prof": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Prof"
+  },
+  "Dedupe": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Dedupe"
+  },
+  "Global Information": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Global Information"
+  },
+  "LLM": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "LLM"
+  },
+  "Graph Neural Networks": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Graph Neural Networks"
+  },
+  "GNNs as Prefix": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "GNNs as Prefix"
+  },
+  "LLMs as Prefix": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "LLMs as Prefix"
+  },
+  "LLMs-Graphs Integration": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "LLMs-Graphs Integration"
+  },
+  "GraphGPT": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "GraphGPT"
+  },
+  "LLaGA": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "LLaGA"
+  },
+  "GALM": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "GALM"
+  },
+  "OFA": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "OFA"
+  },
+  "dual-level retrieval paradigm": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "dual-level retrieval paradigm"
+  },
+  "community report": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "community report"
+  },
+  "knowledge graph": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "knowledge graph"
+  },
+  "token": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "token"
+  },
+  "incremental update": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "incremental update"
+  },
+  "1,399 communities": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "1,399 communities"
+  },
+  "vector space": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "vector space"
+  },
+  "top-k contexts": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "top-k contexts"
+  },
+  "brute-force searches": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "brute-force searches"
+  },
+  "node embeddings": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "node embeddings"
+  },
+  "fusion training": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "fusion training"
+  },
+  "GNN alignment": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "GNN alignment"
+  },
+  "LLM-based agents": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "LLM-based agents"
+  },
+  "query-focused summarization": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "query-focused summarization"
+  },
+  "arXiv": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "arXiv"
+  },
+  "International Conference on Machine Learning": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "International Conference on Machine Learning"
+  },
+  "International Conference of the European Chapter of the Association for Computational Linguistics": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "International Conference of the European Chapter of the Association for Computational Linguistics"
+  },
+  "Ram et al. (2023)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Ram et al. (2023)"
+  },
+  "Fan et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Fan et al. (2024)"
+  },
+  "Gao et al. (2022)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Gao et al. (2022)"
+  },
+  "Gao et al. (2023)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Gao et al. (2023)"
+  },
+  "Chan et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Chan et al. (2024)"
+  },
+  "Yu et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yu et al. (2024)"
+  },
+  "Edge et al. (204)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Edge et al. (204)"
+  },
+  "Li et al. (2023)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Li et al. (2023)"
+  },
+  "Brannon et al. (2023)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Brannon et al. (2023)"
+  },
+  "Jithin James": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Jithin James"
+  },
+  "Luis Espinosa Anke": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Luis Espinosa Anke"
+  },
+  "Steven Schockaert": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Steven Schockaert"
+  },
+  "RAGAS": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "RAGAS"
+  },
+  "Wenqi Fan": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Wenqi Fan"
+  },
+  "Yujuan Ding": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yujuan Ding"
+  },
+  "Liangbo Ning": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Liangbo Ning"
+  },
+  "Shijie Wang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Shijie Wang"
+  },
+  "Agriculture": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Agriculture"
+  },
+  "Computer Science": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Computer Science"
+  },
+  "Legal": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Legal"
+  },
+  "Mixed": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Mixed"
+  },
+  "Question Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Question Generation"
+  },
+  "Naive RAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Naive RAG"
+  },
+  "RQ-RAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "RQ-RAG"
+  },
+  "HyDE": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 2,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "HyDE"
+  },
+  "GPT-4o-mini": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "GPT-4o-mini"
+  },
+  "Nano Vector Database": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Nano Vector Database"
+  },
+  "Edge et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Edge et al. (2024)"
+  },
+  "Indigenous Perspectives": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Indigenous Perspectives"
+  },
+  "Corporate Mergers": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Corporate Mergers"
+  },
+  "Community Engagement": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Community Engagement"
+  },
+  "Land Rights": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Land Rights"
+  },
+  "Cultural Values": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Cultural Values"
+  },
+  "Sustainable Outcomes": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Sustainable Outcomes"
+  },
+  "Equitable Outcomes": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Equitable Outcomes"
+  },
+  "Legal Frameworks": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Legal Frameworks"
+  },
+  "LLM Decision": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "LLM Decision"
+  },
+  "Corporate Strategies": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Corporate Strategies"
+  },
+  "Conflict Reduction": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Conflict Reduction"
+  },
+  "Corporate Reputations": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Corporate Reputations"
+  },
+  "Dual-Level Retrieval Process": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Dual-Level Retrieval Process"
+  },
+  "Low-level-only Retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Low-level-only Retrieval"
+  },
+  "High-level-only Retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "High-level-only Retrieval"
+  },
+  "Hybrid Mode": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Hybrid Mode"
+  },
+  "Semantic Graph": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Semantic Graph"
+  },
+  "-Origin": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "-Origin"
+  },
+  "Machine Learning": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Machine Learning"
+  },
+  "Feature Normalization": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Feature Normalization"
+  },
+  "F1 Score": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "F1 Score"
+  },
+  "Mean Average Precision (MAP)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Mean Average Precision (MAP)"
+  },
+  "Root Mean Squared Error (RMSE)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Root Mean Squared Error (RMSE)"
+  },
+  "User Satisfaction Metrics": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "User Satisfaction Metrics"
+  },
+  "LLM Judge": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "LLM Judge"
+  },
+  "Mean Average Precision at K (MAPK)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Mean Average Precision at K (MAPK)"
+  },
+  "Area Under the Curve (AUC)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Area Under the Curve (AUC)"
+  },
+  "Shahul Es": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Shahul Es"
+  },
+  "Ragas": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Ragas"
+  },
+  "Hengyun Li": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Hengyun Li"
+  },
+  "Dawei Yin": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Dawei Yin"
+  },
+  "Tat-Seng Chua": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Tat-Seng Chua"
+  },
+  "Qing Li": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Qing Li"
+  },
+  "Survey on RAG Meeting LLMs": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Survey on RAG Meeting LLMs"
+  },
+  "International Conference on Knowledge Discovery and Data Mining": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "International Conference on Knowledge Discovery and Data Mining"
+  },
+  "Luyu Gao": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Luyu Gao"
+  },
+  "Xueguang Ma": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Xueguang Ma"
+  },
+  "Jimmy Lin": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Jimmy Lin"
+  },
+  "Jamie Callan": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Jamie Callan"
+  },
+  "Precise Zero-Shot Dense Retrieval Without Relevance Labels": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Precise Zero-Shot Dense Retrieval Without Relevance Labels"
+  },
+  "Yunfan Gao": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yunfan Gao"
+  },
+  "Yun Xiong": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yun Xiong"
+  },
+  "Xinyu Gao": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Xinyu Gao"
+  },
+  "Kangxiang Jia": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Kangxiang Jia"
+  },
+  "Jinliu Pan": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Jinliu Pan"
+  },
+  "Yuxi Bi": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yuxi Bi"
+  },
+  "Yi Dai": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yi Dai"
+  },
+  "Jiawei Sun": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Jiawei Sun"
+  },
+  "Haofen Wang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Haofen Wang"
+  },
+  "Retrieval-Augmented Generation For Large Language Models: A Survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Retrieval-Augmented Generation For Large Language Models: A Survey"
+  },
+  "Yichuan Li": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yichuan Li"
+  },
+  "Kaize Ding": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Kaize Ding"
+  },
+  "Kyumin Lee": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Kyumin Lee"
+  },
+  "Grenade": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Grenade"
+  },
+  "International Conference on Empirical Methods in Natural Language Processing": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "International Conference on Empirical Methods in Natural Language Processing"
+  },
+  "Hao Liu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Hao Liu"
+  },
+  "Jiarui Feng": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Jiarui Feng"
+  },
+  "Lecheng Kong": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Lecheng Kong"
+  },
+  "Ningyue Liang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Ningyue Liang"
+  },
+  "Dacheng Tao": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Dacheng Tao"
+  },
+  "Yixin Chen": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yixin Chen"
+  },
+  "Muhan Zhang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Muhan Zhang"
+  },
+  "One For All": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "One For All"
+  },
+  "International Conference on Learning Representations": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "International Conference on Learning Representations"
+  },
+  "Yuanjie Lyu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yuanjie Lyu"
+  },
+  "Zhiyu Li": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Zhiyu Li"
+  },
+  "Simin Niu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Simin Niu"
+  },
+  "Feiyu Xiong": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Feiyu Xiong"
+  },
+  "Bo Tang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Bo Tang"
+  },
+  "Wenjin Wang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Wenjin Wang"
+  },
+  "Hao Wu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Hao Wu"
+  },
+  "Huanyong Liu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Huanyong Liu"
+  },
+  "Tong Xu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Tong Xu"
+  },
+  "Enhong Chen": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Enhong Chen"
+  },
+  "Crud-Rag": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Crud-Rag"
+  },
+  "Hongjin Qian": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Hongjin Qian"
+  },
+  "Peitian Zhang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Peitian Zhang"
+  },
+  "Zheng Liu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Zheng Liu"
+  },
+  "Kelong Mao": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Kelong Mao"
+  },
+  "Zhicheng Dou": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Zhicheng Dou"
+  },
+  "Memorag": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Memorag"
+  },
+  "Ori Ram": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Ori Ram"
+  },
+  "Yoav Levine": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yoav Levine"
+  },
+  "Itay Dalmedigos": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Itay Dalmedigos"
+  },
+  "Dor Muhlgay": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Dor Muhlgay"
+  },
+  "Amnon Shashua": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Amnon Shashua"
+  },
+  "Kevin Leyton-Brown": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Kevin Leyton-Brown"
+  },
+  "Yoav Shoham": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yoav Shoham"
+  },
+  "In-Context Retrieval-Augmented Language Models": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "In-Context Retrieval-Augmented Language Models"
+  },
+  "Transactions of the Association for Computational Linguistics": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Transactions of the Association for Computational Linguistics"
+  },
+  "Ladislav Rampášek": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Ladislav Rampášek"
+  },
+  "Michael Galkin": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Michael Galkin"
+  },
+  "Vijay Prakash Dwivedi": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Vijay Prakash Dwivedi"
+  },
+  "Anh Tuan Luu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Anh Tuan Luu"
+  },
+  "Guy Wolf": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Guy Wolf"
+  },
+  "Dominique Beaini": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Dominique Beaini"
+  },
+  "Recipe For A General, Powerful, Scalable Graph Transformer": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Recipe For A General, Powerful, Scalable Graph Transformer"
+  },
+  "International Conference on Neural Information Processing Systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "International Conference on Neural Information Processing Systems"
+  },
+  "Alireza Salemi": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Alireza Salemi"
+  },
+  "Hamed Zamani": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Hamed Zamani"
+  },
+  "Evaluating Retrieval Quality In Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Evaluating Retrieval Quality In Retrieval-Augmented Generation"
+  },
+  "ACM International Conference on Research and Development in Information Retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "ACM International Conference on Research and Development in Information Retrieval"
+  },
+  "Viju Sudhi": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Viju Sudhi"
+  },
+  "Sinchana Ramakanth Bhat": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Sinchana Ramakanth Bhat"
+  },
+  "Max Rudat": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Max Rudat"
+  },
+  "Roman Teucher": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Roman Teucher"
+  },
+  "Rag-Ex": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Rag-Ex"
+  },
+  "Jiabin Tang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Jiabin Tang"
+  },
+  "Yuhao Yang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yuhao Yang"
+  },
+  "Wei Wei": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Wei Wei"
+  },
+  "Lei Shi": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Lei Shi"
+  },
+  "Lixin Su": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Lixin Su"
+  },
+  "Suqi Cheng": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Suqi Cheng"
+  },
+  "Shangqing Tu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Shangqing Tu"
+  },
+  "Yuanchun Wang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yuanchun Wang"
+  },
+  "Jifan Yu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Jifan Yu"
+  },
+  "Yuyang Xie": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yuyang Xie"
+  },
+  "Yaran Shi": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yaran Shi"
+  },
+  "Xiaozhi Wang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Xiaozhi Wang"
+  },
+  "Jing Zhang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Jing Zhang"
+  },
+  "Lei Hou": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Lei Hou"
+  },
+  "Juanzi Li": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Juanzi Li"
+  },
+  "R-Eval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "R-Eval"
+  },
+  "Han Xie": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Han Xie"
+  },
+  "Da Zheng": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Da Zheng"
+  },
+  "Jun Ma": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Jun Ma"
+  },
+  "Houyu Zhang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Houyu Zhang"
+  },
+  "Vassilis N Ioannidis": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Vassilis N Ioannidis"
+  },
+  "Xiang Song": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Xiang Song"
+  },
+  "Qing Ping": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Qing Ping"
+  },
+  "Sheng Wang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Sheng Wang"
+  },
+  "Carl Yang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Carl Yang"
+  },
+  "Yi Xu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Yi Xu"
+  },
+  "Graph-Aware Language Model Pre-Training On A Large Graph Corpus": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Graph-Aware Language Model Pre-Training On A Large Graph Corpus"
+  },
+  "Computer Science dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Computer Science dataset"
+  },
+  "Mixed dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Mixed dataset"
+  },
+  "Comprehensiveness metric": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Comprehensiveness metric"
+  },
+  "Diversity metric": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Diversity metric"
+  },
+  "Empowerment metric": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Empowerment metric"
+  },
+  "Overall metric": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372041,
+    "update_time": 1786372041,
+    "_id": "Overall metric"
+  },
+  "generates": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "generates"
+  },
+  "entities": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "entities"
+  },
+  "user roles": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "user roles"
+  },
+  "relationships": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "relationships"
+  },
+  "high-level keywords": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "high-level keywords"
+  },
+  "tasks": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "tasks"
+  },
+  "low-level keywords": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "low-level keywords"
+  },
+  "E": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "E"
+  },
+  "V": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "V"
+  },
+  "low-level retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "low-level retrieval"
+  },
+  "high-level retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "high-level retrieval"
+  },
+  "V̂, Ē": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "V̂, Ē"
+  },
+  "Overall": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Overall"
+  },
+  "Overall Quality": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Overall Quality"
+  }
+}

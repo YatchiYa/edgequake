@@ -1,0 +1,49 @@
+{
+  "utc": "2026-08-10T14:22:48.154011+00:00",
+  "sample": "zz_test_docs/academic_papers/lighrag_2410.05779v3.pymupdf.gold.md",
+  "chars": 61353,
+  "utf8_bytes": 61547,
+  "doc_tokens_tiktoken": 14156,
+  "pdf_path": "papers/light_rag_2410.05779v3.pdf",
+  "pdf_bytes": 1123301,
+  "eq_adaptive_pin_on_text_bytes": {
+    "size": 800,
+    "overlap": 66
+  },
+  "eq_adaptive_pin_if_keyed_on_pdf_bytes": 600,
+  "note": "EQ ingest uses text_content.len() not PDF file bytes (prepare.rs).",
+  "lightrag_F_rows": [
+    {
+      "label": "F@1200/100",
+      "chunk_token_size": 1200,
+      "overlap": 100,
+      "N": 13,
+      "token_min": 955,
+      "token_avg": 1181.1,
+      "token_max": 1200
+    },
+    {
+      "label": "F@800/66",
+      "chunk_token_size": 800,
+      "overlap": 66,
+      "N": 20,
+      "token_min": 209,
+      "token_avg": 770.4,
+      "token_max": 801
+    },
+    {
+      "label": "F@600/50",
+      "chunk_token_size": 600,
+      "overlap": 50,
+      "N": 26,
+      "token_min": 405,
+      "token_avg": 592.3,
+      "token_max": 600
+    }
+  ],
+  "verdict_H_C1": {
+    "N_fair_1200": 13,
+    "N_product_800": 20,
+    "ratio": 1.538
+  }
+}

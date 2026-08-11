@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use edgequake_llm::traits::ChatMessage;
 
 use super::{
-    assign_token_usage, extraction_completion_options_with_effort, recommended_chunk_size_for_bytes,
-    ConfigurableEntitySchema, EntityExtractor, ExtractionResult,
+    assign_token_usage, extraction_completion_options_with_effort,
+    recommended_chunk_size_for_bytes, ConfigurableEntitySchema, EntityExtractor, ExtractionResult,
 };
 use crate::chunker::TextChunk;
 use crate::error::{PipelineError, Result};
@@ -26,6 +26,8 @@ where
     parser: crate::prompts::HybridExtractionParser,
     language: String,
     reasoning_effort: Option<String>,
+    /// SPEC-117: resolved caps (`None` → fleet env).
+    extraction_caps: Option<crate::prompts::ExtractionCaps>,
 }
 
 impl<L> SOTAExtractor<L>
@@ -41,6 +43,7 @@ where
             parser: crate::prompts::HybridExtractionParser::new(true),
             language: "English".to_string(),
             reasoning_effort: None,
+            extraction_caps: None,
         }
     }
 }
@@ -87,10 +90,22 @@ where
         self
     }
 
+    /// Set resolved extract caps (SPEC-117). Also rebinds the hybrid parser.
+    pub fn with_extraction_caps(mut self, caps: crate::prompts::ExtractionCaps) -> Self {
+        self.extraction_caps = Some(caps);
+        self.parser = self.parser.clone().with_extraction_caps(caps);
+        self
+    }
+
     /// Set custom prompts.
     pub fn with_prompts(mut self, prompts: crate::prompts::EntityExtractionPrompts) -> Self {
         self.prompts = prompts;
         self
+    }
+
+    fn resolved_caps(&self) -> crate::prompts::ExtractionCaps {
+        self.extraction_caps
+            .unwrap_or_else(crate::prompts::ExtractionCaps::from_env)
     }
 }
 
@@ -140,13 +155,17 @@ where
             return Err(PipelineError::Validation(error_msg));
         }
 
-        // Build system and user prompts
-        let system_prompt = self
-            .prompts
-            .system_prompt(&self.entity_schema, &self.language);
-        let user_prompt =
+        // Build system and user prompts (SPEC-117: resolved caps, not stale env-only)
+        let caps = self.resolved_caps();
+        let system_prompt =
             self.prompts
-                .user_prompt(&chunk.content, &self.entity_schema.types, &self.language);
+                .system_prompt_with_caps(&self.entity_schema, &self.language, caps);
+        let user_prompt = self.prompts.user_prompt_with_caps(
+            &chunk.content,
+            &self.entity_schema.types,
+            &self.language,
+            caps,
+        );
 
         // Create chat messages for system + user prompt
         let messages = vec![

@@ -55,6 +55,8 @@ fn sample_md_input(
         document_type: Some("markdown"),
         chunk_strategy: None,
         chunk_options: None,
+        extract_max_entities: None,
+        extract_max_records: None,
         multimodal: false,
         ingest_mode: None,
         multimodal_manifest: None,

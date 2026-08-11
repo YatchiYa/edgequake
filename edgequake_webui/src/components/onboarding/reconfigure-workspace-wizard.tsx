@@ -8,6 +8,8 @@ import {
 import { DocumentParsingStep } from '@/components/onboarding/steps/document-parsing-step';
 import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-step';
 import { ReviewStep } from '@/components/onboarding/steps/review-step';
+import { WorkspaceChunkingStep } from '@/components/onboarding/steps/workspace-chunking-step';
+import { WorkspaceExtractBudgetStep } from '@/components/onboarding/steps/workspace-extract-budget-step';
 import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace-extraction-step';
 import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import type { LLMSelection } from '@/components/workspace/llm-model-selector';
@@ -280,6 +282,12 @@ export function ReconfigureWorkspaceWizard({
         visionChartSystemPrompt: draft.visionChartSystemPrompt,
         visionFigureSystemPrompt: draft.visionFigureSystemPrompt,
         extractionLanguage: draft.extractionLanguage,
+        chunkingMode: draft.chunkingMode,
+        chunkTokenSize: draft.chunkTokenSize,
+        chunkOverlapTokenSize: draft.chunkOverlapTokenSize,
+        extractBudgetMode: draft.extractBudgetMode,
+        extractMaxEntities: draft.extractMaxEntities,
+        extractMaxRecords: draft.extractMaxRecords,
         entityTypes: draft.entityTypes,
         entityTypesStrict: draft.entityTypesStrict,
         entityTypeColors: draft.entityTypeColors,
@@ -341,6 +349,10 @@ export function ReconfigureWorkspaceWizard({
         );
       case 'document-parsing':
         return <DocumentParsingStep draft={draft} onChange={patchDraft} />;
+      case 'chunking':
+        return <WorkspaceChunkingStep draft={draft} onChange={patchDraft} />;
+      case 'extract-budget':
+        return <WorkspaceExtractBudgetStep draft={draft} onChange={patchDraft} />;
       case 'extraction':
         return (
           <WorkspaceExtractionStep draft={draft} onChange={patchDraft} showStrict />
@@ -374,7 +386,7 @@ export function ReconfigureWorkspaceWizard({
       title={t('onboarding.reconfigureTitle', 'Reconfigure workspace')}
       description={t(
         'onboarding.reconfigureDescription',
-        'Update models, document parsing, and extraction for this workspace.',
+        'Update models, document parsing, chunking, and extraction for this workspace.',
       )}
       stepIndex={stepIndex}
       stepCount={steps.length}

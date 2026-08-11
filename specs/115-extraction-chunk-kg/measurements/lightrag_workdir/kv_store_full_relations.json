@@ -1,0 +1,1282 @@
+{
+  "doc-68c5b57fc5e4f80b4481763ee3f107c6": {
+    "relation_pairs": [
+      [
+        "International Conference on Learning Representations",
+        "One For All"
+      ],
+      [
+        "Jinliu Pan",
+        "Retrieval-Augmented Generation For Large Language Models: A Survey"
+      ],
+      [
+        "Retrieval-Augmented Generation For Large Language Models: A Survey",
+        "Yunfan Gao"
+      ],
+      [
+        "Hao Liu",
+        "One For All"
+      ],
+      [
+        "Keyword extraction prompt",
+        "low-level keywords"
+      ],
+      [
+        "F-Measure",
+        "Movie Recommendation Systems"
+      ],
+      [
+        "HyDE",
+        "LightRAG"
+      ],
+      [
+        "Shijie Wang",
+        "arXiv"
+      ],
+      [
+        "GraphRAG",
+        "Movie Recommendation Systems"
+      ],
+      [
+        "Legal Dataset",
+        "NaiveRAG-Origin"
+      ],
+      [
+        "GraphRAG",
+        "Token"
+      ],
+      [
+        "Comprehensiveness",
+        "LightRAG"
+      ],
+      [
+        "Corporate mergers",
+        "Indigenous perspectives"
+      ],
+      [
+        "LightRAG",
+        "Recog Function"
+      ],
+      [
+        "Crud-Rag",
+        "Wenjin Wang"
+      ],
+      [
+        "LightRAG",
+        "RQ-RAG"
+      ],
+      [
+        "GraphRAG",
+        "Machine Learning"
+      ],
+      [
+        "M",
+        "q"
+      ],
+      [
+        "CS Dataset",
+        "NaiveRAG-High"
+      ],
+      [
+        "Luis Espinosa Anke",
+        "RAGAS"
+      ],
+      [
+        "LightRAG",
+        "dual-level retrieval paradigm"
+      ],
+      [
+        "Graph-based Text Indexing",
+        "GraphRAG"
+      ],
+      [
+        "Area Under the Curve",
+        "Movie Recommendation Systems"
+      ],
+      [
+        "Incremental Text Update",
+        "LightRAG"
+      ],
+      [
+        "CS Dataset",
+        "NaiveRAG"
+      ],
+      [
+        "D",
+        "D̂"
+      ],
+      [
+        "LightRAG",
+        "Vector Representation"
+      ],
+      [
+        "Movie Recommendation Systems",
+        "Root Mean Squared Error (RMSE)"
+      ],
+      [
+        "Es et al. (2024)",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "Anh Tuan Luu",
+        "Recipe For A General, Powerful, Scalable Graph Transformer"
+      ],
+      [
+        "Chunking",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "F1 Score",
+        "Movie Recommendation Systems"
+      ],
+      [
+        "International Conference of the European Chapter of the Association for Computational Linguistics",
+        "Ragas"
+      ],
+      [
+        "Retrieval Component",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "LightRAG",
+        "Yanhua Yu"
+      ],
+      [
+        "Jithin James",
+        "RAGAS"
+      ],
+      [
+        "Crud-Rag",
+        "arXiv"
+      ],
+      [
+        "LightRAG",
+        "Vector Representations"
+      ],
+      [
+        "Michael Galkin",
+        "Recipe For A General, Powerful, Scalable Graph Transformer"
+      ],
+      [
+        "Graph-based Text Indexing",
+        "NaiveRAG-Low"
+      ],
+      [
+        "Lecheng Kong",
+        "One For All"
+      ],
+      [
+        "Dominique Beaini",
+        "Recipe For A General, Powerful, Scalable Graph Transformer"
+      ],
+      [
+        "LLM",
+        "LLMs as Prefix"
+      ],
+      [
+        "Fan et al. (2024)",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "Muhan Zhang",
+        "One For All"
+      ],
+      [
+        "Ling Yang",
+        "Retrieval-augmented generation survey"
+      ],
+      [
+        "LightRAG",
+        "Tu Ao"
+      ],
+      [
+        "LightRAG",
+        "Mix dataset"
+      ],
+      [
+        "LightRAG",
+        "Question Generation"
+      ],
+      [
+        "Liangbo Ning",
+        "arXiv"
+      ],
+      [
+        "Crud-Rag",
+        "Yuanjie Lyu"
+      ],
+      [
+        "Survey on RAG Meeting LLMs",
+        "Yujuan Ding"
+      ],
+      [
+        "Gao et al. (2023)",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "Survey on RAG Meeting LLMs",
+        "Tat-Seng Chua"
+      ],
+      [
+        "Incremental Update Algorithm",
+        "LightRAG"
+      ],
+      [
+        "Evaluation criteria",
+        "LightRAG"
+      ],
+      [
+        "Liangbo Ning",
+        "Survey on RAG Meeting LLMs"
+      ],
+      [
+        "Corporate Mergers",
+        "Indigenous Perspectives"
+      ],
+      [
+        "Qing Li",
+        "Survey on RAG Meeting LLMs"
+      ],
+      [
+        "Jiaxuan You",
+        "RankRAG"
+      ],
+      [
+        "GNNs as Prefix",
+        "Graph Neural Networks"
+      ],
+      [
+        "LightRAG",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "Keyword Matching",
+        "Vector Database"
+      ],
+      [
+        "LightRAG",
+        "Retrieval Mechanism"
+      ],
+      [
+        "LightRAG",
+        "knowledge graph"
+      ],
+      [
+        "Crud-Rag",
+        "Simin Niu"
+      ],
+      [
+        "Comprehensiveness metric",
+        "LightRAG"
+      ],
+      [
+        "Keyword extraction prompt",
+        "high-level keywords"
+      ],
+      [
+        "Query generation prompt",
+        "user roles"
+      ],
+      [
+        "Dual-Level Retrieval",
+        "Graph Structure"
+      ],
+      [
+        "Ram et al. (2023)",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "CS Dataset",
+        "NaiveRAG-Low"
+      ],
+      [
+        "CS Dataset",
+        "UltraDomain Benchmark"
+      ],
+      [
+        "Empowerment",
+        "RAG evaluation prompt"
+      ],
+      [
+        "LLM Judge",
+        "LightRAG"
+      ],
+      [
+        "Survey on RAG Meeting LLMs",
+        "Wenqi Fan"
+      ],
+      [
+        "D",
+        "M"
+      ],
+      [
+        "Yujuan Ding",
+        "arXiv"
+      ],
+      [
+        "Dual-Level Retrieval Process",
+        "LightRAG"
+      ],
+      [
+        "Kangxiang Jia",
+        "Retrieval-Augmented Generation For Large Language Models: A Survey"
+      ],
+      [
+        "GraphRAG",
+        "LightRAG"
+      ],
+      [
+        "Australia",
+        "Corporate mergers"
+      ],
+      [
+        "Ningyue Liang",
+        "One For All"
+      ],
+      [
+        "LightRAG",
+        "Semantic Graph"
+      ],
+      [
+        "Community Report",
+        "GraphRAG"
+      ],
+      [
+        "M",
+        "R"
+      ],
+      [
+        "Diversity",
+        "RAG evaluation prompt"
+      ],
+      [
+        "Graph Structures",
+        "LightRAG"
+      ],
+      [
+        "Retrieval-augmented generation survey",
+        "Wentao Zhang"
+      ],
+      [
+        "Graph-Based Text Indexing Paradigm",
+        "LightRAG"
+      ],
+      [
+        "LightRAG",
+        "Movie recommendation systems"
+      ],
+      [
+        "Memorag",
+        "arXiv"
+      ],
+      [
+        "Fangcheng Fu",
+        "Retrieval-augmented generation survey"
+      ],
+      [
+        "Generation Component",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "Movie Recommendation Systems",
+        "Recall"
+      ],
+      [
+        "LightRAG",
+        "Mean Average Precision at K (MAPK)"
+      ],
+      [
+        "Luis Espinosa Anke",
+        "Ragas"
+      ],
+      [
+        "Beijing University of Posts and Telecommunications",
+        "Yanhua Yu"
+      ],
+      [
+        "CS Dataset",
+        "LightRAG"
+      ],
+      [
+        "LightRAG",
+        "Zirui Guo"
+      ],
+      [
+        "In-Context Retrieval-Augmented Language Models",
+        "Kevin Leyton-Brown"
+      ],
+      [
+        "Legal dataset",
+        "LightRAG"
+      ],
+      [
+        "API Call",
+        "GraphRAG"
+      ],
+      [
+        "High-level-only Retrieval",
+        "LightRAG"
+      ],
+      [
+        "Chan et al. (2024)",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "LightRAG",
+        "Token"
+      ],
+      [
+        "Empowerment",
+        "LightRAG"
+      ],
+      [
+        "Large language models",
+        "generates"
+      ],
+      [
+        "GraphRAG",
+        "NaiveRAG"
+      ],
+      [
+        "Graph-Enhanced Entity and Relationship Extraction",
+        "Recognition"
+      ],
+      [
+        "Ragas",
+        "Shahul Es"
+      ],
+      [
+        "Lianghao Xia",
+        "University of Hong Kong"
+      ],
+      [
+        "Electric Vehicle",
+        "Public Transportation Infrastructure"
+      ],
+      [
+        "Jithin James",
+        "Ragas"
+      ],
+      [
+        "Boxin Wang",
+        "RankRAG"
+      ],
+      [
+        "GraphRAG",
+        "Level-2 Communities"
+      ],
+      [
+        "Luyu Gao",
+        "Precise Zero-Shot Dense Retrieval Without Relevance Labels"
+      ],
+      [
+        "Bin Cui",
+        "Retrieval-augmented generation survey"
+      ],
+      [
+        "Beijing University of Posts and Telecommunications",
+        "Tu Ao"
+      ],
+      [
+        "Graph-Enhanced Entity and Relationship Extraction",
+        "Knowledge Graph"
+      ],
+      [
+        "University of Hong Kong",
+        "Zirui Guo"
+      ],
+      [
+        "Canada",
+        "Corporate mergers"
+      ],
+      [
+        "Retrieval-Augmented Generation",
+        "Yu et al. (2024)"
+      ],
+      [
+        "Diversity",
+        "LightRAG"
+      ],
+      [
+        "Gao et al. (2022)",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "Precise Zero-Shot Dense Retrieval Without Relevance Labels",
+        "Xueguang Ma"
+      ],
+      [
+        "In-Context Retrieval-Augmented Language Models",
+        "Itay Dalmedigos"
+      ],
+      [
+        "Data Retriever",
+        "Retrieval Component"
+      ],
+      [
+        "C_extract",
+        "GraphRAG"
+      ],
+      [
+        "Jiawei Sun",
+        "Retrieval-Augmented Generation For Large Language Models: A Survey"
+      ],
+      [
+        "LLM",
+        "LLMs-Graphs Integration"
+      ],
+      [
+        "Kelong Mao",
+        "Memorag"
+      ],
+      [
+        "Memorag",
+        "Peitian Zhang"
+      ],
+      [
+        "In-Context Retrieval-Augmented Language Models",
+        "Yoav Shoham"
+      ],
+      [
+        "Data Indexer",
+        "R"
+      ],
+      [
+        "E",
+        "Edge Sets"
+      ],
+      [
+        "CS dataset",
+        "LightRAG"
+      ],
+      [
+        "Graph construction prompt",
+        "relationships"
+      ],
+      [
+        "Knowledge Graph",
+        "LightRAG"
+      ],
+      [
+        "Dual-Level Retrieval Paradigm",
+        "LightRAG"
+      ],
+      [
+        "LightRAG",
+        "Overall metric"
+      ],
+      [
+        "Crud-Rag",
+        "Feiyu Xiong"
+      ],
+      [
+        "Recipe For A General, Powerful, Scalable Graph Transformer",
+        "Vijay Prakash Dwivedi"
+      ],
+      [
+        "Agriculture Dataset",
+        "NaiveRAG-Origin"
+      ],
+      [
+        "Retrieval-Augmented Generation For Large Language Models: A Survey",
+        "Yun Xiong"
+      ],
+      [
+        "Retrieval-Augmented Generation",
+        "vector space"
+      ],
+      [
+        "Answer 1",
+        "Answer 2"
+      ],
+      [
+        "Indigenous Perspectives",
+        "Legal Frameworks"
+      ],
+      [
+        "Graph-Based Index Phase",
+        "Large Language Model"
+      ],
+      [
+        "G",
+        "M"
+      ],
+      [
+        "Penghao Zhao",
+        "Retrieval-augmented generation survey"
+      ],
+      [
+        "Keyword Matching",
+        "LightRAG"
+      ],
+      [
+        "LightRAG",
+        "Prompt templates"
+      ],
+      [
+        "Large Language Model",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "API Call",
+        "LightRAG"
+      ],
+      [
+        "Crud-Rag",
+        "Zhiyu Li"
+      ],
+      [
+        "Prof",
+        "V̂, Ē"
+      ],
+      [
+        "Dedupe",
+        "V̂, Ē"
+      ],
+      [
+        "Bo Tang",
+        "Crud-Rag"
+      ],
+      [
+        "LightRAG",
+        "incremental update"
+      ],
+      [
+        "LLM Decision",
+        "NaiveRAG"
+      ],
+      [
+        "Dacheng Tao",
+        "One For All"
+      ],
+      [
+        "RankRAG",
+        "Zihan Liu"
+      ],
+      [
+        "External Knowledge Database",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "Large language models",
+        "Movie recommendation systems"
+      ],
+      [
+        "Dor Muhlgay",
+        "In-Context Retrieval-Augmented Language Models"
+      ],
+      [
+        "Chao Huang",
+        "LightRAG"
+      ],
+      [
+        "Jiarui Feng",
+        "One For All"
+      ],
+      [
+        "Retrieval-Augmented Generation",
+        "Salemi & Zamani (2024)"
+      ],
+      [
+        "In-Context Retrieval-Augmented Language Models",
+        "Ori Ram"
+      ],
+      [
+        "Chan et al. (2024)",
+        "RQ-RAG"
+      ],
+      [
+        "C_extract",
+        "LightRAG"
+      ],
+      [
+        "LightRAG",
+        "P Function"
+      ],
+      [
+        "Ladislav Rampášek",
+        "Recipe For A General, Powerful, Scalable Graph Transformer"
+      ],
+      [
+        "Movie Recommendation Systems",
+        "User Engagement Metrics"
+      ],
+      [
+        "-Origin",
+        "Semantic Graph"
+      ],
+      [
+        "Mix Dataset",
+        "NaiveRAG-Origin"
+      ],
+      [
+        "Dual-Level Retrieval",
+        "LightRAG"
+      ],
+      [
+        "Data Retriever",
+        "R"
+      ],
+      [
+        "Mohammad Shoeybi",
+        "RankRAG"
+      ],
+      [
+        "Retrieval-augmented generation survey",
+        "Yunteng Geng"
+      ],
+      [
+        "International Conference on Neural Information Processing Systems",
+        "Recipe For A General, Powerful, Scalable Graph Transformer"
+      ],
+      [
+        "Retrieval-Augmented Generation",
+        "Sudhi et al. (2024)"
+      ],
+      [
+        "Legal Dataset",
+        "LightRAG"
+      ],
+      [
+        "LightRAG",
+        "Nano Vector Database"
+      ],
+      [
+        "Empowerment metric",
+        "LightRAG"
+      ],
+      [
+        "Retrieval-augmented generation survey",
+        "Zhengren Wang"
+      ],
+      [
+        "Grenade",
+        "Kaize Ding"
+      ],
+      [
+        "LightRAG",
+        "Mixed dataset"
+      ],
+      [
+        "Mean Squared Error",
+        "Movie Recommendation Systems"
+      ],
+      [
+        "Dual-level Retrieval Paradigm",
+        "LightRAG"
+      ],
+      [
+        "One For All",
+        "Yixin Chen"
+      ],
+      [
+        "Grenade",
+        "Kyumin Lee"
+      ],
+      [
+        "RAGAS",
+        "Steven Schockaert"
+      ],
+      [
+        "Grenade",
+        "Yichuan Li"
+      ],
+      [
+        "GraphRAG",
+        "community report"
+      ],
+      [
+        "Retrieval-Augmented Generation For Large Language Models: A Survey",
+        "Xinyu Gao"
+      ],
+      [
+        "Memorag",
+        "Zhicheng Dou"
+      ],
+      [
+        "Legal Dataset",
+        "NaiveRAG-High"
+      ],
+      [
+        "Graph-Based Index Phase",
+        "LightRAG"
+      ],
+      [
+        "Dawei Yin",
+        "Survey on RAG Meeting LLMs"
+      ],
+      [
+        "LightRAG",
+        "Naive RAG"
+      ],
+      [
+        "Deduplication",
+        "Graph-Enhanced Entity and Relationship Extraction"
+      ],
+      [
+        "1,399 communities",
+        "GraphRAG"
+      ],
+      [
+        "Legal Dataset",
+        "NaiveRAG"
+      ],
+      [
+        "LightRAG",
+        "NaiveRAG"
+      ],
+      [
+        "High-Level Retrieval",
+        "LightRAG"
+      ],
+      [
+        "LightRAG",
+        "Movie Recommendation Systems"
+      ],
+      [
+        "Movie Recommendation Systems",
+        "Root Mean Squared Error"
+      ],
+      [
+        "Chao Zhang",
+        "RankRAG"
+      ],
+      [
+        "RankRAG",
+        "Wei Ping"
+      ],
+      [
+        "Corporate Mergers",
+        "Sustainable Outcomes"
+      ],
+      [
+        "Graph Neural Networks",
+        "LLM"
+      ],
+      [
+        "Retrieval-Augmented Generation",
+        "Tu et al. (2024)"
+      ],
+      [
+        "LightRAG",
+        "Machine Learning"
+      ],
+      [
+        "Retrieval-Augmented Generation",
+        "top-k contexts"
+      ],
+      [
+        "Agriculture Dataset",
+        "NaiveRAG-High"
+      ],
+      [
+        "Electric Vehicle",
+        "Urban Air Quality"
+      ],
+      [
+        "LLM",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "LightRAG",
+        "Low-level-only Retrieval"
+      ],
+      [
+        "Incorporating High-Order Relatedness",
+        "LightRAG"
+      ],
+      [
+        "LightRAG",
+        "Low-Level Retrieval"
+      ],
+      [
+        "Corporate Mergers",
+        "Cultural Values"
+      ],
+      [
+        "Agriculture Dataset",
+        "NaiveRAG"
+      ],
+      [
+        "Corporate Mergers",
+        "Equitable Outcomes"
+      ],
+      [
+        "LightRAG",
+        "Retrieval-Augmented Answer Generation"
+      ],
+      [
+        "LightRAG",
+        "Query Keyword Extraction"
+      ],
+      [
+        "Di",
+        "Recog"
+      ],
+      [
+        "Hailin Zhang",
+        "Retrieval-augmented generation survey"
+      ],
+      [
+        "Gao et al. (2022)",
+        "HyDE"
+      ],
+      [
+        "Haofen Wang",
+        "Retrieval-Augmented Generation For Large Language Models: A Survey"
+      ],
+      [
+        "LLM Decision",
+        "LightRAG"
+      ],
+      [
+        "Crud-Rag",
+        "Huanyong Liu"
+      ],
+      [
+        "Graph Structure",
+        "Rampášek et al. (2022)"
+      ],
+      [
+        "Hongjin Qian",
+        "Memorag"
+      ],
+      [
+        "Agriculture dataset",
+        "LightRAG"
+      ],
+      [
+        "Indigenous Perspectives",
+        "Land Rights"
+      ],
+      [
+        "Shijie Wang",
+        "Survey on RAG Meeting LLMs"
+      ],
+      [
+        "Large language models",
+        "LightRAG"
+      ],
+      [
+        "Retrieval-Augmented Generation For Large Language Models: A Survey",
+        "Yi Dai"
+      ],
+      [
+        "Retrieval-Augmented Generation",
+        "Zhao et al. (2024)"
+      ],
+      [
+        "Diversity metric",
+        "LightRAG"
+      ],
+      [
+        "C_max",
+        "GraphRAG"
+      ],
+      [
+        "Dual-level Retrieval Paradigm",
+        "high-level retrieval"
+      ],
+      [
+        "Graph-Based Retrieval Phase",
+        "LightRAG"
+      ],
+      [
+        "Amnon Shashua",
+        "In-Context Retrieval-Augmented Language Models"
+      ],
+      [
+        "Jamie Callan",
+        "Precise Zero-Shot Dense Retrieval Without Relevance Labels"
+      ],
+      [
+        "GraphRAG",
+        "RQ-RAG"
+      ],
+      [
+        "Language Model",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "Mix Dataset",
+        "NaiveRAG-High"
+      ],
+      [
+        "Indigenous Perspectives",
+        "LightRAG"
+      ],
+      [
+        "Legal Dataset",
+        "NaiveRAG-Low"
+      ],
+      [
+        "Legal Dataset",
+        "UltraDomain Benchmark"
+      ],
+      [
+        "LightRAG",
+        "UltraDomain Benchmark"
+      ],
+      [
+        "LightRAG",
+        "Open-source Repository"
+      ],
+      [
+        "Node Sets",
+        "V"
+      ],
+      [
+        "Mix Dataset",
+        "NaiveRAG"
+      ],
+      [
+        "Crud-Rag",
+        "Hao Wu"
+      ],
+      [
+        "Precise Zero-Shot Dense Retrieval Without Relevance Labels",
+        "arXiv"
+      ],
+      [
+        "Hybrid Mode",
+        "LightRAG"
+      ],
+      [
+        "D Function",
+        "LightRAG"
+      ],
+      [
+        "-Origin",
+        "LightRAG"
+      ],
+      [
+        "Lyu et al. (2024)",
+        "Retrieval-Augmented Generation"
+      ],
+      [
+        "CS Dataset",
+        "NaiveRAG-Origin"
+      ],
+      [
+        "In-Context Retrieval-Augmented Language Models",
+        "Transactions of the Association for Computational Linguistics"
+      ],
+      [
+        "GPT-4o-mini",
+        "LightRAG"
+      ],
+      [
+        "Agriculture Dataset",
+        "NaiveRAG-Low"
+      ],
+      [
+        "Agriculture Dataset",
+        "UltraDomain Benchmark"
+      ],
+      [
+        "Movie Recommendation Systems",
+        "Precision"
+      ],
+      [
+        "Computer Science dataset",
+        "LightRAG"
+      ],
+      [
+        "In-Context Retrieval-Augmented Language Models",
+        "Yoav Levine"
+      ],
+      [
+        "Ragas",
+        "Steven Schockaert"
+      ],
+      [
+        "Bryan Catanzaro",
+        "RankRAG"
+      ],
+      [
+        "Australia",
+        "Indigenous Perspectives"
+      ],
+      [
+        "Graph-based Text Indexing",
+        "LightRAG"
+      ],
+      [
+        "Mean Average Precision at K",
+        "Movie Recommendation Systems"
+      ],
+      [
+        "GraphRAG",
+        "token"
+      ],
+      [
+        "Qinhan Yu",
+        "Retrieval-augmented generation survey"
+      ],
+      [
+        "Crud-Rag",
+        "Enhong Chen"
+      ],
+      [
+        "Guy Wolf",
+        "Recipe For A General, Powerful, Scalable Graph Transformer"
+      ],
+      [
+        "Graph-Enhanced Entity and Relationship Extraction",
+        "Profiling"
+      ],
+      [
+        "Graph-Based Retrieval Phase",
+        "Large Language Model"
+      ],
+      [
+        "Brannon et al. (2023)",
+        "Graph Neural Networks"
+      ],
+      [
+        "Gao et al. (2023)",
+        "Naive RAG"
+      ],
+      [
+        "Area Under the Curve (AUC)",
+        "LightRAG"
+      ],
+      [
+        "Chao Huang",
+        "University of Hong Kong"
+      ],
+      [
+        "F-Measure",
+        "LightRAG"
+      ],
+      [
+        "Agriculture Dataset",
+        "LightRAG"
+      ],
+      [
+        "Dual-level Retrieval Paradigm",
+        "low-level retrieval"
+      ],
+      [
+        "Graph Structure",
+        "LightRAG"
+      ],
+      [
+        "Data Indexer",
+        "Retrieval Component"
+      ],
+      [
+        "LLMs-Graphs Integration",
+        "Li et al. (2023)"
+      ],
+      [
+        "Lianghao Xia",
+        "LightRAG"
+      ],
+      [
+        "Movie Recommendation Systems",
+        "User Satisfaction Metrics"
+      ],
+      [
+        "GraphRAG",
+        "HyDE"
+      ],
+      [
+        "LightRAG",
+        "Mix Dataset"
+      ],
+      [
+        "RankRAG",
+        "Yue Yu"
+      ],
+      [
+        "Memorag",
+        "Zheng Liu"
+      ],
+      [
+        "Mix Dataset",
+        "NaiveRAG-Low"
+      ],
+      [
+        "Mix Dataset",
+        "UltraDomain Benchmark"
+      ],
+      [
+        "Graph-based Text Indexing",
+        "NaiveRAG-High"
+      ],
+      [
+        "Comprehensiveness",
+        "RAG evaluation prompt"
+      ],
+      [
+        "International Conference on Knowledge Discovery and Data Mining",
+        "Survey on RAG Meeting LLMs"
+      ],
+      [
+        "Mean Average Precision (MAP)",
+        "Movie Recommendation Systems"
+      ],
+      [
+        "Hengyun Li",
+        "Survey on RAG Meeting LLMs"
+      ],
+      [
+        "Graph-based Text Indexing",
+        "NaiveRAG"
+      ],
+      [
+        "Wenqi Fan",
+        "arXiv"
+      ],
+      [
+        "LightRAG",
+        "Overall Quality"
+      ],
+      [
+        "Retrieval-Augmented Generation For Large Language Models: A Survey",
+        "Yuxi Bi"
+      ],
+      [
+        "Canada",
+        "Indigenous Perspectives"
+      ],
+      [
+        "Community Engagement",
+        "Corporate Mergers"
+      ],
+      [
+        "LightRAG",
+        "Overall"
+      ],
+      [
+        "Edge et al. (2024)",
+        "GraphRAG"
+      ],
+      [
+        "GraphRAG",
+        "Incremental Text Update"
+      ],
+      [
+        "Query generation prompt",
+        "tasks"
+      ],
+      [
+        "Grenade",
+        "International Conference on Empirical Methods in Natural Language Processing"
+      ],
+      [
+        "Graph construction prompt",
+        "entities"
+      ],
+      [
+        "Jimmy Lin",
+        "Precise Zero-Shot Dense Retrieval Without Relevance Labels"
+      ]
+    ],
+    "count": 318,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "doc-68c5b57fc5e4f80b4481763ee3f107c6"
+  }
+}

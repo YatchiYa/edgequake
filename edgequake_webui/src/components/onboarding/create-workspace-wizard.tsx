@@ -5,6 +5,8 @@ import { STEP_META } from '@/components/onboarding/step-meta';
 import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-step';
 import { ReviewStep } from '@/components/onboarding/steps/review-step';
 import { WorkspaceBasicsStep } from '@/components/onboarding/steps/workspace-basics-step';
+import { WorkspaceChunkingStep } from '@/components/onboarding/steps/workspace-chunking-step';
+import { WorkspaceExtractBudgetStep } from '@/components/onboarding/steps/workspace-extract-budget-step';
 import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace-extraction-step';
 import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import type { LLMSelection } from '@/components/workspace/llm-model-selector';
@@ -159,6 +161,24 @@ export function CreateWorkspaceWizard({
         ...models,
         entity_types: draft.entityTypes.length > 0 ? draft.entityTypes : undefined,
         extraction_language: draft.extractionLanguage ?? undefined,
+        ...(draft.chunkingMode && draft.chunkingMode !== 'inherit'
+          ? {
+              chunking_mode: draft.chunkingMode,
+              ...(draft.chunkingMode === 'fixed'
+                ? {
+                    chunk_token_size: draft.chunkTokenSize,
+                    chunk_overlap_token_size: draft.chunkOverlapTokenSize,
+                  }
+                : {}),
+            }
+          : {}),
+        ...(draft.extractBudgetMode === 'custom'
+          ? {
+              extract_budget_mode: 'custom',
+              extract_max_entities: draft.extractMaxEntities,
+              extract_max_records: draft.extractMaxRecords,
+            }
+          : {}),
         entity_type_colors:
           Object.keys(draft.entityTypeColors).length > 0
             ? draft.entityTypeColors
@@ -210,6 +230,10 @@ export function CreateWorkspaceWizard({
             onAdvancedOpenChange={setAdvancedOpen}
           />
         );
+      case 'chunking':
+        return <WorkspaceChunkingStep draft={draft} onChange={patchDraft} />;
+      case 'extract-budget':
+        return <WorkspaceExtractBudgetStep draft={draft} onChange={patchDraft} />;
       case 'extraction':
         return <WorkspaceExtractionStep draft={draft} onChange={patchDraft} />;
       case 'review':

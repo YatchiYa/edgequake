@@ -388,6 +388,20 @@ impl WorkspaceService for InMemoryWorkspaceService {
         );
         // SPEC-096: extraction language
         apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
+        crate::chunking_metadata::apply_chunking_metadata(
+            &mut workspace.metadata,
+            request.chunking_mode,
+            request.chunk_token_size,
+            request.chunk_overlap_token_size,
+        )
+        .map_err(Error::validation)?;
+        crate::extract_budget_metadata::apply_extract_budget_metadata(
+            &mut workspace.metadata,
+            request.extract_budget_mode,
+            request.extract_max_entities,
+            request.extract_max_records,
+        )
+        .map_err(Error::validation)?;
         edgequake_pdf::VisionExtractConfig::apply_to_metadata(
             &mut workspace.metadata,
             &edgequake_pdf::VisionExtractOverlay {
@@ -612,6 +626,20 @@ impl WorkspaceService for InMemoryWorkspaceService {
             request.relation_edges,
         );
         apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
+        crate::chunking_metadata::apply_chunking_metadata(
+            &mut workspace.metadata,
+            request.chunking_mode,
+            request.chunk_token_size,
+            request.chunk_overlap_token_size,
+        )
+        .map_err(Error::validation)?;
+        crate::extract_budget_metadata::apply_extract_budget_metadata(
+            &mut workspace.metadata,
+            request.extract_budget_mode,
+            request.extract_max_entities,
+            request.extract_max_records,
+        )
+        .map_err(Error::validation)?;
         edgequake_pdf::VisionExtractConfig::apply_to_metadata(
             &mut workspace.metadata,
             &edgequake_pdf::VisionExtractOverlay {
@@ -999,6 +1027,12 @@ mod tests {
             entity_types: None,
             entity_types_strict: None,
             extraction_language: None,
+            chunking_mode: None,
+            chunk_token_size: None,
+            chunk_overlap_token_size: None,
+            extract_budget_mode: None,
+            extract_max_entities: None,
+            extract_max_records: None,
             entity_type_colors: None,
             relation_types: None,
             relation_types_strict: None,
@@ -1138,12 +1172,18 @@ mod tests {
                 entity_types: None,
                 entity_types_strict: None,
                 extraction_language: None,
+                chunking_mode: None,
+                chunk_token_size: None,
+                chunk_overlap_token_size: None,
+                extract_budget_mode: None,
+                extract_max_entities: None,
+                extract_max_records: None,
                 entity_type_colors: None,
-            relation_types: None,
-            relation_types_strict: None,
-            kg_schema_preset: None,
-            relation_edges: None,
-            default_reasoning_effort: None,
+                relation_types: None,
+                relation_types_strict: None,
+                kg_schema_preset: None,
+                relation_edges: None,
+                default_reasoning_effort: None,
                 llm_roles: None,
                 vision_extract_images: None,
                 vision_extract_charts: None,
@@ -1176,6 +1216,12 @@ mod tests {
             entity_types: None,
             entity_types_strict: None,
             extraction_language: None,
+            chunking_mode: None,
+            chunk_token_size: None,
+            chunk_overlap_token_size: None,
+            extract_budget_mode: None,
+            extract_max_entities: None,
+            extract_max_records: None,
             entity_type_colors: None,
             relation_types: None,
             relation_types_strict: None,

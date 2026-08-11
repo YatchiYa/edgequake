@@ -17,7 +17,7 @@
 //! 3. **Line-by-line processing**: Enables streaming extraction.
 //! 4. **Battle-tested**: Proven in the LightRAG paper with millions of extractions.
 
-use super::super::extract_caps::apply_default_extraction_caps;
+use super::super::extract_caps::{apply_extraction_caps, ExtractionCaps};
 use super::super::normalizer::normalize_entity_name;
 use super::super::{DEFAULT_COMPLETION_DELIMITER, DEFAULT_TUPLE_DELIMITER};
 use crate::error::Result;
@@ -35,6 +35,8 @@ use crate::extractor::{ExtractedEntity, ExtractedRelationship, ExtractionResult}
 pub struct TupleParser {
     tuple_delimiter: String,
     completion_delimiter: String,
+    /// SPEC-117: resolved caps (`None` → fleet env at parse time).
+    extraction_caps: Option<ExtractionCaps>,
 }
 
 impl Default for TupleParser {
@@ -49,6 +51,7 @@ impl TupleParser {
         Self {
             tuple_delimiter: DEFAULT_TUPLE_DELIMITER.to_string(),
             completion_delimiter: DEFAULT_COMPLETION_DELIMITER.to_string(),
+            extraction_caps: None,
         }
     }
 
@@ -57,7 +60,14 @@ impl TupleParser {
         Self {
             tuple_delimiter: tuple.to_string(),
             completion_delimiter: completion.to_string(),
+            extraction_caps: None,
         }
+    }
+
+    /// Set resolved extract caps (SPEC-117).
+    pub fn with_extraction_caps(mut self, caps: ExtractionCaps) -> Self {
+        self.extraction_caps = Some(caps);
+        self
     }
 
     /// Parse a response into an extraction result.
@@ -185,8 +195,11 @@ impl TupleParser {
             .metadata
             .insert("parse_errors".to_string(), serde_json::json!(parse_errors));
 
-        // 054: LightRAG per-response quantity caps (prompt + deterministic truncate).
-        apply_default_extraction_caps(&mut result);
+        // 054 / SPEC-117: LightRAG per-response quantity caps.
+        let caps = self
+            .extraction_caps
+            .unwrap_or_else(ExtractionCaps::from_env);
+        apply_extraction_caps(&mut result, caps);
 
         Ok(result)
     }

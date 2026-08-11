@@ -355,7 +355,7 @@ pub fn classify_extract_error(error: &str) -> ExtractErrorClass {
 pub fn extract_retry_budget(class: ExtractErrorClass, configured_max: u32) -> u32 {
     match class {
         ExtractErrorClass::Transient => configured_max.max(1),
-        ExtractErrorClass::Parse => configured_max.min(2).max(1),
+        ExtractErrorClass::Parse => configured_max.clamp(1, 2),
         ExtractErrorClass::Permanent => 1,
     }
 }

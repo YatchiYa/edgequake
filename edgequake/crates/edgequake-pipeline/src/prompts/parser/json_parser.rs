@@ -7,7 +7,7 @@
 use super::super::entity_type_policy::{
     enforce_entity_type, enforce_relationship_against_schema, EntityExtractionSchema,
 };
-use super::super::extract_caps::apply_default_extraction_caps;
+use super::super::extract_caps::{apply_extraction_caps, ExtractionCaps};
 use super::super::normalizer::normalize_entity_name;
 use crate::error::{PipelineError, Result};
 use crate::extractor::{ExtractedEntity, ExtractedRelationship, ExtractionResult};
@@ -26,6 +26,8 @@ pub struct JsonParseOptions<'a> {
     pub recover_truncated: bool,
     /// Return empty extraction when no JSON is found (LLM flaky output).
     pub empty_on_missing_json: bool,
+    /// SPEC-117: resolved per-response caps (`None` → fleet env / 40/100).
+    pub extraction_caps: Option<ExtractionCaps>,
 }
 
 impl JsonExtractionParser {
@@ -108,8 +110,11 @@ impl JsonExtractionParser {
             .metadata
             .insert("parser".to_string(), serde_json::json!("json"));
 
-        // 054: LightRAG per-response quantity caps (prompt + deterministic truncate).
-        apply_default_extraction_caps(&mut result);
+        // 054 / SPEC-117: LightRAG per-response quantity caps (prompt + deterministic truncate).
+        let caps = options
+            .extraction_caps
+            .unwrap_or_else(ExtractionCaps::from_env);
+        apply_extraction_caps(&mut result, caps);
 
         Ok(result)
     }
@@ -363,6 +368,7 @@ mod tests {
                     entity_schema: Some(&schema),
                     recover_truncated: true,
                     empty_on_missing_json: true,
+                    extraction_caps: None,
                 },
             )
             .expect("parse");

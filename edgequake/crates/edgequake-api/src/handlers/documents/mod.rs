@@ -79,6 +79,8 @@ mod tests {
             use_llm_summarization: true,
             chunk_strategy: None,
             chunk_options: None,
+            extract_max_entities: None,
+            extract_max_records: None,
         };
 
         assert!(!request.content.is_empty());

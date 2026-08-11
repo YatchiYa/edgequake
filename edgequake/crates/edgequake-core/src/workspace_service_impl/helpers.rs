@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::type_list::{
     apply_kg_schema_preset_metadata as apply_kg_schema_preset_metadata_inner,
-    apply_relation_edges_metadata as apply_relation_edges_metadata_inner,
-    apply_type_list_metadata, apply_type_list_strict_metadata, normalize_type_list, RelationEdge,
+    apply_relation_edges_metadata as apply_relation_edges_metadata_inner, apply_type_list_metadata,
+    apply_type_list_strict_metadata, RelationEdge,
 };
 
 // ============ Helper Functions ============
@@ -57,6 +57,21 @@ pub(crate) fn apply_relation_edges_metadata(
 }
 
 // SPEC-102 color helpers live in `crate::entity_type_colors` (shared with in-memory).
+
+/// Apply SPEC-116 workspace chunking policy to metadata.
+pub(crate) fn apply_chunking_metadata(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    chunking_mode: Option<String>,
+    chunk_token_size: Option<u32>,
+    chunk_overlap_token_size: Option<u32>,
+) -> Result<(), String> {
+    crate::chunking_metadata::apply_chunking_metadata(
+        metadata,
+        chunking_mode,
+        chunk_token_size,
+        chunk_overlap_token_size,
+    )
+}
 
 /// Apply `extraction_language` to workspace metadata (SPEC-096 / GH-352).
 ///
@@ -169,6 +184,7 @@ pub(crate) fn apply_llm_roles_metadata(
 }
 
 /// Apply SPEC-015V vision extract toggles + prompt overrides to workspace metadata.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_vision_extract_metadata(
     metadata: &mut HashMap<String, serde_json::Value>,
     extract_images: Option<bool>,

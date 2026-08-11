@@ -11,6 +11,8 @@ export type WorkspaceConfigChangedKey =
   | 'vision'
   | 'pdfParser'
   | 'extractionLanguage'
+  | 'chunking'
+  | 'extractBudget'
   | 'entityTypes'
   | 'entityTypesStrict'
   | 'entityTypeColors'
@@ -26,6 +28,12 @@ export interface WorkspaceConfigSnapshot {
   vision?: ModelSelectionSlash;
   pdfParserBackend: PdfParserBackendDraft;
   extractionLanguage: string | null;
+  chunkingMode?: 'inherit' | 'adaptive' | 'fixed' | null;
+  chunkTokenSize?: number | null;
+  chunkOverlapTokenSize?: number | null;
+  extractBudgetMode?: 'inherit' | 'custom' | null;
+  extractMaxEntities?: number | null;
+  extractMaxRecords?: number | null;
   entityTypes: string[];
   entityTypesStrict: boolean;
   entityTypeColors?: Record<string, string>;
@@ -141,6 +149,16 @@ export function diffWorkspaceConfig(
   if (languageKey(baseline.extractionLanguage) !== languageKey(draft.extractionLanguage)) {
     changedKeys.push('extractionLanguage');
   }
+  const baseChunk = `${baseline.chunkingMode ?? 'inherit'}:${baseline.chunkTokenSize ?? ''}:${baseline.chunkOverlapTokenSize ?? ''}`;
+  const draftChunk = `${draft.chunkingMode ?? 'inherit'}:${draft.chunkTokenSize ?? ''}:${draft.chunkOverlapTokenSize ?? ''}`;
+  if (baseChunk !== draftChunk) {
+    changedKeys.push('chunking');
+  }
+  const baseBudget = `${baseline.extractBudgetMode ?? 'inherit'}:${baseline.extractMaxEntities ?? ''}:${baseline.extractMaxRecords ?? ''}`;
+  const draftBudget = `${draft.extractBudgetMode ?? 'inherit'}:${draft.extractMaxEntities ?? ''}:${draft.extractMaxRecords ?? ''}`;
+  if (baseBudget !== draftBudget) {
+    changedKeys.push('extractBudget');
+  }
   if (entityTypesKey(baseline.entityTypes) !== entityTypesKey(draft.entityTypes)) {
     changedKeys.push('entityTypes');
   }
@@ -177,7 +195,9 @@ export function diffWorkspaceConfig(
     modelChanged('entityTypes') ||
     modelChanged('relationTypes') ||
     modelChanged('relationEdges') ||
-    modelChanged('extractionLanguage');
+    modelChanged('extractionLanguage') ||
+    modelChanged('chunking') ||
+    modelChanged('extractBudget');
 
   // Rebuild hints only when there are documents to rebuild (EC-101-16…18).
   // SPEC-114: schema changes also suggest KG rebuild (honest future-only apply).

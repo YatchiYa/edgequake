@@ -133,6 +133,7 @@ impl Pipeline {
     ///
     /// `resume_by_chunk_id`: skip LLM for chunks already extracted (mid-doc resume).
     /// `on_chunk_extracted`: durable per-chunk checkpoint hook after each success.
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_with_resilience_cancellable(
         &self,
         document_id: &str,

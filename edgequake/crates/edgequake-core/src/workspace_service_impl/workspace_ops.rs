@@ -11,7 +11,7 @@ use crate::{
 
 #[cfg(feature = "postgres")]
 use super::helpers::{
-    apply_default_reasoning_effort_metadata, apply_entity_types_metadata,
+    apply_chunking_metadata, apply_default_reasoning_effort_metadata, apply_entity_types_metadata,
     apply_entity_types_strict_metadata, apply_extraction_language_metadata,
     apply_kg_schema_preset_metadata, apply_llm_roles_metadata, apply_relation_edges_metadata,
     apply_relation_types_metadata, apply_relation_types_strict_metadata,
@@ -192,6 +192,22 @@ impl WorkspaceServiceImpl {
         // SPEC-096: Workspace extraction language (future ingestions only)
         apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
             .map_err(Error::validation)?;
+        // SPEC-116: Workspace chunking policy (future ingestions only)
+        apply_chunking_metadata(
+            &mut workspace.metadata,
+            request.chunking_mode,
+            request.chunk_token_size,
+            request.chunk_overlap_token_size,
+        )
+        .map_err(Error::validation)?;
+        // SPEC-117: Workspace extract budget (future ingestions only)
+        crate::extract_budget_metadata::apply_extract_budget_metadata(
+            &mut workspace.metadata,
+            request.extract_budget_mode,
+            request.extract_max_entities,
+            request.extract_max_records,
+        )
+        .map_err(Error::validation)?;
         // SPEC-015V: Vision extract toggles + prompts
         apply_vision_extract_metadata(
             &mut workspace.metadata,
@@ -472,6 +488,20 @@ impl WorkspaceServiceImpl {
         apply_relation_edges_metadata(&mut workspace.metadata, request.relation_edges);
         apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
             .map_err(Error::validation)?;
+        apply_chunking_metadata(
+            &mut workspace.metadata,
+            request.chunking_mode,
+            request.chunk_token_size,
+            request.chunk_overlap_token_size,
+        )
+        .map_err(Error::validation)?;
+        crate::extract_budget_metadata::apply_extract_budget_metadata(
+            &mut workspace.metadata,
+            request.extract_budget_mode,
+            request.extract_max_entities,
+            request.extract_max_records,
+        )
+        .map_err(Error::validation)?;
         apply_vision_extract_metadata(
             &mut workspace.metadata,
             request.vision_extract_images,

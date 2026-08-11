@@ -188,8 +188,7 @@ async fn g9_charts_on_invokes_writer() {
     let plan = VisionAssetWritePlan::from_flags(false, true, false);
     assert!(plan.write_charts);
     let dir = tempfile::tempdir().unwrap();
-    match write_chart_crop_assets(&minimal_pdf_bytes(), dir.path(), &[1], CHART_CROP_RENDER).await
-    {
+    match write_chart_crop_assets(&minimal_pdf_bytes(), dir.path(), &[1], CHART_CROP_RENDER).await {
         Ok(_paths) => {
             // Minimal PDF may yield 0 crops — gate is that the call is allowed.
         }

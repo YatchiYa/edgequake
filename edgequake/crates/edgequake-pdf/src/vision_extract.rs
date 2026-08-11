@@ -126,15 +126,15 @@ impl VisionExtractConfig {
 
     /// Load from workspace (or document) metadata map. Absent bools → true.
     pub fn from_metadata(meta: &HashMap<String, serde_json::Value>) -> Self {
-        let mut cfg = Self::default();
-        cfg.extract_images = meta_bool(meta, META_EXTRACT_IMAGES).unwrap_or(true);
-        cfg.extract_charts = meta_bool(meta, META_EXTRACT_CHARTS).unwrap_or(true);
-        cfg.extract_figures = meta_bool(meta, META_EXTRACT_FIGURES).unwrap_or(true);
-        cfg.page_system_prompt = meta_prompt(meta, META_PAGE_SYSTEM_PROMPT);
-        cfg.image_system_prompt = meta_prompt(meta, META_IMAGE_SYSTEM_PROMPT);
-        cfg.chart_system_prompt = meta_prompt(meta, META_CHART_SYSTEM_PROMPT);
-        cfg.figure_system_prompt = meta_prompt(meta, META_FIGURE_SYSTEM_PROMPT);
-        cfg
+        Self {
+            extract_images: meta_bool(meta, META_EXTRACT_IMAGES).unwrap_or(true),
+            extract_charts: meta_bool(meta, META_EXTRACT_CHARTS).unwrap_or(true),
+            extract_figures: meta_bool(meta, META_EXTRACT_FIGURES).unwrap_or(true),
+            page_system_prompt: meta_prompt(meta, META_PAGE_SYSTEM_PROMPT),
+            image_system_prompt: meta_prompt(meta, META_IMAGE_SYSTEM_PROMPT),
+            chart_system_prompt: meta_prompt(meta, META_CHART_SYSTEM_PROMPT),
+            figure_system_prompt: meta_prompt(meta, META_FIGURE_SYSTEM_PROMPT),
+        }
     }
 
     /// Apply sparse overlay (upload wins). Prompt `Some("")` clears to None.
@@ -150,16 +150,13 @@ impl VisionExtractConfig {
             out.extract_figures = v;
         }
         if overlay.page_system_prompt.is_some() {
-            out.page_system_prompt =
-                Self::normalize_prompt(overlay.page_system_prompt.clone())?;
+            out.page_system_prompt = Self::normalize_prompt(overlay.page_system_prompt.clone())?;
         }
         if overlay.image_system_prompt.is_some() {
-            out.image_system_prompt =
-                Self::normalize_prompt(overlay.image_system_prompt.clone())?;
+            out.image_system_prompt = Self::normalize_prompt(overlay.image_system_prompt.clone())?;
         }
         if overlay.chart_system_prompt.is_some() {
-            out.chart_system_prompt =
-                Self::normalize_prompt(overlay.chart_system_prompt.clone())?;
+            out.chart_system_prompt = Self::normalize_prompt(overlay.chart_system_prompt.clone())?;
         }
         if overlay.figure_system_prompt.is_some() {
             out.figure_system_prompt =
@@ -193,7 +190,11 @@ impl VisionExtractConfig {
         apply_prompt_key(meta, META_PAGE_SYSTEM_PROMPT, &overlay.page_system_prompt)?;
         apply_prompt_key(meta, META_IMAGE_SYSTEM_PROMPT, &overlay.image_system_prompt)?;
         apply_prompt_key(meta, META_CHART_SYSTEM_PROMPT, &overlay.chart_system_prompt)?;
-        apply_prompt_key(meta, META_FIGURE_SYSTEM_PROMPT, &overlay.figure_system_prompt)?;
+        apply_prompt_key(
+            meta,
+            META_FIGURE_SYSTEM_PROMPT,
+            &overlay.figure_system_prompt,
+        )?;
         Ok(())
     }
 

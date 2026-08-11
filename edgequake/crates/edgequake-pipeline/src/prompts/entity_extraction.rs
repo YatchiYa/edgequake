@@ -3,6 +3,7 @@
 //! Implements tuple-based extraction format with completion signals
 //! and comprehensive extraction instructions.
 
+use super::extract_caps::ExtractionCaps;
 use super::{DEFAULT_COMPLETION_DELIMITER, DEFAULT_TUPLE_DELIMITER};
 
 /// SOTA Entity Extraction Prompts configuration.
@@ -32,11 +33,18 @@ impl EntityExtractionPrompts {
         }
     }
 
-    /// Build the system prompt for entity extraction.
-    ///
-    /// This prompt instructs the LLM on how to extract entities and relationships
-    /// in a structured tuple format.
+    /// Build the system prompt for entity extraction (fleet env caps).
     pub fn system_prompt(&self, schema: &super::EntityExtractionSchema, language: &str) -> String {
+        self.system_prompt_with_caps(schema, language, ExtractionCaps::from_env())
+    }
+
+    /// Build the system prompt with explicit SPEC-117 caps.
+    pub fn system_prompt_with_caps(
+        &self,
+        schema: &super::EntityExtractionSchema,
+        language: &str,
+        caps: ExtractionCaps,
+    ) -> String {
         let entity_types_str = schema.types.join(", ");
         let entity_type_instruction =
             super::sota_entity_type_instruction(schema, &entity_types_str);
@@ -83,6 +91,7 @@ You are a Knowledge Graph Specialist responsible for extracting entities and rel
 6.  **Quantity Limits (STRICT):**
     *   Output at most {max_entity_records} entity rows in this response.
     *   Output at most {max_total_records} total rows across entities and relationships.
+    *   Prioritize highest-value, relation-bearing entities first (core actors, organizations, methods, and concepts that participate in relationships). Emit them before lower-value or isolated mentions.
     *   Output fewer rows if fewer high-value items are present. Do not try to fill the limit.
     *   Only output relationship rows whose source and target entities are both included in the selected entity rows for this response.
     *   If the limit is reached, stop adding new rows immediately and output `{completion_delimiter}`.
@@ -103,18 +112,34 @@ You are a Knowledge Graph Specialist responsible for extracting entities and rel
             tuple_delimiter = self.tuple_delimiter,
             language = language,
             completion_delimiter = self.completion_delimiter,
-            max_entity_records = super::ExtractionCaps::from_env().max_entities,
-            max_total_records = super::ExtractionCaps::from_env().max_total_records,
+            max_entity_records = caps.max_entities,
+            max_total_records = caps.max_total_records,
             examples = self.get_examples(language)
         )
     }
 
-    /// Build the user prompt for extraction.
+    /// Build the user prompt for extraction (fleet env caps).
     pub fn user_prompt(
         &self,
         input_text: &str,
         entity_types: &[impl AsRef<str>],
         language: &str,
+    ) -> String {
+        self.user_prompt_with_caps(
+            input_text,
+            entity_types,
+            language,
+            ExtractionCaps::from_env(),
+        )
+    }
+
+    /// Build the user prompt with explicit SPEC-117 caps.
+    pub fn user_prompt_with_caps(
+        &self,
+        input_text: &str,
+        entity_types: &[impl AsRef<str>],
+        language: &str,
+        caps: ExtractionCaps,
     ) -> String {
         let entity_types_str = entity_types
             .iter()
@@ -147,15 +172,22 @@ Extract entities and relationships from the input text below.
             language = language,
             entity_types = entity_types_str,
             input_text = input_text,
-            max_entity_records = super::ExtractionCaps::from_env().max_entities,
-            max_total_records = super::ExtractionCaps::from_env().max_total_records,
+            max_entity_records = caps.max_entities,
+            max_total_records = caps.max_total_records,
         )
     }
 
-    /// Build the continue extraction (gleaning) prompt.
-    ///
-    /// Used after initial extraction to find missed entities.
+    /// Build the continue extraction (gleaning) prompt (fleet env caps).
     pub fn continue_extraction_prompt(&self, language: &str) -> String {
+        self.continue_extraction_prompt_with_caps(language, ExtractionCaps::from_env())
+    }
+
+    /// Continue prompt with explicit SPEC-117 caps.
+    pub fn continue_extraction_prompt_with_caps(
+        &self,
+        language: &str,
+        caps: ExtractionCaps,
+    ) -> String {
         format!(
             r#"---Task---
 Based on the last extraction task, identify and extract any **missed or incorrectly formatted** entities and relationships from the input text.
@@ -177,8 +209,8 @@ Based on the last extraction task, identify and extract any **missed or incorrec
             tuple_delimiter = self.tuple_delimiter,
             completion_delimiter = self.completion_delimiter,
             language = language,
-            max_entity_records = super::ExtractionCaps::from_env().max_entities,
-            max_total_records = super::ExtractionCaps::from_env().max_total_records,
+            max_entity_records = caps.max_entities,
+            max_total_records = caps.max_total_records,
         )
     }
 
@@ -309,5 +341,21 @@ mod tests {
         assert!(!system.contains("Example 1:"));
         assert!(!system.contains("Sarah Chen"));
         assert!(!system.contains("entity<|#|>Alex"));
+    }
+
+    #[test]
+    fn spec117_sota_prompts_use_resolved_caps_not_env_defaults() {
+        let prompts = EntityExtractionPrompts::default();
+        let caps = ExtractionCaps {
+            max_entities: 17,
+            max_total_records: 41,
+        };
+        let system = prompts.system_prompt_with_caps(&schema(vec!["PERSON"]), "English", caps);
+        let user = prompts.user_prompt_with_caps("body", &["PERSON"], "English", caps);
+        let cont = prompts.continue_extraction_prompt_with_caps("English", caps);
+        assert!(system.contains("17"), "{system}");
+        assert!(system.contains("41"), "{system}");
+        assert!(user.contains("17") && user.contains("41"), "{user}");
+        assert!(cont.contains("17") && cont.contains("41"), "{cont}");
     }
 }

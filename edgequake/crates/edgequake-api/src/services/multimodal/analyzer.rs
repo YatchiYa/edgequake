@@ -41,8 +41,6 @@ use crate::services::converting_subprogress::{
     report_vision_figure_analyze_ex, ConvertingSubstepReporter, VisionFigureProgressOpts,
 };
 
-/// Remove `<drawing …/>` placeholders that Pass B did not replace (viewer hygiene).
-
 tokio::task_local! {
     /// SPEC-015V: Pass B prompt / specialize gates for the current analyze stage.
     pub static VISION_EXTRACT_CTX: edgequake_pdf::VisionExtractConfig;
@@ -54,6 +52,7 @@ fn current_vision_extract() -> edgequake_pdf::VisionExtractConfig {
         .unwrap_or_default()
 }
 
+/// Remove `<drawing …/>` placeholders that Pass B did not replace (viewer hygiene).
 fn strip_drawing_tags(markdown: &str) -> String {
     let refs = scan_inline_image_refs(markdown);
     if refs.is_empty() {
@@ -1038,7 +1037,7 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
-        
+
             image_system_prompt: None,
             chart_system_prompt: None,
             figure_system_prompt: None,

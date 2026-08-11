@@ -227,6 +227,17 @@ impl DocumentTaskProcessor {
             ingestion_options
         };
 
+        // SPEC-117: document-level extract caps (wins over workspace in factory resolve).
+        let ingestion_options = if let Some(caps) = data
+            .metadata
+            .as_ref()
+            .and_then(edgequake_pipeline::ExtractionCaps::from_value)
+        {
+            ingestion_options.with_extraction_caps(caps)
+        } else {
+            ingestion_options
+        };
+
         let pipeline = if self.strict_workspace_mode {
             match self
                 .get_workspace_pipeline_for_ingestion(
@@ -426,10 +437,7 @@ impl DocumentTaskProcessor {
                                     "stage_progress".to_string(),
                                     json!(progress_pct as f64 / 100.0),
                                 );
-                                updated.insert(
-                                    "extract_eta_seconds".to_string(),
-                                    json!(eta),
-                                );
+                                updated.insert("extract_eta_seconds".to_string(), json!(eta));
                                 if gate_wait_ms > 0 {
                                     updated.insert(
                                         "local_gate_wait_ms".to_string(),

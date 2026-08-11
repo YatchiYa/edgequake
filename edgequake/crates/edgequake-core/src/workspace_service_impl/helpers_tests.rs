@@ -1,9 +1,9 @@
 #[cfg(feature = "postgres")]
 mod tests {
-    use super::super::helpers::normalize_entity_types;
+    use crate::type_list::normalize_type_list;
 
     #[test]
-    fn normalize_entity_types_trims_dedupes_and_caps() {
+    fn normalize_type_list_trims_dedupes_and_caps() {
         let input = vec![
             " person ".to_string(),
             "PERSON".to_string(),
@@ -11,13 +11,13 @@ mod tests {
             "".to_string(),
             "   ".to_string(),
         ];
-        let out = normalize_entity_types(&input);
+        let out = normalize_type_list(&input);
         assert_eq!(out, vec!["PERSON".to_string(), "ORG_UNIT".to_string()]);
     }
 
     #[test]
-    fn normalize_entity_types_respects_max_fifty() {
+    fn normalize_type_list_respects_max_fifty() {
         let input: Vec<String> = (0..60).map(|i| format!("type_{i}")).collect();
-        assert_eq!(normalize_entity_types(&input).len(), 50);
+        assert_eq!(normalize_type_list(&input).len(), 50);
     }
 }

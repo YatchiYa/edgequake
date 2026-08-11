@@ -109,6 +109,8 @@ describe('model-payload', () => {
       entity_types: ['PERSON'],
       entity_types_strict: true,
       extraction_language: 'none',
+      chunking_mode: 'inherit',
+      extract_budget_mode: 'inherit',
       entity_type_colors: {},
       relation_types: [],
       relation_types_strict: true,
@@ -126,6 +128,9 @@ describe('model-payload', () => {
         vision: { provider: 'ollama', model: 'gemma4:latest' },
         pdfParserBackend: 'edgeparse',
         extractionLanguage: 'Chinese',
+        chunkingMode: 'fixed',
+        chunkTokenSize: 1200,
+        chunkOverlapTokenSize: 100,
         entityTypes: ['PERSON', 'ORGANIZATION'],
         entityTypesStrict: false,
         entityTypeColors: { PERSON: '#112233' },
@@ -141,7 +146,33 @@ describe('model-payload', () => {
       pdf_parser_backend: 'edgeparse',
       entity_types_strict: false,
       extraction_language: 'Chinese',
+      chunking_mode: 'fixed',
+      chunk_token_size: 1200,
+      chunk_overlap_token_size: 100,
+      extract_budget_mode: 'inherit',
       entity_type_colors: { PERSON: '#112233' },
+    });
+  });
+
+  it('builds update payload with LightRAG extract budget', () => {
+    expect(
+      buildWorkspaceUpdatePayload({
+        useServerDefaults: false,
+        llm: { provider: 'ollama', model: 'gemma4:latest' },
+        embedding: { provider: 'ollama', model: 'embeddinggemma', dimension: 768 },
+        vision: { provider: 'ollama', model: 'gemma4:latest' },
+        pdfParserBackend: 'vision',
+        extractionLanguage: null,
+        extractBudgetMode: 'custom',
+        extractMaxEntities: 40,
+        extractMaxRecords: 100,
+        entityTypes: ['PERSON'],
+        entityTypesStrict: true,
+      }),
+    ).toMatchObject({
+      extract_budget_mode: 'custom',
+      extract_max_entities: 40,
+      extract_max_records: 100,
     });
   });
 });

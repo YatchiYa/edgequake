@@ -5274,6 +5274,18 @@ export interface components {
          *     }
          */
         CreateWorkspaceApiRequest: {
+            /**
+             * Format: int32
+             * @description SPEC-116: fixed overlap tokens (default 100).
+             */
+            chunk_overlap_token_size?: number | null;
+            /**
+             * Format: int32
+             * @description SPEC-116: fixed chunk token size (default 1200).
+             */
+            chunk_token_size?: number | null;
+            /** @description SPEC-116: `inherit` | `adaptive` | `fixed`. */
+            chunking_mode?: string | null;
             /** @description SPEC-109: seed workspace `default_reasoning_effort` metadata. */
             default_reasoning_effort?: string | null;
             /** @description Optional description. */
@@ -5309,6 +5321,18 @@ export interface components {
             entity_types?: string[] | null;
             /** @description When true (default), limit extraction to listed types; unknown → OTHER. */
             entity_types_strict?: boolean | null;
+            /** @description SPEC-117: `inherit` | `custom`. */
+            extract_budget_mode?: string | null;
+            /**
+             * Format: int32
+             * @description SPEC-117: max entities per LLM extraction response.
+             */
+            extract_max_entities?: number | null;
+            /**
+             * Format: int32
+             * @description SPEC-117: max total entity+relationship rows per response.
+             */
+            extract_max_records?: number | null;
             /**
              * @description Natural-language output language for entity/relationship values (SPEC-096).
              *     Allowlisted names: English, Chinese, Japanese, Korean, Spanish, French,
@@ -12918,6 +12942,9 @@ export interface components {
          *     Changing LLM provider/model is safe and takes effect immediately for new ingestions.
          *     Changing embedding provider/model requires rebuilding vectors (use rebuild-embeddings endpoint).
          * @example {
+         *       "chunk_overlap_token_size": {},
+         *       "chunk_token_size": {},
+         *       "chunking_mode": {},
          *       "default_reasoning_effort": {},
          *       "description": {},
          *       "embedding_dimension": {},
@@ -12926,6 +12953,9 @@ export interface components {
          *       "entity_type_colors": {},
          *       "entity_types": [],
          *       "entity_types_strict": {},
+         *       "extract_budget_mode": {},
+         *       "extract_max_entities": {},
+         *       "extract_max_records": {},
          *       "extraction_language": {},
          *       "is_active": {},
          *       "kg_schema_preset": {},
@@ -12950,6 +12980,12 @@ export interface components {
          *     }
          */
         UpdateWorkspaceApiRequest: {
+            /** Format: int32 */
+            chunk_overlap_token_size?: number | null;
+            /** Format: int32 */
+            chunk_token_size?: number | null;
+            /** @description SPEC-116 chunking mode. Omit = leave unchanged; `inherit` clears. */
+            chunking_mode?: string | null;
             /** @description SPEC-109: set/clear workspace default reasoning effort. */
             default_reasoning_effort?: string | null;
             /** @description New description. */
@@ -12974,6 +13010,12 @@ export interface components {
             entity_types?: string[] | null;
             /** @description Strict entity type limit (default true). Set false to allow free-form types. */
             entity_types_strict?: boolean | null;
+            /** @description SPEC-117: `inherit` clears; `custom` + ints sets. Omit = leave unchanged. */
+            extract_budget_mode?: string | null;
+            /** Format: int32 */
+            extract_max_entities?: number | null;
+            /** Format: int32 */
+            extract_max_records?: number | null;
             /**
              * @description Extraction output language (SPEC-096). Omit = leave unchanged;
              *     empty string or `"none"` clears the workspace override.
@@ -13041,6 +13083,16 @@ export interface components {
             content: string;
             /** @description Enable gleaning (multiple extraction passes) for higher quality entity extraction. */
             enable_gleaning?: boolean;
+            /**
+             * Format: int32
+             * @description SPEC-117: optional per-upload max entities per LLM extraction response.
+             */
+            extract_max_entities?: number | null;
+            /**
+             * Format: int32
+             * @description SPEC-117: optional per-upload max total entity+relationship rows per response.
+             */
+            extract_max_records?: number | null;
             /** @description Maximum number of gleaning passes (1-3 recommended). */
             max_gleaning?: number;
             /** @description Optional document metadata. */
@@ -13206,6 +13258,12 @@ export interface components {
          *     }
          */
         WorkspaceResponse: {
+            /** Format: int32 */
+            chunk_overlap_token_size?: number | null;
+            /** Format: int32 */
+            chunk_token_size?: number | null;
+            /** @description SPEC-116 chunking mode (`adaptive` | `fixed`). Absent = inherit fleet env. */
+            chunking_mode?: string | null;
             /** @description Creation timestamp. */
             created_at: string;
             /** @description SPEC-109: workspace default reasoning effort. */
@@ -13231,6 +13289,12 @@ export interface components {
             entity_types?: string[] | null;
             /** @description When true, unknown types are remapped to OTHER/CONCEPT (default true). */
             entity_types_strict: boolean;
+            /** @description SPEC-117: absent = inherit fleet env; present when custom ints stored. */
+            extract_budget_mode?: string | null;
+            /** Format: int32 */
+            extract_max_entities?: number | null;
+            /** Format: int32 */
+            extract_max_records?: number | null;
             /**
              * @description Configured extraction language override (SPEC-096).
              *     `null` / omitted means inherit `EDGEQUAKE_EXTRACTION_LANGUAGE` or English.

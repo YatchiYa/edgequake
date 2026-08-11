@@ -96,6 +96,20 @@ pub struct CreateWorkspaceRequest {
     /// `EDGEQUAKE_EXTRACTION_LANGUAGE` / English. Pass `""` or `"none"` to clear.
     pub extraction_language: Option<String>,
 
+    /// SPEC-116: `inherit` | `adaptive` | `fixed` (Acc-fair = fixed + 1200/100).
+    pub chunking_mode: Option<String>,
+    /// SPEC-116: fixed chunk token size (default 1200 when mode=fixed).
+    pub chunk_token_size: Option<u32>,
+    /// SPEC-116: fixed chunk overlap (default 100 when mode=fixed).
+    pub chunk_overlap_token_size: Option<u32>,
+
+    /// SPEC-117: `inherit` | `custom` (omit = leave unchanged on update).
+    pub extract_budget_mode: Option<String>,
+    /// SPEC-117: max entities per LLM extraction response.
+    pub extract_max_entities: Option<u32>,
+    /// SPEC-117: max total entity+relationship rows per response.
+    pub extract_max_records: Option<u32>,
+
     /// Custom entity-type → hex color map for graph visualization (SPEC-102).
     /// Keys normalized UPPERCASE; values `#RGB` / `#RRGGBB`. Empty map clears.
     pub entity_type_colors: Option<HashMap<String, String>>,
@@ -335,6 +349,20 @@ pub struct UpdateWorkspaceRequest {
     /// Extraction output language override (SPEC-096). Omit = leave unchanged;
     /// `""` / `"none"` clears metadata key.
     pub extraction_language: Option<String>,
+
+    /// SPEC-116 chunking mode. Omit = leave unchanged; `inherit`/`none` clears.
+    pub chunking_mode: Option<String>,
+    /// SPEC-116 fixed size when mode=fixed.
+    pub chunk_token_size: Option<u32>,
+    /// SPEC-116 fixed overlap when mode=fixed.
+    pub chunk_overlap_token_size: Option<u32>,
+
+    /// SPEC-117: `inherit` clears keys; `custom` + ints sets budget. Omit = leave unchanged.
+    pub extract_budget_mode: Option<String>,
+    /// SPEC-117: max entities per LLM extraction response.
+    pub extract_max_entities: Option<u32>,
+    /// SPEC-117: max total entity+relationship rows per response.
+    pub extract_max_records: Option<u32>,
 
     /// Custom entity-type → hex color map (SPEC-102). Omit = leave unchanged;
     /// empty map clears metadata key.

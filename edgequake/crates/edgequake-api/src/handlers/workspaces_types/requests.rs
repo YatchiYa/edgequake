@@ -230,6 +230,26 @@ pub struct CreateWorkspaceApiRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extraction_language: Option<String>,
 
+    /// SPEC-116: `inherit` | `adaptive` | `fixed`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunking_mode: Option<String>,
+    /// SPEC-116: fixed chunk token size (default 1200).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_token_size: Option<u32>,
+    /// SPEC-116: fixed overlap tokens (default 100).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_overlap_token_size: Option<u32>,
+
+    /// SPEC-117: `inherit` | `custom`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract_budget_mode: Option<String>,
+    /// SPEC-117: max entities per LLM extraction response.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract_max_entities: Option<u32>,
+    /// SPEC-117: max total entity+relationship rows per response.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract_max_records: Option<u32>,
+
     /// Custom entity-type → hex color map for graph visualization (SPEC-102).
     /// Keys UPPERCASE; values `#RGB` / `#RRGGBB`. Empty object clears.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -344,6 +364,22 @@ pub struct UpdateWorkspaceApiRequest {
     /// empty string or `"none"` clears the workspace override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extraction_language: Option<String>,
+
+    /// SPEC-116 chunking mode. Omit = leave unchanged; `inherit` clears.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunking_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_token_size: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_overlap_token_size: Option<u32>,
+
+    /// SPEC-117: `inherit` clears; `custom` + ints sets. Omit = leave unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract_budget_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract_max_entities: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract_max_records: Option<u32>,
 
     /// Custom entity-type → hex color map (SPEC-102). Omit = leave unchanged;
     /// empty object clears the workspace override.

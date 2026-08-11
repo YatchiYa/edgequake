@@ -53,9 +53,27 @@ from .scorecard import build_scorecard, write_summary
 
 def doctor(*, base_url: str | None = None) -> int:
     print(f"bench001 {__version__}")
-    from .acc_env import ensure_acc_api_keys
+    from .acc_env import (
+        apply_acc_publication_pins,
+        ensure_acc_api_keys,
+        publication_extract_caps_mismatches,
+    )
 
     ensure_acc_api_keys(verbose=True)
+    # Apply Acc pins in this process so extract-cap doctor checks see fifo/40/100.
+    apply_acc_publication_pins(full_corpus=False, clear_capped_workspace=False, verbose=True)
+    caps_bad = publication_extract_caps_mismatches()
+    if caps_bad:
+        print("FAIL: Acc extract-cap pins missing after apply_acc_publication_pins:")
+        for m in caps_bad:
+            print(f"  - {m}")
+        return 1
+    print(
+        "Acc extract caps: "
+        f"entities={os.environ.get('EDGEQUAKE_MAX_EXTRACTION_ENTITIES')} "
+        f"records={os.environ.get('EDGEQUAKE_MAX_EXTRACTION_RECORDS')} "
+        f"selection={os.environ.get('EDGEQUAKE_EXTRACT_CAPS_SELECTION')} (want fifo)"
+    )
     base = base_url or api_base()
     fx = verify_fixtures()
     print(
@@ -530,16 +548,37 @@ def run_stage(
         questions = questions[:max_questions]
 
     corpus_texts, ingest_meta = _prepare_ingest_corpus(questions)
-    from .acc_env import assert_publication_ingest, backend_pin_mismatches
+    from .acc_env import (
+        assert_publication_ingest,
+        backend_pin_mismatches,
+        publication_extract_caps_mismatches,
+    )
 
     assert_publication_ingest(ingest_meta)
+    caps_bad = publication_extract_caps_mismatches()
+    if caps_bad:
+        msg = "Acc extract-cap pin mismatch: " + "; ".join(caps_bad)
+        print(f"ERROR: {msg}", flush=True)
+        print(
+            "Fix: apply_acc_publication_pins / start_acc_backend "
+            "(EDGEQUAKE_EXTRACT_CAPS_SELECTION=fifo)",
+            flush=True,
+        )
+        if os.environ.get("BENCH001_PUBLICATION", "").strip() in {"1", "true", "yes"}:
+            raise RuntimeError(msg)
     q_conc = query_concurrency(concurrency)
     e_conc = eval_concurrency_pin(eval_concurrency_n)
     if concurrency is not None:
         os.environ["BENCH001_QUERY_CONCURRENCY"] = str(q_conc)
     if eval_concurrency_n is not None:
         os.environ["BENCH001_EVAL_CONCURRENCY"] = str(e_conc)
-    from .fair_pins import chunk_overlap_token_size, chunk_token_size
+    from .fair_pins import (
+        chunk_overlap_token_size,
+        chunk_token_size,
+        extract_caps_selection,
+        extract_max_entities,
+        extract_max_records,
+    )
 
     csize = chunk_token_size()
     coverlap = chunk_overlap_token_size()
@@ -553,6 +592,9 @@ def run_stage(
         "corpus_chars": corpus_chars,
         "chunk_token_size": csize,
         "chunk_overlap_token_size": coverlap,
+        "extract_max_entities": extract_max_entities(),
+        "extract_max_records": extract_max_records(),
+        "extract_caps_selection": extract_caps_selection(),
         "dry_run": dry_run,
         "query_only": query_only,
         "eq_only": eq_only,

@@ -48,6 +48,14 @@ pub struct UploadDocumentRequest {
     /// Optional chunk size/overlap/separator overrides.
     #[serde(default)]
     pub chunk_options: Option<serde_json::Value>,
+
+    /// SPEC-117: optional per-upload max entities per LLM extraction response.
+    #[serde(default)]
+    pub extract_max_entities: Option<u32>,
+
+    /// SPEC-117: optional per-upload max total entity+relationship rows per response.
+    #[serde(default)]
+    pub extract_max_records: Option<u32>,
 }
 
 /// Document upload response.

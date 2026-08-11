@@ -207,6 +207,14 @@ export interface UpdateWorkspaceRequest {
    */
   extraction_language?: string | null;
   /**
+   * Chunking mode (SPEC-116). Pass `"inherit"` / `"none"` / `""` to clear.
+   */
+  chunking_mode?: string | null;
+  /** Fixed chunk size when mode=fixed (SPEC-116). */
+  chunk_token_size?: number | null;
+  /** Fixed overlap when mode=fixed (SPEC-116). */
+  chunk_overlap_token_size?: number | null;
+  /**
    * Custom entity-type → hex color map (SPEC-102).
    * Empty object clears overrides.
    */

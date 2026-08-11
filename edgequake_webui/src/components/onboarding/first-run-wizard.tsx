@@ -7,6 +7,8 @@ import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-
 import { ReviewStep } from '@/components/onboarding/steps/review-step';
 import { TenantBasicsStep } from '@/components/onboarding/steps/tenant-basics-step';
 import { WorkspaceBasicsStep } from '@/components/onboarding/steps/workspace-basics-step';
+import { WorkspaceChunkingStep } from '@/components/onboarding/steps/workspace-chunking-step';
+import { WorkspaceExtractBudgetStep } from '@/components/onboarding/steps/workspace-extract-budget-step';
 import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace-extraction-step';
 import {
   Dialog,
@@ -228,6 +230,10 @@ export function FirstRunWizard({ surface = 'dashboard' }: FirstRunWizardProps) {
         );
       case 'workspace-basics':
         return <WorkspaceBasicsStep draft={draft} onChange={patchDraft} />;
+      case 'chunking':
+        return <WorkspaceChunkingStep draft={draft} onChange={patchDraft} />;
+      case 'extract-budget':
+        return <WorkspaceExtractBudgetStep draft={draft} onChange={patchDraft} />;
       case 'extraction':
         return <WorkspaceExtractionStep draft={draft} onChange={patchDraft} />;
       case 'review':

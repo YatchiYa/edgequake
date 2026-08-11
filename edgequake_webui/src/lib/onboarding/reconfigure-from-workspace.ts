@@ -2,6 +2,11 @@
  * SPEC-101 Wave 8 — Prefill reconfigure wizard from an existing Workspace.
  */
 
+import {
+  ACC_FAIR_CHUNK_OVERLAP,
+  ACC_FAIR_CHUNK_TOKEN_SIZE,
+  parseChunkingMode,
+} from '@/constants/chunking-policy';
 import { ENTITY_PRESETS, type PresetKey } from '@/constants/entity-presets';
 import {
   EDGE_PRESETS,
@@ -124,6 +129,16 @@ export function prefillReconfigureFromWorkspace(workspace: Workspace): Reconfigu
     workspaceDescription: workspace.description ?? '',
     useServerDefaults: !hasOverrides,
     extractionLanguage: workspace.extraction_language ?? null,
+    chunkingMode: workspace.chunking_mode
+      ? parseChunkingMode(workspace.chunking_mode)
+      : null,
+    chunkTokenSize: workspace.chunk_token_size ?? ACC_FAIR_CHUNK_TOKEN_SIZE,
+    chunkOverlapTokenSize:
+      workspace.chunk_overlap_token_size ?? ACC_FAIR_CHUNK_OVERLAP,
+    extractBudgetMode:
+      typeof workspace.extract_max_entities === 'number' ? 'custom' : null,
+    extractMaxEntities: workspace.extract_max_entities ?? 40,
+    extractMaxRecords: workspace.extract_max_records ?? 100,
     entityTypes,
     entityTypesStrict: workspace.entity_types_strict ?? true,
     entityTypeColors: { ...(workspace.entity_type_colors ?? {}) },
@@ -148,6 +163,12 @@ export function prefillReconfigureFromWorkspace(workspace: Workspace): Reconfigu
     vision,
     pdfParserBackend,
     extractionLanguage: draft.extractionLanguage,
+    chunkingMode: draft.chunkingMode,
+    chunkTokenSize: draft.chunkTokenSize,
+    chunkOverlapTokenSize: draft.chunkOverlapTokenSize,
+    extractBudgetMode: draft.extractBudgetMode,
+    extractMaxEntities: draft.extractMaxEntities,
+    extractMaxRecords: draft.extractMaxRecords,
     entityTypes: [...draft.entityTypes],
     entityTypesStrict: draft.entityTypesStrict,
     entityTypeColors: { ...draft.entityTypeColors },
@@ -180,6 +201,12 @@ export function snapshotFromWizardState(args: {
     vision: args.vision,
     pdfParserBackend: args.draft.pdfParserBackend,
     extractionLanguage: args.draft.extractionLanguage,
+    chunkingMode: args.draft.chunkingMode,
+    chunkTokenSize: args.draft.chunkTokenSize,
+    chunkOverlapTokenSize: args.draft.chunkOverlapTokenSize,
+    extractBudgetMode: args.draft.extractBudgetMode,
+    extractMaxEntities: args.draft.extractMaxEntities,
+    extractMaxRecords: args.draft.extractMaxRecords,
     entityTypes: [...args.draft.entityTypes],
     entityTypesStrict: args.draft.entityTypesStrict,
     entityTypeColors: { ...(args.draft.entityTypeColors ?? {}) },

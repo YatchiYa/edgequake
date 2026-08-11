@@ -9,6 +9,8 @@ Publication Acc pins (forced, not setdefault):
   text LLM / vision / judge = mistral-small-latest
   embedding = mistral-embed (Mistral embedding API — not a chat model)
   chunk = 1200 / overlap 100, adaptive off
+  extract caps = 40 / 100 + selection=fifo (SPEC-117 Acc / LightRAG parity;
+    product default may be relation_aware)
   Mix Acc law (SPEC-086) = E2-occ: round_robin · rerank off · bfs · retrieval
   rank · LR VECTOR budget · occurrence_sort · Fact L2 fact_replace
 """
@@ -38,6 +40,10 @@ ACC_EMBED_MODEL = "mistral-embed"
 ACC_EMBED_DIM = "1024"
 ACC_CHUNK_SIZE = "1200"
 ACC_CHUNK_OVERLAP = "100"
+# SPEC-117 / LightRAG PR #2950 — Acc matched K; selection fifo (not product default).
+ACC_EXTRACT_MAX_ENTITIES = "40"
+ACC_EXTRACT_MAX_RECORDS = "100"
+ACC_EXTRACT_CAPS_SELECTION = "fifo"
 
 # Force-overwrite map for publication Acc (shell bleed cannot win).
 PUBLICATION_ENV: dict[str, str] = {
@@ -68,6 +74,9 @@ PUBLICATION_ENV: dict[str, str] = {
     "EDGEQUAKE_ADAPTIVE_CHUNKING": "0",
     "EDGEQUAKE_CHUNK_SIZE": ACC_CHUNK_SIZE,
     "EDGEQUAKE_CHUNK_OVERLAP": ACC_CHUNK_OVERLAP,
+    "EDGEQUAKE_MAX_EXTRACTION_ENTITIES": ACC_EXTRACT_MAX_ENTITIES,
+    "EDGEQUAKE_MAX_EXTRACTION_RECORDS": ACC_EXTRACT_MAX_RECORDS,
+    "EDGEQUAKE_EXTRACT_CAPS_SELECTION": ACC_EXTRACT_CAPS_SELECTION,
     "EDGEQUAKE_MIX_ARM_GATE": "false",
     # SPEC-086 Acc law = E2-occ (prior P0 rrf is labeled peer only).
     "EDGEQUAKE_MIX_FUSION": "round_robin",
@@ -309,10 +318,34 @@ def apply_acc_publication_pins(
             f"llm={ACC_LLM_MODEL} vision={ACC_VISION_MODEL} "
             f"embed={ACC_EMBED_MODEL} judge={ACC_JUDGE_MODEL} "
             f"chunk={ACC_CHUNK_SIZE}/{ACC_CHUNK_OVERLAP} "
+            f"extract_caps={ACC_EXTRACT_MAX_ENTITIES}/{ACC_EXTRACT_MAX_RECORDS}"
+            f"+{ACC_EXTRACT_CAPS_SELECTION} "
             f"ingest_max_chars={os.environ.get('BENCH001_INGEST_MAX_CHARS')} "
             f"publication={os.environ.get('BENCH001_PUBLICATION', '0')}",
             flush=True,
         )
+
+
+def publication_extract_caps_mismatches(
+    *,
+    env: dict[str, str] | None = None,
+) -> list[str]:
+    """Env mismatches for SPEC-117 Acc extract-cap pins (not exposed on /health).
+
+    Product default selection may be ``relation_aware``; Acc must force ``fifo``.
+    """
+    target = env if env is not None else os.environ
+    expected = {
+        "EDGEQUAKE_MAX_EXTRACTION_ENTITIES": ACC_EXTRACT_MAX_ENTITIES,
+        "EDGEQUAKE_MAX_EXTRACTION_RECORDS": ACC_EXTRACT_MAX_RECORDS,
+        "EDGEQUAKE_EXTRACT_CAPS_SELECTION": ACC_EXTRACT_CAPS_SELECTION,
+    }
+    bad: list[str] = []
+    for key, want in expected.items():
+        got = (target.get(key) or "").strip().lower()
+        if got != want.lower():
+            bad.append(f"{key}={got or '(unset)'} (want {want})")
+    return bad
 
 
 def backend_pin_mismatches(health: dict[str, Any]) -> list[str]:

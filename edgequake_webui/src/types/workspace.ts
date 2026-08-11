@@ -175,6 +175,23 @@ export interface Workspace {
    */
   extraction_language?: string | null;
   /**
+   * Workspace chunking mode (SPEC-116): `inherit` | `adaptive` | `fixed`.
+   * Null/absent means inherit fleet env adaptive/fixed knobs.
+   */
+  chunking_mode?: string | null;
+  /** Fixed chunk token size when `chunking_mode=fixed` (default 1200). */
+  chunk_token_size?: number | null;
+  /** Fixed overlap when `chunking_mode=fixed` (default 100). */
+  chunk_overlap_token_size?: number | null;
+  /**
+   * SPEC-117: `custom` when extract caps are set; absent = inherit fleet.
+   */
+  extract_budget_mode?: string | null;
+  /** SPEC-117: max entities per LLM extraction response. */
+  extract_max_entities?: number | null;
+  /** SPEC-117: max total entity+relationship rows per response. */
+  extract_max_records?: number | null;
+  /**
    * Custom entity-type → hex color map for graph visualization.
    * @implements SPEC-102 / FEAT-102
    */
@@ -271,6 +288,16 @@ export interface CreateWorkspaceRequest {
    * Extraction output language (SPEC-096). Omit for server default.
    */
   extraction_language?: string | null;
+  /** Chunking mode (SPEC-116): inherit | adaptive | fixed. */
+  chunking_mode?: string | null;
+  /** Fixed size when mode=fixed (SPEC-116). */
+  chunk_token_size?: number | null;
+  /** Fixed overlap when mode=fixed (SPEC-116). */
+  chunk_overlap_token_size?: number | null;
+  /** SPEC-117: inherit | custom. */
+  extract_budget_mode?: string | null;
+  extract_max_entities?: number | null;
+  extract_max_records?: number | null;
   /**
    * Custom entity-type → hex color map (SPEC-102).
    */

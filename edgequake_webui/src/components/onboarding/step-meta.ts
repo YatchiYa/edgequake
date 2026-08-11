@@ -34,11 +34,23 @@ export const STEP_META: Record<
     descriptionKey: 'onboarding.documentParsingSubtitle',
     description: 'Choose how PDFs are converted to text.',
   },
+  chunking: {
+    titleKey: 'onboarding.chunkingTitle',
+    title: 'Chunking',
+    descriptionKey: 'onboarding.chunkingSubtitle',
+    description: 'How documents are split before entity extraction.',
+  },
+  'extract-budget': {
+    titleKey: 'onboarding.extractBudgetTitle',
+    title: 'Extract budget',
+    descriptionKey: 'onboarding.extractBudgetSubtitle',
+    description: 'Per-response entity and record caps for LLM extraction.',
+  },
   extraction: {
     titleKey: 'onboarding.extractionTitle',
     title: 'Extraction preferences',
     descriptionKey: 'onboarding.extractionSubtitle',
-    description: 'Language and entity types for the knowledge graph.',
+    description: 'Language and knowledge-graph schema for extraction.',
   },
   review: {
     titleKey: 'onboarding.reviewTitle',

@@ -53,14 +53,7 @@ pub fn mistral_workspace_json_with_entity_types(
     name: impl AsRef<str>,
     entity_types: &[&str],
 ) -> Value {
-    mistral_kg_schema_workspace_json(
-        name,
-        entity_types,
-        &[],
-        &[],
-        true,
-        true,
-    )
+    mistral_kg_schema_workspace_json(name, entity_types, &[], &[], true, true)
 }
 
 /// Provider-agnostic workspace create payload with dual allowlists + typed edges.

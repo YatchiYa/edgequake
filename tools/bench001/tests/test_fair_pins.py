@@ -8,11 +8,17 @@ from pathlib import Path
 from bench001.eval_score import _to_retrieval_eval_json
 from bench001.fair_pins import (
     FAIR_CHUNK_TOKEN_SIZE,
+    FAIR_EXTRACT_CAPS_SELECTION,
+    FAIR_EXTRACT_MAX_ENTITIES,
+    FAIR_EXTRACT_MAX_RECORDS,
     PUBLISH_PROFILE_ID,
     adaptive_chunking_enabled,
     chunk_overlap_token_size,
     chunk_token_size,
     eq_query_overrides,
+    extract_caps_selection,
+    extract_max_entities,
+    extract_max_records,
     lr_query_param_overrides,
     mix_arm_gate_enabled,
     publish_fairness_enabled,
@@ -85,14 +91,32 @@ def test_fair_chunk_pins_under_publish_fairness(monkeypatch):
     monkeypatch.delenv("EDGEQUAKE_ADAPTIVE_CHUNKING", raising=False)
     monkeypatch.delenv("EDGEQUAKE_CHUNK_SIZE", raising=False)
     monkeypatch.delenv("EDGEQUAKE_CHUNK_OVERLAP", raising=False)
+    monkeypatch.delenv("EDGEQUAKE_EXTRACT_CAPS_SELECTION", raising=False)
+    monkeypatch.delenv("EDGEQUAKE_MAX_EXTRACTION_ENTITIES", raising=False)
+    monkeypatch.delenv("EDGEQUAKE_MAX_EXTRACTION_RECORDS", raising=False)
     monkeypatch.setenv("BENCH001_PUBLISH_FAIRNESS", "1")
     assert adaptive_chunking_enabled() is False
     assert chunk_token_size() == FAIR_CHUNK_TOKEN_SIZE
     assert chunk_overlap_token_size() == 100
+    assert extract_caps_selection() == FAIR_EXTRACT_CAPS_SELECTION
+    assert extract_max_entities() == FAIR_EXTRACT_MAX_ENTITIES
+    assert extract_max_records() == FAIR_EXTRACT_MAX_RECORDS
     pins = publish_pin_fields()
     assert pins["adaptive_chunking"] is False
     assert pins["chunk_token_size"] == 1200
     assert pins["chunk_overlap_token_size"] == 100
+    assert pins["extract_caps_selection"] == "fifo"
+    assert pins["extract_max_entities"] == 40
+    assert pins["extract_max_records"] == 100
+    assert "EXTRACT_CAPS_SELECTION=fifo" in pins["fairness_note"]
+
+
+def test_extract_caps_selection_product_default_when_fairness_off(monkeypatch):
+    monkeypatch.setenv("BENCH001_PUBLISH_FAIRNESS", "0")
+    monkeypatch.delenv("EDGEQUAKE_EXTRACT_CAPS_SELECTION", raising=False)
+    assert extract_caps_selection() == "relation_aware"
+    monkeypatch.setenv("EDGEQUAKE_EXTRACT_CAPS_SELECTION", "fifo")
+    assert extract_caps_selection() == "fifo"
 
 
 def test_adaptive_chunking_env_override(monkeypatch):

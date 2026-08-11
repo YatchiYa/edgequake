@@ -6,6 +6,7 @@ use edgequake_pipeline::{
     build_chunker_config, build_ingestion_pipeline, calculate_adaptive_chunk_size, ChunkStrategy,
     IngestionPipelineOptions,
 };
+use serial_test::serial;
 use std::sync::Arc;
 
 #[test]
@@ -35,6 +36,7 @@ fn ingestion_pipeline_applies_document_size() {
 }
 
 #[test]
+#[serial]
 fn fixed_chunking_env_overrides_adaptive_for_large_docs() {
     let prev_adaptive = std::env::var("EDGEQUAKE_ADAPTIVE_CHUNKING").ok();
     let prev_size = std::env::var("EDGEQUAKE_CHUNK_SIZE").ok();
@@ -61,4 +63,46 @@ fn fixed_chunking_env_overrides_adaptive_for_large_docs() {
             None => std::env::remove_var("EDGEQUAKE_CHUNK_OVERLAP"),
         }
     }
+}
+
+#[test]
+#[serial]
+fn workspace_fixed_policy_beats_env_adaptive() {
+    use edgequake_pipeline::{build_chunker_config_with_policy, ChunkingPolicy};
+    let prev = std::env::var("EDGEQUAKE_ADAPTIVE_CHUNKING").ok();
+    unsafe {
+        std::env::set_var("EDGEQUAKE_ADAPTIVE_CHUNKING", "1");
+    }
+    let cfg = build_chunker_config_with_policy(
+        200_000,
+        ChunkStrategy::Recursive,
+        Some(&ChunkingPolicy::acc_fair()),
+        None,
+    );
+    assert_eq!(cfg.chunk_size, 1200);
+    assert_eq!(cfg.chunk_overlap, 100);
+    unsafe {
+        match prev {
+            Some(v) => std::env::set_var("EDGEQUAKE_ADAPTIVE_CHUNKING", v),
+            None => std::env::remove_var("EDGEQUAKE_ADAPTIVE_CHUNKING"),
+        }
+    }
+}
+
+#[test]
+fn document_chunk_options_win_last_over_workspace_fixed() {
+    use edgequake_pipeline::{build_chunker_config_with_policy, ChunkOptions, ChunkingPolicy};
+    let opts = ChunkOptions {
+        chunk_token_size: Some(500),
+        chunk_overlap_token_size: Some(50),
+        separators: vec![],
+    };
+    let cfg = build_chunker_config_with_policy(
+        200_000,
+        ChunkStrategy::Recursive,
+        Some(&ChunkingPolicy::acc_fair()),
+        Some(&opts),
+    );
+    assert_eq!(cfg.chunk_size, 500);
+    assert_eq!(cfg.chunk_overlap, 50);
 }

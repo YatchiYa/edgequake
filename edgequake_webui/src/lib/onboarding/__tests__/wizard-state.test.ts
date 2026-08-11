@@ -9,20 +9,40 @@ import {
 } from '../wizard-state';
 
 describe('wizard-state', () => {
-  it('builds create-tenant steps with extraction (parity)', () => {
+  it('builds create-tenant steps with ingest tuning before extraction', () => {
     expect(stepsForWizard('create-tenant')).toEqual([
       'tenant-basics',
       'models',
       'workspace-basics',
+      'chunking',
+      'extract-budget',
       'extraction',
       'review',
     ]);
   });
 
-  it('builds reconfigure-workspace steps (LAW-101-12)', () => {
+  it('builds reconfigure-workspace steps (LAW-101-12 + ingest tuning)', () => {
     expect(stepsForWizard('reconfigure-workspace')).toEqual([
       'models',
       'document-parsing',
+      'chunking',
+      'extract-budget',
+      'extraction',
+      'review',
+    ]);
+  });
+
+  it('builds create-workspace steps with ingest tuning before extraction', () => {
+    expect(
+      stepsForWizard('create-workspace', {
+        includeAdmin: false,
+        includeExtraction: true,
+      }),
+    ).toEqual([
+      'workspace-basics',
+      'models',
+      'chunking',
+      'extract-budget',
       'extraction',
       'review',
     ]);
@@ -49,12 +69,54 @@ describe('wizard-state', () => {
     expect(canProceed('document-parsing', EMPTY_WIZARD_DRAFT)).toBe(true);
   });
 
+  it('blocks chunking Next when fixed pair is invalid', () => {
+    expect(canProceed('chunking', EMPTY_WIZARD_DRAFT)).toBe(true);
+    expect(
+      canProceed('chunking', {
+        ...EMPTY_WIZARD_DRAFT,
+        chunkingMode: 'fixed',
+        chunkTokenSize: 100,
+        chunkOverlapTokenSize: 100,
+      }),
+    ).toBe(false);
+    expect(
+      canProceed('chunking', {
+        ...EMPTY_WIZARD_DRAFT,
+        chunkingMode: 'fixed',
+        chunkTokenSize: 1200,
+        chunkOverlapTokenSize: 100,
+      }),
+    ).toBe(true);
+  });
+
+  it('blocks extract-budget Next when custom pair is invalid', () => {
+    expect(canProceed('extract-budget', EMPTY_WIZARD_DRAFT)).toBe(true);
+    expect(
+      canProceed('extract-budget', {
+        ...EMPTY_WIZARD_DRAFT,
+        extractBudgetMode: 'custom',
+        extractMaxEntities: 50,
+        extractMaxRecords: 40,
+      }),
+    ).toBe(false);
+    expect(
+      canProceed('extract-budget', {
+        ...EMPTY_WIZARD_DRAFT,
+        extractBudgetMode: 'custom',
+        extractMaxEntities: 40,
+        extractMaxRecords: 100,
+      }),
+    ).toBe(true);
+  });
+
   it('includes admin on first-run when requested', () => {
     expect(stepsForWizard('first-run', { includeAdmin: true, includeExtraction: true })).toEqual([
       'admin',
       'tenant-basics',
       'models',
       'workspace-basics',
+      'chunking',
+      'extract-budget',
       'extraction',
       'review',
     ]);

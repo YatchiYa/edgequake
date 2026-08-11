@@ -123,7 +123,7 @@ Optional early fail (does **not** replace `make bench`): `make bench001-smoke-ac
 | Check | Requirement |
 |-------|-------------|
 | Validity | `specs/001-benchmark/e2e/artifacts/publish/latest/scorecard.json` → `valid: true` (dual-SUT + official judge + L2 + empty-answer/context ≤5%) |
-| Pins | Fair Acc profile (`P0_mistral_small_mix_chunk1200_*`), EQ/LR `mix`, chunk 1200/100, retrieve top-k **30** |
+| Pins | Fair Acc profile (`P0_mistral_small_mix_chunk1200_*`), EQ/LR `mix`, chunk 1200/100, extract **40/100 + `EDGEQUAKE_EXTRACT_CAPS_SELECTION=fifo`** (SPEC-117), retrieve top-k **30** |
 | Artifacts | `publish/latest/`: `BUSINESS_REPORT.md`, `EXEC_SUMMARY.txt`, `SUMMARY.md`, `scorecard.json` |
 | Claims | Peer / statistical-tie language only unless [080 promote checklist](../../specs/001-benchmark/001-edgquake-improvements/080-phase-g-promote-checklist.md) is green |
 

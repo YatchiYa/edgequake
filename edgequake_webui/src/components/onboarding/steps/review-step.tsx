@@ -328,6 +328,53 @@ export function ReviewStep({
       ) : null}
 
       <Group
+        title={t('onboarding.chunkingSection', 'Chunking')}
+        onEdit={onEditStep ? () => onEditStep('chunking') : undefined}
+        editLabel={editLabel}
+        testId="wizard-review-chunking"
+      >
+        <Row
+          label={t('workspace.chunking.mode', 'Mode')}
+          value={
+            !draft.chunkingMode || draft.chunkingMode === 'inherit'
+              ? t('workspace.chunking.inherit', 'Inherit (fleet env)')
+              : draft.chunkingMode === 'adaptive'
+                ? t('workspace.chunking.adaptive', 'Adaptive')
+                : t('workspace.chunking.fixedSummary', 'Fixed · {{size}}/{{overlap}}', {
+                    size: draft.chunkTokenSize,
+                    overlap: draft.chunkOverlapTokenSize,
+                  })
+          }
+        />
+      </Group>
+
+      <Group
+        title={t('onboarding.extractBudgetSection', 'Extract budget')}
+        onEdit={onEditStep ? () => onEditStep('extract-budget') : undefined}
+        editLabel={editLabel}
+        testId="wizard-review-extract-budget"
+      >
+        <Row
+          label={t('workspace.extractBudget.title', 'Extract budget')}
+          value={
+            draft.extractBudgetMode === 'custom'
+              ? t(
+                  'workspace.extractBudget.customSummary',
+                  'Custom · {{entities}}/{{records}}',
+                  {
+                    entities: draft.extractMaxEntities,
+                    records: draft.extractMaxRecords,
+                  },
+                )
+              : t(
+                  'workspace.extractBudget.inherit',
+                  'Inherit fleet (usually 40 entities / 100 records)',
+                )
+          }
+        />
+      </Group>
+
+      <Group
         title={t('onboarding.extractionSection', 'Extraction')}
         onEdit={onEditStep ? () => onEditStep('extraction') : undefined}
         editLabel={editLabel}

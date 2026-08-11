@@ -510,7 +510,7 @@ mod tests {
             footnotes: "n/a".into(),
             leading: leading.into(),
             trailing: "n/a".into(),
-        
+
             image_system_prompt: None,
             chart_system_prompt: None,
             figure_system_prompt: None,

@@ -36,12 +36,13 @@
 //! ```
 
 pub mod cache;
+pub mod chunking_metadata;
 pub mod config;
 pub mod conversation_service;
 pub mod entity_type_colors;
-pub mod type_list;
 pub mod env;
 pub mod error;
+pub mod extract_budget_metadata;
 pub mod graph_mapping;
 pub mod keyword_extractor;
 pub mod llm_roles;
@@ -53,6 +54,7 @@ pub mod sota_bridge;
 #[cfg(feature = "pipeline")]
 pub mod tenant_manager;
 pub mod token_budget;
+pub mod type_list;
 pub mod types;
 pub mod utils;
 pub mod workspace_model_update;

@@ -357,9 +357,11 @@ pub fn enforce_relation_edge(
     }
 
     // Strict: prefer an edge with same source+target (any relation).
-    if let Some(e) = schema.relation_edges.iter().find(|e| {
-        normalize_type_token(&e.source) == src && normalize_type_token(&e.target) == tgt
-    }) {
+    if let Some(e) = schema
+        .relation_edges
+        .iter()
+        .find(|e| normalize_type_token(&e.source) == src && normalize_type_token(&e.target) == tgt)
+    {
         return (normalize_type_token(&e.relation), true);
     }
 
@@ -390,14 +392,8 @@ pub fn enforce_relationship_against_schema(
     schema: &EntityExtractionSchema,
 ) -> (String, bool) {
     let (rel, mut remapped) = enforce_relation_type(relation_type, schema);
-    let src_ty = name_to_type
-        .get(source_name)
-        .cloned()
-        .unwrap_or_default();
-    let tgt_ty = name_to_type
-        .get(target_name)
-        .cloned()
-        .unwrap_or_default();
+    let src_ty = name_to_type.get(source_name).cloned().unwrap_or_default();
+    let tgt_ty = name_to_type.get(target_name).cloned().unwrap_or_default();
     if src_ty.is_empty() || tgt_ty.is_empty() || !schema.has_relation_edges() {
         return (rel, remapped);
     }
@@ -500,8 +496,7 @@ mod tests {
     #[test]
     fn enforce_relation_edge_strict_remaps_to_matching_pair() {
         let schema = edged_schema(true);
-        let (t, remapped) =
-            enforce_relation_edge("PERSON", "RELATED_TO", "ORGANIZATION", &schema);
+        let (t, remapped) = enforce_relation_edge("PERSON", "RELATED_TO", "ORGANIZATION", &schema);
         assert_eq!(t, "WORKS_AT");
         assert!(remapped);
     }
@@ -509,8 +504,7 @@ mod tests {
     #[test]
     fn enforce_relation_edge_permissive_passthrough() {
         let schema = edged_schema(false);
-        let (t, remapped) =
-            enforce_relation_edge("PERSON", "RELATED_TO", "LOCATION", &schema);
+        let (t, remapped) = enforce_relation_edge("PERSON", "RELATED_TO", "LOCATION", &schema);
         assert_eq!(t, "RELATED_TO");
         assert!(!remapped);
     }
@@ -570,7 +564,10 @@ mod tests {
             "relation_types".to_string(),
             Value::Array(vec![Value::String("works-at".into())]),
         );
-        md.insert(METADATA_RELATION_TYPES_STRICT.to_string(), Value::Bool(false));
+        md.insert(
+            METADATA_RELATION_TYPES_STRICT.to_string(),
+            Value::Bool(false),
+        );
         let schema = EntityExtractionSchema::from_workspace_metadata(&md);
         assert_eq!(schema.relation_types, vec!["WORKS_AT".to_string()]);
         assert!(!schema.relation_strict);
@@ -680,8 +677,7 @@ mod tests {
     fn enforce_relation_edge_reversed_falls_back_to_vocabulary() {
         let schema = edged_schema(true);
         // ORG —WORKS_AT→ PERSON is not in the allow-list; strict remaps via vocab.
-        let (t, remapped) =
-            enforce_relation_edge("ORGANIZATION", "WORKS_AT", "PERSON", &schema);
+        let (t, remapped) = enforce_relation_edge("ORGANIZATION", "WORKS_AT", "PERSON", &schema);
         assert!(remapped);
         assert!(
             t == "RELATED_TO" || t == "WORKS_AT",
@@ -693,13 +689,8 @@ mod tests {
     fn enforce_relationship_skips_edge_when_types_unknown() {
         let schema = edged_schema(true);
         let name_to_type = HashMap::new(); // missing Alice/Acme types
-        let (rel, remapped) = enforce_relationship_against_schema(
-            "Alice",
-            "Acme",
-            "EMPLOYS",
-            &name_to_type,
-            &schema,
-        );
+        let (rel, remapped) =
+            enforce_relationship_against_schema("Alice", "Acme", "EMPLOYS", &name_to_type, &schema);
         // Label remap still applies; edge enforce skipped without endpoint types.
         assert_eq!(rel, "RELATED_TO");
         assert!(remapped);

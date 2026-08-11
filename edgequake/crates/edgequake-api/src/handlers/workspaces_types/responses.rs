@@ -123,6 +123,22 @@ pub struct WorkspaceResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extraction_language: Option<String>,
 
+    /// SPEC-116 chunking mode (`adaptive` | `fixed`). Absent = inherit fleet env.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunking_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_token_size: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_overlap_token_size: Option<u32>,
+
+    /// SPEC-117: absent = inherit fleet env; present when custom ints stored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract_budget_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract_max_entities: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract_max_records: Option<u32>,
+
     /// Custom entity-type → hex color map for graph visualization (SPEC-102).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity_type_colors: Option<std::collections::HashMap<String, String>>,

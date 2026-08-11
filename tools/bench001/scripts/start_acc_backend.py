@@ -53,6 +53,10 @@ ACC_EXPORTS = {
     "EDGEQUAKE_ADAPTIVE_CHUNKING": "0",
     "EDGEQUAKE_CHUNK_SIZE": "1200",
     "EDGEQUAKE_CHUNK_OVERLAP": "100",
+    # SPEC-117 Acc / LightRAG parity: matched K + fifo hard truncate (not product default).
+    "EDGEQUAKE_MAX_EXTRACTION_ENTITIES": "40",
+    "EDGEQUAKE_MAX_EXTRACTION_RECORDS": "100",
+    "EDGEQUAKE_EXTRACT_CAPS_SELECTION": "fifo",
     "EDGEQUAKE_MIX_ARM_GATE": "false",
     "EDGEQUAKE_RELATED_CHUNK_NUMBER": "5",
     "EDGEQUAKE_ORPHAN_RETRACT_ON_RECOVER": "0",
@@ -427,7 +431,10 @@ def wait_health(*, port: int, timeout_s: int) -> int:
                     import json
 
                     sys.path.insert(0, str(REPO / "tools" / "bench001"))
-                    from bench001.acc_env import backend_pin_mismatches
+                    from bench001.acc_env import (
+                        backend_pin_mismatches,
+                        publication_extract_caps_mismatches,
+                    )
 
                     # SPEC-086: Acc law is round_robin — pin check must see ALLOW.
                     if ACC_EXPORTS.get("BENCH001_ALLOW_ROUND_ROBIN"):
@@ -435,6 +442,22 @@ def wait_health(*, port: int, timeout_s: int) -> int:
                             "BENCH001_ALLOW_ROUND_ROBIN",
                             ACC_EXPORTS["BENCH001_ALLOW_ROUND_ROBIN"],
                         )
+                    # SPEC-117: extract-cap pins live in server env (not /health).
+                    for k in (
+                        "EDGEQUAKE_MAX_EXTRACTION_ENTITIES",
+                        "EDGEQUAKE_MAX_EXTRACTION_RECORDS",
+                        "EDGEQUAKE_EXTRACT_CAPS_SELECTION",
+                    ):
+                        if k in ACC_EXPORTS:
+                            os.environ[k] = ACC_EXPORTS[k]
+                    caps_bad = publication_extract_caps_mismatches()
+                    if caps_bad:
+                        print(
+                            "acc_backend: extract-cap pin mismatch: "
+                            + "; ".join(caps_bad),
+                            file=sys.stderr,
+                        )
+                        return 1
                     health = json.loads(r.stdout)
                     bad = backend_pin_mismatches(health)
                     if bad:
@@ -449,7 +472,11 @@ def wait_health(*, port: int, timeout_s: int) -> int:
                     print(
                         f"acc_backend: healthy pid={PID_FILE.read_text().strip()} "
                         f"url={url} llm={llm.get('name')}/{llm.get('model')} "
-                        f"embed={emb.get('name')}/{emb.get('model')}"
+                        f"embed={emb.get('name')}/{emb.get('model')} "
+                        f"extract_caps="
+                        f"{ACC_EXPORTS.get('EDGEQUAKE_MAX_EXTRACTION_ENTITIES')}/"
+                        f"{ACC_EXPORTS.get('EDGEQUAKE_MAX_EXTRACTION_RECORDS')}+"
+                        f"{ACC_EXPORTS.get('EDGEQUAKE_EXTRACT_CAPS_SELECTION')}"
                     )
                     return 0
                 except Exception as exc:  # noqa: BLE001

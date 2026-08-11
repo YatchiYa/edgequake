@@ -38,6 +38,11 @@ LRLIKE_ARMS_PROFILE_SUFFIX = "lrlike_arms_v2"
 FAIR_CHUNK_TOKEN_SIZE = 1200
 FAIR_CHUNK_OVERLAP_TOKEN_SIZE = 100
 
+# SPEC-117 Acc extract budget (LightRAG 40/100 + fifo selection).
+FAIR_EXTRACT_MAX_ENTITIES = 40
+FAIR_EXTRACT_MAX_RECORDS = 100
+FAIR_EXTRACT_CAPS_SELECTION = "fifo"
+
 
 def publish_fairness_enabled() -> bool:
     """Default on; set BENCH001_PUBLISH_FAIRNESS=0 to revert legacy topk=5 pins."""
@@ -102,6 +107,29 @@ def chunk_overlap_token_size() -> int:
         or os.environ.get("BENCH001_CHUNK_OVERLAP")
         or FAIR_CHUNK_OVERLAP_TOKEN_SIZE
     )
+
+
+def extract_max_entities() -> int:
+    return int(
+        os.environ.get("EDGEQUAKE_MAX_EXTRACTION_ENTITIES") or FAIR_EXTRACT_MAX_ENTITIES
+    )
+
+
+def extract_max_records() -> int:
+    return int(
+        os.environ.get("EDGEQUAKE_MAX_EXTRACTION_RECORDS") or FAIR_EXTRACT_MAX_RECORDS
+    )
+
+
+def extract_caps_selection() -> str:
+    """Hard-truncate strategy under K. Acc fair = fifo; product may be relation_aware."""
+    raw = (os.environ.get("EDGEQUAKE_EXTRACT_CAPS_SELECTION") or "").strip().lower()
+    if not raw:
+        if publish_fairness_enabled():
+            return FAIR_EXTRACT_CAPS_SELECTION
+        # Mirror pipeline default when fairness off: relation_aware.
+        return "relation_aware"
+    return raw
 
 
 def lr_query_param_overrides() -> dict[str, Any]:
@@ -463,6 +491,9 @@ def publish_pin_fields() -> dict[str, Any]:
         "adaptive_chunking": adaptive,
         "chunk_token_size": chunk_token_size(),
         "chunk_overlap_token_size": chunk_overlap_token_size(),
+        "extract_max_entities": extract_max_entities(),
+        "extract_max_records": extract_max_records(),
+        "extract_caps_selection": extract_caps_selection(),
         "ingest_max_chars": ingest_max_chars(),
         "eq_query_concurrency": int(
             os.environ.get("BENCH001_QUERY_CONCURRENCY")
@@ -483,6 +514,8 @@ def publish_pin_fields() -> dict[str, Any]:
             "Phase-1 EDGEQUAKE_MIX_RELEVANCY_PRUNE Acc default off; "
             "fair Acc ingest: adaptive_chunking off + chunk_token_size=1200 "
             "(LightRAG CHUNK_SIZE parity) unless explicitly ablated; "
+            "fair Acc extract: 40/100 + EDGEQUAKE_EXTRACT_CAPS_SELECTION=fifo "
+            "(SPEC-117; product default may be relation_aware); "
             "smoke-fast Acc may set BENCH001_INGEST_MAX_CHARS for fast force-ingest "
             "(full corpus = 0)"
         ),

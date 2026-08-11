@@ -45,11 +45,16 @@ pub use entity_type_policy::{
     METADATA_ENTITY_TYPES_STRICT, METADATA_RELATION_TYPES_STRICT,
 };
 pub use extract_caps::{
-    apply_default_extraction_caps, apply_extraction_caps, ExtractionCaps,
-    DEFAULT_MAX_EXTRACTION_ENTITIES, DEFAULT_MAX_EXTRACTION_RECORDS,
+    apply_default_extraction_caps, apply_extraction_caps, apply_extraction_caps_with_strategy,
+    extract_caps_were_applied, CapsSelectionStrategy, ExtractionCaps,
+    DEFAULT_MAX_EXTRACTION_ENTITIES, DEFAULT_MAX_EXTRACTION_RECORDS, EXTRACT_CAPS_SELECTION_ENV,
+    META_EXTRACT_MAX_ENTITIES, META_EXTRACT_MAX_RECORDS,
 };
 pub use json_extract::extract_json_from_response;
-pub use json_prompts::{json_extraction_prompt, json_gleaning_prompt, JSON_OUTPUT_FORMAT_SECTION};
+pub use json_prompts::{
+    json_extraction_prompt, json_extraction_prompt_with_caps, json_gleaning_prompt,
+    json_gleaning_prompt_with_caps, JSON_OUTPUT_FORMAT_SECTION,
+};
 pub use language::{
     canonicalize_extraction_language, extraction_language_from_metadata,
     is_extraction_language_clear, json_language_instruction, resolve_extraction_language,

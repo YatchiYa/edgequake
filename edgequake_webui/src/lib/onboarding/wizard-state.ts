@@ -3,6 +3,8 @@
  */
 
 import type { RelationEdge } from '@/constants/kg-schema-presets';
+import { isChunkingDraftValid } from '@/lib/onboarding/draft-chunking';
+import { isExtractBudgetDraftValid } from '@/lib/onboarding/draft-extract-budget';
 
 export type WizardKind =
   | 'first-run'
@@ -16,6 +18,8 @@ export type WizardStepId =
   | 'models'
   | 'workspace-basics'
   | 'document-parsing'
+  | 'chunking'
+  | 'extract-budget'
   | 'extraction'
   | 'review';
 
@@ -33,6 +37,14 @@ export interface WizardDraft {
   workspaceDescription: string;
   useServerDefaults: boolean;
   extractionLanguage: string | null;
+  /** SPEC-116 — inherit | adaptive | fixed (null ≡ inherit). */
+  chunkingMode: 'inherit' | 'adaptive' | 'fixed' | null;
+  chunkTokenSize: number;
+  chunkOverlapTokenSize: number;
+  /** SPEC-117 — inherit | custom (null ≡ inherit). */
+  extractBudgetMode: 'inherit' | 'custom' | null;
+  extractMaxEntities: number;
+  extractMaxRecords: number;
   entityTypes: string[];
   /** SPEC-101 Wave 8 — PDF parser (reconfigure). */
   pdfParserBackend: PdfParserBackendDraft;
@@ -72,6 +84,12 @@ export const EMPTY_WIZARD_DRAFT: WizardDraft = {
   workspaceDescription: '',
   useServerDefaults: true,
   extractionLanguage: null,
+  chunkingMode: null,
+  chunkTokenSize: 1200,
+  chunkOverlapTokenSize: 100,
+  extractBudgetMode: null,
+  extractMaxEntities: 40,
+  extractMaxRecords: 100,
   entityTypes: [],
   pdfParserBackend: 'none',
   visionExtractImages: true,
@@ -90,6 +108,25 @@ export const EMPTY_WIZARD_DRAFT: WizardDraft = {
   reasoningEffort: undefined,
 };
 
+/**
+ * Insert ingest-tuning steps before extraction:
+ * chunking → extract-budget → extraction (language / KG schema).
+ */
+function withIngestTuningBeforeExtraction(
+  steps: WizardStepId[],
+  includeExtraction: boolean,
+): WizardStepId[] {
+  if (!includeExtraction) return steps;
+  const out: WizardStepId[] = [];
+  for (const step of steps) {
+    if (step === 'extraction') {
+      out.push('chunking', 'extract-budget');
+    }
+    out.push(step);
+  }
+  return out;
+}
+
 export function stepsForWizard(
   kind: WizardKind,
   opts: { includeAdmin: boolean; includeExtraction: boolean } = {
@@ -98,16 +135,22 @@ export function stepsForWizard(
   },
 ): WizardStepId[] {
   if (kind === 'reconfigure-workspace') {
-    return ['models', 'document-parsing', 'extraction', 'review'];
+    return withIngestTuningBeforeExtraction(
+      ['models', 'document-parsing', 'extraction', 'review'],
+      true,
+    );
   }
   if (kind === 'create-tenant') {
-    return ['tenant-basics', 'models', 'workspace-basics', 'extraction', 'review'];
+    return withIngestTuningBeforeExtraction(
+      ['tenant-basics', 'models', 'workspace-basics', 'extraction', 'review'],
+      true,
+    );
   }
   if (kind === 'create-workspace') {
     const steps: WizardStepId[] = ['workspace-basics', 'models'];
     if (opts.includeExtraction) steps.push('extraction');
     steps.push('review');
-    return steps;
+    return withIngestTuningBeforeExtraction(steps, opts.includeExtraction);
   }
   // first-run
   const steps: WizardStepId[] = [];
@@ -115,7 +158,7 @@ export function stepsForWizard(
   steps.push('tenant-basics', 'models', 'workspace-basics');
   if (opts.includeExtraction) steps.push('extraction');
   steps.push('review');
-  return steps;
+  return withIngestTuningBeforeExtraction(steps, opts.includeExtraction);
 }
 
 export function canProceed(
@@ -149,6 +192,10 @@ export function canProceed(
       return opts.advancedModelsValid;
     case 'document-parsing':
       return true;
+    case 'chunking':
+      return isChunkingDraftValid(draft);
+    case 'extract-budget':
+      return isExtractBudgetDraftValid(draft);
     case 'extraction':
       return true;
     case 'review':

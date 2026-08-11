@@ -678,6 +678,9 @@ make backend-bg
 | `EDGEQUAKE_REASONING_EFFORT`   | Optional | Fleet default reasoning effort (SPEC-109); role env overrides | `none`, `minimal`, `low`, … |
 | `EDGEQUAKE_EXTRACT_REASONING_EFFORT` | Optional | Extract-role effort override (SPEC-109) | `minimal` |
 | `EDGEQUAKE_EXTRACTION_LANGUAGE`| Optional | Fleet default KG extraction NL language (SPEC-096); workspace metadata overrides | `English`, `Chinese`, `French`, … |
+| `EDGEQUAKE_MAX_EXTRACTION_ENTITIES` | Optional | Per-response entity cap (SPEC-117; default **40**) | `40` |
+| `EDGEQUAKE_MAX_EXTRACTION_RECORDS` | Optional | Per-response total rows cap (SPEC-117; default **100**) | `100` |
+| `EDGEQUAKE_EXTRACT_CAPS_SELECTION` | Optional | Hard truncate under K: product default **relation_aware**; Acc pins **`fifo`** | `fifo`, `relation_aware` |
 | `OLLAMA_HOST`                  | Optional | Ollama server URL               | `http://localhost:11434`                             |
 | `OLLAMA_EMBEDDING_MODEL`       | Optional | Ollama embedding model          | `embeddinggemma:latest`                              |
 | `RUST_LOG`                     | Optional | Logging level                   | `debug`, `info`, `warn`                              |

@@ -67,7 +67,11 @@ pub async fn upload_file(
                 );
                 streamed = Some(stream_field_to_tempfile(field, filename).await?);
             }
-            "metadata" | "chunk_strategy" | "chunk_options" => {
+            "metadata"
+            | "chunk_strategy"
+            | "chunk_options"
+            | "extract_max_entities"
+            | "extract_max_records" => {
                 let text = field.text().await.map_err(|e| {
                     ApiError::BadRequest(format!("Failed to read {field_name}: {e}"))
                 })?;
@@ -91,6 +95,9 @@ pub async fn upload_file(
 
     let content_hash = ContentHasher::hash_bytes(&content);
     let (chunk_strategy, chunk_options, metadata) = multipart_fields.effective_chunk_fields();
+    let (extract_max_entities, extract_max_records) = multipart_fields
+        .effective_extract_caps()
+        .map_err(ApiError::ValidationError)?;
 
     let outcome = admit_document_for_processing(
         &state,
@@ -109,6 +116,8 @@ pub async fn upload_file(
             document_type: None,
             chunk_strategy,
             chunk_options,
+            extract_max_entities,
+            extract_max_records,
             multimodal: upload_meta.multimodal,
             ingest_mode: upload_meta.ingest_mode,
             multimodal_manifest: resolved.manifest,

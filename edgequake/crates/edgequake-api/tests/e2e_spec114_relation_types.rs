@@ -47,7 +47,9 @@ async fn spec114_relation_types_persist() {
     )
     .await;
     let workspace_id = ws_body["id"].as_str().unwrap();
-    let types = ws_body["relation_types"].as_array().expect("relation_types");
+    let types = ws_body["relation_types"]
+        .as_array()
+        .expect("relation_types");
     assert_eq!(types.len(), 2);
     assert_eq!(types[0].as_str(), Some("WORKS_AT"));
     assert_eq!(types[1].as_str(), Some("PART_OF"));
@@ -81,10 +83,7 @@ async fn spec114_relation_types_persist() {
             || updated["relation_types"].as_array().map(|a| a.is_empty()) == Some(true)
     );
     assert_eq!(updated["relation_types_strict"].as_bool(), Some(true));
-    assert!(
-        updated.get("kg_schema_preset").is_none()
-            || updated["kg_schema_preset"].is_null()
-    );
+    assert!(updated.get("kg_schema_preset").is_none() || updated["kg_schema_preset"].is_null());
 
     let bad = app
         .oneshot(
@@ -129,6 +128,8 @@ async fn spec114_relation_types_cap_fifty() {
         }),
     )
     .await;
-    let types = ws_body["relation_types"].as_array().expect("relation_types");
+    let types = ws_body["relation_types"]
+        .as_array()
+        .expect("relation_types");
     assert_eq!(types.len(), 50);
 }

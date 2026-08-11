@@ -93,8 +93,8 @@ export function isCustomVisionSystemPrompt(
 #[test]
 fn spec015v_fe_prompt_mirror_matches_rust_ssot() {
     let path = webui_prompts_ts();
-    let existing = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let existing =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let expected = render_ts();
     assert_eq!(
         existing, expected,

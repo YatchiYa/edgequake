@@ -188,6 +188,21 @@ impl WorkspacePipelineFactory {
                     extract_reasoning_effort = extract_effort.as_deref().unwrap_or("(none)"),
                     "Resolved extract reasoning effort for ingestion pipeline"
                 );
+                // SPEC-116: workspace chunking policy before document chunk_options
+                // (options may already carry doc overrides from prepare.rs).
+                let options = if let Some(policy) =
+                    edgequake_pipeline::chunking_policy_from_metadata(&ws.metadata)
+                {
+                    options.with_chunking_policy(policy)
+                } else {
+                    options
+                };
+                // SPEC-117: document caps (already on options) > workspace > env
+                let resolved = edgequake_pipeline::ExtractionCaps::resolve_for_ingestion(
+                    &ws.metadata,
+                    options.extraction_caps,
+                );
+                let options = options.with_extraction_caps(resolved);
                 let options = options
                     .with_extraction_language(extraction_language)
                     .with_reasoning_effort(extract_effort);

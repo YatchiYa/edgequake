@@ -99,7 +99,27 @@ def test_apply_acc_publication_pins_full_corpus(monkeypatch):
     assert os.environ["EDGEQUAKE_PATH_PRUNE_FRACTION"] == "0"
     assert os.environ["EDGEQUAKE_POPULAR_NODE_FALLBACK"] == "0"
     assert os.environ["EDGEQUAKE_QUERY_ARM_CONCURRENCY"] == "16"
+    assert os.environ["EDGEQUAKE_MAX_EXTRACTION_ENTITIES"] == "40"
+    assert os.environ["EDGEQUAKE_MAX_EXTRACTION_RECORDS"] == "100"
+    assert os.environ["EDGEQUAKE_EXTRACT_CAPS_SELECTION"] == "fifo"
     assert "BENCH001_EQ_WORKSPACE_ID" not in os.environ
+
+
+def test_publication_extract_caps_mismatches(monkeypatch):
+    from bench001.acc_env import publication_extract_caps_mismatches
+
+    monkeypatch.delenv("EDGEQUAKE_EXTRACT_CAPS_SELECTION", raising=False)
+    monkeypatch.delenv("EDGEQUAKE_MAX_EXTRACTION_ENTITIES", raising=False)
+    monkeypatch.delenv("EDGEQUAKE_MAX_EXTRACTION_RECORDS", raising=False)
+    bad = publication_extract_caps_mismatches()
+    assert any("EXTRACT_CAPS_SELECTION" in m for m in bad)
+    monkeypatch.setenv("EDGEQUAKE_EXTRACT_CAPS_SELECTION", "relation_aware")
+    monkeypatch.setenv("EDGEQUAKE_MAX_EXTRACTION_ENTITIES", "40")
+    monkeypatch.setenv("EDGEQUAKE_MAX_EXTRACTION_RECORDS", "100")
+    bad2 = publication_extract_caps_mismatches()
+    assert any("fifo" in m for m in bad2)
+    monkeypatch.setenv("EDGEQUAKE_EXTRACT_CAPS_SELECTION", "fifo")
+    assert publication_extract_caps_mismatches() == []
 
 
 def test_path_prune_fraction_pin_respects_path_off(monkeypatch):

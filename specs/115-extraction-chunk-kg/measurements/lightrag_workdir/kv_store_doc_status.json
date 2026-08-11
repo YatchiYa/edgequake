@@ -1,0 +1,40 @@
+{
+  "doc-68c5b57fc5e4f80b4481763ee3f107c6": {
+    "status": "processed",
+    "content_summary": "## LIGHTRAG: SIMPLE AND FAST RETRIEVAL-AUGMENTED GENERATION\n\n**Zirui Guo** [1] _[,]_ [2] **, Lianghao Xia** [2] **, Yanhua Yu** [1] _[,][∗]_ **, Tu Ao** [1] **, Chao Huang** [2] _[∗]_\n\nBeijing University of Posts and Telecommunications [1]\n\nUniversit...",
+    "content_length": 61350,
+    "created_at": "2026-08-10T14:26:02.237047+00:00",
+    "updated_at": "2026-08-10T14:27:24.465810+00:00",
+    "file_path": "unknown_source",
+    "track_id": "insert_20260810_222602_1d9625fe",
+    "content_hash": "68c5b57fc5e4f80b4481763ee3f107c6",
+    "metadata": {
+      "parse_start_time": 1786371962,
+      "parse_stage_skipped": true,
+      "parse_format": "raw",
+      "parse_engine": "legacy",
+      "analyzing_start_time": 1786371962,
+      "analyzing_stage_skipped": true,
+      "process_start_time": 1786371962,
+      "process_end_time": 1786372044,
+      "chunk_method": "legacy_chunking_func",
+      "chunk_opts": "size=1200, split_only=False, overlap=100"
+    },
+    "chunks_count": 13,
+    "chunks_list": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ]
+  }
+}

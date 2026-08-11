@@ -22,16 +22,25 @@ Respond with valid JSON in this exact format:
   ]
 }"#;
 
-/// Build the primary JSON entity-extraction user prompt.
+/// Build the primary JSON entity-extraction user prompt (env caps).
 pub fn json_extraction_prompt(
     text: &str,
     schema: &EntityExtractionSchema,
     language: &str,
 ) -> String {
+    json_extraction_prompt_with_caps(text, schema, language, ExtractionCaps::from_env())
+}
+
+/// Build the primary JSON entity-extraction user prompt with explicit caps.
+pub fn json_extraction_prompt_with_caps(
+    text: &str,
+    schema: &EntityExtractionSchema,
+    language: &str,
+    caps: ExtractionCaps,
+) -> String {
     let types_section = json_entity_types_prompt_section(schema);
     let relation_section = json_relation_types_prompt_section(schema);
     let edges_section = json_relation_edges_prompt_section(schema);
-    let caps = ExtractionCaps::from_env();
     let limits = caps.prompt_quantity_limits_section();
     let language_section = json_language_instruction(language);
 
@@ -59,24 +68,57 @@ pub fn json_extraction_prompt(
     )
 }
 
-/// Build the gleaning (re-extraction) JSON prompt for missed entities.
+/// Build the gleaning (re-extraction) JSON prompt for missed entities (env caps).
 pub fn json_gleaning_prompt(
     text: &str,
     previous_entities: &[String],
     schema: &EntityExtractionSchema,
     language: &str,
 ) -> String {
+    json_gleaning_prompt_with_caps(
+        text,
+        previous_entities,
+        schema,
+        language,
+        ExtractionCaps::from_env(),
+        false,
+    )
+}
+
+/// Build gleaning prompt with explicit caps and optional truncation-continue wording.
+pub fn json_gleaning_prompt_with_caps(
+    text: &str,
+    previous_entities: &[String],
+    schema: &EntityExtractionSchema,
+    language: &str,
+    caps: ExtractionCaps,
+    after_caps_truncate: bool,
+) -> String {
     let prev_entities_str = previous_entities.join(", ");
     let types_section = json_entity_types_prompt_section(schema);
     let relation_section = json_relation_types_prompt_section(schema);
     let edges_section = json_relation_edges_prompt_section(schema);
-    let caps = ExtractionCaps::from_env();
     let limits = caps.prompt_quantity_limits_section();
     let language_section = json_language_instruction(language);
+    let continue_section = if after_caps_truncate {
+        format!(
+            "\n{}\n",
+            caps.prompt_gleaning_continue_after_truncate_section()
+        )
+    } else {
+        String::new()
+    };
+
+    let intro = if after_caps_truncate {
+        "The previous extraction hit the per-response entity/record budget and was truncated.\n\
+         Please identify ADDITIONAL high-value entities and relationships that were not already captured."
+    } else {
+        "MANY entities and relationships were missed in the last extraction.\n\
+         Please identify any ADDITIONAL entities and relationships that were not already captured."
+    };
 
     format!(
-        r#"MANY entities and relationships were missed in the last extraction.
-Please identify any ADDITIONAL entities and relationships that were not already captured.
+        r#"{intro}
 
 ## Already Identified Entities
 {prev_entities_str}
@@ -88,7 +130,7 @@ Focus on:
 - Additional relationships between known entities
 - Contextual entities (locations, concepts, methods, natural objects)
 - Do **not** add UUIDs, GUIDs, hashes, ARNs, or other opaque machine IDs as entity names
-
+{continue_section}
 {types_section}
 {relation_section}
 {edges_section}
@@ -130,6 +172,20 @@ mod tests {
         assert!(prompt.contains("Quantity Limits"));
         assert!(prompt.contains("40"));
         assert!(prompt.contains("100"));
+        assert!(prompt.contains("highest-value") || prompt.contains("relation-bearing"));
+    }
+
+    #[test]
+    fn json_extraction_prompt_uses_explicit_caps() {
+        let schema = EntityExtractionSchema::server_default();
+        let caps = ExtractionCaps {
+            max_entities: 20,
+            max_total_records: 50,
+        };
+        let prompt =
+            json_extraction_prompt_with_caps("Alice works at Acme.", &schema, "English", caps);
+        assert!(prompt.contains("20"));
+        assert!(prompt.contains("50"));
     }
 
     #[test]
@@ -146,6 +202,21 @@ mod tests {
         assert!(prompt.contains("\"relationships\""));
         assert!(!prompt.to_lowercase().contains("dates,"));
         assert!(prompt.contains("Quantity Limits"));
+    }
+
+    #[test]
+    fn json_gleaning_continue_after_truncate_wording() {
+        let schema = EntityExtractionSchema::server_default();
+        let caps = ExtractionCaps {
+            max_entities: 40,
+            max_total_records: 100,
+        };
+        let prompt =
+            json_gleaning_prompt_with_caps("text", &["A".into()], &schema, "English", caps, true);
+        assert!(
+            prompt.contains("Continue After Budget Truncation") || prompt.contains("truncated")
+        );
+        assert!(prompt.contains("ADDITIONAL"));
     }
 
     #[test]

@@ -1,0 +1,2888 @@
+{
+  "LightRAG<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 2,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Retrieval-Augmented Generation"
+  },
+  "Graph Structure<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph Structure<SEP>LightRAG"
+  },
+  "Dual-Level Retrieval<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dual-Level Retrieval<SEP>LightRAG"
+  },
+  "Incremental Update Algorithm<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 3,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Incremental Update Algorithm<SEP>LightRAG"
+  },
+  "University of Hong Kong<SEP>Zirui Guo": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "University of Hong Kong<SEP>Zirui Guo"
+  },
+  "LightRAG<SEP>Vector Representation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Vector Representation"
+  },
+  "Beijing University of Posts and Telecommunications<SEP>Yanhua Yu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Beijing University of Posts and Telecommunications<SEP>Yanhua Yu"
+  },
+  "LightRAG<SEP>Zirui Guo": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Zirui Guo"
+  },
+  "Beijing University of Posts and Telecommunications<SEP>Tu Ao": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Beijing University of Posts and Telecommunications<SEP>Tu Ao"
+  },
+  "Lianghao Xia<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Lianghao Xia<SEP>LightRAG"
+  },
+  "Large Language Model<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Large Language Model<SEP>Retrieval-Augmented Generation"
+  },
+  "Dual-Level Retrieval<SEP>Graph Structure": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dual-Level Retrieval<SEP>Graph Structure"
+  },
+  "LightRAG<SEP>Yanhua Yu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Yanhua Yu"
+  },
+  "Lianghao Xia<SEP>University of Hong Kong": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Lianghao Xia<SEP>University of Hong Kong"
+  },
+  "Electric Vehicle<SEP>Urban Air Quality": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Electric Vehicle<SEP>Urban Air Quality"
+  },
+  "Chunking<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Chunking<SEP>Retrieval-Augmented Generation"
+  },
+  "LightRAG<SEP>Tu Ao": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Tu Ao"
+  },
+  "Electric Vehicle<SEP>Public Transportation Infrastructure": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Electric Vehicle<SEP>Public Transportation Infrastructure"
+  },
+  "Retrieval-Augmented Generation<SEP>Sudhi et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation<SEP>Sudhi et al. (2024)"
+  },
+  "Chao Huang<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Chao Huang<SEP>LightRAG"
+  },
+  "Es et al. (2024)<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Es et al. (2024)<SEP>Retrieval-Augmented Generation"
+  },
+  "Graph Structure<SEP>Rampášek et al. (2022)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph Structure<SEP>Rampášek et al. (2022)"
+  },
+  "Chao Huang<SEP>University of Hong Kong": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Chao Huang<SEP>University of Hong Kong"
+  },
+  "LightRAG<SEP>Open-source Repository": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Open-source Repository"
+  },
+  "Retrieval-Augmented Generation<SEP>Salemi & Zamani (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation<SEP>Salemi & Zamani (2024)"
+  },
+  "GraphRAG<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 6,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GraphRAG<SEP>LightRAG"
+  },
+  "Mean Squared Error<SEP>Movie Recommendation Systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Mean Squared Error<SEP>Movie Recommendation Systems"
+  },
+  "Retrieval-Augmented Generation<SEP>Tu et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation<SEP>Tu et al. (2024)"
+  },
+  "Movie Recommendation Systems<SEP>Root Mean Squared Error": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Movie Recommendation Systems<SEP>Root Mean Squared Error"
+  },
+  "Retrieval-Augmented Generation<SEP>Zhao et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation<SEP>Zhao et al. (2024)"
+  },
+  "LightRAG<SEP>Movie Recommendation Systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 2,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Movie Recommendation Systems"
+  },
+  "Lyu et al. (2024)<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-000"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Lyu et al. (2024)<SEP>Retrieval-Augmented Generation"
+  },
+  "GraphRAG<SEP>Movie Recommendation Systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 2,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GraphRAG<SEP>Movie Recommendation Systems"
+  },
+  "LightRAG<SEP>Token": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Token"
+  },
+  "Area Under the Curve<SEP>Movie Recommendation Systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Area Under the Curve<SEP>Movie Recommendation Systems"
+  },
+  "GraphRAG<SEP>Token": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GraphRAG<SEP>Token"
+  },
+  "API Call<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "API Call<SEP>LightRAG"
+  },
+  "F-Measure<SEP>Movie Recommendation Systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "F-Measure<SEP>Movie Recommendation Systems"
+  },
+  "API Call<SEP>GraphRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "API Call<SEP>GraphRAG"
+  },
+  "Incremental Text Update<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Incremental Text Update<SEP>LightRAG"
+  },
+  "Movie Recommendation Systems<SEP>User Engagement Metrics": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Movie Recommendation Systems<SEP>User Engagement Metrics"
+  },
+  "Community Report<SEP>GraphRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Community Report<SEP>GraphRAG"
+  },
+  "Answer 1<SEP>Answer 2": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Answer 1<SEP>Answer 2"
+  },
+  "LightRAG<SEP>Retrieval Mechanism": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Retrieval Mechanism"
+  },
+  "Movie Recommendation Systems<SEP>Precision": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 2,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Movie Recommendation Systems<SEP>Precision"
+  },
+  "GraphRAG<SEP>Incremental Text Update": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GraphRAG<SEP>Incremental Text Update"
+  },
+  "C_extract<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "C_extract<SEP>LightRAG"
+  },
+  "Movie Recommendation Systems<SEP>Recall": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 2,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Movie Recommendation Systems<SEP>Recall"
+  },
+  "GraphRAG<SEP>Level-2 Communities": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GraphRAG<SEP>Level-2 Communities"
+  },
+  "LightRAG<SEP>Low-Level Retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Low-Level Retrieval"
+  },
+  "Mean Average Precision at K<SEP>Movie Recommendation Systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Mean Average Precision at K<SEP>Movie Recommendation Systems"
+  },
+  "C_max<SEP>GraphRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "C_max<SEP>GraphRAG"
+  },
+  "High-Level Retrieval<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "High-Level Retrieval<SEP>LightRAG"
+  },
+  "C_extract<SEP>GraphRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-008"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "C_extract<SEP>GraphRAG"
+  },
+  "LightRAG<SEP>Query Keyword Extraction": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Query Keyword Extraction"
+  },
+  "Keyword Matching<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Keyword Matching<SEP>LightRAG"
+  },
+  "Agriculture Dataset<SEP>UltraDomain Benchmark": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Agriculture Dataset<SEP>UltraDomain Benchmark"
+  },
+  "Incorporating High-Order Relatedness<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Incorporating High-Order Relatedness<SEP>LightRAG"
+  },
+  "CS Dataset<SEP>UltraDomain Benchmark": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "CS Dataset<SEP>UltraDomain Benchmark"
+  },
+  "LightRAG<SEP>Retrieval-Augmented Answer Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Retrieval-Augmented Answer Generation"
+  },
+  "Legal Dataset<SEP>UltraDomain Benchmark": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Legal Dataset<SEP>UltraDomain Benchmark"
+  },
+  "Graph-Based Index Phase<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-Based Index Phase<SEP>LightRAG"
+  },
+  "Mix Dataset<SEP>UltraDomain Benchmark": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Mix Dataset<SEP>UltraDomain Benchmark"
+  },
+  "Keyword Matching<SEP>Vector Database": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Keyword Matching<SEP>Vector Database"
+  },
+  "Graph-Based Retrieval Phase<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-Based Retrieval Phase<SEP>LightRAG"
+  },
+  "Graph-Based Index Phase<SEP>Large Language Model": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-Based Index Phase<SEP>Large Language Model"
+  },
+  "LightRAG<SEP>UltraDomain Benchmark": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>UltraDomain Benchmark"
+  },
+  "Graph-Based Retrieval Phase<SEP>Large Language Model": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-003"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-Based Retrieval Phase<SEP>Large Language Model"
+  },
+  "Large language models<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Large language models<SEP>LightRAG"
+  },
+  "LightRAG<SEP>Prompt templates": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Prompt templates"
+  },
+  "RankRAG<SEP>Yue Yu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "RankRAG<SEP>Yue Yu"
+  },
+  "Evaluation criteria<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Evaluation criteria<SEP>LightRAG"
+  },
+  "RankRAG<SEP>Wei Ping": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "RankRAG<SEP>Wei Ping"
+  },
+  "Agriculture dataset<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 2,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Agriculture dataset<SEP>LightRAG"
+  },
+  "RankRAG<SEP>Zihan Liu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "RankRAG<SEP>Zihan Liu"
+  },
+  "CS dataset<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "CS dataset<SEP>LightRAG"
+  },
+  "Boxin Wang<SEP>RankRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Boxin Wang<SEP>RankRAG"
+  },
+  "Legal dataset<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 2,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Legal dataset<SEP>LightRAG"
+  },
+  "Jiaxuan You<SEP>RankRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Jiaxuan You<SEP>RankRAG"
+  },
+  "Penghao Zhao<SEP>Retrieval-augmented generation survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Penghao Zhao<SEP>Retrieval-augmented generation survey"
+  },
+  "LightRAG<SEP>Mix dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Mix dataset"
+  },
+  "Chao Zhang<SEP>RankRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Chao Zhang<SEP>RankRAG"
+  },
+  "Hailin Zhang<SEP>Retrieval-augmented generation survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Hailin Zhang<SEP>Retrieval-augmented generation survey"
+  },
+  "LightRAG<SEP>NaiveRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 3,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>NaiveRAG"
+  },
+  "Mohammad Shoeybi<SEP>RankRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Mohammad Shoeybi<SEP>RankRAG"
+  },
+  "Qinhan Yu<SEP>Retrieval-augmented generation survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Qinhan Yu<SEP>Retrieval-augmented generation survey"
+  },
+  "Bryan Catanzaro<SEP>RankRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Bryan Catanzaro<SEP>RankRAG"
+  },
+  "Retrieval-augmented generation survey<SEP>Zhengren Wang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-augmented generation survey<SEP>Zhengren Wang"
+  },
+  "Corporate mergers<SEP>Indigenous perspectives": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Corporate mergers<SEP>Indigenous perspectives"
+  },
+  "Retrieval-augmented generation survey<SEP>Yunteng Geng": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-augmented generation survey<SEP>Yunteng Geng"
+  },
+  "Canada<SEP>Corporate mergers": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Canada<SEP>Corporate mergers"
+  },
+  "Large language models<SEP>generates": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Large language models<SEP>generates"
+  },
+  "Fangcheng Fu<SEP>Retrieval-augmented generation survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Fangcheng Fu<SEP>Retrieval-augmented generation survey"
+  },
+  "Australia<SEP>Corporate mergers": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Australia<SEP>Corporate mergers"
+  },
+  "LightRAG<SEP>Movie recommendation systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Movie recommendation systems"
+  },
+  "Graph construction prompt<SEP>entities": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph construction prompt<SEP>entities"
+  },
+  "Ling Yang<SEP>Retrieval-augmented generation survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Ling Yang<SEP>Retrieval-augmented generation survey"
+  },
+  "Large language models<SEP>Movie recommendation systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Large language models<SEP>Movie recommendation systems"
+  },
+  "Query generation prompt<SEP>user roles": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Query generation prompt<SEP>user roles"
+  },
+  "Graph construction prompt<SEP>relationships": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph construction prompt<SEP>relationships"
+  },
+  "Keyword extraction prompt<SEP>high-level keywords": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Keyword extraction prompt<SEP>high-level keywords"
+  },
+  "Retrieval-augmented generation survey<SEP>Wentao Zhang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-augmented generation survey<SEP>Wentao Zhang"
+  },
+  "Comprehensiveness<SEP>RAG evaluation prompt": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Comprehensiveness<SEP>RAG evaluation prompt"
+  },
+  "Query generation prompt<SEP>tasks": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Query generation prompt<SEP>tasks"
+  },
+  "Keyword extraction prompt<SEP>low-level keywords": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Keyword extraction prompt<SEP>low-level keywords"
+  },
+  "Bin Cui<SEP>Retrieval-augmented generation survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Bin Cui<SEP>Retrieval-augmented generation survey"
+  },
+  "LightRAG<SEP>Recog Function": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Recog Function"
+  },
+  "Diversity<SEP>RAG evaluation prompt": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Diversity<SEP>RAG evaluation prompt"
+  },
+  "LightRAG<SEP>P Function": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>P Function"
+  },
+  "Node Sets<SEP>V": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Node Sets<SEP>V"
+  },
+  "E<SEP>Edge Sets": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "E<SEP>Edge Sets"
+  },
+  "Empowerment<SEP>RAG evaluation prompt": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-011"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Empowerment<SEP>RAG evaluation prompt"
+  },
+  "D Function<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "D Function<SEP>LightRAG"
+  },
+  "Graph-Based Text Indexing Paradigm<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-Based Text Indexing Paradigm<SEP>LightRAG"
+  },
+  "Dual-Level Retrieval Paradigm<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-002"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dual-Level Retrieval Paradigm<SEP>LightRAG"
+  },
+  "Dual-level Retrieval Paradigm<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dual-level Retrieval Paradigm<SEP>LightRAG"
+  },
+  "Graph-based Text Indexing<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-based Text Indexing<SEP>LightRAG"
+  },
+  "Agriculture Dataset<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Agriculture Dataset<SEP>LightRAG"
+  },
+  "Graph-based Text Indexing<SEP>GraphRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-based Text Indexing<SEP>GraphRAG"
+  },
+  "CS Dataset<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "CS Dataset<SEP>LightRAG"
+  },
+  "Graph-based Text Indexing<SEP>NaiveRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-based Text Indexing<SEP>NaiveRAG"
+  },
+  "Legal Dataset<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Legal Dataset<SEP>LightRAG"
+  },
+  "Agriculture Dataset<SEP>NaiveRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Agriculture Dataset<SEP>NaiveRAG"
+  },
+  "Graph-based Text Indexing<SEP>NaiveRAG-High": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-based Text Indexing<SEP>NaiveRAG-High"
+  },
+  "CS Dataset<SEP>NaiveRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "CS Dataset<SEP>NaiveRAG"
+  },
+  "Graph-based Text Indexing<SEP>NaiveRAG-Low": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-based Text Indexing<SEP>NaiveRAG-Low"
+  },
+  "Dual-level Retrieval Paradigm<SEP>low-level retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dual-level Retrieval Paradigm<SEP>low-level retrieval"
+  },
+  "Agriculture Dataset<SEP>NaiveRAG-High": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Agriculture Dataset<SEP>NaiveRAG-High"
+  },
+  "Mix Dataset<SEP>NaiveRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Mix Dataset<SEP>NaiveRAG"
+  },
+  "CS Dataset<SEP>NaiveRAG-High": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "CS Dataset<SEP>NaiveRAG-High"
+  },
+  "Dual-level Retrieval Paradigm<SEP>high-level retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dual-level Retrieval Paradigm<SEP>high-level retrieval"
+  },
+  "Agriculture Dataset<SEP>NaiveRAG-Low": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Agriculture Dataset<SEP>NaiveRAG-Low"
+  },
+  "Legal Dataset<SEP>NaiveRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Legal Dataset<SEP>NaiveRAG"
+  },
+  "LightRAG<SEP>Mix Dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Mix Dataset"
+  },
+  "CS Dataset<SEP>NaiveRAG-Low": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "CS Dataset<SEP>NaiveRAG-Low"
+  },
+  "Agriculture Dataset<SEP>NaiveRAG-Origin": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Agriculture Dataset<SEP>NaiveRAG-Origin"
+  },
+  "Legal Dataset<SEP>NaiveRAG-High": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Legal Dataset<SEP>NaiveRAG-High"
+  },
+  "CS Dataset<SEP>NaiveRAG-Origin": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "CS Dataset<SEP>NaiveRAG-Origin"
+  },
+  "Retrieval Component<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval Component<SEP>Retrieval-Augmented Generation"
+  },
+  "Mix Dataset<SEP>NaiveRAG-High": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Mix Dataset<SEP>NaiveRAG-High"
+  },
+  "Legal Dataset<SEP>NaiveRAG-Low": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Legal Dataset<SEP>NaiveRAG-Low"
+  },
+  "Generation Component<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Generation Component<SEP>Retrieval-Augmented Generation"
+  },
+  "Data Indexer<SEP>Retrieval Component": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Data Indexer<SEP>Retrieval Component"
+  },
+  "Mix Dataset<SEP>NaiveRAG-Low": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Mix Dataset<SEP>NaiveRAG-Low"
+  },
+  "Legal Dataset<SEP>NaiveRAG-Origin": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Legal Dataset<SEP>NaiveRAG-Origin"
+  },
+  "Knowledge Graph<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Knowledge Graph<SEP>LightRAG"
+  },
+  "Deduplication<SEP>Graph-Enhanced Entity and Relationship Extraction": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Deduplication<SEP>Graph-Enhanced Entity and Relationship Extraction"
+  },
+  "Data Retriever<SEP>Retrieval Component": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Data Retriever<SEP>Retrieval Component"
+  },
+  "Mix Dataset<SEP>NaiveRAG-Origin": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-006"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Mix Dataset<SEP>NaiveRAG-Origin"
+  },
+  "External Knowledge Database<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "External Knowledge Database<SEP>Retrieval-Augmented Generation"
+  },
+  "Graph-Enhanced Entity and Relationship Extraction<SEP>Profiling": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-Enhanced Entity and Relationship Extraction<SEP>Profiling"
+  },
+  "Graph Structures<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph Structures<SEP>LightRAG"
+  },
+  "Language Model<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Language Model<SEP>Retrieval-Augmented Generation"
+  },
+  "D<SEP>D̂": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "D<SEP>D̂"
+  },
+  "Graph-Enhanced Entity and Relationship Extraction<SEP>Recognition": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-Enhanced Entity and Relationship Extraction<SEP>Recognition"
+  },
+  "Data Indexer<SEP>R": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Data Indexer<SEP>R"
+  },
+  "LightRAG<SEP>Vector Representations": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Vector Representations"
+  },
+  "M<SEP>q": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "M<SEP>q"
+  },
+  "Graph-Enhanced Entity and Relationship Extraction<SEP>Knowledge Graph": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph-Enhanced Entity and Relationship Extraction<SEP>Knowledge Graph"
+  },
+  "Data Retriever<SEP>R": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Data Retriever<SEP>R"
+  },
+  "D<SEP>M": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "D<SEP>M"
+  },
+  "Di<SEP>Recog": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Di<SEP>Recog"
+  },
+  "Prof<SEP>V̂, Ē": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Prof<SEP>V̂, Ē"
+  },
+  "GraphRAG<SEP>community report": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GraphRAG<SEP>community report"
+  },
+  "G<SEP>M": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "G<SEP>M"
+  },
+  "LightRAG<SEP>incremental update": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>incremental update"
+  },
+  "Dedupe<SEP>V̂, Ē": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dedupe<SEP>V̂, Ē"
+  },
+  "GraphRAG<SEP>token": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GraphRAG<SEP>token"
+  },
+  "M<SEP>R": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-001"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "M<SEP>R"
+  },
+  "Retrieval-Augmented Generation<SEP>vector space": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation<SEP>vector space"
+  },
+  "LightRAG<SEP>dual-level retrieval paradigm": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>dual-level retrieval paradigm"
+  },
+  "1,399 communities<SEP>GraphRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "1,399 communities<SEP>GraphRAG"
+  },
+  "Retrieval-Augmented Generation<SEP>top-k contexts": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation<SEP>top-k contexts"
+  },
+  "LightRAG<SEP>knowledge graph": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>knowledge graph"
+  },
+  "LLM<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LLM<SEP>Retrieval-Augmented Generation"
+  },
+  "Ram et al. (2023)<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Ram et al. (2023)<SEP>Retrieval-Augmented Generation"
+  },
+  "Graph Neural Networks<SEP>LLM": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Graph Neural Networks<SEP>LLM"
+  },
+  "Fan et al. (2024)<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Fan et al. (2024)<SEP>Retrieval-Augmented Generation"
+  },
+  "LLM<SEP>LLMs as Prefix": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LLM<SEP>LLMs as Prefix"
+  },
+  "GNNs as Prefix<SEP>Graph Neural Networks": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GNNs as Prefix<SEP>Graph Neural Networks"
+  },
+  "Gao et al. (2022)<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Gao et al. (2022)<SEP>Retrieval-Augmented Generation"
+  },
+  "LLM<SEP>LLMs-Graphs Integration": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LLM<SEP>LLMs-Graphs Integration"
+  },
+  "Brannon et al. (2023)<SEP>Graph Neural Networks": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Brannon et al. (2023)<SEP>Graph Neural Networks"
+  },
+  "Jithin James<SEP>RAGAS": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Jithin James<SEP>RAGAS"
+  },
+  "Gao et al. (2023)<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Gao et al. (2023)<SEP>Retrieval-Augmented Generation"
+  },
+  "LLMs-Graphs Integration<SEP>Li et al. (2023)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LLMs-Graphs Integration<SEP>Li et al. (2023)"
+  },
+  "Luis Espinosa Anke<SEP>RAGAS": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Luis Espinosa Anke<SEP>RAGAS"
+  },
+  "Wenqi Fan<SEP>arXiv": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Wenqi Fan<SEP>arXiv"
+  },
+  "Chan et al. (2024)<SEP>Retrieval-Augmented Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Chan et al. (2024)<SEP>Retrieval-Augmented Generation"
+  },
+  "RAGAS<SEP>Steven Schockaert": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "RAGAS<SEP>Steven Schockaert"
+  },
+  "Yujuan Ding<SEP>arXiv": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Yujuan Ding<SEP>arXiv"
+  },
+  "LightRAG<SEP>Naive RAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Naive RAG"
+  },
+  "Retrieval-Augmented Generation<SEP>Yu et al. (2024)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation<SEP>Yu et al. (2024)"
+  },
+  "Liangbo Ning<SEP>arXiv": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Liangbo Ning<SEP>arXiv"
+  },
+  "LightRAG<SEP>RQ-RAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 2,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>RQ-RAG"
+  },
+  "Edge et al. (2024)<SEP>GraphRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Edge et al. (2024)<SEP>GraphRAG"
+  },
+  "Shijie Wang<SEP>arXiv": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-009"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Shijie Wang<SEP>arXiv"
+  },
+  "HyDE<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 2,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "HyDE<SEP>LightRAG"
+  },
+  "Gao et al. (2023)<SEP>Naive RAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Gao et al. (2023)<SEP>Naive RAG"
+  },
+  "Chan et al. (2024)<SEP>RQ-RAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Chan et al. (2024)<SEP>RQ-RAG"
+  },
+  "GPT-4o-mini<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GPT-4o-mini<SEP>LightRAG"
+  },
+  "Gao et al. (2022)<SEP>HyDE": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Gao et al. (2022)<SEP>HyDE"
+  },
+  "LightRAG<SEP>Nano Vector Database": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Nano Vector Database"
+  },
+  "Corporate Mergers<SEP>Indigenous Perspectives": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Corporate Mergers<SEP>Indigenous Perspectives"
+  },
+  "LightRAG<SEP>Question Generation": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Question Generation"
+  },
+  "Canada<SEP>Indigenous Perspectives": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Canada<SEP>Indigenous Perspectives"
+  },
+  "Comprehensiveness<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 3,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Comprehensiveness<SEP>LightRAG"
+  },
+  "Australia<SEP>Indigenous Perspectives": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Australia<SEP>Indigenous Perspectives"
+  },
+  "Community Engagement<SEP>Corporate Mergers": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Community Engagement<SEP>Corporate Mergers"
+  },
+  "Corporate Mergers<SEP>Cultural Values": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Corporate Mergers<SEP>Cultural Values"
+  },
+  "Diversity<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 3,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Diversity<SEP>LightRAG"
+  },
+  "Corporate Mergers<SEP>Sustainable Outcomes": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Corporate Mergers<SEP>Sustainable Outcomes"
+  },
+  "Empowerment<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012",
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 3,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Empowerment<SEP>LightRAG"
+  },
+  "Corporate Mergers<SEP>Equitable Outcomes": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Corporate Mergers<SEP>Equitable Outcomes"
+  },
+  "LLM Decision<SEP>NaiveRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LLM Decision<SEP>NaiveRAG"
+  },
+  "LightRAG<SEP>Overall": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-004"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Overall"
+  },
+  "Indigenous Perspectives<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Indigenous Perspectives<SEP>LightRAG"
+  },
+  "Dual-Level Retrieval Process<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dual-Level Retrieval Process<SEP>LightRAG"
+  },
+  "Indigenous Perspectives<SEP>Land Rights": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Indigenous Perspectives<SEP>Land Rights"
+  },
+  "LLM Decision<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LLM Decision<SEP>LightRAG"
+  },
+  "Indigenous Perspectives<SEP>Legal Frameworks": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-012"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Indigenous Perspectives<SEP>Legal Frameworks"
+  },
+  "LightRAG<SEP>Low-level-only Retrieval": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Low-level-only Retrieval"
+  },
+  "GraphRAG<SEP>Machine Learning": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GraphRAG<SEP>Machine Learning"
+  },
+  "High-level-only Retrieval<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "High-level-only Retrieval<SEP>LightRAG"
+  },
+  "F1 Score<SEP>Movie Recommendation Systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "F1 Score<SEP>Movie Recommendation Systems"
+  },
+  "Hybrid Mode<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Hybrid Mode<SEP>LightRAG"
+  },
+  "Mean Average Precision (MAP)<SEP>Movie Recommendation Systems": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Mean Average Precision (MAP)<SEP>Movie Recommendation Systems"
+  },
+  "LightRAG<SEP>Semantic Graph": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Semantic Graph"
+  },
+  "Movie Recommendation Systems<SEP>Root Mean Squared Error (RMSE)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Movie Recommendation Systems<SEP>Root Mean Squared Error (RMSE)"
+  },
+  "-Origin<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "-Origin<SEP>LightRAG"
+  },
+  "Movie Recommendation Systems<SEP>User Satisfaction Metrics": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Movie Recommendation Systems<SEP>User Satisfaction Metrics"
+  },
+  "LightRAG<SEP>Machine Learning": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Machine Learning"
+  },
+  "-Origin<SEP>Semantic Graph": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "-Origin<SEP>Semantic Graph"
+  },
+  "Ragas<SEP>Shahul Es": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Ragas<SEP>Shahul Es"
+  },
+  "LLM Judge<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LLM Judge<SEP>LightRAG"
+  },
+  "Jithin James<SEP>Ragas": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Jithin James<SEP>Ragas"
+  },
+  "LightRAG<SEP>Overall Quality": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Overall Quality"
+  },
+  "Luis Espinosa Anke<SEP>Ragas": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Luis Espinosa Anke<SEP>Ragas"
+  },
+  "Survey on RAG Meeting LLMs<SEP>Wenqi Fan": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Survey on RAG Meeting LLMs<SEP>Wenqi Fan"
+  },
+  "LightRAG<SEP>Mean Average Precision at K (MAPK)": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Mean Average Precision at K (MAPK)"
+  },
+  "Ragas<SEP>Steven Schockaert": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Ragas<SEP>Steven Schockaert"
+  },
+  "Survey on RAG Meeting LLMs<SEP>Yujuan Ding": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Survey on RAG Meeting LLMs<SEP>Yujuan Ding"
+  },
+  "F-Measure<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "F-Measure<SEP>LightRAG"
+  },
+  "International Conference of the European Chapter of the Association for Computational Linguistics<SEP>Ragas": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "International Conference of the European Chapter of the Association for Computational Linguistics<SEP>Ragas"
+  },
+  "Liangbo Ning<SEP>Survey on RAG Meeting LLMs": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Liangbo Ning<SEP>Survey on RAG Meeting LLMs"
+  },
+  "Area Under the Curve (AUC)<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-007"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Area Under the Curve (AUC)<SEP>LightRAG"
+  },
+  "Shijie Wang<SEP>Survey on RAG Meeting LLMs": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Shijie Wang<SEP>Survey on RAG Meeting LLMs"
+  },
+  "Luyu Gao<SEP>Precise Zero-Shot Dense Retrieval Without Relevance Labels": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Luyu Gao<SEP>Precise Zero-Shot Dense Retrieval Without Relevance Labels"
+  },
+  "Hengyun Li<SEP>Survey on RAG Meeting LLMs": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Hengyun Li<SEP>Survey on RAG Meeting LLMs"
+  },
+  "Precise Zero-Shot Dense Retrieval Without Relevance Labels<SEP>Xueguang Ma": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Precise Zero-Shot Dense Retrieval Without Relevance Labels<SEP>Xueguang Ma"
+  },
+  "Dawei Yin<SEP>Survey on RAG Meeting LLMs": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dawei Yin<SEP>Survey on RAG Meeting LLMs"
+  },
+  "Jimmy Lin<SEP>Precise Zero-Shot Dense Retrieval Without Relevance Labels": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Jimmy Lin<SEP>Precise Zero-Shot Dense Retrieval Without Relevance Labels"
+  },
+  "Retrieval-Augmented Generation For Large Language Models: A Survey<SEP>Yunfan Gao": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation For Large Language Models: A Survey<SEP>Yunfan Gao"
+  },
+  "Survey on RAG Meeting LLMs<SEP>Tat-Seng Chua": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Survey on RAG Meeting LLMs<SEP>Tat-Seng Chua"
+  },
+  "Jamie Callan<SEP>Precise Zero-Shot Dense Retrieval Without Relevance Labels": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Jamie Callan<SEP>Precise Zero-Shot Dense Retrieval Without Relevance Labels"
+  },
+  "Retrieval-Augmented Generation For Large Language Models: A Survey<SEP>Yun Xiong": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation For Large Language Models: A Survey<SEP>Yun Xiong"
+  },
+  "Qing Li<SEP>Survey on RAG Meeting LLMs": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Qing Li<SEP>Survey on RAG Meeting LLMs"
+  },
+  "Precise Zero-Shot Dense Retrieval Without Relevance Labels<SEP>arXiv": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Precise Zero-Shot Dense Retrieval Without Relevance Labels<SEP>arXiv"
+  },
+  "Retrieval-Augmented Generation For Large Language Models: A Survey<SEP>Xinyu Gao": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation For Large Language Models: A Survey<SEP>Xinyu Gao"
+  },
+  "International Conference on Knowledge Discovery and Data Mining<SEP>Survey on RAG Meeting LLMs": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "International Conference on Knowledge Discovery and Data Mining<SEP>Survey on RAG Meeting LLMs"
+  },
+  "Kangxiang Jia<SEP>Retrieval-Augmented Generation For Large Language Models: A Survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Kangxiang Jia<SEP>Retrieval-Augmented Generation For Large Language Models: A Survey"
+  },
+  "Grenade<SEP>Yichuan Li": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Grenade<SEP>Yichuan Li"
+  },
+  "Jinliu Pan<SEP>Retrieval-Augmented Generation For Large Language Models: A Survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Jinliu Pan<SEP>Retrieval-Augmented Generation For Large Language Models: A Survey"
+  },
+  "Grenade<SEP>Kaize Ding": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Grenade<SEP>Kaize Ding"
+  },
+  "Retrieval-Augmented Generation For Large Language Models: A Survey<SEP>Yuxi Bi": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation For Large Language Models: A Survey<SEP>Yuxi Bi"
+  },
+  "Hao Liu<SEP>One For All": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Hao Liu<SEP>One For All"
+  },
+  "Grenade<SEP>Kyumin Lee": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Grenade<SEP>Kyumin Lee"
+  },
+  "Retrieval-Augmented Generation For Large Language Models: A Survey<SEP>Yi Dai": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Retrieval-Augmented Generation For Large Language Models: A Survey<SEP>Yi Dai"
+  },
+  "Jiarui Feng<SEP>One For All": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Jiarui Feng<SEP>One For All"
+  },
+  "Grenade<SEP>International Conference on Empirical Methods in Natural Language Processing": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Grenade<SEP>International Conference on Empirical Methods in Natural Language Processing"
+  },
+  "Jiawei Sun<SEP>Retrieval-Augmented Generation For Large Language Models: A Survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Jiawei Sun<SEP>Retrieval-Augmented Generation For Large Language Models: A Survey"
+  },
+  "Lecheng Kong<SEP>One For All": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Lecheng Kong<SEP>One For All"
+  },
+  "Haofen Wang<SEP>Retrieval-Augmented Generation For Large Language Models: A Survey": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Haofen Wang<SEP>Retrieval-Augmented Generation For Large Language Models: A Survey"
+  },
+  "Crud-Rag<SEP>Yuanjie Lyu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Crud-Rag<SEP>Yuanjie Lyu"
+  },
+  "Ningyue Liang<SEP>One For All": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Ningyue Liang<SEP>One For All"
+  },
+  "Crud-Rag<SEP>Zhiyu Li": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Crud-Rag<SEP>Zhiyu Li"
+  },
+  "Dacheng Tao<SEP>One For All": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dacheng Tao<SEP>One For All"
+  },
+  "Crud-Rag<SEP>Simin Niu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Crud-Rag<SEP>Simin Niu"
+  },
+  "One For All<SEP>Yixin Chen": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "One For All<SEP>Yixin Chen"
+  },
+  "Crud-Rag<SEP>Feiyu Xiong": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Crud-Rag<SEP>Feiyu Xiong"
+  },
+  "Muhan Zhang<SEP>One For All": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Muhan Zhang<SEP>One For All"
+  },
+  "Bo Tang<SEP>Crud-Rag": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Bo Tang<SEP>Crud-Rag"
+  },
+  "International Conference on Learning Representations<SEP>One For All": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "International Conference on Learning Representations<SEP>One For All"
+  },
+  "Hongjin Qian<SEP>Memorag": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Hongjin Qian<SEP>Memorag"
+  },
+  "Crud-Rag<SEP>Wenjin Wang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Crud-Rag<SEP>Wenjin Wang"
+  },
+  "Memorag<SEP>Peitian Zhang": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Memorag<SEP>Peitian Zhang"
+  },
+  "Crud-Rag<SEP>Hao Wu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Crud-Rag<SEP>Hao Wu"
+  },
+  "Memorag<SEP>Zheng Liu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Memorag<SEP>Zheng Liu"
+  },
+  "Crud-Rag<SEP>Huanyong Liu": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Crud-Rag<SEP>Huanyong Liu"
+  },
+  "In-Context Retrieval-Augmented Language Models<SEP>Ori Ram": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "In-Context Retrieval-Augmented Language Models<SEP>Ori Ram"
+  },
+  "Kelong Mao<SEP>Memorag": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Kelong Mao<SEP>Memorag"
+  },
+  "Crud-Rag<SEP>Enhong Chen": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Crud-Rag<SEP>Enhong Chen"
+  },
+  "In-Context Retrieval-Augmented Language Models<SEP>Yoav Levine": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "In-Context Retrieval-Augmented Language Models<SEP>Yoav Levine"
+  },
+  "Memorag<SEP>Zhicheng Dou": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Memorag<SEP>Zhicheng Dou"
+  },
+  "Crud-Rag<SEP>arXiv": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Crud-Rag<SEP>arXiv"
+  },
+  "In-Context Retrieval-Augmented Language Models<SEP>Itay Dalmedigos": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "In-Context Retrieval-Augmented Language Models<SEP>Itay Dalmedigos"
+  },
+  "Memorag<SEP>arXiv": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Memorag<SEP>arXiv"
+  },
+  "Ladislav Rampášek<SEP>Recipe For A General, Powerful, Scalable Graph Transformer": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Ladislav Rampášek<SEP>Recipe For A General, Powerful, Scalable Graph Transformer"
+  },
+  "Dor Muhlgay<SEP>In-Context Retrieval-Augmented Language Models": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dor Muhlgay<SEP>In-Context Retrieval-Augmented Language Models"
+  },
+  "Michael Galkin<SEP>Recipe For A General, Powerful, Scalable Graph Transformer": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Michael Galkin<SEP>Recipe For A General, Powerful, Scalable Graph Transformer"
+  },
+  "Amnon Shashua<SEP>In-Context Retrieval-Augmented Language Models": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Amnon Shashua<SEP>In-Context Retrieval-Augmented Language Models"
+  },
+  "Recipe For A General, Powerful, Scalable Graph Transformer<SEP>Vijay Prakash Dwivedi": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Recipe For A General, Powerful, Scalable Graph Transformer<SEP>Vijay Prakash Dwivedi"
+  },
+  "In-Context Retrieval-Augmented Language Models<SEP>Kevin Leyton-Brown": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "In-Context Retrieval-Augmented Language Models<SEP>Kevin Leyton-Brown"
+  },
+  "Anh Tuan Luu<SEP>Recipe For A General, Powerful, Scalable Graph Transformer": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Anh Tuan Luu<SEP>Recipe For A General, Powerful, Scalable Graph Transformer"
+  },
+  "In-Context Retrieval-Augmented Language Models<SEP>Yoav Shoham": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "In-Context Retrieval-Augmented Language Models<SEP>Yoav Shoham"
+  },
+  "GraphRAG<SEP>NaiveRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GraphRAG<SEP>NaiveRAG"
+  },
+  "Guy Wolf<SEP>Recipe For A General, Powerful, Scalable Graph Transformer": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Guy Wolf<SEP>Recipe For A General, Powerful, Scalable Graph Transformer"
+  },
+  "In-Context Retrieval-Augmented Language Models<SEP>Transactions of the Association for Computational Linguistics": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "In-Context Retrieval-Augmented Language Models<SEP>Transactions of the Association for Computational Linguistics"
+  },
+  "GraphRAG<SEP>HyDE": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GraphRAG<SEP>HyDE"
+  },
+  "Comprehensiveness metric<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Comprehensiveness metric<SEP>LightRAG"
+  },
+  "Dominique Beaini<SEP>Recipe For A General, Powerful, Scalable Graph Transformer": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Dominique Beaini<SEP>Recipe For A General, Powerful, Scalable Graph Transformer"
+  },
+  "GraphRAG<SEP>RQ-RAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "GraphRAG<SEP>RQ-RAG"
+  },
+  "Diversity metric<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Diversity metric<SEP>LightRAG"
+  },
+  "International Conference on Neural Information Processing Systems<SEP>Recipe For A General, Powerful, Scalable Graph Transformer": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-010"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "International Conference on Neural Information Processing Systems<SEP>Recipe For A General, Powerful, Scalable Graph Transformer"
+  },
+  "Empowerment metric<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Empowerment metric<SEP>LightRAG"
+  },
+  "LightRAG<SEP>Overall metric": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Overall metric"
+  },
+  "Computer Science dataset<SEP>LightRAG": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "Computer Science dataset<SEP>LightRAG"
+  },
+  "LightRAG<SEP>Mixed dataset": {
+    "chunk_ids": [
+      "doc-68c5b57fc5e4f80b4481763ee3f107c6-chunk-005"
+    ],
+    "count": 1,
+    "create_time": 1786372044,
+    "update_time": 1786372044,
+    "_id": "LightRAG<SEP>Mixed dataset"
+  }
+}

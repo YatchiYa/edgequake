@@ -66,6 +66,8 @@ pub struct GleaningExtractor {
     language: String,
     /// Desired reasoning effort for gleaning LLM calls (SPEC-113 think-off).
     reasoning_effort: Option<String>,
+    /// SPEC-117: resolved per-response caps (`None` → fleet env at use time).
+    extraction_caps: Option<crate::prompts::ExtractionCaps>,
 }
 
 impl GleaningExtractor {
@@ -81,6 +83,7 @@ impl GleaningExtractor {
             config: GleaningConfig::default(),
             language: crate::prompts::DEFAULT_EXTRACTION_LANGUAGE.to_string(),
             reasoning_effort: None,
+            extraction_caps: None,
         }
     }
 
@@ -104,6 +107,17 @@ impl GleaningExtractor {
         self
     }
 
+    /// Set resolved extract caps (SPEC-117).
+    pub fn with_extraction_caps(mut self, caps: crate::prompts::ExtractionCaps) -> Self {
+        self.extraction_caps = Some(caps);
+        self
+    }
+
+    fn resolved_caps(&self) -> crate::prompts::ExtractionCaps {
+        self.extraction_caps
+            .unwrap_or_else(crate::prompts::ExtractionCaps::from_env)
+    }
+
     /// Set the gleaning configuration.
     pub fn with_config(mut self, config: GleaningConfig) -> Self {
         self.config = config;
@@ -117,14 +131,21 @@ impl GleaningExtractor {
     }
 
     /// Build the gleaning prompt.
-    fn build_gleaning_prompt(&self, chunk: &TextChunk, previous_entities: &[String]) -> String {
+    fn build_gleaning_prompt(
+        &self,
+        chunk: &TextChunk,
+        previous_entities: &[String],
+        after_caps_truncate: bool,
+    ) -> String {
         let text =
             crate::prompts::text_with_section_context(&chunk.content, chunk.section.as_ref());
-        crate::prompts::json_gleaning_prompt(
+        crate::prompts::json_gleaning_prompt_with_caps(
             &text,
             previous_entities,
             &self.entity_schema,
             &self.language,
+            self.resolved_caps(),
+            after_caps_truncate,
         )
     }
 
@@ -139,6 +160,7 @@ impl GleaningExtractor {
             chunk_id,
             JsonParseOptions {
                 entity_schema: Some(&self.entity_schema),
+                extraction_caps: Some(self.resolved_caps()),
                 ..Default::default()
             },
         )?;
@@ -228,11 +250,15 @@ impl EntityExtractor for GleaningExtractor {
             return Ok(result);
         }
 
+        // SPEC-117: when hard truncate applied, continue prompts ask for additional ents.
+        let after_caps_truncate = crate::prompts::extract_caps_were_applied(&result);
+
         // Perform gleaning iterations
         for iteration in 0..self.config.max_gleaning {
             tracing::debug!(
                 chunk_id = %chunk.id,
                 iteration = iteration,
+                after_caps_truncate = after_caps_truncate,
                 "Performing gleaning iteration"
             );
 
@@ -241,7 +267,8 @@ impl EntityExtractor for GleaningExtractor {
                 result.entities.iter().map(|e| e.name.clone()).collect();
 
             // Build and execute gleaning prompt
-            let gleaning_prompt = self.build_gleaning_prompt(chunk, &entity_names);
+            let gleaning_prompt =
+                self.build_gleaning_prompt(chunk, &entity_names, after_caps_truncate);
 
             // C-17: share extraction CompletionOptions (temp=0, provider-aware think-off).
             let options = extraction_completion_options_with_effort(

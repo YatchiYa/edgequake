@@ -102,6 +102,37 @@ pub(super) fn workspace_to_response(workspace: &Workspace) -> WorkspaceResponse 
             .get("extraction_language")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
+        // SPEC-116: chunking policy
+        chunking_mode: workspace
+            .metadata
+            .get("chunking_mode")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        chunk_token_size: workspace
+            .metadata
+            .get("chunk_token_size")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as u32),
+        chunk_overlap_token_size: workspace
+            .metadata
+            .get("chunk_overlap_token_size")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as u32),
+        // SPEC-117: extract budget
+        extract_budget_mode: workspace
+            .metadata
+            .get("extract_max_entities")
+            .map(|_| "custom".to_string()),
+        extract_max_entities: workspace
+            .metadata
+            .get("extract_max_entities")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as u32),
+        extract_max_records: workspace
+            .metadata
+            .get("extract_max_records")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as u32),
         // SPEC-102: entity type color overrides
         entity_type_colors: workspace.metadata.get("entity_type_colors").and_then(|v| {
             serde_json::from_value::<std::collections::HashMap<String, String>>(v.clone()).ok()

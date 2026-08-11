@@ -6,6 +6,8 @@ import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-
 import { ReviewStep } from '@/components/onboarding/steps/review-step';
 import { TenantBasicsStep } from '@/components/onboarding/steps/tenant-basics-step';
 import { WorkspaceBasicsStep } from '@/components/onboarding/steps/workspace-basics-step';
+import { WorkspaceChunkingStep } from '@/components/onboarding/steps/workspace-chunking-step';
+import { WorkspaceExtractBudgetStep } from '@/components/onboarding/steps/workspace-extract-budget-step';
 import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace-extraction-step';
 import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import type { LLMSelection } from '@/components/workspace/llm-model-selector';
@@ -163,6 +165,24 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
               ? draft.entityTypeColors
               : undefined,
           extraction_language: draft.extractionLanguage ?? undefined,
+          ...(draft.chunkingMode && draft.chunkingMode !== 'inherit'
+            ? {
+                chunking_mode: draft.chunkingMode,
+                ...(draft.chunkingMode === 'fixed'
+                  ? {
+                      chunk_token_size: draft.chunkTokenSize,
+                      chunk_overlap_token_size: draft.chunkOverlapTokenSize,
+                    }
+                  : {}),
+              }
+            : {}),
+          ...(draft.extractBudgetMode === 'custom'
+            ? {
+                extract_budget_mode: 'custom',
+                extract_max_entities: draft.extractMaxEntities,
+                extract_max_records: draft.extractMaxRecords,
+              }
+            : {}),
           relation_types:
             draft.relationTypes.length > 0 ? draft.relationTypes : undefined,
           relation_types_strict: draft.relationTypesStrict,
@@ -182,6 +202,24 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
               ? draft.entityTypeColors
               : undefined,
           extraction_language: draft.extractionLanguage ?? undefined,
+          ...(draft.chunkingMode && draft.chunkingMode !== 'inherit'
+            ? {
+                chunking_mode: draft.chunkingMode,
+                ...(draft.chunkingMode === 'fixed'
+                  ? {
+                      chunk_token_size: draft.chunkTokenSize,
+                      chunk_overlap_token_size: draft.chunkOverlapTokenSize,
+                    }
+                  : {}),
+              }
+            : {}),
+          ...(draft.extractBudgetMode === 'custom'
+            ? {
+                extract_budget_mode: 'custom',
+                extract_max_entities: draft.extractMaxEntities,
+                extract_max_records: draft.extractMaxRecords,
+              }
+            : {}),
           relation_types:
             draft.relationTypes.length > 0 ? draft.relationTypes : undefined,
           relation_types_strict: draft.relationTypesStrict,
@@ -232,6 +270,10 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
         );
       case 'workspace-basics':
         return <WorkspaceBasicsStep draft={draft} onChange={patchDraft} />;
+      case 'chunking':
+        return <WorkspaceChunkingStep draft={draft} onChange={patchDraft} />;
+      case 'extract-budget':
+        return <WorkspaceExtractBudgetStep draft={draft} onChange={patchDraft} />;
       case 'extraction':
         return <WorkspaceExtractionStep draft={draft} onChange={patchDraft} />;
       case 'review':

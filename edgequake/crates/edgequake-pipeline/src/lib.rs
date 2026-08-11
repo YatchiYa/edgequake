@@ -85,7 +85,10 @@ pub mod validation;
 
 pub use adaptive_chunking::{
     adaptive_chunk_overlap, adaptive_chunking_enabled, calculate_adaptive_chunk_size,
-    env_fixed_chunk_overlap, env_fixed_chunk_size, resolve_base_chunk_size_overlap,
+    chunking_policy_from_metadata, env_fixed_chunk_overlap, env_fixed_chunk_size,
+    policy_uses_adaptive, resolve_base_chunk_size_overlap,
+    resolve_base_chunk_size_overlap_with_policy, validate_fixed_pair, ChunkingMode, ChunkingPolicy,
+    DEFAULT_FIXED_CHUNK_OVERLAP, DEFAULT_FIXED_CHUNK_TOKEN_SIZE,
 };
 pub use anthropic_images::{
     anthropic_image_source_json, materialize_image_for_anthropic, materialize_images_for_anthropic,
@@ -112,8 +115,8 @@ pub use extractor::{
     GleaningExtractor, LLMExtractor, SOTAExtractor, SimpleExtractor,
 };
 pub use ingestion_pipeline::{
-    build_chunker_config, build_ingestion_pipeline, build_ingestion_pipeline_simple,
-    IngestionPipelineOptions,
+    build_chunker_config, build_chunker_config_with_policy, build_ingestion_pipeline,
+    build_ingestion_pipeline_simple, IngestionPipelineOptions,
 };
 pub use markdown_ir::{extract_markdown_blocks, format_breadcrumb, PREFACE_HEADING};
 pub use structure_induce::{
@@ -172,14 +175,13 @@ pub use pipeline::{
     apply_local_concurrency_safety_clamp,
     clamp_max_concurrent_extractions,
     clamp_max_gleaning,
+    classify_extract_error,
     // Issue-194: configurable timeout / concurrency constants
     default_chunk_timeout_for_provider,
     default_max_concurrent_for_provider,
+    extract_retry_budget,
     is_local_extraction_provider,
     is_local_provider_overload_error,
-    classify_extract_error,
-    extract_retry_budget,
-    ExtractErrorClass,
     // SPEC-091 QW2: admission resolver SSOT (LAW-Q1)
     queue_target_wait_secs_from_env,
     resolve_admission_plan,
@@ -191,13 +193,14 @@ pub use pipeline::{
     retry_delay_ms_for_chunk_error,
     AdmissionPlan,
     ChunkErrorInfo,
+    ChunkExtractedCallback,
     ChunkProgressCallback,
     ChunkProgressPhase,
     ChunkProgressUpdate,
-    ChunkExtractedCallback,
     CostBreakdownStats,
     EmbedProgressCallback,
     EmbedProgressUpdate,
+    ExtractErrorClass,
     IngestProfile,
     Pipeline,
     PipelineConfig,
@@ -233,14 +236,18 @@ pub use progress::{
     ProgressTracker, StageProgress, StageStatus, PHASE_WEIGHTS,
 };
 pub use prompts::{
-    canonicalize_extraction_language, default_entity_types, detect_format_markers,
-    extraction_language_from_metadata, format_section_context, is_extraction_language_clear,
-    json_extraction_prompt, json_gleaning_prompt, json_language_instruction, normalize_entity_name,
-    resolve_extraction_language, resolve_extraction_language_from_env, text_with_section_context,
-    truncate_section_context, EntityExtractionPrompts, ExtractionResultParser,
+    apply_extraction_caps, apply_extraction_caps_with_strategy, canonicalize_extraction_language,
+    default_entity_types, detect_format_markers, extraction_language_from_metadata,
+    format_section_context, is_extraction_language_clear, json_extraction_prompt,
+    json_extraction_prompt_with_caps, json_gleaning_prompt, json_gleaning_prompt_with_caps,
+    json_language_instruction, normalize_entity_name, resolve_extraction_language,
+    resolve_extraction_language_from_env, text_with_section_context, truncate_section_context,
+    CapsSelectionStrategy, EntityExtractionPrompts, ExtractionCaps, ExtractionResultParser,
     HybridExtractionParser, JsonExtractionParser, SummarizationPrompts, TupleParser,
-    DEFAULT_COMPLETION_DELIMITER, DEFAULT_EXTRACTION_LANGUAGE, DEFAULT_TUPLE_DELIMITER,
-    EXTRACTION_LANGUAGE_ENV, SUPPORTED_LANGUAGES,
+    DEFAULT_COMPLETION_DELIMITER, DEFAULT_EXTRACTION_LANGUAGE, DEFAULT_MAX_EXTRACTION_ENTITIES,
+    DEFAULT_MAX_EXTRACTION_RECORDS, DEFAULT_TUPLE_DELIMITER, EXTRACTION_LANGUAGE_ENV,
+    EXTRACT_CAPS_SELECTION_ENV, META_EXTRACT_MAX_ENTITIES, META_EXTRACT_MAX_RECORDS,
+    SUPPORTED_LANGUAGES,
 };
 pub use sanitizer::{EmojiMode, SanitizeConfig, SanitizeReport, Sanitizer};
 pub use stage_bridge::{

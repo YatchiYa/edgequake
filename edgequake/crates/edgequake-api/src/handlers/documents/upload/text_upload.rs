@@ -60,6 +60,12 @@ pub async fn upload_document(
     let (chunk_strategy, chunk_options) =
         parse_upload_chunk_fields(request.chunk_strategy.as_deref(), request.chunk_options);
 
+    crate::handlers::documents::upload::parse_document_extract_caps(
+        request.extract_max_entities,
+        request.extract_max_records,
+    )
+    .map_err(crate::error::ApiError::ValidationError)?;
+
     let outcome = admit_document_for_processing(
         &state,
         &tenant_ctx,
@@ -79,6 +85,8 @@ pub async fn upload_document(
             document_type: Some("markdown"),
             chunk_strategy,
             chunk_options,
+            extract_max_entities: request.extract_max_entities,
+            extract_max_records: request.extract_max_records,
             multimodal: false,
             ingest_mode: None,
             multimodal_manifest: None,

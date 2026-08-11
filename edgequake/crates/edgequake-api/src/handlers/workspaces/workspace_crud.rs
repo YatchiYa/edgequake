@@ -118,6 +118,14 @@ pub async fn create_workspace(
         entity_types_strict: request.entity_types_strict,
         // SPEC-096: Extraction language for future ingestions
         extraction_language: request.extraction_language.clone(),
+        // SPEC-116: Chunking policy
+        chunking_mode: request.chunking_mode.clone(),
+        chunk_token_size: request.chunk_token_size,
+        chunk_overlap_token_size: request.chunk_overlap_token_size,
+        // SPEC-117: Extract budget
+        extract_budget_mode: request.extract_budget_mode.clone(),
+        extract_max_entities: request.extract_max_entities,
+        extract_max_records: request.extract_max_records,
         // SPEC-102: entity type colors for graph visualization
         entity_type_colors: request.entity_type_colors.clone(),
         // SPEC-114 / 114b: relation types + schema preset + typed edges
@@ -340,6 +348,12 @@ pub async fn update_workspace(
         entity_types: request.entity_types,
         entity_types_strict: request.entity_types_strict,
         extraction_language: request.extraction_language,
+        chunking_mode: request.chunking_mode,
+        chunk_token_size: request.chunk_token_size,
+        chunk_overlap_token_size: request.chunk_overlap_token_size,
+        extract_budget_mode: request.extract_budget_mode,
+        extract_max_entities: request.extract_max_entities,
+        extract_max_records: request.extract_max_records,
         entity_type_colors: request.entity_type_colors,
         relation_types: request.relation_types,
         relation_types_strict: request.relation_types_strict,

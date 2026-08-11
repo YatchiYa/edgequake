@@ -19,6 +19,7 @@ pub use tuple_parser::TupleParser;
 
 use crate::error::Result;
 use crate::extractor::ExtractionResult;
+use crate::prompts::extract_caps::ExtractionCaps;
 
 /// Hybrid parser supporting both JSON and Tuple formats.
 ///
@@ -29,6 +30,8 @@ pub struct HybridExtractionParser {
     json_parser: JsonExtractionParser,
     tuple_parser: TupleParser,
     prefer_tuple: bool,
+    /// SPEC-117: resolved caps applied on both JSON and tuple paths.
+    extraction_caps: Option<ExtractionCaps>,
 }
 
 impl Default for HybridExtractionParser {
@@ -47,13 +50,35 @@ impl HybridExtractionParser {
             json_parser: JsonExtractionParser::new(),
             tuple_parser: TupleParser::new(),
             prefer_tuple,
+            extraction_caps: None,
         }
     }
 
     /// Create with custom tuple delimiters.
     pub fn with_tuple_delimiters(mut self, tuple: &str, completion: &str) -> Self {
         self.tuple_parser = TupleParser::with_delimiters(tuple, completion);
+        if let Some(caps) = self.extraction_caps {
+            self.tuple_parser = self.tuple_parser.with_extraction_caps(caps);
+        }
         self
+    }
+
+    /// Set resolved extract caps for both parsers (SPEC-117).
+    pub fn with_extraction_caps(mut self, caps: ExtractionCaps) -> Self {
+        self.extraction_caps = Some(caps);
+        self.tuple_parser = self.tuple_parser.with_extraction_caps(caps);
+        self
+    }
+
+    fn parse_json(&self, response: &str, chunk_id: &str) -> Result<ExtractionResult> {
+        self.json_parser.parse_with_options(
+            response,
+            chunk_id,
+            JsonParseOptions {
+                extraction_caps: self.extraction_caps,
+                ..Default::default()
+            },
+        )
     }
 
     /// Parse extraction result, auto-detecting format.
@@ -99,7 +124,7 @@ impl HybridExtractionParser {
 
         // Try JSON parser
         if has_json_markers {
-            match self.json_parser.parse(response, chunk_id) {
+            match self.parse_json(response, chunk_id) {
                 Ok(result) => {
                     tracing::debug!(
                         entities = result.entities.len(),
@@ -152,7 +177,7 @@ impl HybridExtractionParser {
         }
 
         // Last resort: try JSON in case it's just not properly formatted
-        self.json_parser.parse(response, chunk_id)
+        self.parse_json(response, chunk_id)
     }
 
     /// Get the underlying tuple parser.

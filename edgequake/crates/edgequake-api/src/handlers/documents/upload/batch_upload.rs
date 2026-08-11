@@ -62,7 +62,11 @@ pub async fn upload_files_batch(
                 );
                 files.push(stream_field_to_tempfile(field, filename).await?);
             }
-            "metadata" | "chunk_strategy" | "chunk_options" => {
+            "metadata"
+            | "chunk_strategy"
+            | "chunk_options"
+            | "extract_max_entities"
+            | "extract_max_records" => {
                 let text = field.text().await.map_err(|e| {
                     ApiError::BadRequest(format!("Failed to read {field_name}: {e}"))
                 })?;
@@ -74,20 +78,20 @@ pub async fn upload_files_batch(
 
     let (batch_chunk_strategy, batch_chunk_options, batch_metadata) =
         multipart_fields.effective_chunk_fields();
+    let (batch_extract_ents, batch_extract_recs) = multipart_fields
+        .effective_extract_caps()
+        .map_err(ApiError::ValidationError)?;
+    let batch_opts = BatchEnqueueOptions {
+        chunk_strategy: batch_chunk_strategy,
+        chunk_options: batch_chunk_options,
+        custom_metadata: batch_metadata,
+        extract_max_entities: batch_extract_ents,
+        extract_max_records: batch_extract_recs,
+    };
 
     for streamed in files {
         let (filename, content) = streamed.into_bytes()?;
-        match enqueue_single_file(
-            &state,
-            &tenant_ctx,
-            &filename,
-            &content,
-            batch_chunk_strategy,
-            batch_chunk_options.clone(),
-            batch_metadata.clone(),
-        )
-        .await
-        {
+        match enqueue_single_file(&state, &tenant_ctx, &filename, &content, &batch_opts).await {
             Ok((doc_id, is_duplicate)) => {
                 if is_duplicate {
                     duplicates += 1;
@@ -131,14 +135,22 @@ pub async fn upload_files_batch(
     ))
 }
 
+/// Shared batch-level admission knobs (chunking + SPEC-117 extract caps).
+#[derive(Clone)]
+struct BatchEnqueueOptions {
+    chunk_strategy: Option<edgequake_pipeline::ChunkStrategy>,
+    chunk_options: Option<edgequake_pipeline::ChunkOptions>,
+    custom_metadata: Option<serde_json::Value>,
+    extract_max_entities: Option<u32>,
+    extract_max_records: Option<u32>,
+}
+
 async fn enqueue_single_file(
     state: &AppState,
     tenant_ctx: &TenantContext,
     filename: &str,
     content: &[u8],
-    chunk_strategy: Option<edgequake_pipeline::ChunkStrategy>,
-    chunk_options: Option<edgequake_pipeline::ChunkOptions>,
-    custom_metadata: Option<serde_json::Value>,
+    opts: &BatchEnqueueOptions,
 ) -> Result<(String, bool), ApiError> {
     let resolved =
         resolve_upload_content(state, tenant_ctx.workspace_id_uuid(), filename, content).await?;
@@ -156,13 +168,15 @@ async fn enqueue_single_file(
             mime_type: Some(resolved.mime_type),
             raw_byte_size: content.len(),
             content_hash,
-            custom_metadata,
+            custom_metadata: opts.custom_metadata.clone(),
             track_id: None,
             expected_batch_count: None,
             gleaning: GleaningAdmissionOptions::default(),
             document_type: None,
-            chunk_strategy,
-            chunk_options,
+            chunk_strategy: opts.chunk_strategy,
+            chunk_options: opts.chunk_options.clone(),
+            extract_max_entities: opts.extract_max_entities,
+            extract_max_records: opts.extract_max_records,
             multimodal: resolved.meta.multimodal,
             ingest_mode: resolved.meta.ingest_mode,
             multimodal_manifest: resolved.manifest,

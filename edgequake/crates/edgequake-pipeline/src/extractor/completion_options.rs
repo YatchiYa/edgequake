@@ -146,12 +146,8 @@ mod tests {
 
     #[test]
     fn ollama_qwen_unset_floors_to_none() {
-        let opts = extraction_completion_options_with_effort(
-            "qwen3.6:35b-a3b",
-            1024,
-            None,
-            "ollama",
-        );
+        let opts =
+            extraction_completion_options_with_effort("qwen3.6:35b-a3b", 1024, None, "ollama");
         assert_eq!(
             opts.reasoning_effort.as_deref(),
             Some("none"),
@@ -161,12 +157,7 @@ mod tests {
 
     #[test]
     fn lmstudio_qwen_unset_floors_to_none() {
-        let opts = extraction_completion_options_with_effort(
-            "qwen3-14b",
-            1024,
-            None,
-            "lmstudio",
-        );
+        let opts = extraction_completion_options_with_effort("qwen3-14b", 1024, None, "lmstudio");
         assert_eq!(
             opts.reasoning_effort.as_deref(),
             Some("none"),

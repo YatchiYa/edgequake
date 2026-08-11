@@ -6,6 +6,20 @@
 
 import type { PdfParserBackendDraft } from '@/lib/onboarding/wizard-state';
 import { extractionLanguageToUpdatePayload } from '@/constants/extraction-languages';
+import {
+  ACC_FAIR_CHUNK_OVERLAP,
+  ACC_FAIR_CHUNK_TOKEN_SIZE,
+  chunkingToUpdatePayload,
+  parseChunkingMode,
+  type ChunkingMode,
+} from '@/constants/chunking-policy';
+import {
+  extractBudgetToUpdatePayload,
+  LIGHTRAG_EXTRACT_MAX_ENTITIES,
+  LIGHTRAG_EXTRACT_MAX_RECORDS,
+  parseExtractBudgetMode,
+  type ExtractBudgetMode,
+} from '@/constants/extract-budget';
 
 export interface ModelSelectionSlash {
   provider: string;
@@ -121,6 +135,14 @@ export function buildWorkspaceUpdatePayload(args: {
   visionChartSystemPrompt?: string;
   visionFigureSystemPrompt?: string;
   extractionLanguage: string | null;
+  /** SPEC-116 */
+  chunkingMode?: ChunkingMode | null;
+  chunkTokenSize?: number | null;
+  chunkOverlapTokenSize?: number | null;
+  /** SPEC-117 */
+  extractBudgetMode?: ExtractBudgetMode | null;
+  extractMaxEntities?: number | null;
+  extractMaxRecords?: number | null;
   entityTypes: string[];
   entityTypesStrict: boolean;
   entityTypeColors?: Record<string, string>;
@@ -149,6 +171,12 @@ export function buildWorkspaceUpdatePayload(args: {
   entity_types: string[];
   entity_types_strict: boolean;
   extraction_language: string;
+  chunking_mode: string;
+  chunk_token_size?: number;
+  chunk_overlap_token_size?: number;
+  extract_budget_mode: string;
+  extract_max_entities?: number;
+  extract_max_records?: number;
   entity_type_colors: Record<string, string>;
   relation_types: string[];
   relation_types_strict: boolean;
@@ -180,6 +208,20 @@ export function buildWorkspaceUpdatePayload(args: {
     vision_chart_system_prompt: args.visionChartSystemPrompt ?? '',
     vision_figure_system_prompt: args.visionFigureSystemPrompt ?? '',
   };
+  const chunkingFields = chunkingToUpdatePayload({
+    mode: parseChunkingMode(args.chunkingMode),
+    size: args.chunkTokenSize ?? ACC_FAIR_CHUNK_TOKEN_SIZE,
+    overlap: args.chunkOverlapTokenSize ?? ACC_FAIR_CHUNK_OVERLAP,
+  });
+  const extractBudgetFields = extractBudgetToUpdatePayload({
+    mode: parseExtractBudgetMode(
+      args.extractBudgetMode,
+      typeof args.extractMaxEntities === 'number' &&
+        args.extractBudgetMode === 'custom',
+    ),
+    entities: args.extractMaxEntities ?? LIGHTRAG_EXTRACT_MAX_ENTITIES,
+    records: args.extractMaxRecords ?? LIGHTRAG_EXTRACT_MAX_RECORDS,
+  });
   if (args.useServerDefaults) {
     return {
       llm_model: '',
@@ -194,6 +236,8 @@ export function buildWorkspaceUpdatePayload(args: {
       entity_types: args.entityTypes,
       entity_types_strict: args.entityTypesStrict,
       extraction_language: extractionLanguageToUpdatePayload(args.extractionLanguage),
+      ...chunkingFields,
+      ...extractBudgetFields,
       entity_type_colors,
       ...schemaFields,
       ...(effort ? { default_reasoning_effort: effort } : {}),
@@ -214,6 +258,8 @@ export function buildWorkspaceUpdatePayload(args: {
     entity_types: args.entityTypes,
     entity_types_strict: args.entityTypesStrict,
     extraction_language: extractionLanguageToUpdatePayload(args.extractionLanguage),
+    ...chunkingFields,
+    ...extractBudgetFields,
     entity_type_colors,
     ...schemaFields,
     ...(effort ? { default_reasoning_effort: effort } : {}),

@@ -44,6 +44,8 @@ where
     ///
     /// When `None`, provider-aware flooring applies (`none` for Ollama/LM Studio).
     reasoning_effort: Option<String>,
+    /// SPEC-117: resolved per-response caps (`None` → fleet env at use time).
+    extraction_caps: Option<crate::prompts::ExtractionCaps>,
 }
 
 impl<L> LLMExtractor<L>
@@ -57,6 +59,7 @@ where
             entity_schema: crate::prompts::EntityExtractionSchema::server_default(),
             language: crate::prompts::DEFAULT_EXTRACTION_LANGUAGE.to_string(),
             reasoning_effort: None,
+            extraction_caps: None,
         }
     }
 }
@@ -98,6 +101,17 @@ where
         self
     }
 
+    /// Set resolved extract caps (SPEC-117).
+    pub fn with_extraction_caps(mut self, caps: crate::prompts::ExtractionCaps) -> Self {
+        self.extraction_caps = Some(caps);
+        self
+    }
+
+    fn resolved_caps(&self) -> crate::prompts::ExtractionCaps {
+        self.extraction_caps
+            .unwrap_or_else(crate::prompts::ExtractionCaps::from_env)
+    }
+
     /// Current extraction language.
     pub fn language(&self) -> &str {
         &self.language
@@ -112,7 +126,12 @@ where
     fn build_prompt(&self, chunk: &TextChunk) -> String {
         let text =
             crate::prompts::text_with_section_context(&chunk.content, chunk.section.as_ref());
-        crate::prompts::json_extraction_prompt(&text, &self.entity_schema, &self.language)
+        crate::prompts::json_extraction_prompt_with_caps(
+            &text,
+            &self.entity_schema,
+            &self.language,
+            self.resolved_caps(),
+        )
     }
 
     /// Parse the LLM response via shared [`JsonExtractionParser`] (normalization + recovery).
@@ -125,6 +144,7 @@ where
                 recover_truncated: true,
                 // X-16: fail-closed — silent empty on missing JSON marked docs processed.
                 empty_on_missing_json: false,
+                extraction_caps: Some(self.resolved_caps()),
             },
         )
     }
@@ -180,11 +200,12 @@ where
                             "LLM repair error: {e}; prior parse: {parse_err}"
                         ))
                     })?;
-                self.parse_response(&repair.content, &chunk.id).map_err(|e| {
-                    PipelineError::ExtractionError(format!(
-                        "Invalid JSON after repair: {e}; first: {parse_err}"
-                    ))
-                })?
+                self.parse_response(&repair.content, &chunk.id)
+                    .map_err(|e| {
+                        PipelineError::ExtractionError(format!(
+                            "Invalid JSON after repair: {e}; first: {parse_err}"
+                        ))
+                    })?
             }
         };
 

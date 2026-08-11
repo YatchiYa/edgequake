@@ -47,6 +47,10 @@ name = "parse_scorecard"
 path = "examples/parse_scorecard.rs"
 required-features = []
 
+[[example]]
+name = "spec115_mistral_ingest"
+path = "examples/spec115_mistral_ingest.rs"
+
 [features]
 default = ["postgres", "vision"]
 otel = ["edgequake-observability/otel", "edgequake-api/otel"]

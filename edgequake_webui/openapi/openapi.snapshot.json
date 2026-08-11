@@ -3156,8 +3156,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_failed",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_failed"
       }
     },
     "/api/v1/documents/scan": {
@@ -4135,8 +4135,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reanalyze_multimodal",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reanalyze_multimodal"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -8980,8 +8980,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_embeddings"
+        "x-edgequake-v2-job-type": "rebuild_embeddings",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -9054,8 +9054,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -9620,8 +9620,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     },
     "/ws/progress/{track_id}": {
@@ -13259,6 +13259,31 @@
           "name"
         ],
         "properties": {
+          "chunk_overlap_token_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "SPEC-116: fixed overlap tokens (default 100).",
+            "minimum": 0
+          },
+          "chunk_token_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "SPEC-116: fixed chunk token size (default 1200).",
+            "minimum": 0
+          },
+          "chunking_mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-116: `inherit` | `adaptive` | `fixed`."
+          },
           "default_reasoning_effort": {
             "type": [
               "string",
@@ -13324,6 +13349,31 @@
               "null"
             ],
             "description": "When true (default), limit extraction to listed types; unknown → OTHER."
+          },
+          "extract_budget_mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-117: `inherit` | `custom`."
+          },
+          "extract_max_entities": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "SPEC-117: max entities per LLM extraction response.",
+            "minimum": 0
+          },
+          "extract_max_records": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "SPEC-117: max total entity+relationship rows per response.",
+            "minimum": 0
           },
           "extraction_language": {
             "type": [
@@ -27835,6 +27885,29 @@
         "type": "object",
         "description": "Request to update a workspace.\n\n## Model Configuration Updates (SPEC-032)\n\nChanging LLM provider/model is safe and takes effect immediately for new ingestions.\nChanging embedding provider/model requires rebuilding vectors (use rebuild-embeddings endpoint).",
         "properties": {
+          "chunk_overlap_token_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "chunk_token_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "chunking_mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-116 chunking mode. Omit = leave unchanged; `inherit` clears."
+          },
           "default_reasoning_effort": {
             "type": [
               "string",
@@ -27900,6 +27973,29 @@
               "null"
             ],
             "description": "Strict entity type limit (default true). Set false to allow free-form types."
+          },
+          "extract_budget_mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-117: `inherit` clears; `custom` + ints sets. Omit = leave unchanged."
+          },
+          "extract_max_entities": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "extract_max_records": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
           },
           "extraction_language": {
             "type": [
@@ -28046,6 +28142,9 @@
           }
         },
         "example": {
+          "chunk_overlap_token_size": {},
+          "chunk_token_size": {},
+          "chunking_mode": {},
           "default_reasoning_effort": {},
           "description": {},
           "embedding_dimension": {},
@@ -28054,6 +28153,9 @@
           "entity_type_colors": {},
           "entity_types": [],
           "entity_types_strict": {},
+          "extract_budget_mode": {},
+          "extract_max_entities": {},
+          "extract_max_records": {},
           "extraction_language": {},
           "is_active": {},
           "kg_schema_preset": {},
@@ -28105,6 +28207,24 @@
           "enable_gleaning": {
             "type": "boolean",
             "description": "Enable gleaning (multiple extraction passes) for higher quality entity extraction."
+          },
+          "extract_max_entities": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "SPEC-117: optional per-upload max entities per LLM extraction response.",
+            "minimum": 0
+          },
+          "extract_max_records": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "SPEC-117: optional per-upload max total entity+relationship rows per response.",
+            "minimum": 0
           },
           "max_gleaning": {
             "type": "integer",
@@ -28476,6 +28596,29 @@
           "updated_at"
         ],
         "properties": {
+          "chunk_overlap_token_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "chunk_token_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "chunking_mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-116 chunking mode (`adaptive` | `fixed`). Absent = inherit fleet env."
+          },
           "created_at": {
             "type": "string",
             "description": "Creation timestamp."
@@ -28537,6 +28680,29 @@
           "entity_types_strict": {
             "type": "boolean",
             "description": "When true, unknown types are remapped to OTHER/CONCEPT (default true)."
+          },
+          "extract_budget_mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-117: absent = inherit fleet env; present when custom ints stored."
+          },
+          "extract_max_entities": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "extract_max_records": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
           },
           "extraction_language": {
             "type": [

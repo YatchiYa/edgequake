@@ -360,11 +360,8 @@ impl PdfConverter for VisionPdfConverter {
                     }
                     // W1-fig-as-chart: only when both charts+figures enabled (EC-015V-2).
                     if plan.promote_fig_as_chart {
-                        let alongside = chart_residual_alongside_fig_pages(
-                            &page_nums,
-                            &figure_map,
-                            &table_map,
-                        );
+                        let alongside =
+                            chart_residual_alongside_fig_pages(&page_nums, &figure_map, &table_map);
                         let promoted = crate::chart_crop::promote_fig_as_chart_when_ink_empty(
                             &page_assets.assets_root,
                             &alongside,

@@ -295,7 +295,7 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "See figure below".into(),
             trailing: "n/a".into(),
-        
+
             image_system_prompt: None,
             chart_system_prompt: None,
             figure_system_prompt: None,
@@ -317,7 +317,7 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
-        
+
             image_system_prompt: None,
             chart_system_prompt: None,
             figure_system_prompt: None,
@@ -348,7 +348,7 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
-        
+
             image_system_prompt: None,
             chart_system_prompt: None,
             figure_system_prompt: None,
@@ -368,7 +368,7 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
-        
+
             image_system_prompt: None,
             chart_system_prompt: None,
             figure_system_prompt: None,
@@ -389,7 +389,7 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
-        
+
             image_system_prompt: None,
             chart_system_prompt: None,
             figure_system_prompt: None,
@@ -416,7 +416,7 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
-        
+
             image_system_prompt: None,
             chart_system_prompt: None,
             figure_system_prompt: None,
@@ -439,7 +439,7 @@ mod tests {
             footnotes: "n/a".into(),
             leading: "n/a".into(),
             trailing: "n/a".into(),
-        
+
             image_system_prompt: None,
             chart_system_prompt: None,
             figure_system_prompt: None,

@@ -209,11 +209,7 @@ async fn spec114_gleaning_typed_edges_remap_illegal_endpoints() {
 async fn spec114_gleaning_empty_edges_unconstrained_endpoints() {
     // LOCATED_IN Alice→Paris is allowed by label list and unconstrained endpoints.
     let mut schema = schema_strict_relations_no_edges();
-    schema.relation_types = vec![
-        "WORKS_AT".into(),
-        "RELATED_TO".into(),
-        "LOCATED_IN".into(),
-    ];
+    schema.relation_types = vec!["WORKS_AT".into(), "RELATED_TO".into(), "LOCATED_IN".into()];
     let result = run_pipeline(schema).await;
     let types = collected_relation_types(&result);
     assert!(
