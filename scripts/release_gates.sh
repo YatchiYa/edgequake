@@ -56,7 +56,21 @@ echo "== workspace lib tests =="
 if [[ "${RELEASE_SKIP_LIB_TESTS:-}" == "1" ]]; then
   echo "skipped (RELEASE_SKIP_LIB_TESTS=1 — full suite runs on main CI)"
 else
-  (cd "$EQ" && cargo test --workspace --lib --locked --no-fail-fast)
+  # Makefile `-include .env` + bare `export` injects local LLM/reasoning pins into
+  # every recipe. Unit tests assert compiled/env-absent defaults — scrub overrides.
+  (
+    cd "$EQ" || exit 1
+    unset EDGEQUAKE_DEFAULT_LLM_PROVIDER EDGEQUAKE_DEFAULT_LLM_MODEL \
+      EDGEQUAKE_LLM_PROVIDER EDGEQUAKE_LLM_MODEL \
+      EDGEQUAKE_VISION_PROVIDER EDGEQUAKE_VISION_MODEL \
+      EDGEQUAKE_VISION_LLM_PROVIDER EDGEQUAKE_VISION_LLM_MODEL \
+      EDGEQUAKE_REASONING_EFFORT EDGEQUAKE_EXTRACT_REASONING_EFFORT \
+      EDGEQUAKE_QUERY_REASONING_EFFORT EDGEQUAKE_SUMMARY_REASONING_EFFORT \
+      EDGEQUAKE_VLM_REASONING_EFFORT EDGEQUAKE_KEYWORD_REASONING_EFFORT \
+      EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER EDGEQUAKE_DEFAULT_EMBEDDING_MODEL \
+      EDGEQUAKE_EMBEDDING_PROVIDER EDGEQUAKE_EMBEDDING_MODEL || true
+    cargo test --workspace --lib --locked --no-fail-fast
+  )
 fi
 
 echo "== SPEC-006 resource-proof =="

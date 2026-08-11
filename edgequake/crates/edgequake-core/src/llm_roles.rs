@@ -529,7 +529,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn resolve_extract_effort_uses_structured_floor_for_gpt5_mini() {
+        for key in [
+            "EDGEQUAKE_EXTRACT_REASONING_EFFORT",
+            "EDGEQUAKE_REASONING_EFFORT",
+        ] {
+            std::env::remove_var(key);
+        }
         let ws = sample_workspace(HashMap::new());
         let resolved = resolve_role_reasoning_effort(
             LlmRole::Extract,
@@ -546,7 +553,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn resolve_extract_effort_ollama_qwen_floors_to_none() {
+        for key in [
+            "EDGEQUAKE_EXTRACT_REASONING_EFFORT",
+            "EDGEQUAKE_REASONING_EFFORT",
+        ] {
+            std::env::remove_var(key);
+        }
         let ws = sample_workspace(HashMap::new());
         let resolved = resolve_role_reasoning_effort(
             LlmRole::Extract,

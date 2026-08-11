@@ -32,6 +32,7 @@ pub(crate) use progress_identity::seed_pdf_job_progress;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_estimate_processing_time() {
@@ -53,7 +54,22 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_pdf_upload_options_vision_model() {
+        // Isolate from Makefile `.env` export / local LLM pins.
+        for key in [
+            "EDGEQUAKE_VISION_PROVIDER",
+            "EDGEQUAKE_VISION_MODEL",
+            "EDGEQUAKE_VISION_LLM_PROVIDER",
+            "EDGEQUAKE_VISION_LLM_MODEL",
+            "EDGEQUAKE_DEFAULT_LLM_PROVIDER",
+            "EDGEQUAKE_DEFAULT_LLM_MODEL",
+            "EDGEQUAKE_LLM_PROVIDER",
+            "EDGEQUAKE_LLM_MODEL",
+        ] {
+            std::env::remove_var(key);
+        }
+
         let mut opts = PdfUploadOptions {
             vision_provider: Some("openai".to_string()),
             ..Default::default()
