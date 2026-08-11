@@ -186,7 +186,9 @@ async fn e2e_spec118_worker_injection_relational_completes_with_chunks() {
 
     // Authority must remain relational for this suite (harness must not flip to kv).
     assert_eq!(
-        std::env::var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY").ok().as_deref(),
+        std::env::var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY")
+            .ok()
+            .as_deref(),
         Some("relational"),
         "SPEC-118 CI blind-spot: relational authority must stay pinned"
     );

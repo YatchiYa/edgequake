@@ -24,6 +24,8 @@ pub struct MirrorLegacyReport {
     pub misses: Vec<String>,
     /// Sample of legacy ids with missing/invalid workspace_id metadata.
     pub invalid_workspace: Vec<String>,
+    /// SPEC-120: lid writes absorbed because another FK already owns the stamp.
+    pub absorbed_legacy_collisions: u64,
 }
 
 impl MirrorLegacyReport {

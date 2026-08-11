@@ -69,6 +69,10 @@ pub struct InsertReport {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UpsertReport {
     pub upserted: u64,
+    /// SPEC-120: rows skipped because `(workspace_id, legacy_vector_id)` was
+    /// already owned by a different FK (absorbable 23505).
+    #[serde(default)]
+    pub absorbed_legacy_collisions: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

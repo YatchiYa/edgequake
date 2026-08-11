@@ -918,6 +918,7 @@ mod tests {
             ) -> std::result::Result<UpsertReport, edgequake_storage::StorageError> {
                 Ok(UpsertReport {
                     upserted: rows.len() as u64,
+                    ..Default::default()
                 })
             }
             async fn search(

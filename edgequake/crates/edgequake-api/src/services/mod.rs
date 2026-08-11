@@ -26,7 +26,6 @@ pub mod document_delete_admit;
 pub mod document_deletion;
 pub mod document_graph_cascade;
 pub mod document_graph_lineage;
-pub mod graph_cleanup_timeout;
 pub mod document_metadata_repair;
 pub mod document_metadata_scan;
 #[cfg(feature = "postgres")]
@@ -41,6 +40,7 @@ pub mod entity_graph_lookup;
 pub mod entity_merge;
 pub mod entity_name_normalize;
 pub mod entity_neighborhood;
+pub mod graph_cleanup_timeout;
 pub mod graph_community;
 pub mod graph_materialization;
 #[cfg(feature = "postgres")]
@@ -163,11 +163,6 @@ pub use document_graph_lineage::{
     build_document_graph_lineage, entity_summary_from_node, relationship_summary_from_edge,
     DocumentGraphLineageBuild,
 };
-pub use graph_cleanup_timeout::{
-    api_error_graph_cleanup_timeout, deletion_failed_graph_cleanup_timeout,
-    graph_cleanup_timeout_user_message, is_source_discovery_timeout, log_graph_cleanup_timeout,
-    map_cascade_error_for_reprocess, GraphCleanupAction,
-};
 #[cfg(feature = "postgres")]
 pub use document_mm_asset_persist::{
     delete_document_mm_assets, list_mm_asset_summaries_for_document, load_mm_asset_bytes,
@@ -185,6 +180,11 @@ pub use document_vector_storage::{
     get_workspace_vector_storage_with_fallback,
 };
 pub use entity_graph_lookup::{entity_lookup_candidates, lookup_entity_node_for_context};
+pub use graph_cleanup_timeout::{
+    api_error_graph_cleanup_timeout, deletion_failed_graph_cleanup_timeout,
+    graph_cleanup_timeout_user_message, is_source_discovery_timeout, log_graph_cleanup_timeout,
+    map_cascade_error_for_reprocess, GraphCleanupAction,
+};
 pub use graph_community::detect_communities_guarded;
 pub use graph_materialization::{
     admit_graph_materialization, graph_query_timeout, is_db_statement_timeout,

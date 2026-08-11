@@ -43,6 +43,7 @@ mod diskann_runtime_policy;
 pub mod document_shell;
 mod filtered_diskann_label_policy;
 pub mod fleet_embedding_index;
+mod fleet_legacy_absorb;
 mod graph;
 mod hnsw_manifest;
 mod hnsw_runtime_policy;

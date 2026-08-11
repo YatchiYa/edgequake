@@ -24,11 +24,15 @@ pub struct EntityNameIndex {
 
 impl EntityNameIndex {
     /// Build from `(id, name)` rows for one workspace.
+    ///
+    /// SPEC-120: callers should feed rows `ORDER BY created_at ASC, id ASC`.
+    /// All keys use `or_insert` so the **oldest** row wins for exact, normalized,
+    /// and workspace-suffix aliases (deterministic under concurrent spines).
     pub fn from_rows(rows: impl IntoIterator<Item = (Uuid, String)>) -> Self {
         let mut by_key = HashMap::new();
         for (id, name) in rows {
             if !name.is_empty() {
-                by_key.insert(name.clone(), id);
+                by_key.entry(name.clone()).or_insert(id);
             }
             let norm = normalize_entity_name(&name);
             if !norm.is_empty() {
@@ -70,12 +74,15 @@ pub async fn load_entity_name_index(
     tx: &mut Transaction<'_, Postgres>,
     workspace_id: Uuid,
 ) -> Result<EntityNameIndex, StorageError> {
-    let rows: Vec<(Uuid, String)> =
-        sqlx::query_as("SELECT id, name FROM public.entities WHERE workspace_id = $1")
-            .bind(workspace_id)
-            .fetch_all(&mut **tx)
-            .await
-            .map_err(|e| StorageError::Database(format!("coverage load entities failed: {e}")))?;
+    // SPEC-120: stable order so normalized/suffix or_insert prefers oldest.
+    let rows: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, name FROM public.entities WHERE workspace_id = $1 \
+         ORDER BY created_at ASC, id ASC",
+    )
+    .bind(workspace_id)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| StorageError::Database(format!("coverage load entities failed: {e}")))?;
     Ok(EntityNameIndex::from_rows(rows))
 }
 
@@ -84,12 +91,15 @@ pub async fn load_entity_name_index_pool(
     pool: &PgPool,
     workspace_id: Uuid,
 ) -> Result<EntityNameIndex, StorageError> {
-    let rows: Vec<(Uuid, String)> =
-        sqlx::query_as("SELECT id, name FROM public.entities WHERE workspace_id = $1")
-            .bind(workspace_id)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("coverage load entities failed: {e}")))?;
+    // SPEC-120: stable order so normalized/suffix or_insert prefers oldest.
+    let rows: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, name FROM public.entities WHERE workspace_id = $1 \
+         ORDER BY created_at ASC, id ASC",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| StorageError::Database(format!("coverage load entities failed: {e}")))?;
     Ok(EntityNameIndex::from_rows(rows))
 }
 

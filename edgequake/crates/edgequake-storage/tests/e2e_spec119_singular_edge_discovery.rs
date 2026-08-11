@@ -163,12 +163,11 @@ async fn e2e_spec119_live_graph_singular_index_cond_if_present() {
     }
 
     for graph in candidates {
-        let n_edges: i64 = sqlx::query_scalar(&format!(
-            r#"SELECT COUNT(*)::bigint FROM {graph}."EDGE""#
-        ))
-        .fetch_one(&pool)
-        .await
-        .unwrap_or(0);
+        let n_edges: i64 =
+            sqlx::query_scalar(&format!(r#"SELECT COUNT(*)::bigint FROM {graph}."EDGE""#))
+                .fetch_one(&pool)
+                .await
+                .unwrap_or(0);
         if n_edges < 10_000 {
             eprintln!("skip candidate {graph}: {n_edges} edges");
             continue;

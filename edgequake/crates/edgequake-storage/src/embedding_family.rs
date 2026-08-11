@@ -20,6 +20,20 @@ impl EmbeddingFamily {
         }
     }
 
+    /// FK column on the typed embedding table (PK companion to `model_id`).
+    pub fn typed_fk_column(self) -> &'static str {
+        match self {
+            Self::Entity => "entity_id",
+            Self::Relationship => "relationship_id",
+            Self::Report => "report_id",
+        }
+    }
+
+    /// Whether the typed FK is UUID (`entity`/`relationship`) or TEXT (`report`).
+    pub fn typed_fk_is_uuid(self) -> bool {
+        !matches!(self, Self::Report)
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Entity => "entity",
@@ -139,5 +153,27 @@ mod tests {
         assert!(parse_relationship_legacy_key("A->:TYPE").is_none());
         assert!(parse_relationship_legacy_key("A->B:").is_none());
         assert!(parse_relationship_legacy_key("entity:A->B:TYPE").is_none());
+    }
+
+    /// SPEC-120: absorb SQL is driven by family metadata (SOLID OCP / DRY).
+    #[test]
+    fn contract_spec120_family_typed_fk_metadata() {
+        assert_eq!(EmbeddingFamily::Entity.typed_table(), "entity_embeddings");
+        assert_eq!(EmbeddingFamily::Entity.typed_fk_column(), "entity_id");
+        assert!(EmbeddingFamily::Entity.typed_fk_is_uuid());
+
+        assert_eq!(
+            EmbeddingFamily::Relationship.typed_table(),
+            "relationship_embeddings"
+        );
+        assert_eq!(
+            EmbeddingFamily::Relationship.typed_fk_column(),
+            "relationship_id"
+        );
+        assert!(EmbeddingFamily::Relationship.typed_fk_is_uuid());
+
+        assert_eq!(EmbeddingFamily::Report.typed_table(), "report_embeddings");
+        assert_eq!(EmbeddingFamily::Report.typed_fk_column(), "report_id");
+        assert!(!EmbeddingFamily::Report.typed_fk_is_uuid());
     }
 }

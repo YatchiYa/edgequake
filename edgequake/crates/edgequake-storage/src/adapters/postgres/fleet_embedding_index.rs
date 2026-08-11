@@ -5,6 +5,7 @@ use serde_json::Value;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::adapters::postgres::fleet_legacy_absorb::{upsert_with_legacy_absorb, AbsorbBatch};
 use crate::adapters::postgres::typed_embedding_dims::{
     validate_ann_dimensions, validate_typed_embedding_batch_dims,
 };
@@ -122,104 +123,60 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
             .map(|r| r.legacy_vector_id.clone().unwrap_or_default())
             .collect();
 
-        let upserted = match family {
-            EmbeddingFamily::Entity => {
-                let entity_ids: Vec<Uuid> = rows
-                    .iter()
-                    .map(|r| match r.key {
-                        FleetEmbeddingKey::Entity(id) => id,
-                        _ => Uuid::nil(),
-                    })
-                    .collect();
-                sqlx::query(
-                    r#"
-                    INSERT INTO entity_embeddings
-                      (model_id, entity_id, workspace_id, embedding, dimensions, legacy_vector_id)
-                    SELECT $1, e, w, v::halfvec, d, NULLIF(lid, '')
-                    FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[], $6::text[])
-                      AS t(e, w, v, d, lid)
-                    ON CONFLICT (model_id, entity_id) DO UPDATE
-                      SET legacy_vector_id = COALESCE(
-                            entity_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)
-                    "#,
-                )
-                .bind(model_id.0)
-                .bind(&entity_ids)
-                .bind(&workspace_ids)
-                .bind(&vectors)
-                .bind(&dims)
-                .bind(&legacy_ids)
-                .execute(&self.pool)
-                .await
-                .map_err(StorageError::from)?
-                .rows_affected()
-            }
-            EmbeddingFamily::Relationship => {
-                let rel_ids: Vec<Uuid> = rows
-                    .iter()
-                    .map(|r| match r.key {
-                        FleetEmbeddingKey::Relationship(id) => id,
-                        _ => Uuid::nil(),
-                    })
-                    .collect();
-                sqlx::query(
-                    r#"
-                    INSERT INTO relationship_embeddings
-                      (model_id, relationship_id, workspace_id, embedding, dimensions, legacy_vector_id)
-                    SELECT $1, r, w, v::halfvec, d, NULLIF(lid, '')
-                    FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[], $6::text[])
-                      AS t(r, w, v, d, lid)
-                    ON CONFLICT (model_id, relationship_id) DO UPDATE
-                      SET legacy_vector_id = COALESCE(
-                            relationship_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)
-                    "#,
-                )
-                .bind(model_id.0)
-                .bind(&rel_ids)
-                .bind(&workspace_ids)
-                .bind(&vectors)
-                .bind(&dims)
-                .bind(&legacy_ids)
-                .execute(&self.pool)
-                .await
-                .map_err(StorageError::from)?
-                .rows_affected()
-            }
-            EmbeddingFamily::Report => {
-                let report_ids: Vec<String> = rows
-                    .iter()
-                    .map(|r| match &r.key {
-                        FleetEmbeddingKey::Report(id) => id.clone(),
-                        _ => String::new(),
-                    })
-                    .collect();
-                sqlx::query(
-                    r#"
-                    INSERT INTO report_embeddings
-                      (model_id, report_id, workspace_id, embedding, dimensions, legacy_vector_id)
-                    SELECT $1, r, w, v::halfvec, d, NULLIF(lid, '')
-                    FROM unnest($2::text[], $3::uuid[], $4::text[], $5::int[], $6::text[])
-                      AS t(r, w, v, d, lid)
-                    ON CONFLICT (model_id, report_id) DO UPDATE
-                      SET legacy_vector_id = COALESCE(
-                            report_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)
-                    "#,
-                )
-                .bind(model_id.0)
-                .bind(&report_ids)
-                .bind(&workspace_ids)
-                .bind(&vectors)
-                .bind(&dims)
-                .bind(&legacy_ids)
-                .execute(&self.pool)
-                .await
-                .map_err(StorageError::from)?
-                .rows_affected()
-            }
+        let (fk_uuids, fk_texts) = match family {
+            EmbeddingFamily::Entity => (
+                Some(
+                    rows.iter()
+                        .map(|r| match r.key {
+                            FleetEmbeddingKey::Entity(id) => id,
+                            _ => Uuid::nil(),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+                None,
+            ),
+            EmbeddingFamily::Relationship => (
+                Some(
+                    rows.iter()
+                        .map(|r| match r.key {
+                            FleetEmbeddingKey::Relationship(id) => id,
+                            _ => Uuid::nil(),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+                None,
+            ),
+            EmbeddingFamily::Report => (
+                None,
+                Some(
+                    rows.iter()
+                        .map(|r| match &r.key {
+                            FleetEmbeddingKey::Report(id) => id.clone(),
+                            _ => String::new(),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            ),
         };
 
+        let (upserted, absorbed) = upsert_with_legacy_absorb(
+            &self.pool,
+            &AbsorbBatch {
+                family,
+                model_id: model_id.0,
+                fk_uuids: fk_uuids.as_deref(),
+                fk_texts: fk_texts.as_deref(),
+                workspace_ids: &workspace_ids,
+                vectors: &vectors,
+                dims: &dims,
+                legacy_ids: &legacy_ids,
+            },
+        )
+        .await?;
+
         Ok(UpsertReport {
-            upserted: upserted as u64,
+            upserted,
+            absorbed_legacy_collisions: absorbed,
         })
     }
 
@@ -400,20 +357,26 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
 
         report.resolved = (entity_rows.len() + rel_rows.len() + report_rows.len()) as u64;
         if !entity_rows.is_empty() {
-            self.upsert_batch(EmbeddingFamily::Entity, ModelId(Uuid::nil()), &entity_rows)
+            let ur = self
+                .upsert_batch(EmbeddingFamily::Entity, ModelId(Uuid::nil()), &entity_rows)
                 .await?;
+            report.absorbed_legacy_collisions += ur.absorbed_legacy_collisions;
         }
         if !rel_rows.is_empty() {
-            self.upsert_batch(
-                EmbeddingFamily::Relationship,
-                ModelId(Uuid::nil()),
-                &rel_rows,
-            )
-            .await?;
+            let ur = self
+                .upsert_batch(
+                    EmbeddingFamily::Relationship,
+                    ModelId(Uuid::nil()),
+                    &rel_rows,
+                )
+                .await?;
+            report.absorbed_legacy_collisions += ur.absorbed_legacy_collisions;
         }
         if !report_rows.is_empty() {
-            self.upsert_batch(EmbeddingFamily::Report, ModelId(Uuid::nil()), &report_rows)
+            let ur = self
+                .upsert_batch(EmbeddingFamily::Report, ModelId(Uuid::nil()), &report_rows)
                 .await?;
+            report.absorbed_legacy_collisions += ur.absorbed_legacy_collisions;
         }
         Ok(report)
     }

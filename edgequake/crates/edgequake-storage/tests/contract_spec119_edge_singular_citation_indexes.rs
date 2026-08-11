@@ -75,10 +75,7 @@ async fn contract_spec119_singular_probe_uses_index() {
         .upsert_node(&a, node_props.clone())
         .await
         .expect("node a");
-    storage
-        .upsert_node(&b, node_props)
-        .await
-        .expect("node b");
+    storage.upsert_node(&b, node_props).await.expect("node b");
 
     let mut edge_props = HashMap::new();
     edge_props.insert("tenant_id".into(), json!("t-spec119"));
@@ -146,7 +143,10 @@ async fn contract_spec119_singular_probe_uses_index() {
         !doc_plan.contains("_ag_label_edge"),
         "document_id EXPLAIN must target child EDGE: {doc_plan}"
     );
-    assert_plan_uses_index(&doc_plan, &[PlanKind::Btree, PlanKind::Bitmap, PlanKind::Index]);
+    assert_plan_uses_index(
+        &doc_plan,
+        &[PlanKind::Btree, PlanKind::Bitmap, PlanKind::Index],
+    );
     assert!(
         doc_plan.contains("idx_edge_source_document_id")
             || doc_plan.to_lowercase().contains("index cond"),
@@ -178,7 +178,10 @@ async fn contract_spec119_singular_probe_uses_index() {
         !or_plan.contains("_ag_label_edge"),
         "OR EXPLAIN must target child EDGE: {or_plan}"
     );
-    assert_plan_uses_index(&or_plan, &[PlanKind::Btree, PlanKind::Bitmap, PlanKind::Index]);
+    assert_plan_uses_index(
+        &or_plan,
+        &[PlanKind::Btree, PlanKind::Bitmap, PlanKind::Index],
+    );
     let or_lower = or_plan.to_lowercase();
     assert!(
         !or_lower.contains("seq scan") || or_lower.contains("index"),
@@ -210,9 +213,7 @@ async fn contract_spec119_singular_probe_uses_index() {
 
 #[test]
 fn contract_spec119_singular_sql_source_has_no_jsonb_cast_on_arrow() {
-    let src = include_str!(
-        "../src/adapters/postgres/graph/scan_ops.rs"
-    );
+    let src = include_str!("../src/adapters/postgres/graph/scan_ops.rs");
     // Narrow window: Symptom F singular block comments + filters.
     let start = src
         .find("SPEC-098 Symptom F: poisoned source_ids")
@@ -231,8 +232,7 @@ fn contract_spec119_singular_sql_source_has_no_jsonb_cast_on_arrow() {
         "LAW-119-2: singular SQL must not use ::jsonb on source_document_id extract"
     );
     assert!(
-        singular.contains("->>'source_chunk_id'")
-            && singular.contains("->>'source_document_id'"),
+        singular.contains("->>'source_chunk_id'") && singular.contains("->>'source_document_id'"),
         "singular SQL must still filter both singular citation props"
     );
 }

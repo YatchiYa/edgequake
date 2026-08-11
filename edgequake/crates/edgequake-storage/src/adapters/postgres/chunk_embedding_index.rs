@@ -143,6 +143,7 @@ impl EmbeddingIndex for PgChunkEmbeddingIndex {
 
         Ok(UpsertReport {
             upserted: upserted as u64,
+            ..Default::default()
         })
     }
 
