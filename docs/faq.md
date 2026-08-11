@@ -366,13 +366,30 @@ Cancelling convert **or** an in-flight ingest cancels both linked tasks for the 
 
 ### What document formats are supported?
 
-| Format     | Support                     |
-| ---------- | --------------------------- |
-| Plain text | ✅ Full                      |
-| Markdown   | ✅ Full                      |
-| PDF        | ✅ Full (vision LLM required) |
-| HTML       | 🔄 Planned                   |
-| DOCX       | 🔄 Planned                   |
+| Format | Support | Notes |
+| ------ | ------- | ----- |
+| Plain text (`.txt`) | ✅ Full | WebUI + API |
+| Markdown (`.md`) | ✅ Full | WebUI + API |
+| JSON (`.json`) | ✅ Full | WebUI + API (text path) |
+| PDF (`.pdf`) | ✅ Full | WebUI + `POST /api/v1/documents/pdf` (vision LLM required for convert) |
+| Images (PNG/JPG/GIF/WEBP) | ✅ Full | WebUI + multipart upload (vision LLM) |
+| CSV / HTML / XML / YAML | ✅ API-only | Accepted on `POST /api/v1/documents/upload`; not on WebUI dropzone |
+| DOCX (Word) | ❌ Not supported | Export to PDF or Markdown. See SPEC-121 future study |
+| Excel (XLSX/XLS) | ❌ Not supported | Export to CSV, PDF, or Markdown. See SPEC-121 |
+
+Product matrix SSOT: [specs/121-pdf-docx/](../specs/121-pdf-docx/README.md) (GitHub [#370](https://github.com/raphaelmansuy/edgequake/issues/370)).
+
+### PDF uploads work for JSON but fail in Docker — runbook
+
+JSON uses a small `POST /api/v1/documents` body. PDF uses multipart `POST /api/v1/documents/pdf` plus pdfium + vision. When JSON succeeds and PDF does not:
+
+1. **Use the PDF endpoint** — never `POST /documents/upload` with `.pdf` (returns 400; whitelist is text/images only).
+2. **Align proxy body size** with `EDGEQUAKE_MAX_UPLOAD_BYTES` (default 50 MiB). A reverse proxy `client_max_body_size` below that yields **413** on PDF while tiny JSON still works.
+3. **Writable pdfium cache** — compose sets `PDFIUM_AUTO_CACHE_DIR=/tmp/edgequake-pdfium-cache`. Confirm the directory is writable by the runtime user.
+4. **Vision / Ollama reachable from the container** — e.g. `OLLAMA_HOST=http://host.docker.internal:11434`. Admit can succeed then status sticks on **Converting** / `PDF_CONVERSION_FAILED` if vision is down (that is convert failure, not “unsupported format”).
+5. **Workspace header** — PDF requests require a workspace UUID (`X-Workspace-Id` / product equivalent).
+
+See [upload quick reference](api-reference/document-upload-quick-reference.md) and SPEC-121 [system lens](../specs/121-pdf-docx/05-lenses/007-system-engineer.md).
 
 ### What LLM providers are supported?
 

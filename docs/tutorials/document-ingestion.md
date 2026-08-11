@@ -91,12 +91,12 @@ In the Web UI:
 
 ```bash
 # Upload a PDF with default settings (vision backend)
-curl -X POST "http://localhost:8080/api/v1/documents/upload" \
+curl -X POST "http://localhost:8080/api/v1/documents/pdf" \
   -F "file=@research_paper.pdf" \
   -F "title=AI Research Paper"
 
 # Upload a digital-native PDF with EdgeParse
-curl -X POST "http://localhost:8080/api/v1/documents/upload" \
+curl -X POST "http://localhost:8080/api/v1/documents/pdf" \
   -F "file=@annual_report.pdf" \
   -F "title=Annual Report" \
   -F "pdf_parser_backend=edgeparse"
@@ -134,7 +134,7 @@ EdgeQuake supports three extraction modes:
 
 ```bash
 # Automatic text extraction from digital PDFs
-curl -X POST http://localhost:8080/api/v1/documents/upload \
+curl -X POST http://localhost:8080/api/v1/documents/pdf \
   -F "file=@doc.pdf"
 ```
 
@@ -146,7 +146,7 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
 
 ```bash
 # LLM-based OCR for scanned/image PDFs
-curl -X POST http://localhost:8080/api/v1/documents/upload \
+curl -X POST http://localhost:8080/api/v1/documents/pdf \
   -F "file=@scanned_book.pdf" \
   -F "pdf_parser_backend=vision"
 ```
@@ -181,7 +181,7 @@ warning telling you to retry with Vision.
 For complex tables (merged cells, nested structures):
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/documents/upload \
+curl -X POST http://localhost:8080/api/v1/documents/pdf \
   -F "file=@financial_report.pdf" \
   -F 'config={"enhance_tables": true}'
 ```

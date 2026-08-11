@@ -189,12 +189,12 @@ Documents are automatically isolated by workspace:
 
 ```bash
 # Upload to HR workspace
-curl -X POST "http://localhost:8080/api/v1/documents/upload" \
+curl -X POST "http://localhost:8080/api/v1/documents/pdf" \
   -H "X-Workspace-ID: ws_hr" \
   -F "file=@employee_handbook.pdf"
 
 # Upload to Legal workspace
-curl -X POST "http://localhost:8080/api/v1/documents/upload" \
+curl -X POST "http://localhost:8080/api/v1/documents/pdf" \
   -H "X-Workspace-ID: ws_legal" \
   -F "file=@nda_template.pdf"
 ```

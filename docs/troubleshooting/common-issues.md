@@ -63,13 +63,23 @@ curl -X POST http://localhost:8080/api/v1/documents \
   }'
 ```
 
-**Option B - Upload Files (PDF, TXT, MD, etc.)** (`/api/v1/documents/upload`):
+**Option B - Text / Markdown / JSON / images** (`/api/v1/documents/upload`):
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/documents/upload \
+  -F "file=@your-document.md" \
+  -F "title=My Document"
+```
+
+**Option C - PDF** (`/api/v1/documents/pdf` — required; `.pdf` is **not** accepted on `/documents/upload`):
+
+```bash
+curl -X POST http://localhost:8080/api/v1/documents/pdf \
   -F "file=@your-document.pdf" \
   -F "title=My Document"
 ```
+
+> Format matrix (SPEC-121 / [#370](https://github.com/raphaelmansuy/edgequake/issues/370)): TXT/MD/JSON/images/PDF supported; DOCX/Excel **not** supported. See [FAQ](../faq.md#what-document-formats-are-supported) and [upload quick reference](../api-reference/document-upload-quick-reference.md).
 
 #### Symptom: "Failed to parse the request body as JSON"
 
@@ -80,7 +90,8 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
 | Upload Type | Endpoint                         | Content-Type          | Format         |
 | ----------- | -------------------------------- | --------------------- | -------------- |
 | Text/JSON   | `/api/v1/documents`              | `application/json`    | `-d '{...}'`   |
-| Files       | `/api/v1/documents/upload`       | `multipart/form-data` | `-F "file=@"`  |
+| Text/images | `/api/v1/documents/upload`       | `multipart/form-data` | `-F "file=@"`  |
+| PDF         | `/api/v1/documents/pdf`          | `multipart/form-data` | `-F "file=@"`  |
 | Batch Files | `/api/v1/documents/upload/batch` | `multipart/form-data` | `-F "files=@"` |
 
 **Examples**:
@@ -90,8 +101,12 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
 curl -X POST http://localhost:8080/api/v1/documents \
   -F "file=@doc.pdf"
 
-# ✅ CORRECT - multipart to upload endpoint
-curl -X POST http://localhost:8080/api/v1/documents/upload \
+# ❌ WRONG - PDF on text/image upload endpoint (Unsupported file type: .pdf)
+curl -X POST http://localhost:8080/api/v1/documents/pdf \
+  -F "file=@doc.pdf"
+
+# ✅ CORRECT - PDF endpoint
+curl -X POST http://localhost:8080/api/v1/documents/pdf \
   -F "file=@doc.pdf"
 
 # ✅ CORRECT - JSON to documents endpoint
@@ -370,7 +385,7 @@ curl http://localhost:8080/api/v1/documents/doc-uuid
 
 ```bash
 # Re-upload with explicit Vision backend
-curl -X POST http://localhost:8080/api/v1/documents/upload \
+curl -X POST http://localhost:8080/api/v1/documents/pdf \
   -F "file=@scanned_book.pdf" \
   -F "title=Scanned Book" \
   -F "pdf_parser_backend=vision"
@@ -571,7 +586,7 @@ curl http://localhost:8080/api/v1/documents/doc-uuid/chunks | jq -r '.chunks[0].
 
 ```bash
 # LLM vision reads the actual glyphs
-curl -X POST http://localhost:8080/api/v1/documents/upload \
+curl -X POST http://localhost:8080/api/v1/documents/pdf \
   -F "file=@custom_fonts.pdf" \
   -F "pdf_parser_backend=vision"
 ```
@@ -804,8 +819,8 @@ Then restart the backend.
 curl -s http://localhost:8080/api/v1/config/effective | jq '.areas[] | select(.name == "Vision") | .has_mismatch'
 # Should return: false
 
-# Re-upload the failed PDF
-curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@document.pdf"
+# Re-upload the failed PDF (must use PDF endpoint — not /documents/upload)
+curl -X POST http://localhost:8080/api/v1/documents/pdf -F "file=@document.pdf"
 ```
 
 **Prevention**: EdgeQuake now auto-corrects mismatches at runtime — if a model
@@ -859,58 +874,53 @@ Use this ASCII decision tree to diagnose PDF issues:
 
 ### PDF Configuration Quick Reference
 
-Common configurations for different PDF types:
+Common configurations for different PDF types (always `POST /api/v1/documents/pdf`):
 
 **Digital PDF (good quality)**:
 
 ```bash
 # Default settings - no config needed
-curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@digital.pdf" http://localhost:8080/api/v1/documents/upload
+curl -X POST http://localhost:8080/api/v1/documents/pdf -F "file=@digital.pdf"
 ```
 
 **Scanned Document**:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@scanned.pdf" \
-     -F "pdf_parser_backend=vision" \
-     http://localhost:8080/api/v1/documents/upload
+curl -X POST http://localhost:8080/api/v1/documents/pdf -F "file=@scanned.pdf" \
+     -F "pdf_parser_backend=vision"
 ```
 
 **Academic Paper (multi-column)**:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@paper.pdf" \
-     -F 'config={"layout": {"detect_columns": true}}' \
-     http://localhost:8080/api/v1/documents/upload
+curl -X POST http://localhost:8080/api/v1/documents/pdf -F "file=@paper.pdf" \
+     -F 'config={"layout": {"detect_columns": true}}'
 ```
 
 **Financial Report (complex tables)**:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@financials.pdf" \
-     -F 'config={"enhance_tables": true}' \
-     http://localhost:8080/api/v1/documents/upload
+curl -X POST http://localhost:8080/api/v1/documents/pdf -F "file=@financials.pdf" \
+     -F 'config={"enhance_tables": true}'
 ```
 
 **Unknown Quality**:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@unknown.pdf" \
-     -F "pdf_parser_backend=edgeparse" \
-     http://localhost:8080/api/v1/documents/upload
+curl -X POST http://localhost:8080/api/v1/documents/pdf -F "file=@unknown.pdf" \
+     -F "pdf_parser_backend=edgeparse"
 ```
 
 **Critical Document (maximum accuracy)**:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@critical.pdf" \
+curl -X POST http://localhost:8080/api/v1/documents/pdf -F "file=@critical.pdf" \
      -F 'config={
        "pdf_parser_backend": "vision",
        "enhance_tables": true,
        "enhance_readability": true,
        "vision_dpi": 200
-     }' \
-     http://localhost:8080/api/v1/documents/upload
+     }'
 ```
 
 ---

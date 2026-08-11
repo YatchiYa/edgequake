@@ -101,6 +101,40 @@ pub fn sanitize_filename(filename: &str) -> String {
     }
 }
 
+/// Build a clear BadRequest message for extensions rejected on text upload.
+///
+/// SPEC-121: PDF must use `POST /api/v1/documents/pdf`; Office formats are
+/// product-unsupported (not a transient upload bug).
+pub fn unsupported_text_upload_extension_message(extension: &str) -> String {
+    match extension {
+        "pdf" => {
+            "Unsupported file type: .pdf on /documents/upload. \
+             Upload PDFs via POST /api/v1/documents/pdf (multipart). \
+             Text upload allows: txt, md, json, csv, html, htm, xml, yaml, yml \
+             (images: png, jpg, jpeg, gif, webp)."
+                .to_string()
+        }
+        "docx" | "doc" | "docm" => format!(
+            "Unsupported file type: .{extension}. Word documents are not supported. \
+             Export to PDF or Markdown. See SPEC-121."
+        ),
+        "xlsx" | "xls" | "xlsm" => format!(
+            "Unsupported file type: .{extension}. Excel spreadsheets are not supported. \
+             Export to CSV, PDF, or Markdown. See SPEC-121."
+        ),
+        "" => format!(
+            "Unsupported file type: missing extension. Allowed text types: {:?}",
+            ALLOWED_EXTENSIONS
+        ),
+        other => format!(
+            "Unsupported file type: .{other}. Allowed text types: {:?}. \
+             PDFs: POST /api/v1/documents/pdf. Images: png/jpg/gif/webp on this endpoint. \
+             DOCX/Excel: not supported (SPEC-121).",
+            ALLOWED_EXTENSIONS
+        ),
+    }
+}
+
 /// Extract and validate file extension.
 ///
 /// # Arguments
@@ -114,9 +148,8 @@ pub fn validate_extension(filename: &str) -> ApiResult<String> {
     let extension = filename.rsplit('.').next().unwrap_or("").to_lowercase();
 
     if !ALLOWED_EXTENSIONS.contains(&extension.as_str()) {
-        return Err(ApiError::BadRequest(format!(
-            "Unsupported file type: .{}. Allowed types: {:?}",
-            extension, ALLOWED_EXTENSIONS
+        return Err(ApiError::BadRequest(unsupported_text_upload_extension_message(
+            &extension,
         )));
     }
 
@@ -304,12 +337,39 @@ mod tests {
     fn test_validate_extension_invalid() {
         let result = validate_extension("test.exe");
         assert!(result.is_err());
+        let msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            msg.contains("SPEC-121") || msg.contains("Allowed text types"),
+            "unexpected: {msg}"
+        );
     }
 
     #[test]
     fn test_validate_extension_no_extension() {
         let result = validate_extension("README");
         assert!(result.is_err());
+    }
+
+    /// SPEC-121 T4 — PDF on text-upload whitelist must hint the PDF route.
+    #[test]
+    fn spec121_pdf_on_text_upload_hints_pdf_route() {
+        let err = validate_extension("report.pdf").unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("/documents/pdf"), "missing route hint: {msg}");
+        assert!(msg.contains(".pdf"), "missing extension: {msg}");
+    }
+
+    /// SPEC-121 T6/T7 — Office formats fail closed with product-honest copy.
+    #[test]
+    fn spec121_office_extensions_rejected_with_clear_message() {
+        for name in ["memo.docx", "sheet.xlsx", "legacy.xls", "old.doc"] {
+            let err = validate_extension(name).unwrap_err();
+            let msg = format!("{err:?}");
+            assert!(
+                msg.contains("not supported") && msg.contains("SPEC-121"),
+                "{name}: {msg}"
+            );
+        }
     }
 
     #[test]

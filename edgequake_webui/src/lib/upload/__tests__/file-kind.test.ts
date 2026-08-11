@@ -51,4 +51,15 @@ describe("file-kind", () => {
   it("does not treat PDF as image", () => {
     expect(isImageUploadFile(file("doc.pdf", "application/pdf"))).toBe(false);
   });
+
+  it("does not classify Office as pdf or image (SPEC-121)", () => {
+    expect(isPdfUploadFile(file("memo.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))).toBe(
+      false,
+    );
+    expect(isImageUploadFile(file("sheet.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))).toBe(
+      false,
+    );
+    // Forced past dropzone Accept, router would treat as text — API still rejects.
+    expect(classifyUploadFile(file("memo.docx", ""))).toBe("text");
+  });
 });

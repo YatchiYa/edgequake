@@ -25,16 +25,19 @@ What are you ingesting?
 │
 └─ Files from disk?
    ├─ PDF (vision convert → separate Insert ingest)?
-   │  ├─ Single PDF (preferred)
-   │  │  └─ POST /api/v1/documents/pdf
+   │  ├─ Single PDF
+   │  │  └─ POST /api/v1/documents/pdf   ← required (not /documents/upload)
    │  └─ Multiple PDFs
    │     └─ POST /api/v1/documents/pdf/batch
    │
-   └─ Mixed types (PDF, TXT, MD, JSON)?
-      ├─ Single file
-      │  └─ POST /api/v1/documents/upload
-      └─ Multiple files
-         └─ POST /api/v1/documents/upload/batch
+   ├─ Images (PNG/JPG/GIF/WEBP)?
+   │  └─ POST /api/v1/documents/upload
+   │
+   └─ Text files (TXT, MD, JSON; API also CSV/HTML/XML/YAML)?
+      ├─ Single file  → POST /api/v1/documents/upload
+      └─ Multiple     → POST /api/v1/documents/upload/batch
+
+   DOCX / Excel → not supported (SPEC-121). Export to PDF or Markdown.
 
 After async admission:
   task_id → GET /api/v1/ingestion/{task_id}/progress

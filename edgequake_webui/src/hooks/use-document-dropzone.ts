@@ -115,9 +115,20 @@ export function useDocumentDropzone(
               );
             }
             if (e.code === "file-invalid-type") {
+              const lower = rejection.file.name.toLowerCase();
+              const isOffice =
+                /\.(docx?|docm|xlsx?|xlsm)$/i.test(lower) ||
+                /officedocument|ms-excel|msword/i.test(rejection.file.type);
+              if (isOffice) {
+                return t(
+                  "documents.upload.officeNotSupported",
+                  'File "{{name}}" is a Word/Excel file. Those formats are not supported. Use PDF, Markdown, text, JSON, or an image (PNG/JPG/GIF/WEBP).',
+                  { name: rejection.file.name },
+                );
+              }
               return t(
                 "documents.upload.invalidType",
-                'File "{{name}}" has an unsupported format. Supported: TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP.',
+                'File "{{name}}" has an unsupported format. Supported: TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP. DOCX/Excel are not supported.',
                 {
                   name: rejection.file.name,
                 },

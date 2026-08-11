@@ -73,7 +73,7 @@ curl -X POST http://localhost:8080/api/v1/documents/pdf \
 Equivalent generic upload endpoint:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/documents/upload \
+curl -X POST http://localhost:8080/api/v1/documents/pdf \
   -H "X-Workspace-ID: default" \
   -F "file=@/path/to/paper.pdf" \
   -F "title=Research Paper"

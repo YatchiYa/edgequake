@@ -274,13 +274,13 @@ export function DocumentDropzone({
             className="truncate text-sm text-muted-foreground"
             title={t(
               'documents.upload.uploadDropWithLimit',
-              'Drag & drop or click to upload • TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP (max {{limit}})',
+              'Drag & drop or click to upload • TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP (max {{limit}}) · DOCX/Excel not supported',
               { limit: MAX_UPLOAD_LABEL },
             )}
           >
             {t(
               'documents.upload.uploadDropWithLimit',
-              'Drag & drop or click to upload • TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP (max {{limit}})',
+              'Drag & drop or click to upload • TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP (max {{limit}}) · DOCX/Excel not supported',
               { limit: MAX_UPLOAD_LABEL },
             )}
           </p>
