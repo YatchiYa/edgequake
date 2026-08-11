@@ -6,8 +6,7 @@ use axum::{
 use uuid::Uuid;
 
 use super::helpers::{
-    verify_workspace_tenant_access, workspace_to_response_async,
-    workspace_to_response_with_tenant,
+    verify_workspace_tenant_access, workspace_to_response_async, workspace_to_response_with_tenant,
 };
 use edgequake_audit::{AuditEventType, AuditResult};
 

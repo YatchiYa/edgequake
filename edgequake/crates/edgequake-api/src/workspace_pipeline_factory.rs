@@ -102,13 +102,8 @@ impl WorkspacePipelineFactory {
         let llm_provider =
             create_safe_extraction_llm_provider(&extract_role.provider, &extract_role.model);
         // SPEC-123: embedding via SSOT (metadata gate + tenant), not painted DTO alone.
-        let emb = edgequake_core::resolve_embedding_choice(
-            None,
-            None,
-            None,
-            Some(&ws),
-            tenant.as_ref(),
-        );
+        let emb =
+            edgequake_core::resolve_embedding_choice(None, None, None, Some(&ws), tenant.as_ref());
         let embedding_provider =
             create_safe_embedding_provider(&emb.provider, &emb.model, emb.dimension);
 

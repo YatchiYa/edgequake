@@ -11,10 +11,10 @@
 //! | `responses` | Response DTOs, list wrappers, pagination, stats   |
 //! | `rebuild`   | Rebuild-embeddings, reprocess, rebuild-KG DTOs    |
 
+mod map;
 mod rebuild;
 mod requests;
 mod responses;
-mod map;
 
 pub use map::workspace_to_response;
 pub use rebuild::*;

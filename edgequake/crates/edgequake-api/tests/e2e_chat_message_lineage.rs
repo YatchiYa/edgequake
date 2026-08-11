@@ -145,7 +145,9 @@ async fn e2e_chat_persists_mode_and_llm_lineage() {
     let parsed = extract_json(response).await;
 
     assert_eq!(parsed["mode"].as_str(), Some("bypass"));
-    let provider = parsed["llm_provider"].as_str().expect("llm_provider on response");
+    let provider = parsed["llm_provider"]
+        .as_str()
+        .expect("llm_provider on response");
     let model = parsed["llm_model"].as_str().expect("llm_model on response");
     assert!(!provider.is_empty(), "provider must be non-empty");
     assert!(!model.is_empty(), "model must be non-empty");
@@ -166,9 +168,7 @@ async fn e2e_chat_persists_mode_and_llm_lineage() {
         .unwrap();
     assert_eq!(detail.status(), StatusCode::OK);
     let detail_json = extract_json(detail).await;
-    let messages = detail_json["messages"]
-        .as_array()
-        .expect("messages array");
+    let messages = detail_json["messages"].as_array().expect("messages array");
     let assistant = messages
         .iter()
         .find(|m| m["role"].as_str() == Some("assistant"))

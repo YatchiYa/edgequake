@@ -57,7 +57,9 @@ mod tests {
 
     #[test]
     fn recent_pool_is_larger_than_default_window() {
-        assert!(RECENT_HISTORY_POOL >= 16);
-        assert!(HISTORY_FETCH_CAP > RECENT_HISTORY_POOL);
+        const {
+            assert!(RECENT_HISTORY_POOL >= 16);
+            assert!(HISTORY_FETCH_CAP > RECENT_HISTORY_POOL);
+        }
     }
 }

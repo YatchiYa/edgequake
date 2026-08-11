@@ -51,9 +51,7 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::attribution::build_application_context;
-use crate::safety_limits::{
-    create_safe_embedding_provider, create_safe_llm_provider_with_context,
-};
+use crate::safety_limits::{create_safe_embedding_provider, create_safe_llm_provider_with_context};
 use edgequake_core::{Workspace, WorkspaceService};
 use edgequake_llm::ModelsConfig;
 use edgequake_query::{EmbeddingProvider, LLMProvider};
@@ -222,6 +220,17 @@ impl WorkspaceProviderResolver {
             .with_models_config(state.query.models_config.clone())
     }
 
+    async fn get_tenant_for_workspace(
+        &self,
+        workspace: &Workspace,
+    ) -> Option<edgequake_core::Tenant> {
+        self.workspace_service
+            .get_tenant(workspace.tenant_id)
+            .await
+            .ok()
+            .flatten()
+    }
+
     /// Resolve LLM provider based on request and workspace configuration.
     ///
     /// ## Priority Order
@@ -236,18 +245,6 @@ impl WorkspaceProviderResolver {
     /// - If workspace provider fails, logs warning and returns None
     ///
     /// @implements OODA-226: Unified LLM resolution with safety limits
-
-    async fn get_tenant_for_workspace(
-        &self,
-        workspace: &Workspace,
-    ) -> Option<edgequake_core::Tenant> {
-        self.workspace_service
-            .get_tenant(workspace.tenant_id)
-            .await
-            .ok()
-            .flatten()
-    }
-
     pub async fn resolve_llm_provider(
         &self,
         workspace_id: Option<&str>,
@@ -257,9 +254,7 @@ impl WorkspaceProviderResolver {
         let (provider_name, model_name) = self.parse_provider_model(request);
 
         // Case 1: Explicit request fields — SPEC-123 SSOT gap-fills from workspace/env.
-        if provider_name
-            .as_ref()
-            .is_some_and(|p| !p.is_empty())
+        if provider_name.as_ref().is_some_and(|p| !p.is_empty())
             || model_name.as_ref().is_some_and(|m| !m.is_empty())
         {
             let workspace = if let Some(ws_id) = workspace_id {
@@ -292,7 +287,8 @@ impl WorkspaceProviderResolver {
         if let Some(ws_id) = workspace_id {
             if let Some(workspace) = self.get_workspace(ws_id).await? {
                 let tenant = self.get_tenant_for_workspace(&workspace).await;
-                let role = edgequake_core::resolve_role_llm(&workspace, edgequake_core::LlmRole::Query);
+                let role =
+                    edgequake_core::resolve_role_llm(&workspace, edgequake_core::LlmRole::Query);
                 // Prefer deliberate query role when set; else resolve_llm_choice.
                 let (provider, model, source) = if workspace
                     .metadata
@@ -300,11 +296,7 @@ impl WorkspaceProviderResolver {
                     .and_then(|v| v.get("query"))
                     .is_some()
                 {
-                    (
-                        role.provider,
-                        role.model,
-                        ProviderSource::Workspace,
-                    )
+                    (role.provider, role.model, ProviderSource::Workspace)
                 } else {
                     let choice = edgequake_core::resolve_llm_choice(
                         None,
@@ -319,12 +311,9 @@ impl WorkspaceProviderResolver {
                     )
                 };
                 if !provider.is_empty() {
-                    if let Some(resolved) = self.try_create_llm_provider(
-                        &provider,
-                        &model,
-                        source,
-                        None,
-                    )? {
+                    if let Some(resolved) =
+                        self.try_create_llm_provider(&provider, &model, source, None)?
+                    {
                         return Ok(Some(resolved));
                     }
                 }
@@ -357,9 +346,7 @@ impl WorkspaceProviderResolver {
         let (provider_name, model_name) = self.parse_provider_model(request);
 
         // Case 1: Explicit request — SSOT gap-fills via workspace/tenant/env.
-        if provider_name
-            .as_ref()
-            .is_some_and(|p| !p.is_empty())
+        if provider_name.as_ref().is_some_and(|p| !p.is_empty())
             || model_name.as_ref().is_some_and(|m| !m.is_empty())
         {
             let choice = edgequake_core::resolve_llm_choice(
@@ -398,8 +385,7 @@ impl WorkspaceProviderResolver {
                     }
                 }
             } else {
-                let choice =
-                    edgequake_core::resolve_llm_choice(None, None, Some(ws), tenant);
+                let choice = edgequake_core::resolve_llm_choice(None, None, Some(ws), tenant);
                 if !choice.provider.is_empty() {
                     if let Some(resolved) = self.try_create_llm_provider(
                         &choice.provider,
@@ -496,8 +482,7 @@ impl WorkspaceProviderResolver {
         })?;
 
         // SPEC-123: Workspace → Tenant → Env (tenant via workspace inherit on load).
-        let choice =
-            {
+        let choice = {
             let tenant = self.get_tenant_for_workspace(&workspace).await;
             edgequake_core::resolve_embedding_choice(
                 None,
@@ -570,8 +555,7 @@ impl WorkspaceProviderResolver {
         };
 
         // SPEC-123 SSOT (tenant applied via workspace inherit).
-        let choice =
-            {
+        let choice = {
             let tenant = self.get_tenant_for_workspace(&workspace).await;
             edgequake_core::resolve_embedding_choice(
                 None,
@@ -753,8 +737,7 @@ mod tests {
     mod integration {
         use super::*;
         use edgequake_core::{
-            CreateWorkspaceRequest, InMemoryWorkspaceService, Tenant, Workspace,
-            WorkspaceService,
+            CreateWorkspaceRequest, InMemoryWorkspaceService, Tenant, Workspace, WorkspaceService,
         };
         use serial_test::serial;
         use std::sync::Arc;

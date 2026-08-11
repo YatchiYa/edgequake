@@ -123,14 +123,14 @@ pub async fn execute_query(
         model: request.llm_model.clone(),
         extra_headers,
     };
-    let llm_override =
-        match resolver
-            .resolve_llm_provider_for_workspace(workspace.as_ref(), &llm_request)
-            .await {
-            Ok(Some(resolved)) => Some(resolved.provider),
-            Ok(None) => None,
-            Err(e) => return Err(ApiError::from(e)),
-        };
+    let llm_override = match resolver
+        .resolve_llm_provider_for_workspace(workspace.as_ref(), &llm_request)
+        .await
+    {
+        Ok(Some(resolved)) => Some(resolved.provider),
+        Ok(None) => None,
+        Err(e) => return Err(ApiError::from(e)),
+    };
 
     let provider_for_effort = request
         .llm_provider

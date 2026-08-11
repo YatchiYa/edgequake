@@ -87,11 +87,7 @@ impl PdfUploadOptions {
     }
 
     /// Get the vision model to use (with fallback from provider).
-    pub fn vision_model(
-        &self,
-        workspace: Option<&Workspace>,
-        tenant: Option<&Tenant>,
-    ) -> String {
+    pub fn vision_model(&self, workspace: Option<&Workspace>, tenant: Option<&Tenant>) -> String {
         self.resolved_vision_llm(workspace, tenant).model
     }
 

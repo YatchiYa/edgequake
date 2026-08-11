@@ -233,35 +233,35 @@ pub async fn chat_completion(
     let llm_request =
         LlmResolutionRequest::from_provider_string(request.provider.clone(), request.model.clone());
 
-    let (llm_override, used_provider, used_model) =
-        match resolver
-            .resolve_llm_provider_for_workspace(workspace.as_ref(), &llm_request)
-            .await {
-            Ok(Some(resolved)) => {
-                debug!(
-                    provider = %resolved.provider_name,
-                    model = %resolved.model_name,
-                    source = ?resolved.source,
-                    "Resolved LLM provider (non-streaming) [QUERY]"
-                );
-                (
-                    Some(resolved.provider),
-                    Some(resolved.provider_name),
-                    Some(resolved.model_name),
-                )
-            }
-            Ok(None) => {
-                // No provider resolved - will use server default
-                debug!("Using server default LLM provider (non-streaming)");
-                (None, None, None)
-            }
-            Err(e) => {
-                // Explicit provider request failed - return error to user
-                // OODA-234: Unified error conversion via From<ProviderResolutionError>
-                error!(error = %e, "Failed to resolve LLM provider (non-streaming)");
-                return Err(ApiError::from(e));
-            }
-        };
+    let (llm_override, used_provider, used_model) = match resolver
+        .resolve_llm_provider_for_workspace(workspace.as_ref(), &llm_request)
+        .await
+    {
+        Ok(Some(resolved)) => {
+            debug!(
+                provider = %resolved.provider_name,
+                model = %resolved.model_name,
+                source = ?resolved.source,
+                "Resolved LLM provider (non-streaming) [QUERY]"
+            );
+            (
+                Some(resolved.provider),
+                Some(resolved.provider_name),
+                Some(resolved.model_name),
+            )
+        }
+        Ok(None) => {
+            // No provider resolved - will use server default
+            debug!("Using server default LLM provider (non-streaming)");
+            (None, None, None)
+        }
+        Err(e) => {
+            // Explicit provider request failed - return error to user
+            // OODA-234: Unified error conversion via From<ProviderResolutionError>
+            error!(error = %e, "Failed to resolve LLM provider (non-streaming)");
+            return Err(ApiError::from(e));
+        }
+    };
 
     // FEAT0203: When images are attached, prefer the vision-capable LLM provider.
     // WHY: Some models (e.g. mistral-small-latest) silently drop image content.

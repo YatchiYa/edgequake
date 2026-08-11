@@ -23,7 +23,6 @@ use axum::{
 use edgequake_pipeline::chunker::TextChunk;
 use edgequake_pipeline::pipeline::ProcessingResult;
 use edgequake_pipeline::{persist_relational_chunks, IngestionPersistContext};
-use edgequake_storage::traits::domain::ChunkRepository;
 use edgequake_storage::PostgresChunkRepository;
 use serde_json::json;
 use sqlx::PgPool;

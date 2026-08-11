@@ -57,6 +57,7 @@ pub fn mistral_workspace_json_with_entity_types(
 }
 
 /// Provider-agnostic workspace create payload with dual allowlists + typed edges.
+#[allow(clippy::too_many_arguments)] // mirrors workspace create JSON field surface
 pub fn kg_schema_workspace_json(
     name: impl AsRef<str>,
     llm_provider: &str,

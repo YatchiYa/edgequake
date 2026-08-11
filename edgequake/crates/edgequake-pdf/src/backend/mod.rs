@@ -350,8 +350,7 @@ mod tests {
 
     #[test]
     fn resolve_auto_allows_route() {
-        let resolved =
-            resolve_pdf_parser_choice(None, Some(PdfParserBackend::Auto), None, None);
+        let resolved = resolve_pdf_parser_choice(None, Some(PdfParserBackend::Auto), None, None);
         assert_eq!(resolved.choice, PdfParserBackend::Auto);
         assert_eq!(resolved.runtime_backend, PdfParserBackend::Vision);
         assert_eq!(resolved.source, PdfParserResolutionSource::Workspace);

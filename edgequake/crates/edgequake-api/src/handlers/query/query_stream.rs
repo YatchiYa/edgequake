@@ -209,26 +209,26 @@ pub async fn stream_query(
         extra_headers,
     };
 
-    let (llm_override, used_provider, used_model) =
-        match resolver
-            .resolve_llm_provider_for_workspace(workspace.as_ref(), &llm_request)
-            .await {
-            Ok(Some(resolved)) => {
-                info!(
-                    provider = %resolved.provider_name,
-                    model = %resolved.model_name,
-                    source = ?resolved.source,
-                    "Resolved LLM provider for streaming query"
-                );
-                (
-                    Some(resolved.provider),
-                    Some(resolved.provider_name),
-                    Some(resolved.model_name),
-                )
-            }
-            Ok(None) => (None, None, None),
-            Err(e) => return Err(ApiError::from(e)),
-        };
+    let (llm_override, used_provider, used_model) = match resolver
+        .resolve_llm_provider_for_workspace(workspace.as_ref(), &llm_request)
+        .await
+    {
+        Ok(Some(resolved)) => {
+            info!(
+                provider = %resolved.provider_name,
+                model = %resolved.model_name,
+                source = ?resolved.source,
+                "Resolved LLM provider for streaming query"
+            );
+            (
+                Some(resolved.provider),
+                Some(resolved.provider_name),
+                Some(resolved.model_name),
+            )
+        }
+        Ok(None) => (None, None, None),
+        Err(e) => return Err(ApiError::from(e)),
+    };
 
     // Honesty: always record effective provider/model (incl. server-default path).
     let effective_llm = llm_override

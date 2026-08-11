@@ -14,9 +14,7 @@ use axum::{
 };
 use common::{create_test_app, extract_json};
 use edgequake_api::services::LargeDocumentProfile;
-use edgequake_pdf::{
-    resolve_pdf_parser_choice, PdfParserBackend, PdfParserResolutionSource,
-};
+use edgequake_pdf::{resolve_pdf_parser_choice, PdfParserBackend, PdfParserResolutionSource};
 use serde_json::json;
 use serial_test::serial;
 use tower::ServiceExt;
@@ -392,7 +390,10 @@ async fn e2e_workspace_get_exposes_model_resolution_provenance() {
     // LAW-123-8: unset override stays unset on Option fields.
     assert!(
         body["vision_llm_provider"].is_null()
-            || body["vision_llm_provider"].as_str().map(|s| s.is_empty()).unwrap_or(true),
+            || body["vision_llm_provider"]
+                .as_str()
+                .map(|s| s.is_empty())
+                .unwrap_or(true),
         "must not paint tenant into vision_llm_provider: {body}"
     );
 }

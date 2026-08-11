@@ -11,10 +11,7 @@ use edgequake_core::{
 use super::responses::WorkspaceResponse;
 
 /// Convert domain workspace (+ optional tenant) to API DTO with SPEC-123 provenance.
-pub fn workspace_to_response(
-    workspace: &Workspace,
-    tenant: Option<&Tenant>,
-) -> WorkspaceResponse {
+pub fn workspace_to_response(workspace: &Workspace, tenant: Option<&Tenant>) -> WorkspaceResponse {
     let llm = resolve_llm_choice(None, None, Some(workspace), tenant);
     let emb = resolve_embedding_choice(None, None, None, Some(workspace), tenant);
     let vision = resolve_vision_llm_choice(None, None, Some(workspace), tenant);

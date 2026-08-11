@@ -69,8 +69,7 @@ pub(super) fn build_pdf_task(
     doc_id: &str,
 ) -> edgequake_tasks::PdfProcessingData {
     // SPEC-123: same vision SSOT as upload (LAW-123-5).
-    let vision =
-        edgequake_core::resolve_vision_llm_choice(None, None, Some(workspace), tenant);
+    let vision = edgequake_core::resolve_vision_llm_choice(None, None, Some(workspace), tenant);
     let vision_provider = vision.provider;
     let vision_model = Some(vision.model.clone()).filter(|m| !m.is_empty());
     let vision_model_for_resolve = vision.model.clone();

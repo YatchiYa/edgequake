@@ -58,13 +58,6 @@ pub async fn invalidate_workspace_stats_cache(workspace_id: Uuid) {
     );
 }
 
-/// Convert a Workspace domain object to WorkspaceResponse DTO (SPEC-123 provenance).
-///
-/// Prefer [`Self::workspace_to_response_with_tenant`] when tenant is loaded.
-pub(super) fn workspace_to_response(workspace: &Workspace) -> WorkspaceResponse {
-    workspace_to_response_with_tenant(workspace, None)
-}
-
 /// SPEC-123: attach honest `resolved_*` + `*_resolution_source` using tenant layer.
 pub(super) fn workspace_to_response_with_tenant(
     workspace: &Workspace,

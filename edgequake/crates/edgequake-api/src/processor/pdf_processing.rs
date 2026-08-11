@@ -815,8 +815,7 @@ impl DocumentTaskProcessor {
             edgequake_pdf::create_pdf_converter(edgequake_pdf::PdfParserBackend::EdgeParse)
         } else {
             match backend.runtime_backend() {
-                edgequake_pdf::PdfParserBackend::Vision
-                | edgequake_pdf::PdfParserBackend::Auto => {
+                edgequake_pdf::PdfParserBackend::Vision | edgequake_pdf::PdfParserBackend::Auto => {
                     if !data.enable_vision {
                         let error = edgequake_tasks::TaskError::UnsupportedOperation(
                             "Vision PDF extraction requires enable_vision=true.".to_string(),

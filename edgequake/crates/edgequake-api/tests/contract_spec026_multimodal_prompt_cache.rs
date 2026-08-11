@@ -19,6 +19,7 @@ fn table_prompt_includes_additional_context_block() {
         footnotes: "All figures in USD".into(),
         leading: "See quarterly results".into(),
         trailing: "Source: finance team".into(),
+        ..PromptContext::default()
     };
     let msgs = table_analysis_messages("<tr><td>100</td></tr>", "html", &ctx).unwrap();
     let user = &msgs[1].content;

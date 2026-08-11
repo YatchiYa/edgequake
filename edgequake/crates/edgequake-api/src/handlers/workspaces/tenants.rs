@@ -203,7 +203,9 @@ pub async fn create_tenant(
         default_vision_llm_model: created_tenant.default_vision_llm_model.clone(),
         default_vision_llm_provider: created_tenant.default_vision_llm_provider.clone(),
         default_reasoning_effort: created_tenant.default_reasoning_effort.clone(),
-        pdf_parser_backend: created_tenant.pdf_parser_backend.map(|b| b.as_str().to_string()),
+        pdf_parser_backend: created_tenant
+            .pdf_parser_backend
+            .map(|b| b.as_str().to_string()),
         created_at: created_tenant.created_at.to_rfc3339(),
         updated_at: created_tenant.updated_at.to_rfc3339(),
     };

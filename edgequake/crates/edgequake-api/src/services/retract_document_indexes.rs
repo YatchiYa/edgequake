@@ -130,9 +130,7 @@ pub async fn retract_document_indexes_checked(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use edgequake_storage::traits::{
-        EdgeListFilter, GraphScanOps, GraphStorage, GraphStorageMutateOps,
-    };
+    use edgequake_storage::traits::{EdgeListFilter, GraphStorage};
     use edgequake_storage::{MemoryGraphStorage, MemoryVectorStorage, VectorStorage};
     use serde_json::json;
     use std::collections::HashMap;

@@ -50,7 +50,9 @@ pub fn resolve_bypass_system_prompt(extension: Option<&str>) -> String {
 pub fn estimate_message_tokens(content: &str) -> usize {
     let char_estimate = content.len().div_ceil(4);
     let word_count = content.split_whitespace().count();
-    char_estimate.max(word_count).saturating_add(PER_MESSAGE_TOKEN_OVERHEAD)
+    char_estimate
+        .max(word_count)
+        .saturating_add(PER_MESSAGE_TOKEN_OVERHEAD)
 }
 
 fn role_is_assistant(role: &str) -> bool {
@@ -58,11 +60,10 @@ fn role_is_assistant(role: &str) -> bool {
 }
 
 /// Drop a leading orphaned assistant so history never starts mid-turn (pair-safe).
-pub fn drop_leading_orphan_assistant(mut history: Vec<ConversationMessage>) -> Vec<ConversationMessage> {
-    while history
-        .first()
-        .is_some_and(|m| role_is_assistant(&m.role))
-    {
+pub fn drop_leading_orphan_assistant(
+    mut history: Vec<ConversationMessage>,
+) -> Vec<ConversationMessage> {
+    while history.first().is_some_and(|m| role_is_assistant(&m.role)) {
         history.remove(0);
     }
     history
@@ -106,16 +107,16 @@ pub fn trim_history_to_token_budget(
         .cloned()
         .collect();
 
-    let mut total: usize = rest.iter().map(|m| estimate_message_tokens(&m.content)).sum();
+    let mut total: usize = rest
+        .iter()
+        .map(|m| estimate_message_tokens(&m.content))
+        .sum();
 
     while !rest.is_empty() && total > token_budget {
         let removed = rest.remove(0);
         total = total.saturating_sub(estimate_message_tokens(&removed.content));
         // Pair-safe: if next is assistant, drop it with the user turn.
-        if rest
-            .first()
-            .is_some_and(|m| role_is_assistant(&m.role))
-        {
+        if rest.first().is_some_and(|m| role_is_assistant(&m.role)) {
             let orphan = rest.remove(0);
             total = total.saturating_sub(estimate_message_tokens(&orphan.content));
         }
@@ -219,7 +220,9 @@ pub fn build_bypass_chat_messages_with_budget(
             "system" => {
                 // Extra system turns from history are folded into a user note
                 // so we keep a single leading system message (provider-safe / cacheable prefix).
-                messages.push(ChatMessage::user(format!("[Earlier instruction]\n{content}")));
+                messages.push(ChatMessage::user(format!(
+                    "[Earlier instruction]\n{content}"
+                )));
             }
             _ => messages.push(ChatMessage::user(content)),
         }
@@ -406,15 +409,16 @@ mod tests {
                 content: "old-6".into(),
             },
         ];
-        let messages =
-            build_bypass_chat_messages("What is my name?", &history, None, 4, None);
+        let messages = build_bypass_chat_messages("What is my name?", &history, None, 4, None);
         assert_eq!(messages[0].role, edgequake_llm::traits::ChatRole::System);
         assert!(messages[0]
             .content
             .contains("helpful, concise chatbot assistant"));
         assert_eq!(messages.len(), 1 + 4 + 1);
         assert_eq!(messages.last().unwrap().content, "What is my name?");
-        assert!(!messages.iter().any(|m| m.content.contains("My name is Ada")));
+        assert!(!messages
+            .iter()
+            .any(|m| m.content.contains("My name is Ada")));
         assert!(messages.iter().any(|m| m.content == "old-5"));
     }
 

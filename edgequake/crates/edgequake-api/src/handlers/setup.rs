@@ -75,7 +75,6 @@ fn workspace_to_response(workspace: &edgequake_core::Workspace) -> WorkspaceResp
     crate::handlers::workspaces_types::workspace_to_response(workspace, None)
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SetupStatusResponse {
     pub needs_setup: bool,

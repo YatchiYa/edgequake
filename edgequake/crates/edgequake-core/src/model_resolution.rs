@@ -67,8 +67,11 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|s| !s.is_empty())
 }
 
+/// One priority layer: (provider, model) + provenance.
+type ProviderModelLayer<'a> = ((Option<&'a str>, Option<&'a str>), ModelResolutionSource);
+
 fn first_string<'a>(
-    layers: &[((Option<&'a str>, Option<&'a str>), ModelResolutionSource)],
+    layers: &[ProviderModelLayer<'a>],
 ) -> Option<(String, String, ModelResolutionSource)> {
     for ((provider, model), source) in layers {
         let p = non_empty(*provider);
@@ -90,7 +93,7 @@ fn fill_missing_provider_model(
     mut provider: String,
     mut model: String,
     source: ModelResolutionSource,
-    fallbacks: &[((Option<&str>, Option<&str>), ModelResolutionSource)],
+    fallbacks: &[ProviderModelLayer<'_>],
     default_provider: &str,
     default_model_for: &dyn Fn(&str) -> String,
 ) -> ResolvedProviderModel {
@@ -238,7 +241,10 @@ pub fn resolve_llm_choice(
     let (env_model, env_provider) = env_llm_provider_model();
 
     let layers = [
-        ((request_provider, request_model), ModelResolutionSource::Request),
+        (
+            (request_provider, request_model),
+            ModelResolutionSource::Request,
+        ),
         ((ws_p, ws_m), ModelResolutionSource::Workspace),
         ((ten_p, ten_m), ModelResolutionSource::Tenant),
         (
@@ -255,14 +261,9 @@ pub fn resolve_llm_choice(
         )
     });
 
-    fill_missing_provider_model(
-        provider,
-        model,
-        source,
-        &layers,
-        &env_provider,
-        &|_| env_model.clone(),
-    )
+    fill_missing_provider_model(provider, model, source, &layers, &env_provider, &|_| {
+        env_model.clone()
+    })
 }
 
 /// Resolve embedding: Request → Workspace → Tenant → Env → Default.
@@ -306,14 +307,9 @@ pub fn resolve_embedding_choice(
             )
         });
 
-        fill_missing_provider_model(
-            provider,
-            model,
-            source,
-            &layers,
-            &env_provider,
-            &|_| env_model.clone(),
-        )
+        fill_missing_provider_model(provider, model, source, &layers, &env_provider, &|_| {
+            env_model.clone()
+        })
     };
 
     let ws_dim = workspace
@@ -397,26 +393,14 @@ pub fn resolve_vision_llm_choice(
         ),
     ];
 
-    let (provider, model, source) = first_string(&layers).unwrap_or_else(|| {
-        (
-            env_p.clone(),
-            String::new(),
-            ModelResolutionSource::Env,
-        )
-    });
+    let (provider, model, source) = first_string(&layers)
+        .unwrap_or_else(|| (env_p.clone(), String::new(), ModelResolutionSource::Env));
 
-    fill_missing_provider_model(
-        provider,
-        model,
-        source,
-        &layers,
-        &env_p,
-        &|p| {
-            env_m
-                .clone()
-                .unwrap_or_else(|| compiled_vision_model_for(p))
-        },
-    )
+    fill_missing_provider_model(provider, model, source, &layers, &env_p, &|p| {
+        env_m
+            .clone()
+            .unwrap_or_else(|| compiled_vision_model_for(p))
+    })
 }
 
 #[cfg(test)]
@@ -429,7 +413,8 @@ mod tests {
         let mut ws = Workspace::new(Uuid::nil(), "ws", "ws");
         ws.llm_provider = "ollama".into();
         ws.llm_model = "gemma4:latest".into();
-        ws.metadata.insert("llm_provider".into(), serde_json::json!("ollama"));
+        ws.metadata
+            .insert("llm_provider".into(), serde_json::json!("ollama"));
         ws.metadata
             .insert("llm_model".into(), serde_json::json!("gemma4:latest"));
         let mut tenant = Tenant::new("t", "t");
@@ -508,12 +493,8 @@ mod tests {
         ws.vision_llm_provider = Some("ollama".into());
         ws.vision_llm_model = Some("gemma4:latest".into());
 
-        let resolved = resolve_vision_llm_choice(
-            Some("openai"),
-            Some("gpt-4.1-nano"),
-            Some(&ws),
-            None,
-        );
+        let resolved =
+            resolve_vision_llm_choice(Some("openai"), Some("gpt-4.1-nano"), Some(&ws), None);
         assert_eq!(resolved.provider, "openai");
         assert_eq!(resolved.model, "gpt-4.1-nano");
         assert_eq!(resolved.source, ModelResolutionSource::Request);

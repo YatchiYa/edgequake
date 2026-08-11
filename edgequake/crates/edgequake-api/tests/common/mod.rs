@@ -355,9 +355,7 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
 pub async fn create_test_app_with_llm_responses(extra_responses: &[&str]) -> WorkerAppGuard {
     let mut queued = Vec::with_capacity(extra_responses.len() + 32);
     queued.extend_from_slice(extra_responses);
-    for _ in 0..32 {
-        queued.push(SPEC021_WORKER_EXTRACTION_JSON);
-    }
+    queued.extend(std::iter::repeat_n(SPEC021_WORKER_EXTRACTION_JSON, 32));
     create_test_app_with_mock_queue(&queued).await
 }
 
@@ -366,7 +364,7 @@ pub async fn create_test_app_with_llm_responses(extra_responses: &[&str]) -> Wor
 /// Use for SPEC-114 schema enforcement ingest tests where SARAH_CHEN/`LEADS`
 /// fixtures would pollute graph asserts.
 pub async fn create_test_app_with_extraction_only(extraction_json: &str) -> WorkerAppGuard {
-    let queued: Vec<&str> = std::iter::repeat(extraction_json).take(48).collect();
+    let queued: Vec<&str> = std::iter::repeat_n(extraction_json, 48).collect();
     create_test_app_with_mock_queue(&queued).await
 }
 

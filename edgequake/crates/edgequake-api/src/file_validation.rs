@@ -107,13 +107,11 @@ pub fn sanitize_filename(filename: &str) -> String {
 /// product-unsupported (not a transient upload bug).
 pub fn unsupported_text_upload_extension_message(extension: &str) -> String {
     match extension {
-        "pdf" => {
-            "Unsupported file type: .pdf on /documents/upload. \
+        "pdf" => "Unsupported file type: .pdf on /documents/upload. \
              Upload PDFs via POST /api/v1/documents/pdf (multipart). \
              Text upload allows: txt, md, json, csv, html, htm, xml, yaml, yml \
              (images: png, jpg, jpeg, gif, webp)."
-                .to_string()
-        }
+            .to_string(),
         "docx" | "doc" | "docm" => format!(
             "Unsupported file type: .{extension}. Word documents are not supported. \
              Export to PDF or Markdown. See SPEC-121."
@@ -148,9 +146,9 @@ pub fn validate_extension(filename: &str) -> ApiResult<String> {
     let extension = filename.rsplit('.').next().unwrap_or("").to_lowercase();
 
     if !ALLOWED_EXTENSIONS.contains(&extension.as_str()) {
-        return Err(ApiError::BadRequest(unsupported_text_upload_extension_message(
-            &extension,
-        )));
+        return Err(ApiError::BadRequest(
+            unsupported_text_upload_extension_message(&extension),
+        ));
     }
 
     Ok(extension)

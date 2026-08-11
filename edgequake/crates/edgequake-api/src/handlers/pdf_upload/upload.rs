@@ -890,7 +890,10 @@ async fn process_pdf_upload_parts(
     let ingestion_estimate = {
         let pages = page_count.unwrap_or(1).max(1) as usize;
         let profile = crate::services::LargeDocumentProfile::new(pages, file_size_bytes);
-        Some(profile.ingestion_estimate(resolved_backend, &options.resolved_vision_provider(workspace.as_ref(), tenant.as_ref())))
+        Some(profile.ingestion_estimate(
+            resolved_backend,
+            &options.resolved_vision_provider(workspace.as_ref(), tenant.as_ref()),
+        ))
     };
 
     let tenant_for_audit = context

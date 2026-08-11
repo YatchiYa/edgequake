@@ -215,10 +215,7 @@ mod tests {
             parse_mode(&Some("naive".to_string())),
             ConversationMode::Naive
         );
-        assert_eq!(
-            parse_mode(&Some("mix".to_string())),
-            ConversationMode::Mix
-        );
+        assert_eq!(parse_mode(&Some("mix".to_string())), ConversationMode::Mix);
         assert_eq!(
             parse_mode(&Some("bypass".to_string())),
             ConversationMode::Bypass

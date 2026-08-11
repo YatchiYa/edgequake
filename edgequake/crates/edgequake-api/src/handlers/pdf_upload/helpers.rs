@@ -150,8 +150,10 @@ pub(super) async fn create_pdf_processing_task(
     let page_count_usize = page_count.unwrap_or(1).max(1) as usize;
     let profile = crate::services::LargeDocumentProfile::new(page_count_usize, file_size_bytes);
     // SPEC-057 P2: convert task uses convert-phase budget; Insert gets ingest_*.
-    let processing_timeout_secs =
-        profile.convert_timeout_secs(resolved_backend, &options.resolved_vision_provider(workspace, tenant.as_ref()));
+    let processing_timeout_secs = profile.convert_timeout_secs(
+        resolved_backend,
+        &options.resolved_vision_provider(workspace, tenant.as_ref()),
+    );
 
     let task_data = PdfProcessingData {
         pdf_id,

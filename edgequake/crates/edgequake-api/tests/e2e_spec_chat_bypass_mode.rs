@@ -193,7 +193,10 @@ fn history_policy_is_pair_safe_and_token_aware() {
 
     let cut = cut_conversation_history(&history, 4);
     assert_eq!(
-        drop_leading_orphan_assistant(cut.clone()).first().unwrap().role,
+        drop_leading_orphan_assistant(cut.clone())
+            .first()
+            .unwrap()
+            .role,
         "user"
     );
     let _ = trim_history_to_token_budget(&history, DEFAULT_HISTORY_TOKEN_BUDGET);
@@ -277,10 +280,7 @@ async fn bypass_stream_skips_kg_and_avoids_apology() {
 
     let mut req = QueryRequest::new("hello");
     req.mode = Some(QueryMode::Bypass);
-    let (ctx, mode, mut stream) = engine
-        .query_stream_with_context(req)
-        .await
-        .expect("stream");
+    let (ctx, mode, mut stream) = engine.query_stream_with_context(req).await.expect("stream");
     assert_eq!(mode, QueryMode::Bypass);
     assert!(ctx.is_empty());
     let mut answer = String::new();
@@ -399,5 +399,7 @@ fn bypass_message_builder_pins_system() {
     assert_eq!(msgs[0].role, ChatRole::System);
     let resolved = resolve_bypass_system_prompt(Some("Extra."));
     assert_eq!(msgs[0].content, resolved);
-    assert!(DEFAULT_CONVERSATION_TURN_LIMIT >= 4);
+    const {
+        assert!(DEFAULT_CONVERSATION_TURN_LIMIT >= 4);
+    }
 }
