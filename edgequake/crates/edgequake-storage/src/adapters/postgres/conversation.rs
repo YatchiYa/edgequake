@@ -68,6 +68,8 @@ mod sqlx_rows {
                 thinking_time_ms: row.try_get("thinking_time_ms")?,
                 context: row.try_get("context")?,
                 is_error: row.try_get("is_error")?,
+                llm_provider: row.try_get("llm_provider").unwrap_or(None),
+                llm_model: row.try_get("llm_model").unwrap_or(None),
                 created_at: row.try_get("created_at")?,
                 updated_at: row.try_get("updated_at")?,
             })
@@ -554,11 +556,14 @@ impl PostgresConversationStorage {
         &self,
         message_id: Uuid,
         content: Option<&str>,
+        mode: Option<&str>,
         tokens_used: Option<i32>,
         duration_ms: Option<i32>,
         thinking_time_ms: Option<i32>,
         context: Option<serde_json::Value>,
         is_error: Option<bool>,
+        llm_provider: Option<&str>,
+        llm_model: Option<&str>,
     ) -> Result<MessageRow> {
         let mut updates = Vec::new();
         let mut param_count = 1;
@@ -566,6 +571,10 @@ impl PostgresConversationStorage {
         if content.is_some() {
             param_count += 1;
             updates.push(format!("content = ${}", param_count));
+        }
+        if mode.is_some() {
+            param_count += 1;
+            updates.push(format!("mode = ${}", param_count));
         }
         if tokens_used.is_some() {
             param_count += 1;
@@ -587,6 +596,14 @@ impl PostgresConversationStorage {
             param_count += 1;
             updates.push(format!("is_error = ${}", param_count));
         }
+        if llm_provider.is_some() {
+            param_count += 1;
+            updates.push(format!("llm_provider = ${}", param_count));
+        }
+        if llm_model.is_some() {
+            param_count += 1;
+            updates.push(format!("llm_model = ${}", param_count));
+        }
 
         if updates.is_empty() {
             return self.get_message(message_id).await?.ok_or_else(|| {
@@ -604,6 +621,9 @@ impl PostgresConversationStorage {
         if let Some(c) = content {
             query_builder = query_builder.bind(c);
         }
+        if let Some(m) = mode {
+            query_builder = query_builder.bind(m);
+        }
         if let Some(t) = tokens_used {
             query_builder = query_builder.bind(t);
         }
@@ -618,6 +638,12 @@ impl PostgresConversationStorage {
         }
         if let Some(e) = is_error {
             query_builder = query_builder.bind(e);
+        }
+        if let Some(p) = llm_provider {
+            query_builder = query_builder.bind(p);
+        }
+        if let Some(m) = llm_model {
+            query_builder = query_builder.bind(m);
         }
 
         let row = query_builder
@@ -1127,21 +1153,27 @@ impl ConversationStorage for PostgresConversationStorage {
         &self,
         message_id: Uuid,
         content: Option<&str>,
+        mode: Option<&str>,
         tokens_used: Option<i32>,
         duration_ms: Option<i32>,
         thinking_time_ms: Option<i32>,
         context: Option<serde_json::Value>,
         is_error: Option<bool>,
+        llm_provider: Option<&str>,
+        llm_model: Option<&str>,
     ) -> Result<MessageRow> {
         PostgresConversationStorage::update_message(
             self,
             message_id,
             content,
+            mode,
             tokens_used,
             duration_ms,
             thinking_time_ms,
             context,
             is_error,
+            llm_provider,
+            llm_model,
         )
         .await
     }

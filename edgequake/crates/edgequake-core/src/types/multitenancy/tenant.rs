@@ -74,6 +74,11 @@ pub struct Tenant {
     /// SPEC-109: default reasoning effort seeded into new workspaces.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_reasoning_effort: Option<String>,
+
+    /// SPEC-123: default PDF parser choice for workspaces that inherit (`none`).
+    /// `None` falls through to env → Vision. Values: vision | edgeparse | auto.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pdf_parser_backend: Option<edgequake_pdf::PdfParserBackend>,
 }
 
 impl Tenant {
@@ -111,6 +116,7 @@ impl Tenant {
             default_vision_llm_provider: None,
             default_vision_llm_model: None,
             default_reasoning_effort: None,
+            pdf_parser_backend: None,
         }
     }
 

@@ -182,6 +182,8 @@ mod tests {
             thinking_time_ms: None,
             context: None,
             is_error: false,
+            llm_provider: None,
+            llm_model: None,
             created_at: now,
             updated_at: now,
         }

@@ -113,6 +113,10 @@ export interface Workspace {
    * @implements SPEC-032: Combined model ID format
    */
   llm_full_id?: string;
+  /** SPEC-123: effective LLM after cascade. */
+  resolved_llm_provider?: string;
+  resolved_llm_model?: string;
+  llm_resolution_source?: string;
   /**
    * Embedding model name (e.g., "text-embedding-3-small").
    * @implements SPEC-032: Workspace-level embedding configuration
@@ -133,6 +137,11 @@ export interface Workspace {
    * @implements SPEC-032: Combined model ID format
    */
   embedding_full_id?: string;
+  /** SPEC-123: effective embedding after cascade. */
+  resolved_embedding_provider?: string;
+  resolved_embedding_model?: string;
+  resolved_embedding_dimension?: number;
+  embedding_resolution_source?: string;
   /**
    * Vision LLM provider for PDF-to-Markdown extraction (e.g., "openai", "ollama").
    * @implements SPEC-040: Workspace-scoped Vision LLM for PDF processing
@@ -143,6 +152,10 @@ export interface Workspace {
    * @implements SPEC-040: Workspace-scoped Vision LLM for PDF processing
    */
   vision_llm_model?: string;
+  /** SPEC-123: effective vision LLM (VLM — not embedding). */
+  resolved_vision_llm_provider?: string;
+  resolved_vision_llm_model?: string;
+  vision_llm_resolution_source?: string;
   /**
    * Default PDF parser backend for this workspace.
    * @implements Mission 03: Configurable PDF parser backend

@@ -18,6 +18,7 @@ import {
   type LLMSelection,
 } from "@/components/workspace/llm-model-selector";
 import { useInheritedModelDefaults } from "@/hooks/use-inherited-model-defaults";
+import { effectiveVisionFromWorkspace } from "@/lib/config/resolve-model-choice";
 import { useTenantStore } from "@/stores/use-tenant-store";
 import type { Workspace } from "@/types";
 import { AlertTriangle, Eye, Gauge, Sparkles } from "lucide-react";
@@ -50,6 +51,13 @@ export function WorkspaceExtendedModelConfig({
     inherited.defaultVisionProvider && inherited.defaultVisionModel
       ? `${inherited.defaultVisionProvider}/${inherited.defaultVisionModel}`
       : undefined;
+
+  // SPEC-123: prefer API resolved_* (honest source); fall back to FE mirror.
+  const hasVisionOverride = Boolean(
+    workspace.vision_llm_provider?.trim() || workspace.vision_llm_model?.trim(),
+  );
+  const resolvedVision = effectiveVisionFromWorkspace(workspace);
+  const resolvesToLabel = `${resolvedVision.provider}/${resolvedVision.model}`;
 
   return (
     <div
@@ -95,40 +103,43 @@ export function WorkspaceExtendedModelConfig({
                 <ProviderIcon
                   providerId={
                     workspace.vision_llm_provider ||
+                    resolvedVision.provider ||
                     visionDefaultId?.split("/")[0]
                   }
                 />
                 <div className="min-w-0 flex-1">
                   <div className="font-medium truncate">
-                    {workspace.vision_llm_model ||
-                      t(
-                        "workspace.serverDefaultWithValue",
-                        "Server Default ({{value}})",
-                        {
-                          value:
-                            visionDefaultId ||
-                            t("workspace.notConfigured", "not configured"),
-                        },
-                      )}
+                    {hasVisionOverride
+                      ? workspace.vision_llm_model
+                      : t(
+                          "workspace.serverDefaultWithValue",
+                          "Server Default ({{value}})",
+                          {
+                            value:
+                              resolvesToLabel ||
+                              visionDefaultId ||
+                              t("workspace.notConfigured", "not configured"),
+                          },
+                        )}
                   </div>
                   <div className="text-sm text-muted-foreground capitalize truncate">
-                    {workspace.vision_llm_provider ||
-                      (visionDefaultId
-                        ? t("workspace.inheritedDefault", "Inherited default")
-                        : t("workspace.autoDetect", "Auto-detected"))}
+                    {hasVisionOverride
+                      ? t("workspace.workspaceOverride", "Workspace override")
+                      : t("workspace.resolvesVia", "Resolves via {{source}}", {
+                          source: resolvedVision.source,
+                        })}
                   </div>
                 </div>
-                {(workspace.vision_llm_provider && workspace.vision_llm_model) ||
-                visionDefaultId ? (
-                  <Badge
-                    variant="outline"
-                    className="ml-auto font-mono text-xs shrink-0 max-w-[40%] truncate"
-                  >
-                    {workspace.vision_llm_provider && workspace.vision_llm_model
-                      ? `${workspace.vision_llm_provider}/${workspace.vision_llm_model}`
-                      : visionDefaultId}
-                  </Badge>
-                ) : null}
+                <Badge
+                  variant="outline"
+                  className="ml-auto font-mono text-xs shrink-0 max-w-[45%] truncate"
+                  title={`source=${resolvedVision.source}`}
+                  data-testid="vision-llm-resolves-to"
+                >
+                  {t("settings.pdfParser.resolvesTo", "Resolves to {{value}}", {
+                    value: resolvesToLabel,
+                  })}
+                </Badge>
               </div>
             )}
           </div>

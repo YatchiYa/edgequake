@@ -30,6 +30,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { DOCUMENT_TABLE_COL_PERCENTS } from '@/lib/documents/document-table-columns';
 import type { SortDirection, SortField } from '@/lib/documents/document-sort';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Document } from '@/types';
@@ -44,21 +45,23 @@ import { SortableColumnHeader } from './sortable-column-header';
 const ESTIMATED_ROW_HEIGHT = 52;
 
 /**
- * Shared colgroup — defines column widths for BOTH the header table and
- * the body table so they stay in perfect alignment (DRY / single source of truth).
- * table-fixed on both tables means colgroup widths are authoritative.
+ * Shared colgroup — percentage widths so Title never collapses under
+ * table-fixed when the inventory pane is narrow (preview panel open).
  */
 function TableColGroup({ showCostColumn }: { showCostColumn: boolean }) {
+  const cols = showCostColumn
+    ? DOCUMENT_TABLE_COL_PERCENTS.withCost
+    : DOCUMENT_TABLE_COL_PERCENTS.default;
   return (
     <colgroup>
-      <col style={{ width: '2.5rem' }} />
-      <col />
-      <col style={{ width: '8.5rem' }} />
-      <col style={{ width: '5rem' }} />
-      {showCostColumn ? <col style={{ width: '5.5rem' }} /> : null}
-      <col style={{ width: '9rem' }} />
-      <col style={{ width: '9rem' }} />
-      <col style={{ width: '10.5rem' }} />
+      <col style={{ width: cols.checkbox }} />
+      <col style={{ width: cols.title }} />
+      <col style={{ width: cols.status }} />
+      <col style={{ width: cols.entities }} />
+      {'cost' in cols ? <col style={{ width: cols.cost }} /> : null}
+      <col style={{ width: cols.created }} />
+      <col style={{ width: cols.updated }} />
+      <col style={{ width: cols.actions }} />
     </colgroup>
   );
 }
@@ -217,7 +220,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
               <TableColGroup showCostColumn={showCostColumn} />
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead scope="col" className="rounded-tl-lg">
+                  <TableHead scope="col" className="rounded-tl-lg w-11 overflow-hidden">
                     <Checkbox
                       checked={isAllSelected}
                       onCheckedChange={(checked) => onSelectAll(!!checked)}
@@ -230,6 +233,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                     activeField={sortField}
                     direction={sortDirection}
                     onSort={onSort}
+                    className="max-w-0 overflow-hidden"
                   />
                   <SortableColumnHeader
                     field="status"
@@ -237,6 +241,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                     activeField={sortField}
                     direction={sortDirection}
                     onSort={onSort}
+                    className="overflow-hidden"
                   />
                   <SortableColumnHeader
                     field="entity_count"
@@ -245,6 +250,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                     direction={sortDirection}
                     onSort={onSort}
                     align="center"
+                    className="overflow-hidden"
                   />
                   {showCostColumn ? (
                     <SortableColumnHeader
@@ -254,6 +260,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                       direction={sortDirection}
                       onSort={onSort}
                       align="center"
+                      className="overflow-hidden"
                     />
                   ) : null}
                   <SortableColumnHeader
@@ -262,6 +269,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                     activeField={sortField}
                     direction={sortDirection}
                     onSort={onSort}
+                    className="overflow-hidden"
                   />
                   <SortableColumnHeader
                     field="updated_at"
@@ -269,8 +277,9 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                     activeField={sortField}
                     direction={sortDirection}
                     onSort={onSort}
+                    className="overflow-hidden"
                   />
-                  <TableHead scope="col" className="rounded-tr-lg">
+                  <TableHead scope="col" className="rounded-tr-lg overflow-hidden">
                     <span className="sr-only">{t('documents.table.actions', 'Actions')}</span>
                   </TableHead>
                 </TableRow>

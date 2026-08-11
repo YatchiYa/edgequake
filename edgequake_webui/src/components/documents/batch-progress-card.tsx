@@ -222,7 +222,7 @@ export function BatchProgressCard({ trackId, onClose, onComplete }: BatchProgres
         )}
 
         {/* Track ID info (for debugging) */}
-        <div className="text-[10px] text-muted-foreground/50 truncate">
+        <div className="text-[10px] text-muted-foreground truncate">
           Track: {trackId}
         </div>
       </CardContent>

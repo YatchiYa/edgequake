@@ -1,15 +1,15 @@
-//! Vision → EdgeParse fallback policy (SPEC-017 P1-09).
+//! Vision → EdgeParse fallback policy (SPEC-017 P1-09 / SPEC-123).
 //!
 //! Centralizes when a vision backend failure should degrade to EdgeParse
 //! instead of failing the ingestion task outright.
 //!
-//! # First principles
+//! # First principles (LAW-123-1 / LAW-123-4)
 //!
-//! - **Implicit Vision** (server default / auto-route): timeout / provider
-//!   failure may degrade to EdgeParse so ingestion still completes.
-//! - **Explicit Vision** (workspace `pdf_parser_backend=vision` or upload
-//!   override): user/workspace choice is law — **fail closed**, no silent
-//!   EdgeParse. Callers must surface the error so the UI can retry / switch.
+//! - **Auto** (`backend_explicit=false`): timeout / provider failure may
+//!   degrade to EdgeParse so ingestion still completes.
+//! - **Resolved Vision** (upload / workspace / tenant / env / default):
+//!   choice is law — **fail closed**, no silent EdgeParse. Callers must
+//!   surface the error so the UI can retry / switch.
 
 use crate::PdfParserBackend;
 

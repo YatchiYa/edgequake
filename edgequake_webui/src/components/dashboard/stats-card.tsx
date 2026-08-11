@@ -147,7 +147,7 @@ export function StatsCard({
             </div>
             {/* LS-03: Zero hint — shown only when value is 0 to guide new users */}
             {value === 0 && zeroHint ? (
-              <p className="text-[11px] text-muted-foreground/70 italic truncate">{zeroHint}</p>
+              <p className="text-[11px] text-muted-foreground italic truncate">{zeroHint}</p>
             ) : description ? (
               <p className="text-[11px] text-muted-foreground truncate">{description}</p>
             ) : null}

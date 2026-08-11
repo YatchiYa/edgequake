@@ -137,27 +137,32 @@ pub(super) async fn create_pdf_processing_task(
     )
     .await?;
 
-    let resolved_backend = options.resolved_backend(workspace);
-    let backend_explicit = options.pdf_parser_backend.is_some()
-        || workspace.and_then(|ws| ws.pdf_parser_backend).is_some()
-        || edgequake_pdf::PdfParserBackend::from_env().is_some();
+    // SPEC-123: load tenant for Upload → Workspace → Tenant → Env cascade.
+    let tenant = state
+        .workspace_service
+        .get_tenant(tenant_id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let resolved = options.resolved_pdf_parser(workspace, tenant.as_ref());
+    let resolved_backend = resolved.runtime_backend;
+    let backend_explicit = resolved.backend_explicit();
 
     let page_count_usize = page_count.unwrap_or(1).max(1) as usize;
     let profile = crate::services::LargeDocumentProfile::new(page_count_usize, file_size_bytes);
     // SPEC-057 P2: convert task uses convert-phase budget; Insert gets ingest_*.
     let processing_timeout_secs =
-        profile.convert_timeout_secs(resolved_backend, &options.resolved_vision_provider());
+        profile.convert_timeout_secs(resolved_backend, &options.resolved_vision_provider(workspace, tenant.as_ref()));
 
     let task_data = PdfProcessingData {
         pdf_id,
         tenant_id,
         workspace_id,
         enable_vision: options.enable_vision,
-        vision_provider: options.resolved_vision_provider(),
+        vision_provider: options.resolved_vision_provider(workspace, tenant.as_ref()),
         // WHY: Use vision_model() method (not the raw field) so provider-specific
         // defaults are applied when no explicit model was set by the user.
         vision_model: if resolved_backend == edgequake_pdf::PdfParserBackend::Vision {
-            Some(options.vision_model())
+            Some(options.vision_model(workspace, tenant.as_ref()))
         } else {
             None
         },
@@ -166,7 +171,7 @@ pub(super) async fn create_pdf_processing_task(
         pdf_parser_backend_explicit: backend_explicit,
         restart_from_scratch: intent.restart_from_scratch,
         reprocess_mode: intent.reprocess_mode,
-        multimodal_process_options: options.resolved_process_options(workspace),
+        multimodal_process_options: options.resolved_process_options(workspace, tenant.as_ref()),
         vision_reasoning_effort: options.vision_reasoning_effort.clone(),
         vision_extract: options
             .resolved_vision_extract(workspace)

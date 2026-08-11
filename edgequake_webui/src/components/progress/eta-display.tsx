@@ -183,7 +183,7 @@ export function EtaDisplay({
           {showElapsed && (
             <>
               <span className="text-muted-foreground/50 mx-1">|</span>
-              <Timer className={cn(iconSize[size], 'text-muted-foreground/70')} />
+              <Timer className={cn(iconSize[size], 'text-muted-foreground')} />
               <span className="text-muted-foreground">
                 {formatTime(elapsed)}
               </span>

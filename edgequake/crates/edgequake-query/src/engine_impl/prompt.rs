@@ -695,56 +695,101 @@ then elaborate. Do not invent facts outside Context.\n"
         ))
     }
 
-    /// Generate a *direct* LLM answer with no retrieval context (P-G8 / RC-13).
+    /// Generate a *direct* LLM chatbot answer with no retrieval context (P-G8 / RC-13).
     ///
-    /// WHY (First Principles): Bypass mode means "skip retrieval, ask the LLM
-    /// directly" — the opposite of RAG. The RAG `generate_answer_with_provider`
-    /// guards on `context.is_empty()` and returns the *apology* string for a
-    /// real retrieval miss, which is correct for Local/Global/Hybrid/Naive but
-    /// wrong for Bypass, where an empty context is *intentional*. This method
-    /// bypasses that guard and calls the LLM with a direct prompt, mirroring
-    /// `sota_bridge::query_bypass` so both entry paths (HTTP `/query` and the
-    /// orchestrator) produce identical Bypass answers (DRY).
+    /// WHY (First Principles): Bypass / Chat mode means "skip retrieval, talk to
+    /// the LLM like a chatbot" — the opposite of RAG. The RAG answer path guards
+    /// on `context.is_empty()` and returns the *apology* string for a real
+    /// retrieval miss, which is correct for Local/Global/Hybrid/Naive but wrong
+    /// for Bypass, where an empty context is *intentional*.
+    ///
+    /// Message shape (DRY with `conversation_context::build_bypass_chat_messages`):
+    /// `[system persona (+ optional extension)] + cut(history) + [current user]`.
+    /// History uses the shared sliding-window cut (`DEFAULT_CONVERSATION_TURN_LIMIT`).
     ///
     /// E23: an empty/whitespace query still reaches the LLM; the provider is
-    /// responsible for its own handling. `system_prompt_extension` is honored
-    /// as a system message when present.
+    /// responsible for its own handling.
     pub(super) async fn generate_bypass_answer(
         &self,
         query: &str,
         llm_override: Option<&Arc<dyn crate::LLMProvider>>,
         system_prompt_extension: Option<&str>,
         images: Option<&[ImageData]>,
+        conversation_history: &[ConversationMessage],
     ) -> Result<(String, usize)> {
         let provider = llm_override.unwrap_or(&self.llm_provider);
-        let user_prompt = format!(
-            "Answer the following question to the best of your ability.\n\nQuestion: {}\n\nAnswer:",
-            query
+        let messages = conversation_context::build_bypass_chat_messages(
+            query,
+            conversation_history,
+            system_prompt_extension,
+            DEFAULT_CONVERSATION_TURN_LIMIT,
+            images,
         );
 
-        let response = if let Some(imgs) = images.filter(|i| !i.is_empty()) {
-            // Vision-capable bypass: system = optional extension, user = query + images.
-            let system_text = system_prompt_extension
-                .unwrap_or("You are a helpful assistant. Answer the user's question directly.");
-            let messages = vec![
-                ChatMessage::system(system_text),
-                ChatMessage::user_with_images(&user_prompt, imgs.to_vec()),
-            ];
-            match provider.chat(&messages, None).await {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::warn!(error = %e, "Bypass vision chat failed; retrying as text-only");
-                    provider.complete(&user_prompt).await?
-                }
+        let response = match provider.chat(&messages, None).await {
+            Ok(r) => r,
+            Err(e) if images.is_some_and(|i| !i.is_empty()) => {
+                tracing::warn!(error = %e, "Bypass vision chat failed; retrying as text-only");
+                let text_only = conversation_context::build_bypass_chat_messages(
+                    query,
+                    conversation_history,
+                    system_prompt_extension,
+                    DEFAULT_CONVERSATION_TURN_LIMIT,
+                    None,
+                );
+                provider.chat(&text_only, None).await?
             }
-        } else if let Some(ext) = system_prompt_extension.filter(|s| !s.trim().is_empty()) {
-            let messages = vec![ChatMessage::system(ext), ChatMessage::user(&user_prompt)];
-            provider.chat(&messages, None).await?
-        } else {
-            provider.complete(&user_prompt).await?
+            Err(e) => return Err(e.into()),
         };
 
         Ok((response.content, response.completion_tokens))
+    }
+
+    /// Stream Bypass / Chat as real tokens when the provider supports `stream()`.
+    ///
+    /// WHY (2026): Chat UX expects incremental tokens. Providers expose role-aware
+    /// `chat()` and text `stream()`. We build the same chatbot messages as sync,
+    /// flatten to a role-labeled prompt (DRY with `format_bypass_messages_as_prompt`),
+    /// then stream — falling back to one-shot chat if streaming is unsupported.
+    pub(super) async fn stream_bypass_answer(
+        &self,
+        query: &str,
+        llm_override: Option<Arc<dyn crate::LLMProvider>>,
+        system_prompt_extension: Option<&str>,
+        images: Option<&[ImageData]>,
+        conversation_history: &[ConversationMessage],
+    ) -> Result<TokenStream> {
+        let provider = llm_override.unwrap_or_else(|| self.llm_provider.clone());
+        let messages = conversation_context::build_bypass_chat_messages(
+            query,
+            conversation_history,
+            system_prompt_extension,
+            DEFAULT_CONVERSATION_TURN_LIMIT,
+            images.filter(|i| !i.is_empty()),
+        );
+
+        if images.is_some_and(|i| !i.is_empty()) || !provider.supports_streaming() {
+            let (answer, _) = self
+                .generate_bypass_answer(
+                    query,
+                    Some(&provider),
+                    system_prompt_extension,
+                    images,
+                    conversation_history,
+                )
+                .await?;
+            return Ok(futures::stream::once(async move { Ok(answer) }).boxed());
+        }
+
+        let prompt = conversation_context::format_bypass_messages_as_prompt(&messages);
+        provider
+            .stream(&prompt)
+            .await
+            .map(|s| {
+                s.map(|res| res.map_err(crate::error::QueryError::from))
+                    .boxed()
+            })
+            .map_err(crate::error::QueryError::from)
     }
 
     /// Stream a vision (image-attached) answer (P-G11 / RC-16).

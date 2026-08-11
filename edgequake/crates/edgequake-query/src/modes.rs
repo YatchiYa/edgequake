@@ -158,7 +158,7 @@ impl FromStr for QueryMode {
             "global" => Ok(Self::Global),
             "hybrid" => Ok(Self::Hybrid),
             "mix" => Ok(Self::Mix),
-            "bypass" => Ok(Self::Bypass),
+            "bypass" | "chat" => Ok(Self::Bypass),
             other => Err(format!("Unknown query mode: {}", other)),
         }
     }
@@ -185,6 +185,7 @@ mod tests {
         assert_eq!(QueryMode::parse("naive"), Some(QueryMode::Naive));
         assert_eq!(QueryMode::parse("HYBRID"), Some(QueryMode::Hybrid));
         assert_eq!(QueryMode::parse("bypass"), Some(QueryMode::Bypass));
+        assert_eq!(QueryMode::parse("chat"), Some(QueryMode::Bypass));
         assert_eq!(QueryMode::parse("unknown"), None);
     }
 

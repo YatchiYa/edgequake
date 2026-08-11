@@ -133,6 +133,26 @@ pub struct UpdateTenantRequest {
     pub plan: Option<String>,
     /// Whether the tenant is active.
     pub is_active: Option<bool>,
+
+    /// SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto` | `none`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pdf_parser_backend: Option<String>,
+
+    // === Default model cascade seeds (SPEC-032 / SPEC-041 / SPEC-123) ===
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_llm_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_llm_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_embedding_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_embedding_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_embedding_dimension: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_vision_llm_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_vision_llm_provider: Option<String>,
 }
 
 // ── Workspace Requests ────────────────────────────────────────────────────

@@ -259,7 +259,7 @@ export function DocumentPickerPopover({
                 className={cn(
                   'w-full h-8 pl-8 pr-7 text-sm rounded-md',
                   'bg-muted/50 border-0 ring-1 ring-border/60',
-                  'placeholder:text-muted-foreground/60',
+                  'placeholder:text-muted-foreground',
                   'focus:outline-none focus:ring-2 focus:ring-primary/40',
                   'transition-shadow',
                 )}
@@ -443,7 +443,7 @@ function PickerItem({
       <FileText
         className={cn(
           'flex-none h-3.5 w-3.5 shrink-0',
-          checked ? 'text-primary/70' : 'text-muted-foreground/70',
+          checked ? 'text-primary' : 'text-muted-foreground',
         )}
         aria-hidden="true"
       />

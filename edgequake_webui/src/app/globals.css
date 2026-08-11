@@ -191,14 +191,17 @@
   --secondary: var(--_tt-secondary-fg);
   --secondary-foreground: var(--_tt-secondary);
 
-  /* Derived tones via color-mix for theme-safe rendering */
-  --muted-foreground: color-mix(in oklch, var(--_tt-bg) 60%, var(--_tt-fg));
-  --muted: color-mix(in oklch, var(--_tt-fg) 90%, var(--_tt-bg));
-  --accent: color-mix(in oklch, var(--_tt-fg) 90%, var(--_tt-bg));
+  /* Derived tones via color-mix for theme-safe rendering.
+     WHY (a11y): muted body on inverted (near-black) tooltips must stay ≥ ~4.5:1.
+     60% page-bg was too dim; 78% keeps secondary hierarchy without gray-on-black wash.
+     Do NOT stack opacity-* or muted-foreground opacity modifiers on readable tooltip copy. */
+  --muted-foreground: color-mix(in oklch, var(--_tt-bg) 78%, var(--_tt-fg));
+  --muted: color-mix(in oklch, var(--_tt-fg) 88%, var(--_tt-bg));
+  --accent: color-mix(in oklch, var(--_tt-fg) 88%, var(--_tt-bg));
   --accent-foreground: var(--_tt-bg);
-  --border: color-mix(in oklch, var(--_tt-bg) 20%, transparent);
-  --input: color-mix(in oklch, var(--_tt-bg) 15%, transparent);
-  --ring: color-mix(in oklch, var(--_tt-bg) 50%, var(--_tt-fg));
+  --border: color-mix(in oklch, var(--_tt-bg) 28%, transparent);
+  --input: color-mix(in oklch, var(--_tt-bg) 20%, transparent);
+  --ring: color-mix(in oklch, var(--_tt-bg) 55%, var(--_tt-fg));
 }
 
 /* Smooth theme transition - prevents flash on theme change */

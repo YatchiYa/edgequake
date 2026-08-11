@@ -482,7 +482,15 @@ async fn process_pdf_upload_parts(
     if let Some(ref ws) = workspace {
         options.apply_workspace(ws);
     }
-    let resolved_backend = options.resolved_backend(workspace.as_ref());
+    let tenant = match context.tenant_id_uuid() {
+        Some(tid) => state
+            .workspace_service
+            .get_tenant(tid)
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?,
+        None => None,
+    };
+    let resolved_backend = options.resolved_backend(workspace.as_ref(), tenant.as_ref());
 
     // Legacy debug breadcrumb when Vision still lacks a model after workspace apply.
     if resolved_backend == PdfParserBackend::Vision
@@ -678,8 +686,8 @@ async fn process_pdf_upload_parts(
             let estimated_time = estimate_processing_time(
                 existing.file_size_bytes.max(0) as u64,
                 existing.page_count,
-                options.resolved_backend(workspace.as_ref()),
-                &options.resolved_vision_provider(),
+                options.resolved_backend(workspace.as_ref(), tenant.as_ref()),
+                &options.resolved_vision_provider(workspace.as_ref(), tenant.as_ref()),
             );
             return Ok(PdfUploadResponse {
                 pdf_id: existing.pdf_id.to_string(),
@@ -697,7 +705,7 @@ async fn process_pdf_upload_parts(
                     sha256_checksum: existing.sha256_checksum,
                     vision_enabled: options.enable_vision,
                     vision_model: if options.enable_vision {
-                        Some(options.vision_model())
+                        Some(options.vision_model(workspace.as_ref(), tenant.as_ref()))
                     } else {
                         None
                     },
@@ -741,7 +749,7 @@ async fn process_pdf_upload_parts(
     let file_size_bytes = file_data.len() as u64;
     let page_count = extract_page_count(&file_data).await;
     let vision_model = if resolved_backend == PdfParserBackend::Vision && options.enable_vision {
-        Some(options.vision_model())
+        Some(options.vision_model(workspace.as_ref(), tenant.as_ref()))
     } else {
         None
     };
@@ -877,12 +885,12 @@ async fn process_pdf_upload_parts(
         file_size_bytes,
         page_count,
         resolved_backend,
-        &options.resolved_vision_provider(),
+        &options.resolved_vision_provider(workspace.as_ref(), tenant.as_ref()),
     );
     let ingestion_estimate = {
         let pages = page_count.unwrap_or(1).max(1) as usize;
         let profile = crate::services::LargeDocumentProfile::new(pages, file_size_bytes);
-        Some(profile.ingestion_estimate(resolved_backend, &options.resolved_vision_provider()))
+        Some(profile.ingestion_estimate(resolved_backend, &options.resolved_vision_provider(workspace.as_ref(), tenant.as_ref())))
     };
 
     let tenant_for_audit = context

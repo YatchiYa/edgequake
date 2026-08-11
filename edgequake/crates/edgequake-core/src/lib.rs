@@ -46,6 +46,7 @@ pub mod extract_budget_metadata;
 pub mod graph_mapping;
 pub mod keyword_extractor;
 pub mod llm_roles;
+pub mod model_resolution;
 #[cfg(feature = "pipeline")]
 pub mod orchestrator;
 pub mod resource;
@@ -89,6 +90,11 @@ pub use llm_roles::{
     role_config_from_workspace, role_uses_structured_effort_floor,
     workspace_default_reasoning_effort, LlmRole, ResolvedReasoningEffort, ResolvedRoleLlm,
     RoleLlmConfig,
+};
+pub use model_resolution::{
+    compiled_vision_model_for, env_embedding_provider_model, env_llm_provider_model,
+    env_vision_model, env_vision_provider, resolve_embedding_choice, resolve_llm_choice,
+    resolve_vision_llm_choice, ModelResolutionSource, ResolvedEmbedding, ResolvedProviderModel,
 };
 pub use server_config_overrides::{
     current_defaults, install_server_config, merge_config_field, ConfigPriorityMode,

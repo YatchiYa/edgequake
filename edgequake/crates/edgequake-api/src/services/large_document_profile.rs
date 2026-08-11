@@ -108,14 +108,16 @@ impl LargeDocumentProfile {
         if let Some(n) = Self::env_timeout_override() {
             return n;
         }
-        let convert = match backend {
+        let convert = match backend.runtime_backend() {
             PdfParserBackend::EdgeParse => self.edgeparse_convert_secs(),
-            PdfParserBackend::Vision => self.vision_convert_secs(provider),
+            PdfParserBackend::Vision | PdfParserBackend::Auto => self.vision_convert_secs(provider),
         };
         let pass_b = LocalMmProfile::resolve(provider).pass_b_task_budget_secs();
         let raw = convert.saturating_add(pass_b).saturating_add(300);
-        let adjusted = match backend {
-            PdfParserBackend::Vision if self.page_count >= 200 => raw.saturating_add(convert / 4),
+        let adjusted = match backend.runtime_backend() {
+            PdfParserBackend::Vision | PdfParserBackend::Auto if self.page_count >= 200 => {
+                raw.saturating_add(convert / 4)
+            }
             _ => raw,
         };
         adjusted.clamp(TASK_TIMEOUT_FLOOR_SECS, TASK_TIMEOUT_CEILING_SECS)
@@ -173,11 +175,19 @@ impl LargeDocumentProfile {
     }
 
     /// Whether auto-routing may attempt EdgeParse before Vision.
+    ///
+    /// SPEC-123: only when the resolved choice is Auto (`backend_explicit=false`).
+    /// Resolved Vision (including Server Default → Vision) is inviolable.
     pub fn should_try_edgeparse_before_vision(
         backend: PdfParserBackend,
         backend_explicit: bool,
     ) -> bool {
-        Self::auto_routing_enabled() && !backend_explicit && backend == PdfParserBackend::Vision
+        Self::auto_routing_enabled()
+            && !backend_explicit
+            && matches!(
+                backend.runtime_backend(),
+                PdfParserBackend::Vision | PdfParserBackend::Auto
+            )
     }
 
     /// Build upload-time estimate DTO.
@@ -186,19 +196,23 @@ impl LargeDocumentProfile {
         backend: PdfParserBackend,
         provider: &str,
     ) -> IngestionEstimate {
-        let convert = match backend {
+        let convert = match backend.runtime_backend() {
             PdfParserBackend::EdgeParse => self.edgeparse_convert_secs(),
-            PdfParserBackend::Vision => self.vision_convert_secs(provider),
+            PdfParserBackend::Vision | PdfParserBackend::Auto => self.vision_convert_secs(provider),
         };
         let extract = self.extract_secs();
         let total = self.task_timeout_secs(backend, provider);
-        let recommended = if self.is_large_pdf() && backend == PdfParserBackend::Vision {
+        let recommended = if self.is_large_pdf()
+            && matches!(
+                backend.runtime_backend(),
+                PdfParserBackend::Vision | PdfParserBackend::Auto
+            ) {
             "edgeparse"
         } else {
-            backend.as_str()
+            backend.runtime_backend().as_str()
         };
         IngestionEstimate {
-            backend: backend.as_str().to_string(),
+            backend: backend.runtime_backend().as_str().to_string(),
             convert_seconds: convert,
             extract_seconds: extract,
             total_seconds_pessimistic: total,

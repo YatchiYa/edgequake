@@ -80,11 +80,14 @@ pub trait ConversationStorage: Send + Sync {
         &self,
         message_id: Uuid,
         content: Option<&str>,
+        mode: Option<&str>,
         tokens_used: Option<i32>,
         duration_ms: Option<i32>,
         thinking_time_ms: Option<i32>,
         context: Option<serde_json::Value>,
         is_error: Option<bool>,
+        llm_provider: Option<&str>,
+        llm_model: Option<&str>,
     ) -> Result<MessageRow>;
 
     async fn delete_message(&self, message_id: Uuid) -> Result<()>;

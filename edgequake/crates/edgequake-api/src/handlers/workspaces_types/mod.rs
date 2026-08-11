@@ -14,7 +14,9 @@
 mod rebuild;
 mod requests;
 mod responses;
+mod map;
 
+pub use map::workspace_to_response;
 pub use rebuild::*;
 pub use requests::*;
 pub use responses::*;
@@ -59,6 +61,14 @@ mod tests {
             description: None,
             plan: Some("enterprise".to_string()),
             is_active: Some(false),
+            pdf_parser_backend: None,
+            default_llm_model: None,
+            default_llm_provider: None,
+            default_embedding_model: None,
+            default_embedding_provider: None,
+            default_embedding_dimension: None,
+            default_vision_llm_model: None,
+            default_vision_llm_provider: None,
         };
 
         let json = serde_json::to_string(&req).unwrap();
@@ -177,6 +187,7 @@ mod tests {
             default_vision_llm_model: None,
             default_vision_llm_provider: None,
             default_reasoning_effort: None,
+            pdf_parser_backend: None,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         };
@@ -202,13 +213,23 @@ mod tests {
             llm_model: "gemma4:latest".to_string(),
             llm_provider: "ollama".to_string(),
             llm_full_id: "ollama/gemma4:latest".to_string(),
+            resolved_llm_provider: None,
+            resolved_llm_model: None,
+            llm_resolution_source: None,
             // SPEC-032: Embedding configuration
             embedding_model: "text-embedding-3-small".to_string(),
             embedding_provider: "openai".to_string(),
             embedding_dimension: 1536,
             embedding_full_id: "openai/text-embedding-3-small".to_string(),
+            resolved_embedding_provider: None,
+            resolved_embedding_model: None,
+            resolved_embedding_dimension: None,
+            embedding_resolution_source: None,
             vision_llm_provider: None,
             vision_llm_model: None,
+            resolved_vision_llm_provider: None,
+            resolved_vision_llm_model: None,
+            vision_llm_resolution_source: None,
             pdf_parser_backend: None,
             entity_types: None,
             entity_types_strict: true,

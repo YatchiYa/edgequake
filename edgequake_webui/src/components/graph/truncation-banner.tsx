@@ -54,16 +54,16 @@ export function TruncationBanner({ onLoadMore, isLoading }: TruncationBannerProp
       <div className="flex items-center gap-3 bg-amber-500/90 dark:bg-amber-600/90 text-white px-4 py-2 rounded-full shadow-lg backdrop-blur-sm">
         <AlertTriangle className="h-4 w-4 shrink-0" />
         
-        <div className="flex items-center gap-2 text-sm font-medium">
+        <div className="flex items-center gap-2 text-sm font-medium text-white">
           <span className="tabular-nums">
             {visibleCount.toLocaleString()}
           </span>
-          <span className="opacity-80">of</span>
+          <span className="text-white/90">of</span>
           <span className="tabular-nums">
             {totalNodesInStorage.toLocaleString()}
           </span>
-          <span className="opacity-80">nodes</span>
-          <span className="text-xs opacity-70 ml-1">
+          <span className="text-white/90">nodes</span>
+          <span className="text-xs text-white/90 ml-1">
             ({percentage}%)
           </span>
         </div>
@@ -114,7 +114,7 @@ export function TruncationIndicator() {
       <span className="tabular-nums font-medium">
         {visibleCount.toLocaleString()} / {totalNodesInStorage.toLocaleString()}
       </span>
-      <span className="opacity-70">({percentage}%)</span>
+      <span className="text-amber-800/90 dark:text-amber-200/90">({percentage}%)</span>
     </div>
   );
 }

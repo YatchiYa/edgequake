@@ -128,12 +128,12 @@ export function EnhancedStatusBadge({
     return (
       <Badge
         variant="outline"
-        className={`gap-1 cursor-default ${tone}`}
+        className={`max-w-full min-w-0 gap-1 truncate cursor-default ${tone}`}
         data-testid="status-cell"
         aria-label={ariaLabel}
         title={
           queryReady
-            ? undefined
+            ? label
             : 'Indexed but not yet queryable (serving fence)'
         }
       >

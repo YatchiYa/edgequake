@@ -120,11 +120,14 @@ pub async fn update_message(
             message_id,
             UpdateMessageRequest {
                 content: request.content,
+                mode: None,
                 tokens_used: request.tokens_used,
                 duration_ms: request.duration_ms,
                 thinking_time_ms: request.thinking_time_ms,
                 context,
                 is_error: request.is_error,
+                llm_provider: None,
+                llm_model: None,
             },
         )
         .await?;

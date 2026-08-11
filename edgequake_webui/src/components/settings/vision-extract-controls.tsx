@@ -165,7 +165,7 @@ export function VisionExtractControls({
           <p className="text-xs font-medium text-muted-foreground">
             {t('documents.upload.visionExtract.modalities', 'Extract')}
           </p>
-          <p className="text-[11px] text-muted-foreground/80 mt-0.5">
+          <p className="text-[11px] text-muted-foreground mt-0.5">
             {t(
               'documents.upload.visionExtract.modalitiesHint',
               'Turn off modalities you do not need for this upload.',
@@ -442,10 +442,10 @@ export function VisionSettingsPanel({
 
 /** Whether resolved parser choice shows Vision extract controls. */
 export function shouldShowVisionExtractControls(
-  parserChoice: 'none' | 'default' | 'vision' | 'edgeparse',
+  parserChoice: 'none' | 'default' | 'vision' | 'edgeparse' | 'auto',
   serverOrWorkspaceIsVision: boolean,
 ): boolean {
   if (parserChoice === 'edgeparse') return false;
-  if (parserChoice === 'vision') return true;
+  if (parserChoice === 'vision' || parserChoice === 'auto') return true;
   return serverOrWorkspaceIsVision;
 }

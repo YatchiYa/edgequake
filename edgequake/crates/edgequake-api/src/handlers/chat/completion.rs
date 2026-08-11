@@ -149,13 +149,23 @@ pub async fn chat_completion(
 
     debug!(message_id = %user_message.message_id, "Saved user message");
 
+    // Multi-turn chatbot memory: load prior turns, apply shared history cut.
+    let conversation_history = super::history::load_recent_conversation_history(
+        state.conversation_service.as_ref(),
+        conversation_id,
+        user_message.message_id,
+    )
+    .await?;
+
     // 3. Build and execute query using SOTA engine (LightRAG-style)
     // OODA-231: Use workspace's tenant_id for graph queries, not header tenant_id.
     // WHY: Header tenant_id is for authentication (random UUID from frontend).
     // But the graph data was ingested with the workspace's actual tenant_id.
     // Using header tenant_id causes 0 results because of tenant_id mismatch.
     let enriched_query = enrich_query_with_language(&request.message, &request.language);
-    let mut engine_request = EngineQueryRequest::new(&enriched_query).with_mode(query_mode);
+    let mut engine_request = EngineQueryRequest::new(&enriched_query)
+        .with_mode(query_mode)
+        .with_conversation_history(conversation_history);
 
     // SPEC-004: Thread system prompt extension if provided
     if let Some(ref system_prompt) = request.system_prompt {
@@ -224,7 +234,9 @@ pub async fn chat_completion(
         LlmResolutionRequest::from_provider_string(request.provider.clone(), request.model.clone());
 
     let (llm_override, used_provider, used_model) =
-        match resolver.resolve_llm_provider_with_workspace(workspace.as_ref(), &llm_request) {
+        match resolver
+            .resolve_llm_provider_for_workspace(workspace.as_ref(), &llm_request)
+            .await {
             Ok(Some(resolved)) => {
                 debug!(
                     provider = %resolved.provider_name,
@@ -265,14 +277,25 @@ pub async fn chat_completion(
             debug!("Using vision LLM provider for image query (FEAT0203)");
             (
                 Some(Arc::clone(vision_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>),
-                Some("vision".to_string()),
-                Some("vision-model".to_string()),
+                Some(vision_provider.name().to_string()),
+                Some(vision_provider.model().to_string()),
             )
         } else {
             (llm_override, used_provider, used_model)
         }
     } else {
         (llm_override, used_provider, used_model)
+    };
+
+    // Honesty: always record effective provider/model (incl. server-default path).
+    let effective_llm = llm_override
+        .as_ref()
+        .map(|p| p.as_ref())
+        .unwrap_or_else(|| state.query.llm_provider.as_ref());
+    let (used_provider, used_model) = {
+        let (p, m) =
+            super::coalesce_effective_llm_lineage(used_provider, used_model, effective_llm);
+        (Some(p), Some(m))
     };
 
     let provider_for_effort = used_provider
@@ -332,20 +355,31 @@ pub async fn chat_completion(
         .await?;
 
     // 6. Update assistant message with metadata
-    state
+    if let Err(e) = state
         .conversation_service
         .update_message(
             assistant_message.message_id,
             UpdateMessageRequest {
                 content: None,
+                mode: Some(mode),
                 tokens_used: Some(result.stats.generated_tokens as i32),
                 duration_ms: Some(result.stats.total_time_ms as i32),
                 thinking_time_ms: None,
                 context: Some(context),
                 is_error: None,
+                llm_provider: used_provider.clone(),
+                llm_model: used_model.clone(),
             },
         )
-        .await?;
+        .await
+    {
+        error!(
+            conversation_id = %conversation_id,
+            assistant_message_id = %assistant_message.message_id,
+            error = %e,
+            "Failed to persist assistant message metadata (mode/lineage/tokens)"
+        );
+    }
 
     info!(
         conversation_id = %conversation_id,

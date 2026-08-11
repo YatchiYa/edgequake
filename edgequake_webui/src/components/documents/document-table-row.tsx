@@ -239,7 +239,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       data-document-title={displayTitle}
     >
       {/* Selection Checkbox */}
-      <TableCell onClick={(e) => e.stopPropagation()}>
+      <TableCell className="w-11 overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <Checkbox
           checked={isSelected}
           onCheckedChange={(checked) => onSelect(doc.id, !!checked)}
@@ -247,12 +247,12 @@ export const DocumentTableRow = memo(function DocumentTableRow({
         />
       </TableCell>
 
-      {/* Title with File Type Icon */}
-      <TableCell className="font-medium">
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-2">
-            <FileIcon className={cn('h-4 w-4 shrink-0', color)} />
-            <span className="truncate">
+      {/* Title with File Type Icon — max-w-0 enables truncate under table-fixed */}
+      <TableCell className="max-w-0 overflow-hidden font-medium">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <FileIcon className={cn('h-4 w-4 shrink-0', color)} aria-hidden="true" />
+            <span className="truncate" title={displayTitle}>
               {highlightMatches(displayTitle, searchQuery)}
             </span>
           </div>
@@ -267,7 +267,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
             )}
           {/* Cancelled indicator when no error message */}
           {doc.status === 'cancelled' && !getEffectiveErrorMessage(doc) && (
-            <span className="text-xs text-muted-foreground">
+            <span className="truncate text-xs text-muted-foreground">
               {t('documents.cancelled.subtitle', 'Processing was cancelled')}
             </span>
           )}
@@ -275,9 +275,11 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       </TableCell>
 
       {/* Status Badge — SPEC-048: single RunView line (DEF-08) */}
-      <TableCell>
-        <div className="flex flex-col gap-1">
-          <EnhancedStatusBadge document={doc} />
+      <TableCell className="overflow-hidden">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="min-w-0 max-w-full">
+            <EnhancedStatusBadge document={doc} />
+          </div>
           {(() => {
             // LAW-IS3: Active View owns live narrative — table is inventory only.
             if (isLiveRun) return null;
@@ -286,9 +288,10 @@ export const DocumentTableRow = memo(function DocumentTableRow({
             if (!LIVE_STAGE_MESSAGE_STAGES.has(String(run.stage))) return null;
             return (
               <span
-                className="text-xs text-muted-foreground truncate max-w-[220px]"
+                className="max-w-full truncate text-xs text-muted-foreground"
                 data-testid="spec048-row-stage"
                 data-stage={run.stage}
+                title={formatRunHeadline(run)}
               >
                 {formatRunHeadline(run)}
               </span>
@@ -298,34 +301,38 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       </TableCell>
 
       {/* Entity Count */}
-      <TableCell className="text-center">
+      <TableCell className="overflow-hidden text-center tabular-nums">
         {doc.entity_count ?? doc.chunk_count ?? '-'}
       </TableCell>
 
       {/* Cost — SPEC-099: only when showCostColumn */}
       {showCostColumn ? (
-        <TableCell className="text-center">
+        <TableCell className="overflow-hidden text-center">
           <CostCell document={doc} size="sm" />
         </TableCell>
       ) : null}
 
       {/* Created Date */}
-      <TableCell className="text-muted-foreground max-w-0 overflow-hidden">
+      <TableCell className="max-w-0 overflow-hidden text-muted-foreground">
         {doc.created_at ? (
-          <div className="flex items-center gap-1 whitespace-nowrap truncate">
-            <span>
-              {formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}
-            </span>
-          </div>
+          <span
+            className="block truncate whitespace-nowrap"
+            title={new Date(doc.created_at).toLocaleString()}
+          >
+            {formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}
+          </span>
         ) : (
           '-'
         )}
       </TableCell>
 
       {/* Last Updated Date — shows when doc was last reprocessed/rebuilt */}
-      <TableCell className="text-muted-foreground max-w-0 overflow-hidden">
+      <TableCell className="max-w-0 overflow-hidden text-muted-foreground">
         {(doc.updated_at || doc.processed_at) ? (
-          <span className="whitespace-nowrap truncate block" title={new Date(doc.updated_at ?? doc.processed_at!).toLocaleString()}>
+          <span
+            className="block truncate whitespace-nowrap"
+            title={new Date(doc.updated_at ?? doc.processed_at!).toLocaleString()}
+          >
             {formatDistanceToNow(new Date(doc.updated_at ?? doc.processed_at!), { addSuffix: true })}
           </span>
         ) : (
@@ -334,7 +341,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       </TableCell>
 
       {/* Actions */}
-      <TableCell onClick={(e) => e.stopPropagation()}>
+      <TableCell className="overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <QuickActionButtons
           doc={doc}
           onViewDetails={onViewDetails}

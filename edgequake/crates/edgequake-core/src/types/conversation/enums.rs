@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Conversation mode for RAG queries.
+/// Conversation mode for RAG queries (and Chat / Bypass).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ConversationMode {
@@ -19,6 +19,8 @@ pub enum ConversationMode {
     Naive,
     /// Mix mode (weighted combination).
     Mix,
+    /// Chat / Bypass — direct LLM, no knowledge-graph or chunk retrieval.
+    Bypass,
 }
 
 impl std::fmt::Display for ConversationMode {
@@ -29,6 +31,7 @@ impl std::fmt::Display for ConversationMode {
             Self::Hybrid => write!(f, "hybrid"),
             Self::Naive => write!(f, "naive"),
             Self::Mix => write!(f, "mix"),
+            Self::Bypass => write!(f, "bypass"),
         }
     }
 }
@@ -43,6 +46,7 @@ impl std::str::FromStr for ConversationMode {
             "hybrid" => Ok(Self::Hybrid),
             "naive" => Ok(Self::Naive),
             "mix" => Ok(Self::Mix),
+            "bypass" | "chat" => Ok(Self::Bypass),
             _ => Err(format!("Unknown mode: {}", s)),
         }
     }

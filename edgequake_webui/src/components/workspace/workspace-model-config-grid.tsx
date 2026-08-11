@@ -21,6 +21,10 @@ import { ReasoningEffortSelect } from "@/components/settings/reasoning-effort-se
 import { useInheritedModelDefaults } from "@/hooks/use-inherited-model-defaults";
 import { useLlmModels } from "@/hooks/use-providers";
 import {
+  effectiveEmbeddingFromWorkspace,
+  effectiveLlmFromWorkspace,
+} from "@/lib/config/resolve-model-choice";
+import {
   effectiveEffortWhenAuto,
   formatEffectiveBestPracticeHint,
   modelSupportsThinking,
@@ -54,39 +58,75 @@ function ModelDisplayRow({
   dimension,
   /** When model unset — never-silent resolved default e.g. ollama/gemma4:latest */
   resolvedDefaultId,
+  /** SPEC-123: resolved provider/model + provenance for honest UI */
+  resolvesToLabel,
+  resolutionSource,
+  hasWorkspaceOverride,
+  testId,
 }: {
   providerId?: string;
   model?: string;
   fullId?: string;
   dimension?: number;
   resolvedDefaultId?: string;
+  resolvesToLabel?: string;
+  resolutionSource?: string;
+  hasWorkspaceOverride?: boolean;
+  testId?: string;
 }) {
   const { t } = useTranslation();
-  const usingDefault = !model;
+  const usingDefault = !hasWorkspaceOverride && !model;
   const title = usingDefault
     ? t("workspace.serverDefaultWithValue", "Server Default ({{value}})", {
-        value: resolvedDefaultId || t("workspace.notConfigured", "not configured"),
+        value:
+          resolvesToLabel ||
+          resolvedDefaultId ||
+          t("workspace.notConfigured", "not configured"),
       })
-    : model;
+    : model || resolvesToLabel;
+
+  const subtitle = hasWorkspaceOverride
+    ? t("workspace.workspaceOverride", "Workspace override")
+    : resolutionSource
+      ? t("workspace.resolvesVia", "Resolves via {{source}}", {
+          source: resolutionSource,
+        })
+      : providerId ||
+        (usingDefault
+          ? t("workspace.inheritedDefault", "Inherited default")
+          : t("workspace.autoDetect", "Auto-detected"));
+
+  const badgeValue = resolvesToLabel || fullId || (usingDefault ? resolvedDefaultId : undefined);
 
   return (
     <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-      <ProviderIcon providerId={providerId || (usingDefault ? resolvedDefaultId?.split("/")[0] : undefined)} />
-      <div>
-        <div className="font-medium">{title}</div>
-        <div className="text-sm text-muted-foreground capitalize">
-          {providerId ||
-            (usingDefault
-              ? t("workspace.inheritedDefault", "Inherited default")
-              : t("workspace.autoDetect", "Auto-detected"))}
+      <ProviderIcon
+        providerId={
+          providerId ||
+          (usingDefault
+            ? resolvesToLabel?.split("/")[0] || resolvedDefaultId?.split("/")[0]
+            : undefined)
+        }
+      />
+      <div className="min-w-0 flex-1">
+        <div className="font-medium truncate">{title}</div>
+        <div className="text-sm text-muted-foreground capitalize truncate">
+          {subtitle}
           {dimension != null && (
             <span className="ml-2">• {dimension} dims</span>
           )}
         </div>
       </div>
-      {(fullId || (usingDefault && resolvedDefaultId)) && (
-        <Badge variant="outline" className="ml-auto font-mono text-xs">
-          {fullId || resolvedDefaultId}
+      {badgeValue && (
+        <Badge
+          variant="outline"
+          className="ml-auto font-mono text-xs shrink-0 max-w-[45%] truncate"
+          title={resolutionSource ? `source=${resolutionSource}` : undefined}
+          data-testid={testId}
+        >
+          {t("settings.pdfParser.resolvesTo", "Resolves to {{value}}", {
+            value: badgeValue,
+          })}
         </Badge>
       )}
     </div>
@@ -178,6 +218,14 @@ export function WorkspaceModelConfigGrid({
     workspace.default_reasoning_effort ??
     undefined;
 
+  const resolvedLlm = effectiveLlmFromWorkspace(workspace);
+  const resolvedEmbedding = effectiveEmbeddingFromWorkspace(workspace);
+  const llmResolvesTo = `${resolvedLlm.provider}/${resolvedLlm.model}`;
+  const embeddingResolvesTo = `${resolvedEmbedding.provider}/${resolvedEmbedding.model}`;
+  // Prefer API provenance (LAW-123-8); fall back to source from FE mirror.
+  const hasLlmOverride = resolvedLlm.source === "workspace";
+  const hasEmbeddingOverride = resolvedEmbedding.source === "workspace";
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <Card>
@@ -244,10 +292,16 @@ export function WorkspaceModelConfigGrid({
             </>
           ) : (
             <ModelDisplayRow
-              providerId={workspace.llm_provider}
-              model={workspace.llm_model}
+              providerId={workspace.llm_provider || resolvedLlm.provider}
+              model={
+                hasLlmOverride ? workspace.llm_model : undefined
+              }
               fullId={workspace.llm_full_id}
               resolvedDefaultId={llmDefaultId}
+              resolvesToLabel={llmResolvesTo}
+              resolutionSource={resolvedLlm.source}
+              hasWorkspaceOverride={hasLlmOverride}
+              testId="llm-resolves-to"
             />
           )}
           {!isEditing && (
@@ -316,11 +370,21 @@ export function WorkspaceModelConfigGrid({
             </>
           ) : (
             <ModelDisplayRow
-              providerId={workspace.embedding_provider}
-              model={workspace.embedding_model}
+              providerId={
+                workspace.embedding_provider || resolvedEmbedding.provider
+              }
+              model={
+                hasEmbeddingOverride ? workspace.embedding_model : undefined
+              }
               fullId={workspace.embedding_full_id}
-              dimension={workspace.embedding_dimension}
+              dimension={
+                resolvedEmbedding.dimension || workspace.embedding_dimension
+              }
               resolvedDefaultId={embeddingDefaultId}
+              resolvesToLabel={embeddingResolvesTo}
+              resolutionSource={resolvedEmbedding.source}
+              hasWorkspaceOverride={hasEmbeddingOverride}
+              testId="embedding-resolves-to"
             />
           )}
         </CardContent>

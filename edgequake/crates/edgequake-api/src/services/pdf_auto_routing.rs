@@ -43,7 +43,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn auto_route_only_for_default_vision() {
+    fn auto_route_only_when_not_explicit() {
+        // SPEC-123: explicit=false means Auto routing allowed.
         assert!(should_try_edgeparse_before_vision(
             PdfParserBackend::Vision,
             false

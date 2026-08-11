@@ -11,7 +11,7 @@ use serde_json::json;
 use std::convert::Infallible;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
@@ -174,6 +174,15 @@ pub async fn chat_completion_stream(
 
     debug!(message_id = %user_message.message_id, "Saved user message before streaming");
 
+    // Multi-turn chatbot memory: load prior turns, apply shared history cut.
+    // Done before spawn so both stream task and tests share one policy (DRY).
+    let conversation_history = super::history::load_recent_conversation_history(
+        state.conversation_service.as_ref(),
+        conversation_id,
+        user_message.message_id,
+    )
+    .await?;
+
     // 3. Create channel for SSE events
     let (tx, rx) = mpsc::channel::<ChatStreamEvent>(100);
 
@@ -195,6 +204,7 @@ pub async fn chat_completion_stream(
     let first_message_for_title = request.message.clone();
     let stream_request_id = req_ctx.request_id.clone();
     let stream_content_granularity = request.content_granularity;
+    let conversation_history_for_engine = conversation_history;
 
     // 5. Send initial conversation event
     let initial_event = ChatStreamEvent::Conversation {
@@ -227,7 +237,9 @@ pub async fn chat_completion_stream(
         // But the graph data was ingested with the workspace's actual tenant_id.
         // Using header tenant_id causes 0 results because of tenant_id mismatch.
         let enriched_query = enrich_query_with_language(&message_content, &request_language);
-        let mut engine_request = EngineQueryRequest::new(&enriched_query).with_mode(query_mode);
+        let mut engine_request = EngineQueryRequest::new(&enriched_query)
+            .with_mode(query_mode)
+            .with_conversation_history(conversation_history_for_engine);
 
         // SPEC-004: Thread system prompt extension if provided
         if let Some(ref system_prompt) = request_system_prompt {
@@ -322,7 +334,8 @@ pub async fn chat_completion_stream(
         );
 
         let (llm_override, used_provider, used_model) = match resolver
-            .resolve_llm_provider_with_workspace(workspace_clone.as_ref(), &llm_request)
+            .resolve_llm_provider_for_workspace(workspace_clone.as_ref(), &llm_request)
+            .await
         {
             Ok(Some(resolved)) => {
                 info!(
@@ -381,14 +394,25 @@ pub async fn chat_completion_stream(
                 debug!("Using vision LLM provider for image query (FEAT0203 streaming)");
                 (
                     Some(Arc::clone(vision_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>),
-                    Some("vision".to_string()),
-                    Some("vision-model".to_string()),
+                    Some(vision_provider.name().to_string()),
+                    Some(vision_provider.model().to_string()),
                 )
             } else {
                 (llm_override, used_provider, used_model)
             }
         } else {
             (llm_override, used_provider, used_model)
+        };
+
+        // Honesty: always record effective provider/model (incl. server-default path).
+        let effective_llm = llm_override
+            .as_ref()
+            .map(|p| p.as_ref())
+            .unwrap_or_else(|| state_clone.query.llm_provider.as_ref());
+        let (used_provider, used_model) = {
+            let (p, m) =
+                super::coalesce_effective_llm_lineage(used_provider, used_model, effective_llm);
+            (Some(p), Some(m))
         };
 
         let provider_for_effort = used_provider
@@ -608,20 +632,31 @@ pub async fn chat_completion_stream(
         {
             Ok(assistant_message) => {
                 // Update with metadata AND context for source citations
-                let _ = state_clone
+                if let Err(e) = state_clone
                     .conversation_service
                     .update_message(
                         assistant_message.message_id,
                         UpdateMessageRequest {
                             content: None,
+                            mode: Some(mode),
                             tokens_used: Some(tokens_used as i32),
                             duration_ms: Some(duration_ms as i32),
                             thinking_time_ms: None,
                             context: saved_message_context, // Save context for source citations!
                             is_error: None,
+                            llm_provider: used_provider.clone(),
+                            llm_model: used_model.clone(),
                         },
                     )
-                    .await;
+                    .await
+                {
+                    error!(
+                        conversation_id = %conversation_id,
+                        assistant_message_id = %assistant_message.message_id,
+                        error = %e,
+                        "Failed to persist assistant message metadata (mode/lineage/tokens)"
+                    );
+                }
 
                 info!(
                     conversation_id = %conversation_id,

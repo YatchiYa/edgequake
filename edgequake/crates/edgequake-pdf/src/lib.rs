@@ -18,8 +18,9 @@ pub mod vision_markdown;
 pub mod vision_prompts;
 
 pub use backend::{
-    create_pdf_converter, PageDrawingAssetsConfig, PdfConversionConfig, PdfConverter,
-    PdfParserBackend, VisionConversionConfig, VisionStatusHook,
+    create_pdf_converter, resolve_pdf_parser_choice, PageDrawingAssetsConfig, PdfConversionConfig,
+    PdfConverter, PdfParserBackend, PdfParserResolutionSource, ResolvedPdfParser,
+    VisionConversionConfig, VisionStatusHook,
 };
 pub use chart_crop::{
     chart_residual_alongside_fig_pages, chart_residual_candidate_pages, crop_png_to_ink_bbox,

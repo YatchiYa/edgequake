@@ -12,13 +12,85 @@ use crate::error::PdfConversionError;
 pub use edgeparse::EdgeParsePdfConverter;
 pub use vision::VisionPdfConverter;
 
-/// Runtime-selectable PDF parser backend.
+/// PDF parser backend / config choice.
+///
+/// `Vision` and `EdgeParse` are runtime converters. `Auto` is a **config-only**
+/// choice (SPEC-123): start as Vision intent and allow SPEC-038 EdgeParse
+/// fast-path when text density is sufficient.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PdfParserBackend {
     #[default]
     Vision,
     EdgeParse,
+    /// Explicit opt-in for SPEC-038 auto-routing (never inferred from unset).
+    Auto,
+}
+
+/// Provenance of the winning PDF parser choice (LAW-123-2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PdfParserResolutionSource {
+    Upload,
+    Workspace,
+    Tenant,
+    Env,
+    Default,
+}
+
+/// Result of Upload → Workspace → Tenant → Env → Vision resolution (SPEC-123).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResolvedPdfParser {
+    /// Winning config choice (may be [`PdfParserBackend::Auto`]).
+    pub choice: PdfParserBackend,
+    /// Runtime converter: Vision or EdgeParse (`Auto` starts as Vision).
+    pub runtime_backend: PdfParserBackend,
+    pub source: PdfParserResolutionSource,
+    /// When true, SPEC-038 may try EdgeParse before Vision.
+    pub allows_auto_route: bool,
+}
+
+impl ResolvedPdfParser {
+    /// Task payload flag: Vision/EdgeParse are inviolable (`true`); Auto is not.
+    pub fn backend_explicit(self) -> bool {
+        !self.allows_auto_route
+    }
+}
+
+/// LAW-123-2 / LAW-123-4: resolve PDF parser with inviolable Vision/EdgeParse
+/// and explicit Auto only for silent EdgeParse routing.
+pub fn resolve_pdf_parser_choice(
+    upload: Option<PdfParserBackend>,
+    workspace: Option<PdfParserBackend>,
+    tenant: Option<PdfParserBackend>,
+    env: Option<PdfParserBackend>,
+) -> ResolvedPdfParser {
+    let (choice, source) = if let Some(choice) = upload {
+        (choice, PdfParserResolutionSource::Upload)
+    } else if let Some(choice) = workspace {
+        (choice, PdfParserResolutionSource::Workspace)
+    } else if let Some(choice) = tenant {
+        (choice, PdfParserResolutionSource::Tenant)
+    } else if let Some(choice) = env {
+        (choice, PdfParserResolutionSource::Env)
+    } else {
+        (PdfParserBackend::Vision, PdfParserResolutionSource::Default)
+    };
+
+    match choice {
+        PdfParserBackend::Auto => ResolvedPdfParser {
+            choice: PdfParserBackend::Auto,
+            runtime_backend: PdfParserBackend::Vision,
+            source,
+            allows_auto_route: true,
+        },
+        other => ResolvedPdfParser {
+            choice: other,
+            runtime_backend: other,
+            source,
+            allows_auto_route: false,
+        },
+    }
 }
 
 impl PdfParserBackend {
@@ -26,6 +98,7 @@ impl PdfParserBackend {
         match value.trim().to_ascii_lowercase().as_str() {
             "vision" | "llm" => Some(Self::Vision),
             "edgeparse" | "edge-parse" | "edge_parse" => Some(Self::EdgeParse),
+            "auto" => Some(Self::Auto),
             _ => None,
         }
     }
@@ -41,7 +114,20 @@ impl PdfParserBackend {
         match self {
             Self::Vision => "vision",
             Self::EdgeParse => "edgeparse",
+            Self::Auto => "auto",
         }
+    }
+
+    /// Runtime converter backend (`Auto` → Vision start).
+    pub fn runtime_backend(self) -> Self {
+        match self {
+            Self::Auto => Self::Vision,
+            other => other,
+        }
+    }
+
+    pub fn is_auto(self) -> bool {
+        matches!(self, Self::Auto)
     }
 }
 
@@ -200,15 +286,18 @@ pub trait PdfConverter: Send + Sync {
 }
 
 pub fn create_pdf_converter(backend: PdfParserBackend) -> Arc<dyn PdfConverter> {
-    match backend {
-        PdfParserBackend::Vision => Arc::new(VisionPdfConverter::new()),
+    match backend.runtime_backend() {
         PdfParserBackend::EdgeParse => Arc::new(EdgeParsePdfConverter),
+        // Vision and Auto (config-only) both start on the Vision converter.
+        PdfParserBackend::Vision | PdfParserBackend::Auto => Arc::new(VisionPdfConverter::new()),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::PdfParserBackend;
+    use super::{
+        resolve_pdf_parser_choice, PdfParserBackend, PdfParserResolutionSource, ResolvedPdfParser,
+    };
 
     #[test]
     fn backend_env_aliases_roundtrip() {
@@ -220,7 +309,65 @@ mod tests {
             PdfParserBackend::from_env_str("edge-parse"),
             Some(PdfParserBackend::EdgeParse)
         );
+        assert_eq!(
+            PdfParserBackend::from_env_str("auto"),
+            Some(PdfParserBackend::Auto)
+        );
         assert_eq!(PdfParserBackend::Vision.as_str(), "vision");
         assert_eq!(PdfParserBackend::EdgeParse.as_str(), "edgeparse");
+        assert_eq!(PdfParserBackend::Auto.as_str(), "auto");
+    }
+
+    #[test]
+    fn resolve_priority_upload_wins() {
+        let resolved = resolve_pdf_parser_choice(
+            Some(PdfParserBackend::EdgeParse),
+            Some(PdfParserBackend::Vision),
+            Some(PdfParserBackend::Auto),
+            Some(PdfParserBackend::Vision),
+        );
+        assert_eq!(
+            resolved,
+            ResolvedPdfParser {
+                choice: PdfParserBackend::EdgeParse,
+                runtime_backend: PdfParserBackend::EdgeParse,
+                source: PdfParserResolutionSource::Upload,
+                allows_auto_route: false,
+            }
+        );
+        assert!(resolved.backend_explicit());
+    }
+
+    #[test]
+    fn resolve_unset_defaults_to_inviolable_vision() {
+        let resolved = resolve_pdf_parser_choice(None, None, None, None);
+        assert_eq!(resolved.choice, PdfParserBackend::Vision);
+        assert_eq!(resolved.runtime_backend, PdfParserBackend::Vision);
+        assert_eq!(resolved.source, PdfParserResolutionSource::Default);
+        assert!(!resolved.allows_auto_route);
+        assert!(resolved.backend_explicit());
+    }
+
+    #[test]
+    fn resolve_auto_allows_route() {
+        let resolved =
+            resolve_pdf_parser_choice(None, Some(PdfParserBackend::Auto), None, None);
+        assert_eq!(resolved.choice, PdfParserBackend::Auto);
+        assert_eq!(resolved.runtime_backend, PdfParserBackend::Vision);
+        assert_eq!(resolved.source, PdfParserResolutionSource::Workspace);
+        assert!(resolved.allows_auto_route);
+        assert!(!resolved.backend_explicit());
+    }
+
+    #[test]
+    fn resolve_tenant_before_env() {
+        let resolved = resolve_pdf_parser_choice(
+            None,
+            None,
+            Some(PdfParserBackend::EdgeParse),
+            Some(PdfParserBackend::Vision),
+        );
+        assert_eq!(resolved.source, PdfParserResolutionSource::Tenant);
+        assert_eq!(resolved.runtime_backend, PdfParserBackend::EdgeParse);
     }
 }

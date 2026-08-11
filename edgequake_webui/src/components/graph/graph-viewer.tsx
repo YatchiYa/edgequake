@@ -964,7 +964,7 @@ export function GraphViewer() {
                         <p className="text-xs font-medium text-muted-foreground mb-1">
                           Select a node
                         </p>
-                        <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
                           Click any node to explore its connections and sources
                         </p>
                       </div>

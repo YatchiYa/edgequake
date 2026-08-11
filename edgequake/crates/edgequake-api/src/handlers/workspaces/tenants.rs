@@ -203,6 +203,7 @@ pub async fn create_tenant(
         default_vision_llm_model: created_tenant.default_vision_llm_model.clone(),
         default_vision_llm_provider: created_tenant.default_vision_llm_provider.clone(),
         default_reasoning_effort: created_tenant.default_reasoning_effort.clone(),
+        pdf_parser_backend: created_tenant.pdf_parser_backend.map(|b| b.as_str().to_string()),
         created_at: created_tenant.created_at.to_rfc3339(),
         updated_at: created_tenant.updated_at.to_rfc3339(),
     };
@@ -269,6 +270,7 @@ pub async fn list_tenants(
                 default_vision_llm_model: t.default_vision_llm_model.clone(),
                 default_vision_llm_provider: t.default_vision_llm_provider.clone(),
                 default_reasoning_effort: t.default_reasoning_effort.clone(),
+                pdf_parser_backend: t.pdf_parser_backend.map(|b| b.as_str().to_string()),
                 created_at: t.created_at.to_rfc3339(),
                 updated_at: t.updated_at.to_rfc3339(),
             })
@@ -335,6 +337,7 @@ pub async fn get_tenant(
         default_vision_llm_model: tenant.default_vision_llm_model.clone(),
         default_vision_llm_provider: tenant.default_vision_llm_provider.clone(),
         default_reasoning_effort: tenant.default_reasoning_effort.clone(),
+        pdf_parser_backend: tenant.pdf_parser_backend.map(|b| b.as_str().to_string()),
         created_at: tenant.created_at.to_rfc3339(),
         updated_at: tenant.updated_at.to_rfc3339(),
     };
@@ -384,6 +387,65 @@ pub async fn update_tenant(
     if let Some(plan_str) = request.plan {
         tenant.plan = plan_str.parse().unwrap_or(tenant.plan);
     }
+    if let Some(pdf_parser_backend) = request.pdf_parser_backend {
+        let normalized = pdf_parser_backend.trim().to_ascii_lowercase();
+        if normalized.is_empty() || normalized == "none" {
+            tenant.pdf_parser_backend = None;
+        } else if let Some(parsed) = edgequake_pdf::PdfParserBackend::from_env_str(&normalized) {
+            tenant.pdf_parser_backend = Some(parsed);
+        } else {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid pdf_parser_backend '{}'. Expected 'vision', 'edgeparse', 'auto', or 'none'",
+                pdf_parser_backend
+            )));
+        }
+    }
+    // SPEC-123 / SPEC-041: tenant vision defaults must be writable (cascade leaf).
+    if let Some(provider) = request.default_vision_llm_provider {
+        let trimmed = provider.trim().to_string();
+        tenant.default_vision_llm_provider = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        };
+    }
+    if let Some(model) = request.default_vision_llm_model {
+        let trimmed = model.trim().to_string();
+        tenant.default_vision_llm_model = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        };
+    }
+    if let Some(provider) = request.default_llm_provider {
+        let trimmed = provider.trim();
+        if !trimmed.is_empty() {
+            tenant.default_llm_provider = trimmed.to_string();
+        }
+    }
+    if let Some(model) = request.default_llm_model {
+        let trimmed = model.trim();
+        if !trimmed.is_empty() {
+            tenant.default_llm_model = trimmed.to_string();
+        }
+    }
+    if let Some(provider) = request.default_embedding_provider {
+        let trimmed = provider.trim();
+        if !trimmed.is_empty() {
+            tenant.default_embedding_provider = trimmed.to_string();
+        }
+    }
+    if let Some(model) = request.default_embedding_model {
+        let trimmed = model.trim();
+        if !trimmed.is_empty() {
+            tenant.default_embedding_model = trimmed.to_string();
+        }
+    }
+    if let Some(dimension) = request.default_embedding_dimension {
+        if dimension > 0 {
+            tenant.default_embedding_dimension = dimension;
+        }
+    }
     tenant.updated_at = chrono::Utc::now();
 
     // Save updated tenant
@@ -416,6 +478,7 @@ pub async fn update_tenant(
         default_vision_llm_model: updated.default_vision_llm_model.clone(),
         default_vision_llm_provider: updated.default_vision_llm_provider.clone(),
         default_reasoning_effort: updated.default_reasoning_effort.clone(),
+        pdf_parser_backend: updated.pdf_parser_backend.map(|b| b.as_str().to_string()),
         created_at: updated.created_at.to_rfc3339(),
         updated_at: updated.updated_at.to_rfc3339(),
     };

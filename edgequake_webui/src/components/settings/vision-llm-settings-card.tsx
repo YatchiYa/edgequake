@@ -16,10 +16,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { LLMModelSelector, type LLMSelection } from '@/components/workspace/llm-model-selector';
 import { getWorkspace, updateWorkspace } from '@/lib/api/edgequake';
+import { effectiveVisionFromWorkspace } from '@/lib/config/resolve-model-choice';
 import { getWorkspaceVisionSelection } from '@/lib/workspace/drafts';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Brain, Cloud, Cpu, Eye, Pencil, Save, Sparkles, X } from 'lucide-react';
+import { Eye, Pencil, Save, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -105,7 +106,7 @@ export function VisionLLMSettingsCard() {
         <CardDescription>
           {t(
             'settings.vision.subtitle',
-            'Default Vision LLM model for document image analysis and PDF visual extraction'
+            'Default Vision LLM (VLM) for PDF page extraction — not an embedding model. Text embeddings stay on the embedding stack.',
           )}
         </CardDescription>
       </CardHeader>
@@ -141,23 +142,46 @@ export function VisionLLMSettingsCard() {
             </div>
           </>
         ) : workspace ? (
-          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-            {<ProviderIcon providerId={workspace.vision_llm_provider} />}
-            <div>
-              <div className="font-medium">
-                {workspace.vision_llm_model ||
-                  t('settings.vision.serverDefault', 'Server Default')}
+          (() => {
+            const resolved = effectiveVisionFromWorkspace(workspace);
+            const hasOverride = Boolean(
+              workspace.vision_llm_provider?.trim() ||
+                workspace.vision_llm_model?.trim(),
+            );
+            return (
+              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                <ProviderIcon providerId={resolved.provider} />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium truncate">
+                    {hasOverride
+                      ? workspace.vision_llm_model
+                      : t(
+                          'settings.vision.serverDefaultWithValue',
+                          'Server Default ({{value}})',
+                          { value: `${resolved.provider}/${resolved.model}` },
+                        )}
+                  </div>
+                  <div className="text-sm text-muted-foreground capitalize truncate">
+                    {hasOverride
+                      ? t('workspace.workspaceOverride', 'Workspace override')
+                      : t('workspace.resolvesVia', 'Resolves via {{source}}', {
+                          source: resolved.source,
+                        })}
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="ml-auto font-mono text-xs"
+                  data-testid="settings-vision-resolves-to"
+                  title={`source=${resolved.source}`}
+                >
+                  {t('settings.pdfParser.resolvesTo', 'Resolves to {{value}}', {
+                    value: `${resolved.provider}/${resolved.model}`,
+                  })}
+                </Badge>
               </div>
-              <div className="text-sm text-muted-foreground capitalize">
-                {workspace.vision_llm_provider || t('workspace.autoDetect', 'Auto-detected')}
-              </div>
-            </div>
-            {workspace.vision_llm_provider && workspace.vision_llm_model && (
-              <Badge variant="outline" className="ml-auto">
-                {workspace.vision_llm_provider}/{workspace.vision_llm_model}
-              </Badge>
-            )}
-          </div>
+            );
+          })()
         ) : (
           <p className="text-sm text-muted-foreground">
             {t('settings.vision.noVisionModelDesc', 'Configure a vision model to enable image-aware document processing')}

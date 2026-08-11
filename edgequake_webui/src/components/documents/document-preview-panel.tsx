@@ -255,7 +255,7 @@ export function DocumentPreviewPanel({
 
       {/* Details section — RP-04: lowercase label */}
       <div className="space-y-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           {t('documents.preview.metadata', 'Details')}
         </p>
         <div className="grid gap-2">
@@ -346,7 +346,7 @@ export function DocumentPreviewPanel({
       {/* Cost Information */}
       {(document.cost_usd !== undefined || document.total_tokens !== undefined) && (
         <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             {t('documents.preview.processingCost', 'Cost')}
           </p>
             
@@ -459,7 +459,7 @@ export function DocumentPreviewPanel({
       {/* Content Preview */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             {t('documents.preview.content', 'Content')}
           </p>
           {(fullDocument?.content || document?.content_summary) && (
@@ -647,7 +647,7 @@ export function DocumentPreviewPanel({
 
       {/* Actions */}
       <div className="space-y-2">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           {t('documents.preview.actions', 'Actions')}
         </h4>
         

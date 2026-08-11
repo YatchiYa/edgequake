@@ -52,7 +52,7 @@ export function SortableColumnHeader({
       <button
         type="button"
         className={cn(
-          'inline-flex w-full items-center gap-1 rounded-sm px-0 py-0.5',
+          'inline-flex w-full min-w-0 items-center gap-1 rounded-sm px-0 py-0.5',
           'text-left font-medium text-muted-foreground hover:text-foreground',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           align === 'center' && 'justify-center text-center',
@@ -65,8 +65,9 @@ export function SortableColumnHeader({
             ? `${label}, sorted ${direction === 'asc' ? 'ascending' : 'descending'}. Activate to reverse.`
             : `Sort by ${label}`
         }
+        title={label}
       >
-        <span>{label}</span>
+        <span className="truncate">{label}</span>
         <span className="inline-flex shrink-0 opacity-70" aria-hidden="true">
           {isActive ? (
             direction === 'asc' ? (

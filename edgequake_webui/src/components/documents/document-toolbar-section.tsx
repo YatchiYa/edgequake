@@ -57,7 +57,9 @@ export interface DocumentToolbarSectionProps {
   isDragActive: boolean;
   openFileDialog: () => void;
   pdfParserBackend: 'default' | 'vision' | 'edgeparse';
-  onPdfParserBackendChange: (value: 'default' | 'vision' | 'edgeparse') => void;
+  onPdfParserBackendChange: (
+    value: 'default' | 'vision' | 'edgeparse' | 'auto',
+  ) => void;
   /** Workspace inherit label — Vision / EdgeParse resolved default. */
   workspacePdfParserBackend?: DocumentDropzoneProps['workspacePdfParserBackend'];
   visionReasoningEffort?: string;

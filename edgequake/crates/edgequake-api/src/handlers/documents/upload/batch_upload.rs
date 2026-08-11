@@ -91,6 +91,21 @@ pub async fn upload_files_batch(
 
     for streamed in files {
         let (filename, content) = streamed.into_bytes()?;
+        // SPEC-123 V6: PDFs must use /documents/pdf so parser cascade applies.
+        let lower = filename.to_ascii_lowercase();
+        if lower.ends_with(".pdf") {
+            failed += 1;
+            results.push(BatchFileResult {
+                filename,
+                document_id: None,
+                status: "failed".to_string(),
+                error: Some(
+                    "PDF uploads require POST /api/v1/documents/pdf (or /documents/pdf/batch) so pdf_parser_backend resolution applies (SPEC-123)"
+                        .to_string(),
+                ),
+            });
+            continue;
+        }
         match enqueue_single_file(&state, &tenant_ctx, &filename, &content, &batch_opts).await {
             Ok((doc_id, is_duplicate)) => {
                 if is_duplicate {

@@ -680,6 +680,54 @@ impl WorkspaceService for InMemoryWorkspaceService {
             }
         }
 
+        // SPEC-123 / SPEC-038: PDF parser override (mirrors postgres workspace_ops).
+        if let Some(pdf_parser_backend) = request.pdf_parser_backend {
+            let normalized_backend = pdf_parser_backend.trim().to_ascii_lowercase();
+            if normalized_backend.is_empty() || normalized_backend == "none" {
+                workspace.pdf_parser_backend = None;
+                workspace.metadata.remove("pdf_parser_backend");
+            } else if let Some(parsed_backend) =
+                edgequake_pdf::PdfParserBackend::from_env_str(&normalized_backend)
+            {
+                workspace.pdf_parser_backend = Some(parsed_backend);
+                workspace.metadata.insert(
+                    "pdf_parser_backend".to_string(),
+                    serde_json::json!(parsed_backend.as_str()),
+                );
+            } else {
+                return Err(Error::validation(format!(
+                    "Invalid pdf_parser_backend '{}'. Expected 'vision', 'edgeparse', 'auto', or 'none'",
+                    pdf_parser_backend
+                )));
+            }
+        }
+
+        if let Some(provider) = request.vision_llm_provider {
+            let trimmed = provider.trim();
+            if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
+                workspace.vision_llm_provider = None;
+                workspace.metadata.remove("vision_llm_provider");
+            } else {
+                workspace.vision_llm_provider = Some(trimmed.to_string());
+                workspace.metadata.insert(
+                    "vision_llm_provider".to_string(),
+                    serde_json::json!(trimmed),
+                );
+            }
+        }
+        if let Some(model) = request.vision_llm_model {
+            let trimmed = model.trim();
+            if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
+                workspace.vision_llm_model = None;
+                workspace.metadata.remove("vision_llm_model");
+            } else {
+                workspace.vision_llm_model = Some(trimmed.to_string());
+                workspace
+                    .metadata
+                    .insert("vision_llm_model".to_string(), serde_json::json!(trimmed));
+            }
+        }
+
         workspace.updated_at = chrono::Utc::now();
 
         crate::workspace_model_update::resolve_inherited_model_fields(workspace, tenant.as_ref());

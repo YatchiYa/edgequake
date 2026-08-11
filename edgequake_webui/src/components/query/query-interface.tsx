@@ -68,7 +68,9 @@ export function QueryInterface() {
               {t("query.title", "Query")}
             </h1>
             <span className="text-xs text-muted-foreground hidden md:inline">
-              {t("query.subtitle", "Ask questions about your knowledge graph")}
+              {querySettings.mode === "bypass"
+                ? t("query.chatSubtitle", "General chat — no knowledge graph retrieval")
+                : t("query.subtitle", "Ask questions about your knowledge graph")}
             </span>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -134,7 +136,10 @@ export function QueryInterface() {
               aria-label={t("query.messageList", "Conversation messages")}
             >
               {messages.length === 0 && !isLoading ? (
-                <QueryEmptyState onSuggestionClick={handleSuggestionClick} />
+                <QueryEmptyState
+                  onSuggestionClick={handleSuggestionClick}
+                  mode={querySettings.mode}
+                />
               ) : (
                 <>
                   {messages.map((message, index) => (

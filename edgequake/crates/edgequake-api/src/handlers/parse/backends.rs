@@ -57,10 +57,15 @@ pub async fn list_parse_backends(
         });
     }
 
-    let default_backend = PdfParserBackend::from_env()
-        .unwrap_or(PdfParserBackend::Vision)
-        .as_str()
-        .to_string();
+    let default_backend = edgequake_pdf::resolve_pdf_parser_choice(
+        None,
+        None,
+        None,
+        PdfParserBackend::from_env(),
+    )
+    .runtime_backend
+    .as_str()
+    .to_string();
 
     let limits = ParseLimits::from_env();
     let max_concurrency = state.parse_jobs.max_concurrent() as u32;

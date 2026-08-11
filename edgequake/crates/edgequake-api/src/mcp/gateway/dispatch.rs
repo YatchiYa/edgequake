@@ -173,7 +173,7 @@ async fn execute_tool(
 
     let propagation = propagation.clone();
     let llm_override: Option<Arc<dyn LLMProvider>> =
-        resolve_query_llm_override(state, workspace.as_ref(), &propagation, None, None)?;
+        resolve_query_llm_override(state, workspace.as_ref(), &propagation, None, None).await?;
 
     match name {
         "edgequake_search" => {

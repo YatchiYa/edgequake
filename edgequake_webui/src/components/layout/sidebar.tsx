@@ -117,7 +117,7 @@ function SidebarContent({
             >
               {/* Group label — only shown expanded and when label exists */}
               {group.label && !collapsed && (
-                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 select-none">
+                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground select-none">
                   {group.labelKey ? t(group.labelKey, group.label) : group.label}
                 </p>
               )}

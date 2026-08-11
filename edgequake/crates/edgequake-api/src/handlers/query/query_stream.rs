@@ -210,7 +210,9 @@ pub async fn stream_query(
     };
 
     let (llm_override, used_provider, used_model) =
-        match resolver.resolve_llm_provider_with_workspace(workspace.as_ref(), &llm_request) {
+        match resolver
+            .resolve_llm_provider_for_workspace(workspace.as_ref(), &llm_request)
+            .await {
             Ok(Some(resolved)) => {
                 info!(
                     provider = %resolved.provider_name,
@@ -227,6 +229,20 @@ pub async fn stream_query(
             Ok(None) => (None, None, None),
             Err(e) => return Err(ApiError::from(e)),
         };
+
+    // Honesty: always record effective provider/model (incl. server-default path).
+    let effective_llm = llm_override
+        .as_ref()
+        .map(|p| p.as_ref())
+        .unwrap_or_else(|| state.query.llm_provider.as_ref());
+    let (used_provider, used_model) = {
+        let (p, m) = crate::handlers::chat::coalesce_effective_llm_lineage(
+            used_provider,
+            used_model,
+            effective_llm,
+        );
+        (Some(p), Some(m))
+    };
 
     // SPEC-006: v1 backward-compatible mode - raw text streaming (workspace-aware)
     if use_v1 {

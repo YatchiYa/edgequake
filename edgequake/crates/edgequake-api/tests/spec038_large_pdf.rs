@@ -46,7 +46,9 @@ fn spec038_profile_reproducer_603_edgeparse_eta() {
 }
 
 #[test]
-fn spec038_should_try_edgeparse_only_for_implicit_vision() {
+fn spec038_should_try_edgeparse_only_when_not_explicit() {
+    // SPEC-123: backend_explicit=false means resolved Auto (or legacy implicit).
+    // Resolved Vision sets explicit=true and must not auto-route.
     assert!(LargeDocumentProfile::should_try_edgeparse_before_vision(
         PdfParserBackend::Vision,
         false
@@ -54,6 +56,10 @@ fn spec038_should_try_edgeparse_only_for_implicit_vision() {
     assert!(!LargeDocumentProfile::should_try_edgeparse_before_vision(
         PdfParserBackend::Vision,
         true
+    ));
+    assert!(!LargeDocumentProfile::should_try_edgeparse_before_vision(
+        PdfParserBackend::EdgeParse,
+        false
     ));
 }
 

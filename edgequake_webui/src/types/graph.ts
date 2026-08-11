@@ -40,5 +40,5 @@ export interface KnowledgeGraph {
   total_edges?: number;
 }
 
-export type PdfParserBackend = "vision" | "edgeparse";
+export type PdfParserBackend = "vision" | "edgeparse" | "auto";
 export type WorkspacePdfParserBackendUpdate = PdfParserBackend | "none";

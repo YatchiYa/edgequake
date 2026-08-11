@@ -153,7 +153,7 @@ function CostBreakdownTooltip({ breakdown }: { breakdown: CostBreakdown }) {
         {/* By stage */}
         {breakdown.by_stage && breakdown.by_stage.length > 0 && (
           <>
-            <div className="border-b pb-1 mb-1 text-muted-foreground">
+            <div className="border-b pb-1 mb-1 text-foreground/90 font-medium">
               By Stage
             </div>
             {breakdown.by_stage.map((stage: StageCostBreakdown) => (
@@ -168,7 +168,7 @@ function CostBreakdownTooltip({ breakdown }: { breakdown: CostBreakdown }) {
         {/* Token usage */}
         {breakdown.tokens && (
           <>
-            <div className="border-b pb-1 mb-1 mt-2 text-muted-foreground">
+            <div className="border-b pb-1 mb-1 mt-2 text-foreground/90 font-medium">
               Token Usage
             </div>
             <div className="flex justify-between">

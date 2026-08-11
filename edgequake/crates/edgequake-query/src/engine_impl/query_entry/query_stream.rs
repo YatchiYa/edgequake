@@ -118,6 +118,20 @@ impl QueryEngine {
         mode: QueryMode,
         llm_override: Option<Arc<dyn crate::LLMProvider>>,
     ) -> Result<(QueryContext, QueryMode, TokenStream)> {
+        // Chat / Bypass: pure chatbot — never RAG apology, never KG context.
+        if mode.is_bypass() {
+            let stream = self
+                .stream_bypass_answer(
+                    &request.query,
+                    llm_override,
+                    request.system_prompt.as_deref(),
+                    request.images.as_deref(),
+                    &request.conversation_history,
+                )
+                .await?;
+            return Ok((context, mode, stream));
+        }
+
         // P-G11 (RC-16): vision parity. When the request carries images, use
         // the vision-capable `chat` path (the `stream` trait method cannot carry
         // images). E30: vision-LLm failure falls back to text-only stream inside

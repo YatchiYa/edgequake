@@ -112,6 +112,11 @@ impl TenantRow {
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
+        let pdf_parser_backend = self
+            .metadata
+            .get("pdf_parser_backend")
+            .and_then(|v| v.as_str())
+            .and_then(edgequake_pdf::PdfParserBackend::from_env_str);
 
         Tenant {
             tenant_id: self.tenant_id,
@@ -133,6 +138,7 @@ impl TenantRow {
             default_vision_llm_provider,
             default_vision_llm_model,
             default_reasoning_effort,
+            pdf_parser_backend,
         }
     }
 }

@@ -54,6 +54,10 @@ pub struct TenantResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_reasoning_effort: Option<String>,
 
+    /// SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pdf_parser_backend: Option<String>,
+
     /// Creation timestamp.
     pub created_at: String,
     /// Last update timestamp.
@@ -88,6 +92,15 @@ pub struct WorkspaceResponse {
     /// Fully qualified LLM model ID (provider/model format).
     pub llm_full_id: String,
 
+    /// SPEC-123: effective LLM after Request>Workspace>Tenant>Env (LAW-123-8).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_llm_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_llm_model: Option<String>,
+    /// Provenance: `workspace` | `tenant` | `env` | `default`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_resolution_source: Option<String>,
+
     // === Embedding Configuration (SPEC-032) ===
     /// Embedding model used for this workspace.
     pub embedding_model: String,
@@ -98,6 +111,16 @@ pub struct WorkspaceResponse {
     /// Fully qualified embedding model ID (provider/model format).
     pub embedding_full_id: String,
 
+    /// SPEC-123: effective embedding stack with provenance.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_embedding_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_embedding_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_embedding_dimension: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_resolution_source: Option<String>,
+
     // === Vision LLM Configuration (SPEC-040) ===
     /// Vision LLM provider for PDF → Markdown extraction (None if not configured).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -105,6 +128,15 @@ pub struct WorkspaceResponse {
     /// Vision LLM model for PDF page image extraction (None if not configured).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_llm_model: Option<String>,
+
+    /// SPEC-123: effective vision LLM (VLM — not an embedding model).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_vision_llm_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_vision_llm_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision_llm_resolution_source: Option<String>,
+
     /// Default PDF parser backend for this workspace (None means server default).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pdf_parser_backend: Option<String>,

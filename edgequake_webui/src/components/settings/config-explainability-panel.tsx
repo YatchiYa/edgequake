@@ -248,7 +248,7 @@ function ConfigAreaSection({
 
                   {/* Source */}
                   {lvl.source && (
-                    <p className="text-[10px] text-muted-foreground/70 mt-0.5 font-mono">
+                    <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">
                       source: {lvl.source}
                     </p>
                   )}
@@ -402,7 +402,7 @@ export function ConfigExplainabilityPanel() {
                             clamped
                           </Badge>
                         )}
-                        <span className="text-muted-foreground/70 font-mono text-[10px]">
+                        <span className="text-muted-foreground font-mono text-[10px]">
                           {info.source}
                         </span>
                       </div>
@@ -421,7 +421,7 @@ export function ConfigExplainabilityPanel() {
             </div>
 
             {/* Last refresh */}
-            <p className="text-[10px] text-muted-foreground/60 text-right">
+            <p className="text-[10px] text-muted-foreground text-right">
               Last refreshed: {lastRefresh.toLocaleTimeString()}
             </p>
           </>

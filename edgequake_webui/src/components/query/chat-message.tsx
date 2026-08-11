@@ -16,7 +16,6 @@
 'use client';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Tooltip,
@@ -24,9 +23,11 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { getQueryModeMeta } from '@/lib/query/query-mode-meta';
 import { buildDocumentCitationUrl } from '@/lib/utils/document-url';
 import { cn } from '@/lib/utils';
 import type { QueryContext, QueryMode } from '@/types';
+import { isQueryMode } from '@/types/query';
 import {
     Brain,
     Check,
@@ -206,7 +207,7 @@ const MetadataBar = memo(function MetadataBar({
   isLast,
   isVisible,
 }: {
-  mode?: string;
+  mode?: QueryMode | string;
   tokensUsed?: number;
   durationMs?: number;
   llmProvider?: string;
@@ -218,6 +219,17 @@ const MetadataBar = memo(function MetadataBar({
   isVisible: boolean;
 }) {
   const { t } = useTranslation();
+  const modeMeta =
+    mode && isQueryMode(String(mode)) ? getQueryModeMeta(String(mode) as QueryMode) : null;
+  const ModeIcon = modeMeta?.icon;
+  const modelLabel =
+    llmProvider && llmModel
+      ? `${llmProvider}/${llmModel}`
+      : llmProvider || llmModel || undefined;
+  const tokensPerSecond =
+    tokensUsed && durationMs && durationMs > 0
+      ? ((tokensUsed / durationMs) * 1000).toFixed(1)
+      : null;
 
   return (
     <div 
@@ -225,47 +237,10 @@ const MetadataBar = memo(function MetadataBar({
         'flex items-center gap-2 pt-2 transition-opacity duration-200',
         isVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
       )}
+      data-testid="query-message-metadata"
     >
-      {/* Stats */}
+      {/* Stats: tokens · duration · tks/s · mode · provider/model */}
       <div className="flex items-center gap-2.5 text-xs text-muted-foreground flex-wrap">
-        {mode && (
-          <Badge 
-            variant="outline" 
-            className={cn(
-              'text-xs font-normal px-2 py-0.5',
-              'bg-muted/50'
-            )}
-          >
-            {mode}
-          </Badge>
-        )}
-        {/* SPEC-032: Display LLM provider/model as lineage badge */}
-        {(llmProvider || llmModel) && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge 
-                  variant="secondary" 
-                  className={cn(
-                    'text-xs font-normal px-2 py-0.5',
-                    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-                    'border-blue-200 dark:border-blue-800'
-                  )}
-                >
-                  <Brain className="h-3 w-3 mr-1" />
-                  {llmProvider || 'default'}
-                  {llmModel && `: ${llmModel.split(':')[0]}`}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">
-                  {t('query.llmLineage', 'LLM Provider')}: {llmProvider || 'server default'}
-                  {llmModel && <><br />{t('query.llmModel', 'Model')}: {llmModel}</>}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
         {tokensUsed && (
           <span className="flex items-center gap-1" title={t('query.tokensUsed', 'Tokens used')}>
             <Zap className="h-3 w-3" aria-hidden="true" />
@@ -280,29 +255,72 @@ const MetadataBar = memo(function MetadataBar({
             {(durationMs / 1000).toFixed(1)}s
           </span>
         )}
-        {/* SPEC-032: Show tokens per second with model name for performance insight */}
-        {tokensUsed && durationMs && durationMs > 0 && (
+        {tokensPerSecond && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400" title={t('query.tokensPerSecond', 'Tokens per second')}>
+                <span
+                  className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"
+                  title={t('query.tokensPerSecond', 'Tokens per second')}
+                  data-testid="query-tokens-per-second"
+                >
                   <Gauge className="h-3 w-3" aria-hidden="true" />
-                  {((tokensUsed / durationMs) * 1000).toFixed(1)}/s
-                  {/* REQ-22: Display model after tokens/second */}
-                  {(llmProvider || llmModel) && (
-                    <span className="text-muted-foreground">
-                      • {llmProvider && llmModel ? `${llmProvider}/${llmModel}` : llmProvider || llmModel}
-                    </span>
-                  )}
+                  {tokensPerSecond}/s
                 </span>
               </TooltipTrigger>
               <TooltipContent>
                 <p className="text-xs">
-                  {t('query.tokensPerSecondDesc', 'Generation speed')}: {((tokensUsed / durationMs) * 1000).toFixed(1)} {t('query.tokensPerSecondUnit', 'tokens/second')}
-                  {(llmProvider || llmModel) && (
+                  {t('query.tokensPerSecondDesc', 'Generation speed')}: {tokensPerSecond}{' '}
+                  {t('query.tokensPerSecondUnit', 'tokens/second')}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {modeMeta && ModeIcon && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className={cn(
+                    'flex items-center gap-1',
+                    modeMeta.color,
+                  )}
+                  data-testid="query-response-mode"
+                >
+                  <ModeIcon className="h-3 w-3" aria-hidden="true" />
+                  {modeMeta.label}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs max-w-xs">
+                  {t('query.modeUsed', 'Mode')}: {modeMeta.label}
+                  <br />
+                  {modeMeta.description}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {modelLabel && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="flex items-center gap-1 max-w-[14rem] truncate"
+                  data-testid="query-response-model"
+                >
+                  <Brain className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{modelLabel}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">
+                  {t('query.llmLineage', 'LLM Provider')}: {llmProvider || 'server default'}
+                  {llmModel && (
                     <>
                       <br />
-                      {t('query.modelUsed', 'Model')}: {llmProvider && llmModel ? `${llmProvider}/${llmModel}` : llmProvider || llmModel}
+                      {t('query.llmModel', 'Model')}: {llmModel}
                     </>
                   )}
                 </p>

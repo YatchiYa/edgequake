@@ -759,8 +759,10 @@ impl DocumentTaskProcessor {
         // deterministic UNKNOWN_PAGE_COUNT_VISION_BUDGET_ASSUMPTION (50).
         // Do NOT coerce to 1: that under-budgets large PDFs with missing metadata.
         let page_count = page_count_opt.unwrap_or(0) as usize;
-        let mut extraction_method = match backend {
-            edgequake_pdf::PdfParserBackend::Vision => ExtractionMethod::Vision,
+        let mut extraction_method = match backend.runtime_backend() {
+            edgequake_pdf::PdfParserBackend::Vision | edgequake_pdf::PdfParserBackend::Auto => {
+                ExtractionMethod::Vision
+            }
             edgequake_pdf::PdfParserBackend::EdgeParse => ExtractionMethod::EdgeParse,
         };
 
@@ -772,8 +774,10 @@ impl DocumentTaskProcessor {
                 .unwrap_or_else(|| default_vision_model_for_provider(&data.vision_provider))
         };
 
-        let mut vision_model = match backend {
-            edgequake_pdf::PdfParserBackend::Vision => Some(default_vision_model()),
+        let mut vision_model = match backend.runtime_backend() {
+            edgequake_pdf::PdfParserBackend::Vision | edgequake_pdf::PdfParserBackend::Auto => {
+                Some(default_vision_model())
+            }
             edgequake_pdf::PdfParserBackend::EdgeParse => None,
         };
         let mut fallback_warning: Option<String> = None;
@@ -810,8 +814,9 @@ impl DocumentTaskProcessor {
         let converter = if precomputed_markdown.is_some() {
             edgequake_pdf::create_pdf_converter(edgequake_pdf::PdfParserBackend::EdgeParse)
         } else {
-            match backend {
-                edgequake_pdf::PdfParserBackend::Vision => {
+            match backend.runtime_backend() {
+                edgequake_pdf::PdfParserBackend::Vision
+                | edgequake_pdf::PdfParserBackend::Auto => {
                     if !data.enable_vision {
                         let error = edgequake_tasks::TaskError::UnsupportedOperation(
                             "Vision PDF extraction requires enable_vision=true.".to_string(),

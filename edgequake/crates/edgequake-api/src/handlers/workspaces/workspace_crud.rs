@@ -5,7 +5,10 @@ use axum::{
 };
 use uuid::Uuid;
 
-use super::helpers::{verify_workspace_tenant_access, workspace_to_response};
+use super::helpers::{
+    verify_workspace_tenant_access, workspace_to_response_async,
+    workspace_to_response_with_tenant,
+};
 use edgequake_audit::{AuditEventType, AuditResult};
 
 use crate::error::ApiError;
@@ -153,7 +156,13 @@ pub async fn create_workspace(
         .await
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
-    let response = workspace_to_response(&workspace);
+    let tenant = state
+        .workspace_service
+        .get_tenant(tenant_id)
+        .await
+        .ok()
+        .flatten();
+    let response = workspace_to_response_with_tenant(&workspace, tenant.as_ref());
 
     tracing::info!(
         workspace_id = %workspace.workspace_id,
@@ -210,11 +219,17 @@ pub async fn list_workspaces(
             .await
             .map_err(|e| ApiError::Internal(e.to_string()))?;
 
+        let tenant = state
+            .workspace_service
+            .get_tenant(tenant_id)
+            .await
+            .ok()
+            .flatten();
         let items: Vec<WorkspaceResponse> = workspaces
             .into_iter()
             .skip(params.offset)
             .take(limit)
-            .map(|ws| workspace_to_response(&ws))
+            .map(|ws| workspace_to_response_with_tenant(&ws, tenant.as_ref()))
             .collect();
 
         let total = items.len();
@@ -252,7 +267,7 @@ pub async fn get_workspace(
     // BR0201: verify workspace belongs to requesting tenant
     let workspace = verify_workspace_tenant_access(&state, workspace_id, &tenant_ctx).await?;
 
-    let response = workspace_to_response(&workspace);
+    let response = workspace_to_response_async(&state, &workspace).await;
 
     Ok(Json(response))
 }
@@ -284,7 +299,7 @@ pub async fn get_workspace_by_slug(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Workspace with slug '{}' not found", slug)))?;
 
-    let response = workspace_to_response(&workspace);
+    let response = workspace_to_response_async(&state, &workspace).await;
 
     Ok(Json(response))
 }
@@ -382,7 +397,7 @@ pub async fn update_workspace(
             _ => ApiError::BadRequest(e.to_string()),
         })?;
 
-    let response = workspace_to_response(&workspace);
+    let response = workspace_to_response_async(&state, &workspace).await;
 
     record_compliance_event(
         &state,

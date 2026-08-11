@@ -40,6 +40,7 @@ mod tests {
         assert_eq!(ConversationMode::Hybrid.to_string(), "hybrid");
         assert_eq!(ConversationMode::Naive.to_string(), "naive");
         assert_eq!(ConversationMode::Mix.to_string(), "mix");
+        assert_eq!(ConversationMode::Bypass.to_string(), "bypass");
     }
 
     #[test]
@@ -51,6 +52,14 @@ mod tests {
         assert_eq!(
             "HYBRID".parse::<ConversationMode>().unwrap(),
             ConversationMode::Hybrid
+        );
+        assert_eq!(
+            "bypass".parse::<ConversationMode>().unwrap(),
+            ConversationMode::Bypass
+        );
+        assert_eq!(
+            "chat".parse::<ConversationMode>().unwrap(),
+            ConversationMode::Bypass
         );
         assert!("invalid".parse::<ConversationMode>().is_err());
     }

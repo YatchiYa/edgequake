@@ -151,7 +151,7 @@ pub struct Workspace {
     pub vision_llm_model: Option<String>,
 
     /// Default PDF parser backend for this workspace.
-    /// None falls back to the environment and then Vision.
+    /// None falls back to tenant → environment → Vision (SPEC-123).
     pub pdf_parser_backend: Option<PdfParserBackend>,
 }
 
@@ -192,11 +192,18 @@ impl Workspace {
         }
     }
 
-    /// Resolve the effective PDF parser backend for this workspace.
+    /// Resolve the effective PDF parser backend for this workspace (no upload).
+    ///
+    /// Priority: Workspace → Env → Vision. Tenant is applied by API admit paths
+    /// via [`edgequake_pdf::resolve_pdf_parser_choice`].
     pub fn resolved_pdf_parser_backend(&self) -> PdfParserBackend {
-        self.pdf_parser_backend
-            .or_else(PdfParserBackend::from_env)
-            .unwrap_or_default()
+        edgequake_pdf::resolve_pdf_parser_choice(
+            None,
+            self.pdf_parser_backend,
+            None,
+            PdfParserBackend::from_env(),
+        )
+        .runtime_backend
     }
 
     /// Prefer a real local/cloud provider when Mock would otherwise be selected.

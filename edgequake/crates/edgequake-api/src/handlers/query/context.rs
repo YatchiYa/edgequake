@@ -64,7 +64,7 @@ pub async fn retrieve_query_context(
         crate::handlers::query::resolve_query_workspace(&state, tenant_ctx.workspace_id.as_deref())
             .await?;
     let llm_override =
-        resolve_query_llm_override(&state, workspace.as_ref(), &propagation, None, None)?;
+        resolve_query_llm_override(&state, workspace.as_ref(), &propagation, None, None).await?;
 
     let response = retrieve_context(&state, &tenant_ctx, request, llm_override).await?;
 
@@ -98,7 +98,7 @@ pub async fn search_query_context(
         crate::handlers::query::resolve_query_workspace(&state, tenant_ctx.workspace_id.as_deref())
             .await?;
     let llm_override =
-        resolve_query_llm_override(&state, workspace.as_ref(), &propagation, None, None)?;
+        resolve_query_llm_override(&state, workspace.as_ref(), &propagation, None, None).await?;
 
     Ok(Json(
         search_context(&state, &tenant_ctx, request, llm_override).await?,

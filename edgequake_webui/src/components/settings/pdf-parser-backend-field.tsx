@@ -13,10 +13,10 @@ import {
   getServerDefaultPdfParserBackend,
   pdfParserBackendDisplayName,
 } from '@/lib/pdf/resolve-pdf-parser-backend';
-import { Eye, Gauge } from 'lucide-react';
+import { Eye, Gauge, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-export type PdfParserBackendChoice = 'none' | 'vision' | 'edgeparse';
+export type PdfParserBackendChoice = 'none' | 'vision' | 'edgeparse' | 'auto';
 
 function backendLabel(
   value: PdfParserBackendChoice,
@@ -27,6 +27,8 @@ function backendLabel(
       return t('settings.pdfParser.edgeparse', 'EdgeParse');
     case 'vision':
       return t('settings.pdfParser.vision', 'Vision');
+    case 'auto':
+      return t('settings.pdfParser.auto', 'Auto');
     default:
       return formatServerDefaultPdfParserLabel(t);
   }
@@ -64,18 +66,26 @@ export function PdfParserBackendField({
           <SelectItem value="edgeparse">
             {t('settings.pdfParser.edgeparse', 'EdgeParse')}
           </SelectItem>
+          <SelectItem value="auto" data-testid="pdf-parser-option-auto">
+            {t('settings.pdfParser.auto', 'Auto')}
+          </SelectItem>
         </SelectContent>
       </Select>
     );
   }
 
+  const icon =
+    value === 'auto' || (value === 'none' && serverBackend === 'auto') ? (
+      <Sparkles className="h-4 w-4 text-sky-600 shrink-0" />
+    ) : value === 'vision' || (value === 'none' && serverBackend === 'vision') ? (
+      <Eye className="h-4 w-4 text-orange-600 shrink-0" />
+    ) : (
+      <Gauge className="h-4 w-4 text-amber-600 shrink-0" />
+    );
+
   return (
     <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg min-h-[3.75rem]">
-      {value === 'vision' || (value === 'none' && serverBackend === 'vision') ? (
-        <Eye className="h-4 w-4 text-orange-600 shrink-0" />
-      ) : (
-        <Gauge className="h-4 w-4 text-amber-600 shrink-0" />
-      )}
+      {icon}
       <div className="min-w-0 flex-1">
         <div className="font-medium" data-testid="pdf-parser-backend-label">
           {backendLabel(value, t)}
@@ -91,11 +101,16 @@ export function PdfParserBackendField({
                   'settings.pdfParser.visionHint',
                   'Best for scanned and image-heavy PDFs',
                 )
-              : t(
-                  'settings.pdfParser.serverDefaultHintWithValue',
-                  'Uses server config when no workspace override is set (currently {{value}}).',
-                  { value: resolvedName },
-                )}
+              : value === 'auto'
+                ? t(
+                    'settings.pdfParser.autoHint',
+                    'May use EdgeParse for born-digital PDFs, otherwise Vision',
+                  )
+                : t(
+                    'settings.pdfParser.serverDefaultHintWithValue',
+                    'Uses server config when no workspace override is set (currently {{value}}).',
+                    { value: resolvedName },
+                  )}
         </div>
       </div>
       <Badge variant="outline" className="ml-auto shrink-0">
@@ -103,7 +118,9 @@ export function PdfParserBackendField({
           ? t('settings.pdfParser.resolvesTo', 'Resolves to {{value}}', {
               value: resolvedName,
             })
-          : backendLabel(value, t)}
+          : value === 'auto'
+            ? t('settings.pdfParser.resolvesToAuto', 'May use EdgeParse')
+            : backendLabel(value, t)}
       </Badge>
     </div>
   );

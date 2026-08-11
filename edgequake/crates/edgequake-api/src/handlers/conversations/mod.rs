@@ -123,10 +123,13 @@ mod tests {
             thinking_time_ms: None,
             context: None,
             is_error: false,
+            llm_provider: Some("ollama".to_string()),
+            llm_model: Some("gemma3:latest".to_string()),
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         };
-        let json = serde_json::to_string(&response);
-        assert!(json.is_ok());
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"llm_provider\":\"ollama\""));
+        assert!(json.contains("\"llm_model\":\"gemma3:latest\""));
     }
 }

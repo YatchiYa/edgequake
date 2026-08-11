@@ -71,7 +71,7 @@ export function WorkspaceProviderHealthCard({
                       {provider.display_name || provider.name}
                     </span>
                     {provider.models && provider.models.length > 0 && (
-                      <span className="text-xs opacity-70">
+                      <span className="text-xs">
                         ({provider.models.length})
                       </span>
                     )}

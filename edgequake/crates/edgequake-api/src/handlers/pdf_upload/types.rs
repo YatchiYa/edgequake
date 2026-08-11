@@ -1,5 +1,5 @@
-use edgequake_core::Workspace;
-use edgequake_pdf::PdfParserBackend;
+use edgequake_core::{Tenant, Workspace};
+use edgequake_pdf::{resolve_pdf_parser_choice, PdfParserBackend, ResolvedPdfParser};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -43,38 +43,14 @@ pub struct PdfUploadOptions {
 }
 
 impl PdfUploadOptions {
-    /// Apply workspace vision / PDF parser defaults onto unset form fields (DRY).
+    /// SPEC-123: vision LLM is **not** copied into upload fields —
+    /// use [`Self::resolved_vision_llm`] (Upload → Workspace → Tenant → Env).
     ///
-    /// Precedence after this call:
-    /// 1. Explicit upload form fields (already set — preserved)
-    /// 2. Workspace `vision_llm_*` / `pdf_parser_backend`
-    /// 3. Env / hardcoded defaults via [`Self::resolved_vision_provider`] etc.
-    pub fn apply_workspace(&mut self, workspace: &Workspace) {
-        if self.vision_provider.as_ref().is_none_or(|s| s.is_empty()) {
-            let provider = workspace
-                .vision_llm_provider
-                .as_deref()
-                .filter(|p| !p.is_empty())
-                .unwrap_or(workspace.llm_provider.as_str());
-            if !provider.is_empty() {
-                self.vision_provider = Some(provider.to_string());
-            }
-        }
-        if self.vision_model.as_ref().is_none_or(|s| s.is_empty()) {
-            if let Some(model) = workspace
-                .vision_llm_model
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-            {
-                self.vision_model = Some(model.to_string());
-            }
-        }
-        if self.pdf_parser_backend.is_none() {
-            if let Some(backend) = workspace.pdf_parser_backend {
-                self.pdf_parser_backend = Some(backend);
-            }
-        }
+    /// Kept as a no-op-compatible hook for call sites that still invoke it
+    /// after loading workspace (parser already uses SSOT; vision now does too).
+    pub fn apply_workspace(&mut self, _workspace: &Workspace) {
+        // Intentionally empty — do not mutate upload fields from workspace
+        // (destroys provenance; LAW-123-5).
     }
 
     /// Resolve SPEC-015V extract policy (upload overlay over workspace metadata).
@@ -87,39 +63,59 @@ impl PdfUploadOptions {
         edgequake_pdf::VisionExtractConfig::resolve(meta, &self.vision_extract)
     }
 
+    /// SPEC-123 SSOT: Upload → Workspace vision_* → Tenant vision → Workspace LLM → Env.
+    pub fn resolved_vision_llm(
+        &self,
+        workspace: Option<&Workspace>,
+        tenant: Option<&Tenant>,
+    ) -> edgequake_core::ResolvedProviderModel {
+        edgequake_core::resolve_vision_llm_choice(
+            self.vision_provider.as_deref(),
+            self.vision_model.as_deref(),
+            workspace,
+            tenant,
+        )
+    }
+
     /// Get the resolved vision provider (with fallback to server default).
-    ///
-    /// WHY (First Principle): Single resolution chain with explicit priority:
-    ///   1. Explicit form field `vision_provider` (after [`Self::apply_workspace`])
-    ///   2. EDGEQUAKE_VISION_PROVIDER / EDGEQUAKE_VISION_LLM_PROVIDER env
-    ///   3. EDGEQUAKE_DEFAULT_LLM_PROVIDER env (inherit from LLM)
-    ///   4. EDGEQUAKE_LLM_PROVIDER env (legacy alias)
-    ///   5. Hardcoded fallback: "ollama"
-    pub fn resolved_vision_provider(&self) -> String {
-        self.vision_provider
-            .clone()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(crate::vision_env::resolved_vision_provider_from_env)
+    pub fn resolved_vision_provider(
+        &self,
+        workspace: Option<&Workspace>,
+        tenant: Option<&Tenant>,
+    ) -> String {
+        self.resolved_vision_llm(workspace, tenant).provider
     }
 
     /// Get the vision model to use (with fallback from provider).
-    pub fn vision_model(&self) -> String {
-        self.vision_model
-            .clone()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| {
-                crate::vision_env::default_vision_model_for_provider(
-                    &self.resolved_vision_provider(),
-                )
-            })
+    pub fn vision_model(
+        &self,
+        workspace: Option<&Workspace>,
+        tenant: Option<&Tenant>,
+    ) -> String {
+        self.resolved_vision_llm(workspace, tenant).model
     }
 
-    /// Resolve the effective PDF parser backend.
-    pub fn resolved_backend(&self, workspace: Option<&Workspace>) -> PdfParserBackend {
-        self.pdf_parser_backend
-            .or_else(|| workspace.and_then(|ws| ws.pdf_parser_backend))
-            .or_else(PdfParserBackend::from_env)
-            .unwrap_or_default()
+    /// SPEC-123 SSOT: Upload → Workspace → Tenant → Env → Vision.
+    pub fn resolved_pdf_parser(
+        &self,
+        workspace: Option<&Workspace>,
+        tenant: Option<&Tenant>,
+    ) -> ResolvedPdfParser {
+        resolve_pdf_parser_choice(
+            self.pdf_parser_backend,
+            workspace.and_then(|ws| ws.pdf_parser_backend),
+            tenant.and_then(|t| t.pdf_parser_backend),
+            PdfParserBackend::from_env(),
+        )
+    }
+
+    /// Resolve the effective runtime PDF parser backend (Vision|EdgeParse).
+    pub fn resolved_backend(
+        &self,
+        workspace: Option<&Workspace>,
+        tenant: Option<&Tenant>,
+    ) -> PdfParserBackend {
+        self.resolved_pdf_parser(workspace, tenant).runtime_backend
     }
 
     /// Resolve multimodal process flags for this upload.
@@ -128,7 +124,11 @@ impl PdfUploadOptions {
     /// PDF conversion must receive Pass B VLM analysis or their semantics never
     /// land in indexable markdown. When the client omits `process_options`, default
     /// to `"i"` for vision-enabled uploads on the Vision backend.
-    pub fn resolved_process_options(&self, workspace: Option<&Workspace>) -> Option<String> {
+    pub fn resolved_process_options(
+        &self,
+        workspace: Option<&Workspace>,
+        tenant: Option<&Tenant>,
+    ) -> Option<String> {
         if let Some(opts) = self
             .process_options
             .as_ref()
@@ -137,7 +137,9 @@ impl PdfUploadOptions {
         {
             return Some(opts.to_string());
         }
-        if self.enable_vision && self.resolved_backend(workspace) == PdfParserBackend::Vision {
+        if self.enable_vision
+            && self.resolved_backend(workspace, tenant) == PdfParserBackend::Vision
+        {
             Some("i".to_string())
         } else {
             None
@@ -156,7 +158,10 @@ mod tests {
             enable_vision: true,
             ..Default::default()
         };
-        assert_eq!(opts.resolved_process_options(None).as_deref(), Some("i"));
+        assert_eq!(
+            opts.resolved_process_options(None, None).as_deref(),
+            Some("i")
+        );
     }
 
     #[test]
@@ -166,7 +171,10 @@ mod tests {
             process_options: Some("te".into()),
             ..Default::default()
         };
-        assert_eq!(opts.resolved_process_options(None).as_deref(), Some("te"));
+        assert_eq!(
+            opts.resolved_process_options(None, None).as_deref(),
+            Some("te")
+        );
     }
 
     #[test]
@@ -175,11 +183,11 @@ mod tests {
             enable_vision: false,
             ..Default::default()
         };
-        assert!(opts.resolved_process_options(None).is_none());
+        assert!(opts.resolved_process_options(None, None).is_none());
     }
 
     #[test]
-    fn apply_workspace_fills_vision_and_parser_when_unset() {
+    fn apply_workspace_does_not_mutate_vision_fields() {
         let mut ws = Workspace::new(Uuid::nil(), "ws", "ws");
         ws.llm_provider = "mistral".into();
         ws.vision_llm_provider = Some("mistral".into());
@@ -189,10 +197,18 @@ mod tests {
         let mut opts = PdfUploadOptions::default();
         opts.apply_workspace(&ws);
 
-        assert_eq!(opts.vision_provider.as_deref(), Some("mistral"));
-        assert_eq!(opts.vision_model.as_deref(), Some("mistral-small-latest"));
-        assert_eq!(opts.pdf_parser_backend, Some(PdfParserBackend::Vision));
-        assert_eq!(opts.resolved_backend(Some(&ws)), PdfParserBackend::Vision);
+        // SPEC-123: upload fields stay unset; resolve reads workspace/tenant layers.
+        assert_eq!(opts.vision_provider, None);
+        assert_eq!(opts.vision_model, None);
+        assert_eq!(opts.pdf_parser_backend, None);
+        let vision = opts.resolved_vision_llm(Some(&ws), None);
+        assert_eq!(vision.provider, "mistral");
+        assert_eq!(vision.model, "mistral-small-latest");
+        assert_eq!(
+            opts.resolved_backend(Some(&ws), None),
+            PdfParserBackend::Vision
+        );
+        assert!(opts.resolved_pdf_parser(Some(&ws), None).backend_explicit());
     }
 
     #[test]
@@ -213,6 +229,51 @@ mod tests {
         assert_eq!(opts.vision_provider.as_deref(), Some("openai"));
         assert_eq!(opts.vision_model.as_deref(), Some("gpt-4o"));
         assert_eq!(opts.pdf_parser_backend, Some(PdfParserBackend::EdgeParse));
+        assert_eq!(
+            opts.resolved_backend(Some(&ws), None),
+            PdfParserBackend::EdgeParse
+        );
+        let vision = opts.resolved_vision_llm(Some(&ws), None);
+        assert_eq!(vision.provider, "openai");
+        assert_eq!(vision.model, "gpt-4o");
+    }
+
+    #[test]
+    fn vision_tenant_layer_wins_when_workspace_vision_unset() {
+        let mut ws = Workspace::new(Uuid::nil(), "ws", "ws");
+        ws.vision_llm_provider = None;
+        ws.vision_llm_model = None;
+        let mut tenant = Tenant::new("t", "t");
+        tenant.default_vision_llm_provider = Some("mistral".into());
+        tenant.default_vision_llm_model = Some("mistral-small-latest".into());
+        let opts = PdfUploadOptions::default();
+        let vision = opts.resolved_vision_llm(Some(&ws), Some(&tenant));
+        assert_eq!(vision.provider, "mistral");
+        assert_eq!(vision.model, "mistral-small-latest");
+    }
+
+    #[test]
+    fn server_default_vision_is_inviolable() {
+        let mut ws = Workspace::new(Uuid::nil(), "ws", "ws");
+        ws.pdf_parser_backend = None;
+        let opts = PdfUploadOptions::default();
+        let resolved = opts.resolved_pdf_parser(Some(&ws), None);
+        assert_eq!(resolved.runtime_backend, PdfParserBackend::Vision);
+        assert!(!resolved.allows_auto_route);
+        assert!(resolved.backend_explicit());
+    }
+
+    #[test]
+    fn tenant_layer_wins_over_env_when_workspace_unset() {
+        let mut ws = Workspace::new(Uuid::nil(), "ws", "ws");
+        ws.pdf_parser_backend = None;
+        let mut tenant = Tenant::new("t", "t");
+        tenant.pdf_parser_backend = Some(PdfParserBackend::EdgeParse);
+        let opts = PdfUploadOptions::default();
+        assert_eq!(
+            opts.resolved_backend(Some(&ws), Some(&tenant)),
+            PdfParserBackend::EdgeParse
+        );
     }
 }
 

@@ -118,7 +118,7 @@ function PDFErrorState({ error, onRetry }: { error: string; onRetry?: () => void
             ? t('documents.viewer.pdfUnavailable', 'PDF Unavailable')
             : t('documents.viewer.loadError', 'Failed to Load PDF')}
         </p>
-        <p className="text-xs text-muted-foreground/70 max-w-sm">{displayMessage}</p>
+        <p className="text-xs text-muted-foreground max-w-sm">{displayMessage}</p>
       </div>
       {onRetry && !is404 && (
         <Button variant="outline" size="sm" onClick={onRetry}>

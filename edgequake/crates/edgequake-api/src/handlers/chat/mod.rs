@@ -95,11 +95,15 @@ pub use crate::handlers::chat_types::*;
 
 pub mod completion;
 pub mod conversation_guard;
+pub mod history;
+pub mod lineage;
 pub mod streaming;
 pub mod validation;
 
 pub use completion::*;
 pub use streaming::*;
+
+pub(crate) use lineage::coalesce_effective_llm_lineage;
 
 fn parse_mode(mode: &Option<String>) -> ConversationMode {
     mode.as_ref()
@@ -108,6 +112,8 @@ fn parse_mode(mode: &Option<String>) -> ConversationMode {
             "global" => Some(ConversationMode::Global),
             "hybrid" => Some(ConversationMode::Hybrid),
             "naive" | "simple" => Some(ConversationMode::Naive),
+            "mix" => Some(ConversationMode::Mix),
+            "bypass" | "chat" => Some(ConversationMode::Bypass),
             _ => None,
         })
         .unwrap_or(ConversationMode::Hybrid)
@@ -210,8 +216,16 @@ mod tests {
             ConversationMode::Naive
         );
         assert_eq!(
-            parse_mode(&Some("simple".to_string())),
-            ConversationMode::Naive
+            parse_mode(&Some("mix".to_string())),
+            ConversationMode::Mix
+        );
+        assert_eq!(
+            parse_mode(&Some("bypass".to_string())),
+            ConversationMode::Bypass
+        );
+        assert_eq!(
+            parse_mode(&Some("chat".to_string())),
+            ConversationMode::Bypass
         );
         assert_eq!(parse_mode(&None), ConversationMode::Hybrid);
         assert_eq!(

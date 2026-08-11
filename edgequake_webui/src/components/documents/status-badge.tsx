@@ -195,11 +195,12 @@ export const StatusBadge = memo(function StatusBadge({
   const badge = (
     <Badge
       variant="outline"
-      className={`gap-1 ${config.textColor} border-current cursor-default${pulseBadge ? ' motion-safe:animate-pulse' : ''}`}
+      className={`max-w-full min-w-0 gap-1 truncate ${config.textColor} border-current cursor-default${pulseBadge ? ' motion-safe:animate-pulse' : ''}`}
       data-testid="status-badge"
+      title={label}
     >
-      <Icon className={`h-3 w-3${spinIcon ? ' animate-spin' : ''}`} />
-      {!compact && label}
+      <Icon className={`h-3 w-3 shrink-0${spinIcon ? ' animate-spin' : ''}`} />
+      {!compact && <span className="truncate">{label}</span>}
     </Badge>
   );
 
@@ -221,7 +222,7 @@ export const StatusBadge = memo(function StatusBadge({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-4">
               <span className="font-medium">{config.label}</span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-foreground/90">
                 Step {stageProgress.current}/{stageProgress.total}
               </span>
             </div>
@@ -240,7 +241,7 @@ export const StatusBadge = memo(function StatusBadge({
             
             {typeof stageProgressValue === 'number' && (
               <div className="space-y-1">
-                <div className="flex justify-between text-[10px] text-muted-foreground">
+                <div className="flex justify-between text-[10px] text-foreground/90">
                   <span>Progress</span>
                   <span>{Math.round(stageProgressValue * 100)}%</span>
                 </div>
@@ -271,7 +272,11 @@ export const StatusBadge = memo(function StatusBadge({
               {PROCESSING_STAGES.map((stage, index) => (
                 <span 
                   key={stage.key}
-                  className={index + 1 === stageProgress.current ? 'font-medium text-foreground' : ''}
+                  className={
+                    index + 1 === stageProgress.current
+                      ? 'font-medium text-foreground'
+                      : 'text-foreground/90'
+                  }
                 >
                   {stage.label}
                 </span>

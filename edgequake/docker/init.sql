@@ -402,7 +402,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
-    CONSTRAINT conversations_valid_mode CHECK (mode IN ('local', 'global', 'hybrid', 'naive', 'mix'))
+    CONSTRAINT conversations_valid_mode CHECK (mode IN ('local', 'global', 'hybrid', 'naive', 'mix', 'bypass'))
 );
 
 -- -----------------------------------------------------------------------------
@@ -420,6 +420,8 @@ CREATE TABLE IF NOT EXISTS messages (
     thinking_time_ms INTEGER,
     context JSONB,
     is_error BOOLEAN NOT NULL DEFAULT FALSE,
+    llm_provider VARCHAR(100),
+    llm_model VARCHAR(255),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     

@@ -417,7 +417,7 @@ pub async fn build_legacy_query_sources(
 ///
 /// Name historically said "keyword"; Keyword role is resolved separately via
 /// [`resolve_workspace_query_resources`] → `keyword_llm` (SPEC-046 EQ-046-13).
-pub fn resolve_query_llm_override(
+pub async fn resolve_query_llm_override(
     state: &AppState,
     workspace: Option<&edgequake_core::Workspace>,
     propagation: &PropagationHeaders,
@@ -432,7 +432,11 @@ pub fn resolve_query_llm_override(
         model: llm_model,
         extra_headers,
     };
-    match resolver.resolve_llm_provider_with_workspace(workspace, &llm_request) {
+    // SPEC-123: load tenant then resolve (LAW-123-2).
+    match resolver
+        .resolve_llm_provider_for_workspace(workspace, &llm_request)
+        .await
+    {
         Ok(resolved) => Ok(resolved.map(|r| r.provider)),
         Err(e) => Err(ApiError::from(e)),
     }
@@ -440,14 +444,14 @@ pub fn resolve_query_llm_override(
 
 /// Deprecated alias — use [`resolve_query_llm_override`].
 #[deprecated(note = "renamed to resolve_query_llm_override (Query role, not Keyword)")]
-pub fn resolve_keyword_llm_override(
+pub async fn resolve_keyword_llm_override(
     state: &AppState,
     workspace: Option<&edgequake_core::Workspace>,
     propagation: &PropagationHeaders,
     llm_provider: Option<String>,
     llm_model: Option<String>,
 ) -> ApiResult<Option<Arc<dyn LLMProvider>>> {
-    resolve_query_llm_override(state, workspace, propagation, llm_provider, llm_model)
+    resolve_query_llm_override(state, workspace, propagation, llm_provider, llm_model).await
 }
 
 pub fn build_query_response_subgraph(

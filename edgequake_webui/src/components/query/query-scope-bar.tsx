@@ -125,7 +125,7 @@ export function QueryScopeBar({
             disabled={disabled}
             className={cn(
               'ml-auto shrink-0 rounded-sm p-0.5',
-              'text-muted-foreground/60 hover:text-destructive',
+              'text-muted-foreground hover:text-destructive',
               'focus-visible:outline-none focus-visible:ring-1',
               'transition-colors',
             )}
@@ -148,7 +148,7 @@ export function QueryScopeBar({
               data-testid="query-scope-trigger"
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs',
-                'text-muted-foreground/60 hover:text-muted-foreground',
+                'text-muted-foreground hover:text-foreground',
                 'hover:bg-muted/60',
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
                 'transition-all duration-150',

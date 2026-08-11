@@ -36,6 +36,12 @@ pub struct MessageRow {
     pub thinking_time_ms: Option<i32>,
     pub context: Option<serde_json::Value>,
     pub is_error: bool,
+    /// LLM provider used for this response (lineage). @implements SPEC-032
+    #[serde(default)]
+    pub llm_provider: Option<String>,
+    /// LLM model used for this response (lineage). @implements SPEC-032
+    #[serde(default)]
+    pub llm_model: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

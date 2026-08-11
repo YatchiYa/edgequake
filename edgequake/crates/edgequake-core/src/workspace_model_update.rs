@@ -169,7 +169,7 @@ fn metadata_has_nonempty(
         .is_some_and(|s| !s.trim().is_empty())
 }
 
-/// When metadata lacks llm/embedding keys, fill DTO fields from tenant → env default.
+/// When metadata lacks llm/embedding/vision keys, fill DTO fields from tenant → env default.
 ///
 /// Call after loading a workspace so GET/list/update responses match ServerDefaultsCard.
 pub fn resolve_inherited_model_fields(workspace: &mut Workspace, tenant: Option<&Tenant>) {
@@ -200,6 +200,9 @@ pub fn resolve_inherited_model_fields(workspace: &mut Workspace, tenant: Option<
         workspace.embedding_provider = provider;
         workspace.embedding_dimension = dimension;
     }
+
+    // LAW-123-8: never paint tenant/env into vision_* — Option None means unset.
+    // Effective vision is resolve_vision_llm_choice / FE mirror (honest source).
 }
 
 #[cfg(test)]

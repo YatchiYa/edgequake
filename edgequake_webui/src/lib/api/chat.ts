@@ -307,6 +307,10 @@ export interface StreamingState {
   tokensUsed?: number;
   /** Duration in ms (available after done event) */
   durationMs?: number;
+  /** LLM provider used (lineage). @implements SPEC-032 */
+  llmProvider?: string;
+  /** LLM model used (lineage). @implements SPEC-032 */
+  llmModel?: string;
   /** Error message if status is "error" */
   error?: string;
 }
@@ -358,6 +362,8 @@ export function reduceStreamingEvent(
         assistantMessageId: event.assistant_message_id,
         tokensUsed: event.tokens_used,
         durationMs: event.duration_ms,
+        llmProvider: event.llm_provider,
+        llmModel: event.llm_model,
       };
     case "error":
       return {

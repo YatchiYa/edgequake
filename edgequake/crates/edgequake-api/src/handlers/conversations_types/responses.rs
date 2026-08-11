@@ -83,6 +83,12 @@ pub struct MessageResponse {
     pub context: Option<serde_json::Value>,
     /// Error state.
     pub is_error: bool,
+    /// LLM provider used (lineage). @implements SPEC-032
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_provider: Option<String>,
+    /// LLM model used (lineage). @implements SPEC-032
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_model: Option<String>,
     /// Creation timestamp.
     pub created_at: String,
     /// Last update timestamp.
@@ -105,6 +111,8 @@ impl From<edgequake_core::Message> for MessageResponse {
                 .context
                 .map(|c| serde_json::to_value(c).unwrap_or_default()),
             is_error: m.is_error,
+            llm_provider: m.llm_provider,
+            llm_model: m.llm_model,
             created_at: m.created_at.to_rfc3339(),
             updated_at: m.updated_at.to_rfc3339(),
         }

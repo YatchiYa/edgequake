@@ -59,13 +59,13 @@ mod tests {
             ..Default::default()
         };
         // OODA-04: Updated from gpt-4o-mini to gpt-4.1-nano per mission directive
-        assert_eq!(opts.vision_model(), "gpt-4.1-nano");
+        assert_eq!(opts.vision_model(None, None), "gpt-4.1-nano");
 
         opts.vision_provider = Some("ollama".to_string());
-        assert_eq!(opts.vision_model(), "gemma4:latest");
+        assert_eq!(opts.vision_model(None, None), "gemma4:latest");
 
         opts.vision_model = Some("custom-model".to_string());
-        assert_eq!(opts.vision_model(), "custom-model");
+        assert_eq!(opts.vision_model(None, None), "custom-model");
 
         // Test default (None provider = env var EDGEQUAKE_LLM_PROVIDER or "ollama")
         // WHY: Should NOT default to "openai" — that requires an API key and breaks
@@ -73,7 +73,7 @@ mod tests {
         let default_opts = PdfUploadOptions::default();
         // In test environments EDGEQUAKE_LLM_PROVIDER is unset, so defaults to "ollama"
         // which gives a safe local default model for vision extraction.
-        let resolved_provider = default_opts.resolved_vision_provider();
+        let resolved_provider = default_opts.resolved_vision_provider(None, None);
         assert_ne!(
             resolved_provider, "openai",
             "Must not hardcode openai as default vision provider"
@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn test_pdf_upload_options_backend_resolution_defaults_to_vision() {
         let opts = PdfUploadOptions::default();
-        assert_eq!(opts.resolved_backend(None).as_str(), "vision");
+        assert_eq!(opts.resolved_backend(None, None).as_str(), "vision");
     }
 
     /// OODA-17: Test PdfOperationResponse serialization

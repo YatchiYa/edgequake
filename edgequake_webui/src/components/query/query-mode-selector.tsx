@@ -107,7 +107,7 @@ export function QueryModeSelector({ value, onChange, disabled }: QueryModeSelect
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-sm space-y-1.5 p-3">
-                <p className="font-medium">
+                <p className="font-semibold text-foreground">
                   {label}
                   {recommended
                     ? t('query.modes.recommendedSuffix', ' · Recommended')
@@ -116,7 +116,7 @@ export function QueryModeSelector({ value, onChange, disabled }: QueryModeSelect
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   {description}
                 </p>
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                <p className="text-[11px] uppercase tracking-wide text-foreground/90 font-medium">
                   {t('query.modes.apiName', 'API mode')}: {mode.apiName}
                 </p>
               </TooltipContent>

@@ -21,7 +21,7 @@ export const LARGE_PDF_PAGE_THRESHOLD = Number.parseInt(
   10,
 );
 
-export type PdfParserChoice = "default" | "edgeparse" | "vision";
+export type PdfParserChoice = "default" | "edgeparse" | "vision" | "auto";
 
 export interface LargePdfAdmissionPreview {
   file: File;

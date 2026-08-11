@@ -135,7 +135,7 @@ export function GraphExport() {
         <TooltipContent side="bottom">
           <div className="space-y-1">
             <div className="font-medium text-xs">{t('graph.export.title', 'Export Graph')}</div>
-            <p className="text-[10px] opacity-80">Save as PNG, SVG, or JSON</p>
+            <p className="text-[10px] text-muted-foreground">Save as PNG, SVG, or JSON</p>
           </div>
         </TooltipContent>
       </Tooltip>

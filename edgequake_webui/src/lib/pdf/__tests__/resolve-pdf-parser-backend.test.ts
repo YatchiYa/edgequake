@@ -24,6 +24,7 @@ describe("resolvePdfParserBackend", () => {
     expect(resolved.backend).toBe("edgeparse");
     expect(resolved.source).toBe("upload");
     expect(resolved.isExplicit).toBe(true);
+    expect(resolved.allowsAutoRoute).toBe(false);
   });
 
   it("workspace default wins when upload is default", () => {
@@ -35,6 +36,41 @@ describe("resolvePdfParserBackend", () => {
     const resolved = resolvePdfParserBackend(ctx);
     expect(resolved.backend).toBe("edgeparse");
     expect(resolved.source).toBe("workspace");
+  });
+
+  it("tenant wins when workspace unset", () => {
+    const ctx: PdfParserResolutionContext = {
+      uploadChoice: "default",
+      workspaceBackend: null,
+      tenantBackend: "edgeparse",
+      serverBackend: "vision",
+    };
+    const resolved = resolvePdfParserBackend(ctx);
+    expect(resolved.backend).toBe("edgeparse");
+    expect(resolved.source).toBe("tenant");
+  });
+
+  it("server default vision is inviolable (not auto)", () => {
+    const ctx: PdfParserResolutionContext = {
+      uploadChoice: "default",
+      workspaceBackend: undefined,
+      serverBackend: "vision",
+    };
+    const resolved = resolvePdfParserBackend(ctx);
+    expect(resolved.backend).toBe("vision");
+    expect(resolved.isExplicit).toBe(true);
+    expect(resolved.allowsAutoRoute).toBe(false);
+  });
+
+  it("explicit auto allows route", () => {
+    const resolved = resolvePdfParserBackend({
+      uploadChoice: "default",
+      workspaceBackend: "auto",
+    });
+    expect(resolved.backend).toBe("auto");
+    expect(resolved.runtimeBackend).toBe("vision");
+    expect(resolved.allowsAutoRoute).toBe(true);
+    expect(resolved.isExplicit).toBe(false);
   });
 
   it("falls back to server then vision", () => {
@@ -54,6 +90,7 @@ describe("resolvePdfParserBackend", () => {
   it("never-silent server default label includes resolved backend", () => {
     expect(pdfParserBackendDisplayName("vision")).toBe("Vision");
     expect(pdfParserBackendDisplayName("edgeparse")).toBe("EdgeParse");
+    expect(pdfParserBackendDisplayName("auto")).toBe("Auto");
     const label = formatServerDefaultPdfParserLabel(
       (_key, defaultValue) => defaultValue,
       "vision",
@@ -69,6 +106,9 @@ describe("resolvePdfParserBackend", () => {
     );
     expect(formatWorkspaceDefaultPdfParserLabel(t, "edgeparse")).toBe(
       "Workspace Default (EdgeParse)",
+    );
+    expect(formatWorkspaceDefaultPdfParserLabel(t, "auto")).toBe(
+      "Workspace Default (Auto)",
     );
   });
 

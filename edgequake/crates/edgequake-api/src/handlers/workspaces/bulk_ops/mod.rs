@@ -63,23 +63,17 @@ pub(super) async fn collect_workspace_documents(
 /// rechunk and re-embed with the new embedding model.
 pub(super) fn build_pdf_task(
     workspace: &edgequake_core::Workspace,
+    tenant: Option<&edgequake_core::Tenant>,
     workspace_id: Uuid,
     pdf_id: Uuid,
     doc_id: &str,
 ) -> edgequake_tasks::PdfProcessingData {
-    // WHY: When workspace has no explicit vision_llm_provider, fall back to the
-    // workspace's main llm_provider instead of hardcoding "ollama". This ensures
-    // OpenAI workspaces also rebuild with the correct vision provider.
-    let vision_provider = workspace
-        .vision_llm_provider
-        .as_deref()
-        .filter(|p| !p.is_empty())
-        .unwrap_or(workspace.llm_provider.as_str())
-        .to_string();
-    let vision_model = workspace.vision_llm_model.clone().filter(|m| !m.is_empty());
-    let vision_model_for_resolve = vision_model
-        .clone()
-        .unwrap_or_else(|| crate::vision_env::default_vision_model_for_provider(&vision_provider));
+    // SPEC-123: same vision SSOT as upload (LAW-123-5).
+    let vision =
+        edgequake_core::resolve_vision_llm_choice(None, None, Some(workspace), tenant);
+    let vision_provider = vision.provider;
+    let vision_model = Some(vision.model.clone()).filter(|m| !m.is_empty());
+    let vision_model_for_resolve = vision.model.clone();
     let vision_reasoning_effort = crate::services::resolve_vlm_reasoning_effort(
         Some(workspace),
         &vision_provider,
@@ -189,7 +183,19 @@ pub(super) async fn build_reprocess_task(
     if doc.source_type.as_deref() == Some("pdf") {
         if let Some(pdf_id_str) = doc.pdf_id_str.as_deref() {
             if let Ok(pdf_id_uuid) = Uuid::parse_str(pdf_id_str) {
-                let pdf_task = build_pdf_task(workspace, workspace_id, pdf_id_uuid, &doc.doc_id);
+                let tenant = state
+                    .workspace_service
+                    .get_tenant(workspace.tenant_id)
+                    .await
+                    .ok()
+                    .flatten();
+                let pdf_task = build_pdf_task(
+                    workspace,
+                    tenant.as_ref(),
+                    workspace_id,
+                    pdf_id_uuid,
+                    &doc.doc_id,
+                );
                 return Some((
                     TaskType::PdfProcessing,
                     serde_json::to_value(&pdf_task).unwrap(),

@@ -252,6 +252,8 @@ impl MemoryConversationStorage {
             thinking_time_ms,
             context,
             is_error,
+            llm_provider: None,
+            llm_model: None,
             created_at: now,
             updated_at: now,
         };
@@ -267,11 +269,14 @@ impl MemoryConversationStorage {
         &self,
         message_id: Uuid,
         content: Option<&str>,
+        mode: Option<&str>,
         tokens_used: Option<i32>,
         duration_ms: Option<i32>,
         thinking_time_ms: Option<i32>,
         context: Option<serde_json::Value>,
         is_error: Option<bool>,
+        llm_provider: Option<&str>,
+        llm_model: Option<&str>,
     ) -> Result<MessageRow> {
         let mut messages = self.messages.write().map_err(map_lock_err)?;
         let row = messages
@@ -279,6 +284,9 @@ impl MemoryConversationStorage {
             .ok_or_else(|| StorageError::NotFound(format!("Message {message_id} not found")))?;
         if let Some(c) = content {
             row.content = c.to_string();
+        }
+        if let Some(m) = mode {
+            row.mode = Some(m.to_string());
         }
         if let Some(t) = tokens_used {
             row.tokens_used = Some(t);
@@ -294,6 +302,12 @@ impl MemoryConversationStorage {
         }
         if let Some(e) = is_error {
             row.is_error = e;
+        }
+        if let Some(p) = llm_provider {
+            row.llm_provider = Some(p.to_string());
+        }
+        if let Some(m) = llm_model {
+            row.llm_model = Some(m.to_string());
         }
         row.updated_at = Utc::now();
         Ok(row.clone())
@@ -618,21 +632,27 @@ impl ConversationStorage for MemoryConversationStorage {
         &self,
         message_id: Uuid,
         content: Option<&str>,
+        mode: Option<&str>,
         tokens_used: Option<i32>,
         duration_ms: Option<i32>,
         thinking_time_ms: Option<i32>,
         context: Option<serde_json::Value>,
         is_error: Option<bool>,
+        llm_provider: Option<&str>,
+        llm_model: Option<&str>,
     ) -> Result<MessageRow> {
         MemoryConversationStorage::update_message(
             self,
             message_id,
             content,
+            mode,
             tokens_used,
             duration_ms,
             thinking_time_ms,
             context,
             is_error,
+            llm_provider,
+            llm_model,
         )
         .await
     }

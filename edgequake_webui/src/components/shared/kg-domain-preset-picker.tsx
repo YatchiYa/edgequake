@@ -143,7 +143,7 @@ export function KgDomainPresetPicker({
                       : `${entityCount} ${t('kgSchema.entitiesShort', 'entities')} · ${relationCount} ${t('kgSchema.relationsShort', 'relations')}`}
                   </span>
                   {showRelationSamples ? (
-                    <span className="text-[10px] font-mono text-muted-foreground/80 truncate w-full">
+                    <span className="text-[10px] font-mono text-muted-foreground truncate w-full">
                       {isBlank
                         ? t('kgSchema.blankSample', 'Add your own types…')
                         : `${samples}…`}

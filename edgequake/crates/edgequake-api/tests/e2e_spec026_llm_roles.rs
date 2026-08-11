@@ -71,6 +71,7 @@ async fn workspace_query_role_used_in_query_resolution() {
     let resolved = resolver
         .resolve_llm_provider_with_workspace(
             Some(&ws),
+            None,
             &LlmResolutionRequest {
                 provider: None,
                 model: None,

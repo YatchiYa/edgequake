@@ -124,7 +124,9 @@ pub async fn execute_query(
         extra_headers,
     };
     let llm_override =
-        match resolver.resolve_llm_provider_with_workspace(workspace.as_ref(), &llm_request) {
+        match resolver
+            .resolve_llm_provider_for_workspace(workspace.as_ref(), &llm_request)
+            .await {
             Ok(Some(resolved)) => Some(resolved.provider),
             Ok(None) => None,
             Err(e) => return Err(ApiError::from(e)),

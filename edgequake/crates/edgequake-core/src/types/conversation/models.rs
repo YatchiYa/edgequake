@@ -122,6 +122,12 @@ pub struct Message {
     pub context: Option<MessageContext>,
     /// Whether this message represents an error.
     pub is_error: bool,
+    /// LLM provider used (lineage tracking). @implements SPEC-032
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm_provider: Option<String>,
+    /// LLM model used (lineage tracking). @implements SPEC-032
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm_model: Option<String>,
     /// Creation timestamp.
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// Last update timestamp.
@@ -144,6 +150,8 @@ impl Message {
             thinking_time_ms: None,
             context: None,
             is_error: false,
+            llm_provider: None,
+            llm_model: None,
             created_at: now,
             updated_at: now,
         }
@@ -164,6 +172,8 @@ impl Message {
             thinking_time_ms: None,
             context: None,
             is_error: false,
+            llm_provider: None,
+            llm_model: None,
             created_at: now,
             updated_at: now,
         }
@@ -184,6 +194,8 @@ impl Message {
             thinking_time_ms: None,
             context: None,
             is_error: false,
+            llm_provider: None,
+            llm_model: None,
             created_at: now,
             updated_at: now,
         }

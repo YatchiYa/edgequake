@@ -56,7 +56,7 @@ export function HelpTooltip({
           <button
             type="button"
             className={cn(
-              'text-muted-foreground/60 hover:text-muted-foreground transition-colors rounded-full',
+              'text-muted-foreground hover:text-foreground transition-colors rounded-full',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1',
               inline && 'align-middle ml-1',
               className
@@ -69,15 +69,18 @@ export function HelpTooltip({
       </TooltipTrigger>
       <TooltipContent side={side} className="max-w-xs">
         <div className="space-y-1.5">
-          <div className="text-xs leading-relaxed">{content}</div>
+          {/* WHY: inverted tooltips — use semantic tokens, never opacity-* on readable copy */}
+          <div className="text-xs leading-relaxed text-foreground">{content}</div>
           {shortcuts.length > 0 && (
             <div className="flex items-center gap-1.5 pt-1 border-t border-foreground/25">
-              <Keyboard className="h-3 w-3 opacity-60" />
+              <Keyboard className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
               <div className="flex items-center gap-1">
                 {shortcuts.map((key, index) => (
                   <React.Fragment key={key}>
-                    {index > 0 && <span className="opacity-60 text-[10px]">then</span>}
-                    <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-foreground/15 rounded border border-foreground/20">
+                    {index > 0 && (
+                      <span className="text-[10px] text-muted-foreground">then</span>
+                    )}
+                    <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-foreground/15 rounded border border-foreground/20 text-foreground">
                       {key}
                     </kbd>
                   </React.Fragment>
@@ -124,20 +127,22 @@ export function FeatureTooltip({
       <TooltipContent side={side} className={cn('max-w-sm p-3', className)}>
         <div className="space-y-2">
           <div>
-            <h4 className="font-medium text-xs mb-0.5">{title}</h4>
-            <p className="text-[11px] opacity-80 leading-relaxed">{description}</p>
+            <h4 className="font-medium text-xs mb-0.5 text-foreground">{title}</h4>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">{description}</p>
           </div>
           {shortcuts && shortcuts.length > 0 && (
             <div className="pt-2 border-t border-foreground/25">
               <div className="flex items-center gap-1.5 mb-1.5">
-                <Keyboard className="h-3 w-3 opacity-60" />
-                <span className="text-[10px] font-medium opacity-80">Keyboard Shortcuts</span>
+                <Keyboard className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                <span className="text-[10px] font-medium text-foreground/90">
+                  Keyboard Shortcuts
+                </span>
               </div>
               <div className="grid gap-1">
                 {shortcuts.map(({ key, action }) => (
                   <div key={key} className="flex items-center justify-between gap-4 text-[10px]">
-                    <span className="opacity-70">{action}</span>
-                    <kbd className="px-1.5 py-0.5 font-mono bg-foreground/15 rounded border border-foreground/20 shrink-0">
+                    <span className="text-muted-foreground">{action}</span>
+                    <kbd className="px-1.5 py-0.5 font-mono bg-foreground/15 rounded border border-foreground/20 shrink-0 text-foreground">
                       {key}
                     </kbd>
                   </div>

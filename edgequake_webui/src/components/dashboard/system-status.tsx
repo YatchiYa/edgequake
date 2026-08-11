@@ -82,7 +82,7 @@ export function SystemStatus() {
         <span>
           {t('dashboard.system.healthy', 'All systems operational')}
           {health?.llm_provider_name && (
-            <span className="ml-1 opacity-60">· {health.llm_provider_name}</span>
+            <span className="ml-1 text-muted-foreground">· {health.llm_provider_name}</span>
           )}
         </span>
       </div>

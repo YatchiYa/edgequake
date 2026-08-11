@@ -145,7 +145,9 @@ export function DocumentManager() {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
-  const [pdfParserBackend, setPdfParserBackend] = useState<'default' | 'vision' | 'edgeparse'>('default');
+  const [pdfParserBackend, setPdfParserBackend] = useState<
+    'default' | 'vision' | 'edgeparse' | 'auto'
+  >('default');
   const [visionReasoningEffort, setVisionReasoningEffort] = useState<string | undefined>();
   const [visionExtract, setVisionExtract] = useState<VisionExtractDraft>(
     () => ({ ...DEFAULT_VISION_EXTRACT_DRAFT }),
@@ -245,18 +247,30 @@ export function DocumentManager() {
       setLargePdfAdmissionOpen(false);
       setLargePdfPreviews([]);
       setPendingAdmissionFiles([]);
+
+      // SPEC-123 LAW-123-6: admission override applies only to large PDFs.
+      const largeNames = new Set(
+        largePdfPreviews.map((preview) => preview.file.name),
+      );
+      const largeFiles = files.filter((file) => largeNames.has(file.name));
+      const otherFiles = files.filter((file) => !largeNames.has(file.name));
+
       const parserOverride =
-        parserChoice === 'default'
-          ? undefined
-          : parserChoice;
+        parserChoice === 'default' ? undefined : parserChoice;
       if (parserChoice !== 'default') {
         setPdfParserBackend(parserChoice);
       }
-      await handleFilesUpload(files, {
-        pdfParserBackend: parserOverride,
-      });
+
+      if (otherFiles.length > 0) {
+        await handleFilesUpload(otherFiles);
+      }
+      if (largeFiles.length > 0) {
+        await handleFilesUpload(largeFiles, {
+          pdfParserBackend: parserOverride,
+        });
+      }
     },
-    [handleFilesUpload],
+    [handleFilesUpload, largePdfPreviews],
   );
 
   const handleAdmissionCancel = useCallback(() => {

@@ -334,7 +334,8 @@ pub fn build_pdf_recovery_task_data_with_mode(
         vision_model,
         existing_document_id: Some(document_id.to_string()),
         pdf_parser_backend: edgequake_pdf::PdfParserBackend::Vision,
-        pdf_parser_backend_explicit: false,
+        // SPEC-123: recovered tasks use inviolable Vision (no silent EdgeParse).
+        pdf_parser_backend_explicit: true,
         restart_from_scratch: full_restart,
         reprocess_mode: if full_restart {
             Some(edgequake_tasks::ReprocessMode::Full)

@@ -90,15 +90,27 @@ impl WorkspacePipelineFactory {
             }
         };
 
+        let tenant = self
+            .workspace_service
+            .get_tenant(ws.tenant_id)
+            .await
+            .ok()
+            .flatten();
+
         // SPEC-086: EXTRACT≠QUERY — env pin beats workspace llm_roles.extract.
         let extract_role = edgequake_core::resolve_extract_role_llm(&ws);
         let llm_provider =
             create_safe_extraction_llm_provider(&extract_role.provider, &extract_role.model);
-        let embedding_provider = create_safe_embedding_provider(
-            &ws.embedding_provider,
-            &ws.embedding_model,
-            ws.embedding_dimension,
+        // SPEC-123: embedding via SSOT (metadata gate + tenant), not painted DTO alone.
+        let emb = edgequake_core::resolve_embedding_choice(
+            None,
+            None,
+            None,
+            Some(&ws),
+            tenant.as_ref(),
         );
+        let embedding_provider =
+            create_safe_embedding_provider(&emb.provider, &emb.model, emb.dimension);
 
         match (llm_provider, embedding_provider) {
             (Ok(llm), Ok(embedding)) => {
@@ -118,8 +130,11 @@ impl WorkspacePipelineFactory {
                 info!(
                     workspace_id = workspace_id,
                     llm_model = %ws.llm_full_id(),
-                    embedding_model = %ws.embedding_full_id(),
+                    embedding_provider = %emb.provider,
+                    embedding_model = %emb.model,
+                    embedding_source = %emb.source.as_str(),
                     extract_provider = %extract_role.provider,
+                    extract_model = %extract_role.model,
                     is_local = is_slow_local_provider(&extract_role.provider),
                     chunk_timeout_secs = tuned.chunk_extraction_timeout_secs,
                     max_concurrent_extractions = tuned.max_concurrent_extractions,

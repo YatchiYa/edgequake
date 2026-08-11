@@ -875,8 +875,8 @@ pub(crate) async fn run_reprocess_failed(
                     Ok(None) | Err(_) => {
                         // Fallback: env-var defaults (same as upload path default).
                         let opts = crate::handlers::pdf_upload::types::PdfUploadOptions::default();
-                        let vp = opts.resolved_vision_provider();
-                        let vm = Some(opts.vision_model());
+                        let vp = opts.resolved_vision_provider(None, None);
+                        let vm = Some(opts.vision_model(None, None));
                         let backend = PdfParserBackend::from_env().unwrap_or_default();
                         (vp, vm, backend, None)
                     }

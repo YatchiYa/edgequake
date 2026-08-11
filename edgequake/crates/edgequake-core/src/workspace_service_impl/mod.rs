@@ -160,6 +160,10 @@ impl WorkspaceServiceImpl {
         if let Some(ref effort) = tenant.default_reasoning_effort {
             map["default_reasoning_effort"] = serde_json::json!(effort);
         }
+        // SPEC-123: Persist tenant PDF parser default
+        if let Some(backend) = tenant.pdf_parser_backend {
+            map["pdf_parser_backend"] = serde_json::json!(backend.as_str());
+        }
         map
     }
 }

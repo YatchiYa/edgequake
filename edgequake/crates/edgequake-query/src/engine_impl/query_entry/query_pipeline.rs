@@ -135,6 +135,12 @@ impl QueryEngine {
         request: &QueryRequest,
         providers: QueryProviders<'_>,
     ) -> Result<(QueryContext, QueryMode)> {
+        // Chat / Bypass: skip keyword + embed + KG/chunk retrieval entirely.
+        // Streaming previously fell through to empty-context apology (bug).
+        if request.mode.is_some_and(|m| m.is_bypass()) {
+            return Ok((QueryContext::default(), QueryMode::Bypass));
+        }
+
         let prepared = self.pipeline_prepare(request, &providers).await?;
         let mut context = self
             .pipeline_retrieve(&prepared, request, &providers)
@@ -759,11 +765,11 @@ impl QueryEngine {
                 0,
             )
         } else if mode.is_bypass() {
-            // P-G8 / RC-13: Bypass = direct LLM, no RAG template, no apology.
+            // P-G8 / RC-13: Bypass = chatbot LLM, no RAG template, no apology.
             // `final_context` is intentionally empty for Bypass (the retrieval
             // step is skipped in `run_query_pipeline`); the RAG `generate_answer`
             // would misinterpret that emptiness as a retrieval miss and return
-            // the apology string. Use the dedicated direct-LLM path instead.
+            // the apology string. Use the dedicated chatbot path instead.
             let gen_start = Instant::now();
             let result = self
                 .generate_bypass_answer(
@@ -771,6 +777,7 @@ impl QueryEngine {
                     providers.answer_llm.as_ref(),
                     request.system_prompt.as_deref(),
                     request.images.as_deref(),
+                    &request.conversation_history,
                 )
                 .await?;
             stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;

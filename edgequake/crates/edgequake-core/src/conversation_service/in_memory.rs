@@ -256,6 +256,8 @@ impl ConversationService for InMemoryConversationService {
             thinking_time_ms: None,
             context: None,
             is_error: false,
+            llm_provider: None,
+            llm_model: None,
             created_at: now,
             updated_at: now,
         };
@@ -289,6 +291,9 @@ impl ConversationService for InMemoryConversationService {
         if let Some(content) = request.content {
             msg.content = content;
         }
+        if let Some(mode) = request.mode {
+            msg.mode = Some(mode);
+        }
         if let Some(tokens) = request.tokens_used {
             msg.tokens_used = Some(tokens);
         }
@@ -303,6 +308,12 @@ impl ConversationService for InMemoryConversationService {
         }
         if let Some(is_error) = request.is_error {
             msg.is_error = is_error;
+        }
+        if let Some(provider) = request.llm_provider {
+            msg.llm_provider = Some(provider);
+        }
+        if let Some(model) = request.llm_model {
+            msg.llm_model = Some(model);
         }
         msg.updated_at = chrono::Utc::now();
 

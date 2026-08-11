@@ -105,7 +105,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
         <span className="text-sm font-medium text-muted-foreground">
           {t('query.thinking', 'Reasoning Process')}
         </span>
-        <span className="text-xs text-muted-foreground/60 ml-auto">
+        <span className="text-xs text-muted-foreground ml-auto">
           {parsedContent.thinking.length} {t('query.thinkingSteps', 'step(s)')}
         </span>
       </button>

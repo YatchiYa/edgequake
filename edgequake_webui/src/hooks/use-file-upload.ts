@@ -61,7 +61,7 @@ export interface UseFileUploadOptions {
   /** Callback when upload starts (e.g., to switch filter) */
   onUploadStart?: () => void;
   /** Optional per-upload PDF parser backend override. */
-  pdfParserBackend?: "vision" | "edgeparse";
+  pdfParserBackend?: "vision" | "edgeparse" | "auto";
   /** SPEC-109: vision convert reasoning effort (multipart). */
   visionReasoningEffort?: string;
   /** SPEC-015V */
@@ -88,7 +88,7 @@ export interface UseFileUploadReturn {
   handleFilesUpload: (
     files: File[],
     uploadOptions?: {
-      pdfParserBackend?: "vision" | "edgeparse";
+      pdfParserBackend?: "vision" | "edgeparse" | "auto";
       visionReasoningEffort?: string;
     },
   ) => Promise<void>;
@@ -177,7 +177,7 @@ export function useFileUpload(
     async (
       files: File[],
       uploadOptions?: {
-        pdfParserBackend?: "vision" | "edgeparse";
+        pdfParserBackend?: "vision" | "edgeparse" | "auto";
         visionReasoningEffort?: string;
       },
     ) => {
@@ -691,6 +691,8 @@ export function useFileUpload(
                 enable_vision: true,
                 track_id: batchTrackId,
                 force_reindex: true,
+                // SPEC-123 V4: preserve upload-level parser override on Replace.
+                pdf_parser_backend: pdfParserBackend,
               });
               queryClient.invalidateQueries({ queryKey: ["documents"] });
             } catch (err) {
@@ -743,7 +745,7 @@ export function useFileUpload(
 
       doReplaceAll();
     },
-    [pendingDuplicates, handleFilesUpload, queryClient],
+    [pendingDuplicates, handleFilesUpload, queryClient, pdfParserBackend],
   );
 
   /**

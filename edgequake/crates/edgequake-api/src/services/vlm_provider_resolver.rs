@@ -1,15 +1,20 @@
-//! VLM provider resolution for image ingest (SPEC-026 Phase 4).
+//! VLM provider resolution for image ingest (SPEC-026 Phase 4 / SPEC-123).
 //!
-//! Priority (first principles — workspace SSOT before server env):
+//! Priority (LAW-123-2 — Upload → Workspace vision → Tenant vision → Workspace LLM → Env):
 //!   1. Workspace `vision_llm_provider` / `vision_llm_model` (or `llm_roles.vlm`)
-//!   2. Workspace main `llm_provider` / `llm_model`
-//!   3. Server env vision defaults (`EDGEQUAKE_VISION_*`)
-//!   4. Startup `vision_llm_provider` singleton
-//!   5. Server default text LLM
+//!   2. Tenant `default_vision_llm_*` (when workspace vision unset)
+//!   3. Workspace main `llm_provider` / `llm_model`
+//!   4. Server env vision defaults (`EDGEQUAKE_VISION_*`)
+//!   5. Startup `vision_llm_provider` singleton
+//!   6. Server default text LLM
+//!
+//! There is no separate “vision embedding” model — vision is VLM; embeddings are text vectors.
 
 use std::sync::Arc;
 
-use edgequake_core::{resolve_role_llm, LlmRole, Workspace, WorkspaceService};
+use edgequake_core::{
+    resolve_role_llm, resolve_vision_llm_choice, LlmRole, Workspace, WorkspaceService,
+};
 use edgequake_llm::traits::LLMProvider;
 use uuid::Uuid;
 
@@ -20,8 +25,25 @@ use crate::state::AppState;
 use crate::vision_env::{default_vision_model_for_provider, resolved_vision_provider_from_env};
 
 /// Resolve vision provider/model from workspace (vision fields → main LLM fields).
-pub fn resolve_workspace_vlm_config(ws: &Workspace) -> edgequake_core::ResolvedRoleLlm {
-    resolve_role_llm(ws, LlmRole::Vlm)
+///
+/// Prefer `llm_roles.vlm` when set; otherwise SPEC-123 `resolve_vision_llm_choice`.
+pub fn resolve_workspace_vlm_config(
+    ws: &Workspace,
+    tenant: Option<&edgequake_core::Tenant>,
+) -> edgequake_core::ResolvedRoleLlm {
+    if ws
+        .metadata
+        .get("llm_roles")
+        .and_then(|v| v.get("vlm"))
+        .is_some()
+    {
+        return resolve_role_llm(ws, LlmRole::Vlm);
+    }
+    let resolved = resolve_vision_llm_choice(None, None, Some(ws), tenant);
+    edgequake_core::ResolvedRoleLlm {
+        provider: resolved.provider,
+        model: resolved.model,
+    }
 }
 
 async fn try_workspace_vlm(
@@ -29,8 +51,25 @@ async fn try_workspace_vlm(
     workspace_id: Uuid,
 ) -> Option<Arc<dyn LLMProvider>> {
     let ws = workspace_service.get_workspace(workspace_id).await.ok()??;
-    let role = resolve_workspace_vlm_config(&ws);
-    create_safe_vision_provider(&role.provider, &role.model).ok()
+    let tenant = workspace_service
+        .get_tenant(ws.tenant_id)
+        .await
+        .ok()
+        .flatten();
+    // Prefer explicit llm_roles.vlm; else SPEC-123 cascade with tenant.
+    let (provider, model) = if ws
+        .metadata
+        .get("llm_roles")
+        .and_then(|v| v.get("vlm"))
+        .is_some()
+    {
+        let role = resolve_role_llm(&ws, LlmRole::Vlm);
+        (role.provider, role.model)
+    } else {
+        let resolved = resolve_vision_llm_choice(None, None, Some(&ws), tenant.as_ref());
+        (resolved.provider, resolved.model)
+    };
+    create_safe_vision_provider(&provider, &model).ok()
 }
 
 async fn try_workspace_vlm_pass_b(
@@ -38,8 +77,24 @@ async fn try_workspace_vlm_pass_b(
     workspace_id: Uuid,
 ) -> Option<Arc<dyn LLMProvider>> {
     let ws = workspace_service.get_workspace(workspace_id).await.ok()??;
-    let role = resolve_workspace_vlm_config(&ws);
-    create_safe_vision_provider_for_pass_b(&role.provider, &role.model).ok()
+    let tenant = workspace_service
+        .get_tenant(ws.tenant_id)
+        .await
+        .ok()
+        .flatten();
+    let (provider, model) = if ws
+        .metadata
+        .get("llm_roles")
+        .and_then(|v| v.get("vlm"))
+        .is_some()
+    {
+        let role = resolve_role_llm(&ws, LlmRole::Vlm);
+        (role.provider, role.model)
+    } else {
+        let resolved = resolve_vision_llm_choice(None, None, Some(&ws), tenant.as_ref());
+        (resolved.provider, resolved.model)
+    };
+    create_safe_vision_provider_for_pass_b(&provider, &model).ok()
 }
 
 async fn try_workspace_extract(
@@ -191,18 +246,36 @@ mod tests {
     #[test]
     fn workspace_vlm_prefers_vision_fields_over_main_llm() {
         let ws = sample_workspace(HashMap::new());
-        let cfg = resolve_workspace_vlm_config(&ws);
+        let cfg = resolve_workspace_vlm_config(&ws, None);
         assert_eq!(cfg.provider, "openai");
         assert_eq!(cfg.model, "gpt-4.1-mini");
     }
 
     #[test]
     fn workspace_vlm_falls_back_to_main_llm_when_vision_unset() {
+        let mut meta = HashMap::new();
+        // LAW-123-8: workspace LLM fallback requires deliberate override metadata.
+        meta.insert("llm_provider".into(), serde_json::json!("ollama"));
+        meta.insert("llm_model".into(), serde_json::json!("gemma3:latest"));
+        let mut ws = sample_workspace(meta);
+        ws.vision_llm_provider = None;
+        ws.vision_llm_model = None;
+        let cfg = resolve_workspace_vlm_config(&ws, None);
+        assert_eq!(cfg.provider, "ollama");
+        assert_eq!(cfg.model, "gemma3:latest");
+    }
+
+    #[test]
+    fn workspace_vlm_skips_painted_llm_without_metadata() {
         let mut ws = sample_workspace(HashMap::new());
         ws.vision_llm_provider = None;
         ws.vision_llm_model = None;
-        let cfg = resolve_workspace_vlm_config(&ws);
-        assert_eq!(cfg.provider, "ollama");
-        assert_eq!(cfg.model, "gemma3:latest");
+        // Painted llm_* without metadata must not win as workspace (LAW-123-8).
+        let cfg = resolve_workspace_vlm_config(&ws, None);
+        assert_ne!(
+            (cfg.provider.as_str(), cfg.model.as_str()),
+            ("ollama", "gemma3:latest"),
+            "inherit-painted llm fields must not be treated as workspace VLM"
+        );
     }
 }

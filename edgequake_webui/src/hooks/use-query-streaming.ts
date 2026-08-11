@@ -104,6 +104,8 @@ export function useQueryStreaming({
         role: "assistant",
         content: "",
         mode: querySettings.mode,
+        llmProvider: querySettings.provider,
+        llmModel: querySettings.model,
         isStreaming: true,
         timestamp: Date.now(),
       };
@@ -197,6 +199,26 @@ export function useQueryStreaming({
               }
               break;
 
+            case "done":
+              setPendingMessage((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      tokensUsed: chunk.tokens_used,
+                      durationMs: chunk.duration_ms,
+                      llmProvider:
+                        chunk.llm_provider ??
+                        querySettings.provider ??
+                        prev.llmProvider,
+                      llmModel:
+                        chunk.llm_model ?? querySettings.model ?? prev.llmModel,
+                      mode: prev.mode ?? querySettings.mode,
+                      isStreaming: false,
+                    }
+                  : null,
+              );
+              break;
+
             case "error":
               if (isConversationGoneStreamCode(chunk.code)) {
                 store.setActiveConversation(null);
@@ -216,7 +238,17 @@ export function useQueryStreaming({
         }
 
         setPendingMessage((prev) =>
-          prev ? { ...prev, isStreaming: false } : null,
+          prev
+            ? {
+                ...prev,
+                isStreaming: false,
+                // Fallback lineage from request settings when done event was missed
+                llmProvider:
+                  prev.llmProvider ?? querySettings.provider ?? undefined,
+                llmModel: prev.llmModel ?? querySettings.model ?? undefined,
+                mode: prev.mode ?? querySettings.mode,
+              }
+            : null,
         );
 
         if (accumulator.newConversationId) {

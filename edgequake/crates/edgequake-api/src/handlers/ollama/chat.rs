@@ -95,9 +95,8 @@ pub async fn ollama_chat(
 
             // Execute query based on mode
             let response_result = if mode == OllamaSearchMode::Bypass {
-                // For bypass mode, fall back to hybrid query
                 let mut engine_request = EngineQueryRequest::new(&cleaned_query)
-                    .with_mode(QueryMode::Hybrid)
+                    .with_mode(QueryMode::Bypass)
                     .with_conversation_history(conversation_history);
                 if let Some(ref sp) = system_prompt {
                     engine_request = engine_request.with_system_prompt(sp);

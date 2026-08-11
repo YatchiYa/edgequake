@@ -65,6 +65,8 @@ fn default_stream() -> bool {
 pub struct UpdateMessageRequest {
     /// New content.
     pub content: Option<String>,
+    /// Query mode used for this response.
+    pub mode: Option<ConversationMode>,
     /// Tokens used.
     pub tokens_used: Option<i32>,
     /// Duration in milliseconds.
@@ -75,6 +77,10 @@ pub struct UpdateMessageRequest {
     pub context: Option<MessageContext>,
     /// Error state.
     pub is_error: Option<bool>,
+    /// LLM provider used (lineage). @implements SPEC-032
+    pub llm_provider: Option<String>,
+    /// LLM model used (lineage). @implements SPEC-032
+    pub llm_model: Option<String>,
 }
 
 /// Request to create a folder.

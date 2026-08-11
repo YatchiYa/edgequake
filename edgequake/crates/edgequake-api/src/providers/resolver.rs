@@ -53,7 +53,6 @@ use uuid::Uuid;
 use crate::attribution::build_application_context;
 use crate::safety_limits::{
     create_safe_embedding_provider, create_safe_llm_provider_with_context,
-    default_model_for_provider,
 };
 use edgequake_core::{Workspace, WorkspaceService};
 use edgequake_llm::ModelsConfig;
@@ -153,8 +152,22 @@ pub enum ProviderSource {
     Request,
     /// From workspace configuration
     Workspace,
+    /// From tenant defaults (SPEC-123)
+    Tenant,
     /// Server default fallback
     ServerDefault,
+}
+
+impl From<edgequake_core::ModelResolutionSource> for ProviderSource {
+    fn from(source: edgequake_core::ModelResolutionSource) -> Self {
+        match source {
+            edgequake_core::ModelResolutionSource::Request => Self::Request,
+            edgequake_core::ModelResolutionSource::Workspace => Self::Workspace,
+            edgequake_core::ModelResolutionSource::Tenant => Self::Tenant,
+            edgequake_core::ModelResolutionSource::Env
+            | edgequake_core::ModelResolutionSource::Default => Self::ServerDefault,
+        }
+    }
 }
 
 /// Unified provider resolver for workspace-aware provider creation.
@@ -223,6 +236,18 @@ impl WorkspaceProviderResolver {
     /// - If workspace provider fails, logs warning and returns None
     ///
     /// @implements OODA-226: Unified LLM resolution with safety limits
+
+    async fn get_tenant_for_workspace(
+        &self,
+        workspace: &Workspace,
+    ) -> Option<edgequake_core::Tenant> {
+        self.workspace_service
+            .get_tenant(workspace.tenant_id)
+            .await
+            .ok()
+            .flatten()
+    }
+
     pub async fn resolve_llm_provider(
         &self,
         workspace_id: Option<&str>,
@@ -231,26 +256,73 @@ impl WorkspaceProviderResolver {
         // Parse provider/model from request (supports legacy format)
         let (provider_name, model_name) = self.parse_provider_model(request);
 
-        // Case 1: Explicit provider in request
-        if let (Some(provider), Some(model)) = (&provider_name, &model_name) {
+        // Case 1: Explicit request fields — SPEC-123 SSOT gap-fills from workspace/env.
+        if provider_name
+            .as_ref()
+            .is_some_and(|p| !p.is_empty())
+            || model_name.as_ref().is_some_and(|m| !m.is_empty())
+        {
+            let workspace = if let Some(ws_id) = workspace_id {
+                self.get_workspace(ws_id).await?
+            } else {
+                None
+            };
+            let tenant = if let Some(ref ws) = workspace {
+                self.get_tenant_for_workspace(ws).await
+            } else {
+                None
+            };
+            let choice = edgequake_core::resolve_llm_choice(
+                provider_name.as_deref(),
+                model_name.as_deref(),
+                workspace.as_ref(),
+                tenant.as_ref(),
+            );
             if let Some(resolved) = self.try_create_llm_provider(
-                provider,
-                model,
-                ProviderSource::Request,
+                &choice.provider,
+                &choice.model,
+                ProviderSource::from(choice.source),
                 request.extra_headers.clone(),
             )? {
                 return Ok(Some(resolved));
             }
         }
 
-        // Case 2: Get from workspace if provided
+        // Case 2: Workspace / tenant / env via SPEC-123 SSOT (Query role after choice).
         if let Some(ws_id) = workspace_id {
             if let Some(workspace) = self.get_workspace(ws_id).await? {
-                if !workspace.llm_provider.is_empty() {
-                    if let Some(resolved) = self.try_create_llm_provider(
-                        &workspace.llm_provider,
-                        &workspace.llm_model,
+                let tenant = self.get_tenant_for_workspace(&workspace).await;
+                let role = edgequake_core::resolve_role_llm(&workspace, edgequake_core::LlmRole::Query);
+                // Prefer deliberate query role when set; else resolve_llm_choice.
+                let (provider, model, source) = if workspace
+                    .metadata
+                    .get("llm_roles")
+                    .and_then(|v| v.get("query"))
+                    .is_some()
+                {
+                    (
+                        role.provider,
+                        role.model,
                         ProviderSource::Workspace,
+                    )
+                } else {
+                    let choice = edgequake_core::resolve_llm_choice(
+                        None,
+                        None,
+                        Some(&workspace),
+                        tenant.as_ref(),
+                    );
+                    (
+                        choice.provider,
+                        choice.model,
+                        ProviderSource::from(choice.source),
+                    )
+                };
+                if !provider.is_empty() {
+                    if let Some(resolved) = self.try_create_llm_provider(
+                        &provider,
+                        &model,
+                        source,
                         None,
                     )? {
                         return Ok(Some(resolved));
@@ -275,43 +347,86 @@ impl WorkspaceProviderResolver {
     /// 3. Return None to indicate server default should be used
     ///
     /// @implements OODA-227: Efficient resolution with pre-loaded workspace
+    /// SPEC-123: sync resolve with optional tenant (pass real tenant when loaded).
     pub fn resolve_llm_provider_with_workspace(
         &self,
         workspace: Option<&Workspace>,
+        tenant: Option<&edgequake_core::Tenant>,
         request: &LlmResolutionRequest,
     ) -> Result<Option<ResolvedLlmProvider>, ProviderResolutionError> {
-        // Parse provider/model from request (supports legacy format)
         let (provider_name, model_name) = self.parse_provider_model(request);
 
-        // Case 1: Explicit provider in request
-        if let (Some(provider), Some(model)) = (&provider_name, &model_name) {
+        // Case 1: Explicit request — SSOT gap-fills via workspace/tenant/env.
+        if provider_name
+            .as_ref()
+            .is_some_and(|p| !p.is_empty())
+            || model_name.as_ref().is_some_and(|m| !m.is_empty())
+        {
+            let choice = edgequake_core::resolve_llm_choice(
+                provider_name.as_deref(),
+                model_name.as_deref(),
+                workspace,
+                tenant,
+            );
             if let Some(resolved) = self.try_create_llm_provider(
-                provider,
-                model,
-                ProviderSource::Request,
+                &choice.provider,
+                &choice.model,
+                ProviderSource::from(choice.source),
                 request.extra_headers.clone(),
             )? {
                 return Ok(Some(resolved));
             }
         }
 
-        // Case 2: Use workspace LLM config (SPEC-026 P-08: query role → workspace default)
+        // Case 2: Query role override, else SPEC-123 resolve_llm_choice.
         if let Some(ws) = workspace {
-            let role = edgequake_core::resolve_role_llm(ws, edgequake_core::LlmRole::Query);
-            if !role.provider.is_empty() {
-                if let Some(resolved) = self.try_create_llm_provider(
-                    &role.provider,
-                    &role.model,
-                    ProviderSource::Workspace,
-                    None,
-                )? {
-                    return Ok(Some(resolved));
+            if ws
+                .metadata
+                .get("llm_roles")
+                .and_then(|v| v.get("query"))
+                .is_some()
+            {
+                let role = edgequake_core::resolve_role_llm(ws, edgequake_core::LlmRole::Query);
+                if !role.provider.is_empty() {
+                    if let Some(resolved) = self.try_create_llm_provider(
+                        &role.provider,
+                        &role.model,
+                        ProviderSource::Workspace,
+                        None,
+                    )? {
+                        return Ok(Some(resolved));
+                    }
+                }
+            } else {
+                let choice =
+                    edgequake_core::resolve_llm_choice(None, None, Some(ws), tenant);
+                if !choice.provider.is_empty() {
+                    if let Some(resolved) = self.try_create_llm_provider(
+                        &choice.provider,
+                        &choice.model,
+                        ProviderSource::from(choice.source),
+                        None,
+                    )? {
+                        return Ok(Some(resolved));
+                    }
                 }
             }
         }
 
-        // Case 3: No explicit provider, no workspace - use server default
         Ok(None)
+    }
+
+    /// Async helper: load tenant then resolve (LAW-123-2).
+    pub async fn resolve_llm_provider_for_workspace(
+        &self,
+        workspace: Option<&Workspace>,
+        request: &LlmResolutionRequest,
+    ) -> Result<Option<ResolvedLlmProvider>, ProviderResolutionError> {
+        let tenant = match workspace {
+            Some(ws) => self.get_tenant_for_workspace(ws).await,
+            None => None,
+        };
+        self.resolve_llm_provider_with_workspace(workspace, tenant.as_ref(), request)
     }
 
     /// Try to build an LLM provider; returns `None` to fall through to server default.
@@ -380,7 +495,20 @@ impl WorkspaceProviderResolver {
             }
         })?;
 
-        if workspace.embedding_provider.is_empty() {
+        // SPEC-123: Workspace → Tenant → Env (tenant via workspace inherit on load).
+        let choice =
+            {
+            let tenant = self.get_tenant_for_workspace(&workspace).await;
+            edgequake_core::resolve_embedding_choice(
+                None,
+                None,
+                None,
+                Some(&workspace),
+                tenant.as_ref(),
+            )
+        };
+
+        if choice.provider.is_empty() {
             return Err(ProviderResolutionError::InvalidProviderName(
                 "Workspace embedding provider is not configured".to_string(),
             ));
@@ -388,38 +516,35 @@ impl WorkspaceProviderResolver {
 
         debug!(
             workspace_id = workspace_id,
-            provider = %workspace.embedding_provider,
-            model = %workspace.embedding_model,
-            dimension = workspace.embedding_dimension,
+            provider = %choice.provider,
+            model = %choice.model,
+            dimension = choice.dimension,
             "Creating workspace embedding provider"
         );
 
-        let provider = create_safe_embedding_provider(
-            &workspace.embedding_provider,
-            &workspace.embedding_model,
-            workspace.embedding_dimension,
-        )
-        .map_err(|e| {
-            ProviderResolutionError::from_creation_error(
-                &workspace.embedding_provider,
-                &workspace.embedding_model,
-                &e.to_string(),
-            )
-        })?;
+        let provider =
+            create_safe_embedding_provider(&choice.provider, &choice.model, choice.dimension)
+                .map_err(|e| {
+                    ProviderResolutionError::from_creation_error(
+                        &choice.provider,
+                        &choice.model,
+                        &e.to_string(),
+                    )
+                })?;
 
         info!(
             workspace_id = workspace_id,
-            provider = %workspace.embedding_provider,
-            model = %workspace.embedding_model,
-            dimension = workspace.embedding_dimension,
+            provider = %choice.provider,
+            model = %choice.model,
+            dimension = choice.dimension,
             "Workspace embedding provider created"
         );
 
         Ok(ResolvedEmbeddingProvider {
             provider,
-            provider_name: workspace.embedding_provider,
-            model_name: workspace.embedding_model,
-            dimension: workspace.embedding_dimension,
+            provider_name: choice.provider,
+            model_name: choice.model,
+            dimension: choice.dimension,
         })
     }
 
@@ -444,8 +569,20 @@ impl WorkspaceProviderResolver {
             }
         };
 
-        // If embedding provider is not configured, return None for fallback
-        if workspace.embedding_provider.is_empty() {
+        // SPEC-123 SSOT (tenant applied via workspace inherit).
+        let choice =
+            {
+            let tenant = self.get_tenant_for_workspace(&workspace).await;
+            edgequake_core::resolve_embedding_choice(
+                None,
+                None,
+                None,
+                Some(&workspace),
+                tenant.as_ref(),
+            )
+        };
+
+        if choice.provider.is_empty() {
             debug!(
                 workspace_id = workspace_id,
                 "Workspace has no embedding provider configured, using server default"
@@ -455,53 +592,47 @@ impl WorkspaceProviderResolver {
 
         debug!(
             workspace_id = workspace_id,
-            provider = %workspace.embedding_provider,
-            model = %workspace.embedding_model,
-            dimension = workspace.embedding_dimension,
+            provider = %choice.provider,
+            model = %choice.model,
+            dimension = choice.dimension,
             "Creating workspace embedding provider"
         );
 
-        match create_safe_embedding_provider(
-            &workspace.embedding_provider,
-            &workspace.embedding_model,
-            workspace.embedding_dimension,
-        ) {
+        match create_safe_embedding_provider(&choice.provider, &choice.model, choice.dimension) {
             Ok(provider) => {
                 info!(
                     workspace_id = workspace_id,
-                    provider = %workspace.embedding_provider,
-                    model = %workspace.embedding_model,
-                    dimension = workspace.embedding_dimension,
+                    provider = %choice.provider,
+                    model = %choice.model,
+                    dimension = choice.dimension,
                     "Workspace embedding provider created"
                 );
 
                 Ok(Some(ResolvedEmbeddingProvider {
                     provider,
-                    provider_name: workspace.embedding_provider,
-                    model_name: workspace.embedding_model,
-                    dimension: workspace.embedding_dimension,
+                    provider_name: choice.provider,
+                    model_name: choice.model,
+                    dimension: choice.dimension,
                 }))
             }
             Err(e) => {
-                // Log warning with actionable message
                 let error_str = e.to_string();
                 if error_str.contains("OPENAI_API_KEY") {
                     warn!(
                         workspace_id = workspace_id,
-                        provider = %workspace.embedding_provider,
-                        model = %workspace.embedding_model,
+                        provider = %choice.provider,
+                        model = %choice.model,
                         "Workspace embedding provider requires OPENAI_API_KEY - using server default"
                     );
                 } else {
                     warn!(
                         workspace_id = workspace_id,
-                        provider = %workspace.embedding_provider,
-                        model = %workspace.embedding_model,
+                        provider = %choice.provider,
+                        model = %choice.model,
                         error = %e,
                         "Failed to create workspace embedding provider - using server default"
                     );
                 }
-                // Return None to allow fallback instead of hard error
                 Ok(None)
             }
         }
@@ -527,9 +658,8 @@ impl WorkspaceProviderResolver {
                 return (Some(p.to_string()), Some(m.to_string()));
             }
 
-            // Just provider name - use default model
-            let default_model = default_model_for_provider(provider_id);
-            (Some(provider_id.clone()), Some(default_model.to_string()))
+            // Just provider name — leave model unset; SPEC-123 SSOT gap-fills (LAW-123-8).
+            (Some(provider_id.clone()), None)
         } else {
             (None, None)
         }
@@ -623,7 +753,8 @@ mod tests {
     mod integration {
         use super::*;
         use edgequake_core::{
-            CreateWorkspaceRequest, InMemoryWorkspaceService, Tenant, WorkspaceService,
+            CreateWorkspaceRequest, InMemoryWorkspaceService, Tenant, Workspace,
+            WorkspaceService,
         };
         use serial_test::serial;
         use std::sync::Arc;
@@ -706,7 +837,7 @@ mod tests {
             );
 
             let result = resolver
-                .resolve_llm_provider_with_workspace(None, &request)
+                .resolve_llm_provider_with_workspace(None, None, &request)
                 .expect("Should resolve provider");
 
             assert!(result.is_some());
@@ -777,6 +908,35 @@ mod tests {
                 .expect("Should return None for server default");
 
             assert!(result.is_none());
+        }
+
+        #[tokio::test]
+        #[serial]
+        async fn test_resolve_tenant_via_for_workspace_when_no_ws_override() {
+            allow_mock_provider();
+            let service: Arc<dyn WorkspaceService> = Arc::new(InMemoryWorkspaceService::new());
+            let mut tenant = Tenant::new("Tenant LLM", "tenant-llm-spec123");
+            tenant.default_llm_provider = "mock".to_string();
+            tenant.default_llm_model = "tenant-model".to_string();
+            let tenant = service.create_tenant(tenant).await.expect("tenant");
+
+            let mut ws = Workspace::new(tenant.tenant_id, "Bare WS", "bare-ws");
+            // Painted concrete values without metadata → LAW-123-8: not an override.
+            ws.llm_provider = "ollama".to_string();
+            ws.llm_model = "painted-not-override".to_string();
+            ws.metadata.clear();
+            let ws = service.insert_workspace(ws).await.expect("workspace");
+
+            let resolver = WorkspaceProviderResolver::new(service);
+            let request = LlmResolutionRequest::default();
+            let result = resolver
+                .resolve_llm_provider_for_workspace(Some(&ws), &request)
+                .await
+                .expect("resolve");
+            let resolved = result.expect("provider");
+            assert_eq!(resolved.provider_name, "mock");
+            assert_eq!(resolved.model_name, "tenant-model");
+            assert_eq!(resolved.source, ProviderSource::Tenant);
         }
 
         #[tokio::test]

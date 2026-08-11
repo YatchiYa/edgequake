@@ -319,7 +319,7 @@ function PassageRow({
 
         {/* Row 2 fallback: line range for non-PDF sources */}
         {!pageUrl && chunk.start_line !== undefined && chunk.end_line !== undefined && (
-          <div className="mt-1 pl-7 text-[9px] text-muted-foreground/50">
+          <div className="mt-1 pl-7 text-[9px] text-muted-foreground">
             L{chunk.start_line}–{chunk.end_line}
           </div>
         )}

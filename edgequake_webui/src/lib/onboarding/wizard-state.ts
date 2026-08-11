@@ -23,7 +23,7 @@ export type WizardStepId =
   | 'extraction'
   | 'review';
 
-export type PdfParserBackendDraft = 'none' | 'vision' | 'edgeparse';
+export type PdfParserBackendDraft = 'none' | 'vision' | 'edgeparse' | 'auto';
 
 export interface WizardDraft {
   adminUsername: string;

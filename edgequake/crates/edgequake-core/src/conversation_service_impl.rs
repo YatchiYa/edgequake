@@ -116,6 +116,8 @@ impl ConversationServiceImpl {
             thinking_time_ms: row.thinking_time_ms,
             context: row.context.and_then(|c| serde_json::from_value(c).ok()),
             is_error: row.is_error,
+            llm_provider: row.llm_provider,
+            llm_model: row.llm_model,
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
@@ -317,11 +319,13 @@ impl ConversationService for ConversationServiceImpl {
         message_id: Uuid,
         request: UpdateMessageRequest,
     ) -> Result<Message> {
+        let mode_str = request.mode.as_ref().map(|m| m.to_string());
         let row = self
             .storage
             .update_message(
                 message_id,
                 request.content.as_deref(),
+                mode_str.as_deref(),
                 request.tokens_used,
                 request.duration_ms,
                 request.thinking_time_ms,
@@ -329,6 +333,8 @@ impl ConversationService for ConversationServiceImpl {
                     .context
                     .map(|c| serde_json::to_value(c).unwrap_or_default()),
                 request.is_error,
+                request.llm_provider.as_deref(),
+                request.llm_model.as_deref(),
             )
             .await
             .map_err(Self::map_error)?;
