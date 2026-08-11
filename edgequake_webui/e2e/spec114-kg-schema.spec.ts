@@ -283,7 +283,7 @@ test.describe('SPEC-114 KG schema configuration', () => {
           throw new Error(`live smoke document failed: ${JSON.stringify(doc)}`);
         }
       }
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(2000);
     }
     expect(['completed', 'processed', 'indexed']).toContain(status.toLowerCase());
 
