@@ -155,17 +155,21 @@ Override both phases with `TASK_PROCESSING_TIMEOUT_SECS` (legacy single knob). F
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Batch Processing
+### Batch Processing / bulk ingest (SPEC-122)
 
-For bulk uploads, process in batches:
+WebUI multi-select uses up to **3 concurrent HTTP admits** (not one multiplexed pipeline job). `POST /documents/upload/batch` admits files in a serial loop (cap 20) into the same task queue.
+
+**Before raising concurrency:** measure with `GET /api/v1/pipeline/queue-metrics` and the SPEC-122 harness (`specs/122-implementation/scripts/measure-bulk-ingest.py`). Local Ollama stays near-serial unless you also raise `OLLAMA_NUM_PARALLEL` / VRAM headroom and set `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`.
 
 ```bash
-# Upload via batch endpoint (more efficient)
+# Upload via batch endpoint (admit helper — processing still capacity-governed)
 curl -X POST http://localhost:8080/api/v1/documents/upload/batch \
   -F "files=@doc1.pdf" \
   -F "files=@doc2.pdf" \
   -F "files=@doc3.pdf"
 ```
+
+Concurrency SSOT: Makefile local/cloud profiles, `edgequake/docker/docker-compose.yml`, and [`specs/122-implementation/03-code-as-is.md`](../../specs/122-implementation/03-code-as-is.md).
 
 ---
 

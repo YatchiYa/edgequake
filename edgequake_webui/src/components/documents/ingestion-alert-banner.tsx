@@ -3,11 +3,21 @@
  *
  * @implements SPEC-045 — honest ingestion UX (working / queued / stuck)
  * @implements SPEC-048 — stage-specific microcopy + progress label gating
+ * @implements SPEC-122 — bulk admit≠ready physics + concurrency lane hint
  */
 'use client';
 
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { getQueueMetrics } from '@/lib/api/edgequake';
+import {
+  concurrencyLaneHint,
+  shouldShowBulkBanner,
+} from '@/lib/documents/admit-copy';
+import {
+  getDocumentDisplayStatus,
+  isTerminalStatus,
+} from '@/lib/documents/status-domain';
 import {
   buildIngestionAlertHeadline,
   ingestionAlertContainerClass,
@@ -26,9 +36,11 @@ import {
   resolvePipelineUiState,
   summarizePipelineDocuments,
 } from '@/lib/pipeline/pipeline-document-state';
-import type { Document, PipelineStatus } from '@/types';
+import type { Document, PipelineStatus, QueueMetrics } from '@/types';
 import { cn } from '@/lib/utils';
+import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Clock, Loader2 } from 'lucide-react';
+import Link from 'next/link';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -58,6 +70,54 @@ export function IngestionAlertBanner({
     () => resolvePipelineUiState(documents, pipelineStatus),
     [documents, pipelineStatus],
   );
+
+  const bulkCounts = useMemo(() => {
+    const pending = summary.waitingCount;
+    const processing = summary.activeCount;
+    const completed = documents.filter((doc) => {
+      const status = getDocumentDisplayStatus(doc);
+      return (
+        status === 'completed' ||
+        status === 'indexed' ||
+        (isTerminalStatus(status) &&
+          status !== 'failed' &&
+          status !== 'cancelled' &&
+          status !== 'partial_failure' &&
+          status !== 'delete_failed' &&
+          status !== 'dead_letter')
+      );
+    }).length;
+    return { pending, processing, completed };
+  }, [documents, summary.activeCount, summary.waitingCount]);
+
+  const { data: queueMetrics } = useQuery<QueueMetrics>({
+    queryKey: ['queue-metrics', 'documents-banner'],
+    queryFn: () => getQueueMetrics(),
+    refetchInterval: pipelineUi.showPipelineIndicator ? 5000 : false,
+    enabled: pipelineUi.showPipelineIndicator,
+    staleTime: 4000,
+  });
+
+  const showBulkPhysics = shouldShowBulkBanner(
+    bulkCounts.pending,
+    bulkCounts.processing,
+  );
+
+  const laneHint = useMemo(() => {
+    const k = queueMetrics?.max_tasks_per_tenant;
+    const english = concurrencyLaneHint(k);
+    if (!english) return null;
+    if (k === 1) {
+      return t(
+        'documents.upload.bulk.serialHint',
+        'Processing one document at a time',
+      );
+    }
+    return (
+      t('documents.upload.bulk.parallelHint', { k }) ||
+      `Processing up to ${k} documents in parallel`
+    );
+  }, [queueMetrics?.max_tasks_per_tenant, t]);
 
   const detailDocs =
     pipelineUi.alertMode === 'stuck'
@@ -138,6 +198,32 @@ export function IngestionAlertBanner({
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onOpenDetails()}
     >
+      {showBulkPhysics ? (
+        <p
+          data-testid="spec122-bulk-ingest-banner"
+          aria-live="polite"
+          className={cn(
+            'text-xs font-medium min-w-0 truncate',
+            ingestionAlertDetailClass(baseHeadline.variant),
+          )}
+        >
+          {t('documents.upload.bulk.banner', {
+            processing: bulkCounts.processing,
+            pending: bulkCounts.pending,
+            completed: bulkCounts.completed,
+          }) ||
+            `Processing ${bulkCounts.processing} · ${bulkCounts.pending} queued · ${bulkCounts.completed} completed`}
+          {laneHint ? ` — ${laneHint}` : ''}
+          <Link
+            href="/pipeline"
+            className="ml-2 underline underline-offset-2 hover:opacity-80"
+            data-testid="spec122-queue-metrics-link"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {t('documents.upload.bulk.queueMetricsLink', 'Queue metrics')}
+          </Link>
+        </p>
+      ) : null}
       <div className="flex items-start gap-3 min-w-0">
         {baseHeadline.showAlert ? (
           <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />

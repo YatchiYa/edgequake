@@ -317,9 +317,9 @@ ollama list   # if using Ollama
 
 Auth is on by default outside `EDGEQUAKE_DEV_MODE`. Login or set `X-API-Key` (see [Authentication headers](#authentication-headers)).
 
-### Slow processing
+### Slow processing / bulk upload
 
-Local Ollama is limited to **1 concurrent task per tenant** by default. Cloud LLMs are faster for small documents. Check `GET /api/v1/pipeline/queue-metrics`.
+Local Ollama is limited to **1 concurrent ingest task per tenant** by default (`MAX_TASKS_PER_TENANT=1`) — bulk completion is intentionally near-serial. Docker defaults are wider (tenant **6**); cloud/`make` with API keys wider still — but wall clock remains LLM + (for PDF) vision bound. **Upload finished ≠ searchable.** See FAQ [Why do bulk uploads feel excessively slow?](../faq.md#why-do-bulk-uploads-feel-excessively-slow-spec-122--361--365) and SPEC-122. Check `GET /api/v1/pipeline/queue-metrics`.
 
 ### Empty query results
 

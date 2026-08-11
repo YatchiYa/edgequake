@@ -39,8 +39,19 @@ import {
     XCircle,
 } from 'lucide-react';
 import { memo, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export type { DocumentStatus };
+
+/** Coarse statuses that share `documents.status.*` filter vocabulary (SPEC-122 DRY). */
+const COARSE_STATUS_I18N_KEYS: Partial<Record<DocumentStatus, string>> = {
+  pending: 'documents.status.pending',
+  processing: 'documents.status.processing',
+  completed: 'documents.status.completed',
+  failed: 'documents.status.failed',
+  partial_failure: 'documents.status.partial_failure',
+  cancelled: 'documents.status.cancelled',
+};
 
 /**
  * Status configuration with icons, colors, and labels.
@@ -163,8 +174,11 @@ export const StatusBadge = memo(function StatusBadge({
   compact = false,
   disableTooltip = false,
 }: StatusBadgeProps) {
+  const { t } = useTranslation();
   const config = statusConfig[status] ?? statusConfig.pending;
   const Icon = config.icon;
+  const i18nKey = COARSE_STATUS_I18N_KEYS[status];
+  const label = i18nKey ? t(i18nKey, config.label) : config.label;
   
   const stageProgress = useMemo(() => getStageProgress(status), [status]);
 
@@ -185,7 +199,7 @@ export const StatusBadge = memo(function StatusBadge({
       data-testid="status-badge"
     >
       <Icon className={`h-3 w-3${spinIcon ? ' animate-spin' : ''}`} />
-      {!compact && config.label}
+      {!compact && label}
     </Badge>
   );
 

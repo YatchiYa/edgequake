@@ -22,6 +22,10 @@ import {
   pinDocumentShell,
   scheduleDeferredUnpin,
 } from "@/lib/documents/progress-admit";
+import {
+  admitPartialMessage,
+  admitSuccessMessage,
+} from "@/lib/documents/admit-copy";
 import { performFileUpload } from "@/lib/upload/perform-file-upload";
 import {
   createBoundedExecutor,
@@ -45,7 +49,6 @@ import {
 } from "@/lib/documents/status-domain";
 import { useIngestionStore } from "@/stores/use-ingestion-store";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -150,7 +153,6 @@ export function useFileUpload(
   >([]);
 
   const queryClient = useQueryClient();
-  const router = useRouter();
   const { t } = useTranslation();
 
   const updateUploadingFile = useCallback(
@@ -537,18 +539,14 @@ export function useFileUpload(
         ),
       );
 
-      // Update toast with final result
+      // SPEC-122 LAW-122-1: admit ≠ searchable — no Graph/query CTA on admit.
       if (errorCount === 0) {
         toast.success(
-          t("documents.upload.success", { count: successCount }) ||
-            `Successfully uploaded ${successCount} file(s)`,
+          t("documents.upload.admitted", { count: successCount }) ||
+            admitSuccessMessage(successCount),
           {
             id: toastId,
             duration: 5000,
-            action: {
-              label: t("documents.upload.viewInGraph", "View in Graph"),
-              onClick: () => router.push("/graph"),
-            },
           },
         );
       } else if (successCount === 0) {
@@ -575,14 +573,10 @@ export function useFileUpload(
           t("documents.upload.partial", {
             success: successCount,
             failed: errorCount,
-          }) || `Uploaded ${successCount} file(s), ${errorCount} failed`,
+          }) || admitPartialMessage(successCount, errorCount),
           {
             id: toastId,
             duration: 5000,
-            action: {
-              label: t("documents.upload.viewInGraph", "View in Graph"),
-              onClick: () => router.push("/graph"),
-            },
           },
         );
       }
@@ -622,7 +616,6 @@ export function useFileUpload(
       visionChartSystemPrompt,
       visionFigureSystemPrompt,
       queryClient,
-      router,
       t,
       tenantId,
       updateUploadingFile,

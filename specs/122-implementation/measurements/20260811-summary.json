@@ -1,0 +1,46 @@
+{
+  "date": "2026-08-11",
+  "host": "local-darwin",
+  "edgequake": "0.24.3",
+  "arm_c_ollama": {
+    "n": 1,
+    "t_all_s": 14.245,
+    "docs_per_min": 4.212,
+    "tenant": 1
+  },
+  "arm_a_ollama": {
+    "n": 5,
+    "admit_s": 0.159,
+    "t_first_s": 6.311,
+    "t_all_s": 59.237,
+    "docs_per_min": 5.064,
+    "tenant": 1,
+    "provider": "ollama"
+  },
+  "arm_b_mistral": {
+    "n": 5,
+    "admit_s": 0.184,
+    "t_first_s": 8.364,
+    "t_all_s": 45.016,
+    "docs_per_min": 6.664,
+    "tenant": 6,
+    "provider": "mistral",
+    "workers": 4
+  },
+  "pdf_h2_mistral": {
+    "file": "Qwen.pdf",
+    "pages": 1,
+    "convert_ms": 11521,
+    "chunks": 5,
+    "markdown_len": 3028,
+    "text_control_s": 8.71,
+    "note": "vision convert tax real; not serial root for text bulk"
+  },
+  "hypotheses": {
+    "H1": "ACCEPT \u2014 Arm A stepwise completion under tenant=1; t_all\u22484\u00d7t_single",
+    "H2": "PARTIAL \u2014 vision convert ~11.5s on 1-page; tax scales with pages; not root of text bulk",
+    "H3": "REJECT \u2014 PDF produced 5 chunks / 3KB md; no inflation on this fixture",
+    "H4": "REJECT \u2014 store_contention normal; LLM busy path",
+    "H5": "REJECT \u2014 admit_s\u226at_all on all arms"
+  }
+}

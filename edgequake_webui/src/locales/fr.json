@@ -112,15 +112,26 @@
       "uploading": "Étape 2 : Envoi vers le serveur...",
       "extracting": "Étape 3 : Pipeline de traitement...",
       "queued": "En file d'attente pour extraction (Tâche : {{taskId}})",
-      "success": "{{count}} fichier(s) téléchargé(s) avec succès",
+      "queuedPending": "En file d'attente pour traitement…",
+      "admitted": "{{count}} fichier(s) admis ; traitement en file d'attente",
+      "success": "{{count}} fichier(s) admis ; traitement en file d'attente",
       "error": "{{count}} fichier(s) ont échoué",
-      "complete": "Téléchargé ! Traitement en cours...",
+      "complete": "Transfert terminé — traitement en file d'attente",
+      "processing": "Transfert des fichiers",
+      "filesComplete": "fichiers transférés",
+      "transferComplete": "Transfert terminé — traitement en file d'attente",
+      "bulk": {
+        "banner": "Traitement {{processing}} · {{pending}} en file · {{completed}} terminés",
+        "serialHint": "Traitement d'un document à la fois",
+        "parallelHint": "Traitement jusqu'à {{k}} documents en parallèle",
+        "queueMetricsLink": "Métriques de file"
+      },
       "fileTooLarge": "Le fichier \"{{name}}\" est trop volumineux ({{size}}Mo). La taille maximale est de {{limit}}.",
       "invalidType": "Le fichier \"{{name}}\" a un format non supporté. Formats supportés : TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP. DOCX/Excel non supportés.",
       "officeNotSupported": "Le fichier \"{{name}}\" est un document Word/Excel. Ces formats ne sont pas supportés. Utilisez PDF, Markdown, texte, JSON ou une image (PNG/JPG/GIF/WEBP).",
       "allFailed": "Les {{count}} fichier(s) ont tous échoué",
-      "partial": "{{success}} fichier(s) téléchargé(s), {{failed}} en échec",
-      "viewInGraph": "Voir dans le graphe",
+      "partial": "{{success}} fichier(s) admis ; {{failed}} en échec — traitement en file pour les réussites",
+      "viewInGraph": "Ouvrir le graphe",
       "duplicateSkipped": "Doublon (ignoré)",
       "uploadFailed": "Échec de l'envoi"
     },
@@ -165,7 +176,7 @@
       "view": "Voir les détails",
       "reprocess": "Retraiter",
       "delete": "Supprimer",
-      "viewInGraph": "Voir dans le graphe",
+      "viewInGraph": "Ouvrir le graphe",
       "cancel": "Annuler l'extraction",
       "copyId": "Copier l'ID",
       "viewPdf": "Voir le PDF"
@@ -221,7 +232,7 @@
       "noContent": "Aucun contenu disponible",
       "noEntities": "Aucune entité extraite encore",
       "entitiesExtracted": "{{count}} entités extraites",
-      "viewInGraphHint": "Voir dans le graphe de connaissances pour plus de détails"
+      "viewInGraphHint": "Explorer les entités extraites dans le graphe de connaissances"
     },
     "preview": {
       "title": "Aperçu du document",

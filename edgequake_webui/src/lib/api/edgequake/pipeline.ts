@@ -275,6 +275,7 @@ export async function getQueueMetrics(
       estimated_queue_time_seconds: 0,
       rate_limited: false,
       timestamp: new Date().toISOString(),
+      max_tasks_per_tenant: undefined,
     };
   }
 }

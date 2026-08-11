@@ -112,14 +112,25 @@
       "uploading": "步骤 2: 上传到服务器...",
       "extracting": "步骤 3: 处理管道...",
       "queued": "已排队等待提取（任务：{{taskId}}）",
-      "success": "{{count}} 个文件上传成功",
+      "queuedPending": "已排队等待处理…",
+      "admitted": "已接收 {{count}} 个文件；处理已排队",
+      "success": "已接收 {{count}} 个文件；处理已排队",
       "error": "{{count}} 个文件上传失败",
-      "complete": "已上传！正在后台处理...",
+      "complete": "传输完成 — 处理已排队",
+      "processing": "正在传输文件",
+      "filesComplete": "个文件已传输",
+      "transferComplete": "传输完成 — 处理已排队",
+      "bulk": {
+        "banner": "处理中 {{processing}} · 排队 {{pending}} · 已完成 {{completed}}",
+        "serialHint": "一次处理一个文档",
+        "parallelHint": "最多并行处理 {{k}} 个文档",
+        "queueMetricsLink": "队列指标"
+      },
       "fileTooLarge": "文件 \"{{name}}\" 太大 ({{size}}MB)。最大限制为 {{limit}}。",
       "invalidType": "文件 \"{{name}}\" 格式不支持。支持格式：TXT、MD、JSON。",
       "allFailed": "所有 {{count}} 个文件上传失败",
-      "partial": "已上传 {{success}} 个文件，{{failed}} 个失败",
-      "viewInGraph": "在图中查看",
+      "partial": "已接收 {{success}} 个文件，{{failed}} 个失败 — 成功文件已排队处理",
+      "viewInGraph": "打开图谱",
       "duplicateSkipped": "重复文件（已跳过）",
       "uploadFailed": "上传失败"
     },
@@ -164,7 +175,7 @@
       "view": "查看详情",
       "reprocess": "重新处理",
       "delete": "删除",
-      "viewInGraph": "在图谱中查看",
+      "viewInGraph": "打开图谱",
       "cancel": "取消提取",
       "copyId": "复制 ID",
       "viewPdf": "查看 PDF"
@@ -220,7 +231,7 @@
       "noContent": "无可用内容",
       "noEntities": "尚未提取实体",
       "entitiesExtracted": "已提取 {{count}} 个实体",
-      "viewInGraphHint": "在知识图谱中查看详细实体信息"
+      "viewInGraphHint": "在知识图谱中浏览已提取的实体"
     },
     "preview": {
       "title": "文档预览",

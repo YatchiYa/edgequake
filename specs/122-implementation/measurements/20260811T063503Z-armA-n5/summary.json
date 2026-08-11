@@ -1,0 +1,30 @@
+{
+  "arm": "A",
+  "n": 5,
+  "base_url": "http://127.0.0.1:8090",
+  "workspace_id": "00000000-0000-0000-0000-000000000003",
+  "stamp": "20260811T063503Z",
+  "admit_s": 0.159,
+  "t_first_complete_s": 6.311,
+  "t_all_complete_s": 59.237,
+  "docs_per_min": 5.064,
+  "max_concurrent_processing_observed": 0,
+  "final_statuses": {
+    "019fef88-21d4-7df1-9af5-e6c6f79c4cab": "completed",
+    "019fef88-2203-7d8f-ae25-ffef84d87723": "completed",
+    "019fef88-2257-7938-a8ab-465677db63b5": "completed",
+    "019fef88-223f-71cb-8d06-7968f371938c": "completed",
+    "019fef88-2223-705f-ad0d-0b0c5f0d057a": "completed"
+  },
+  "document_ids": [
+    "019fef88-21d4-7df1-9af5-e6c6f79c4cab",
+    "019fef88-2203-7d8f-ae25-ffef84d87723",
+    "019fef88-2223-705f-ad0d-0b0c5f0d057a",
+    "019fef88-223f-71cb-8d06-7968f371938c",
+    "019fef88-2257-7938-a8ab-465677db63b5"
+  ],
+  "pre_max_tasks_per_tenant": 1,
+  "final_park_waiters": 0,
+  "llm_provider": "ollama",
+  "run_dir": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/122-implementation/measurements/20260811T063503Z-armA-n5"
+}

@@ -320,6 +320,11 @@ export interface QueueMetrics {
   rate_limited: boolean;
   /** When these metrics were captured (ISO 8601). */
   timestamp: string;
+  /**
+   * Ingest fairness lane cap (SPEC-122). When 1, UI shows local-serial honesty.
+   * Optional for older backends.
+   */
+  max_tasks_per_tenant?: number;
 }
 
 export interface DocumentChunk {

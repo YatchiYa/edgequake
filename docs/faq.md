@@ -331,12 +331,26 @@ Cancel is **cooperative** — expect a short delay until the current LLM/vision 
 
 Workers limit concurrency **per tenant and per fairness lane**:
 
-- **Ingest** (`MAX_TASKS_PER_TENANT`): Pdf/Insert/… — local Ollama/LM Studio clamps to **2** (workers capped at **4**) unless `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`
+- **Ingest** (`MAX_TASKS_PER_TENANT`): Pdf/Insert/… — local Ollama/LM Studio clamps to **1** (workers effective **4**) unless `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`
 - **Lifecycle** (`MAX_LIFECYCLE_TASKS_PER_TENANT`, local default **4**): Deletion/Wipe — separate from ingest so deletes do not serialize new uploads
 
 Parked tasks wait on that lane’s semaphore — they are **not** requeued in a reclaim storm. Check `GET /api/v1/pipeline/queue-metrics` → `tenant_park_waiters`, `tenant_park_waiters_ingest`, `tenant_park_waiters_lifecycle`, `max_tasks_per_tenant`, `max_lifecycle_tasks_per_tenant`.
 
 If a new PDF stays **Queued** while deletes run, that was the old shared-lane bug; with dual lanes the PDF should take the ingest slot while lifecycle deletes continue.
+
+### Why do bulk uploads feel excessively slow? (SPEC-122 / #361 / #365)
+
+**Admit ≠ searchable.** HTTP 202 / “uploaded” only means the file is queued. Documents become searchable when the **Insert** pipeline completes (PDF also pays a prior **PdfProcessing** convert step).
+
+Throughput is `min(workers, MAX_TASKS_PER_TENANT, provider budget, vision jobs, extract fan-out, embed async)` — not the number of files you selected. WebUI transfers up to **3** files in parallel; that does **not** mean 3 documents finish ingest together under local Ollama.
+
+| Profile | Typical ingest lane | Notes |
+|---------|---------------------|-------|
+| `make` local Ollama | `MAX_TASKS_PER_TENANT=1`, extract/embed/vision **1** | Intentionally near-serial (VRAM / `OLLAMA_NUM_PARALLEL`) |
+| Docker compose defaults | workers **8**, tenant **6**, extract **4** | Wider, still LLM-bound |
+| Cloud / Mistral / OpenAI (`make` with API key) | tenant **12**, extract up to **32** | Still O(chunks)×RTT |
+
+Measured on v0.24.3 (small text fixtures, N=5): local Ollama ≈ **5 docs/min** (tenant=1); Mistral with tenant=6 ≈ **6.7 docs/min**. PDF vision adds a convert tax (1-page sample ≈ **11.5 s** convert alone) — a quality-path cost, not proof that PDF is “broken.” Full pack: [`specs/122-implementation/`](../specs/122-implementation/). Operator knobs: [performance-tuning](operations/performance-tuning.md).
 
 ### What are claim / lease semantics on restart?
 

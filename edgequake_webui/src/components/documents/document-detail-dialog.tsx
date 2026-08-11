@@ -290,15 +290,22 @@ export function DocumentDetailDialog({
                   <p className="text-sm text-muted-foreground mb-2">
                     {t('documents.details.entitiesExtracted', '{{count}} entities extracted', { count: document.entity_count })}
                   </p>
-                  <p className="text-xs text-muted-foreground mb-4">
-                    {t('documents.details.viewInGraphHint', 'View in Knowledge Graph for detailed entity information')}
-                  </p>
-                  <Button asChild variant="outline" size="sm">
-                    <Link href={`/graph?document=${encodeURIComponent(document.id)}`}>
-                      <Network className="h-4 w-4 mr-2" />
-                      {t('documents.actions.viewInGraph', 'View in Graph')}
-                    </Link>
-                  </Button>
+                  {document.query_ready !== false ? (
+                    <>
+                      <p className="text-xs text-muted-foreground mb-4">
+                        {t(
+                          'documents.details.viewInGraphHint',
+                          'Explore extracted entities in the knowledge graph',
+                        )}
+                      </p>
+                      <Button asChild variant="outline" size="sm">
+                        <Link href={`/graph?document=${encodeURIComponent(document.id)}`}>
+                          <Network className="h-4 w-4 mr-2" />
+                          {t('documents.actions.viewInGraph', 'Open graph')}
+                        </Link>
+                      </Button>
+                    </>
+                  ) : null}
                 </div>
               ) : (
                 <p className="text-muted-foreground text-sm text-center py-8">

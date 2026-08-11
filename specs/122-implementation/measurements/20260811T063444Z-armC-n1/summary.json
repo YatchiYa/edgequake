@@ -1,0 +1,22 @@
+{
+  "arm": "C",
+  "n": 1,
+  "base_url": "http://127.0.0.1:8090",
+  "workspace_id": "00000000-0000-0000-0000-000000000003",
+  "stamp": "20260811T063444Z",
+  "admit_s": 0.056,
+  "t_first_complete_s": 14.245,
+  "t_all_complete_s": 14.245,
+  "docs_per_min": 4.212,
+  "max_concurrent_processing_observed": 0,
+  "final_statuses": {
+    "019fef87-d72e-7211-9032-17b1efa6685e": "completed"
+  },
+  "document_ids": [
+    "019fef87-d72e-7211-9032-17b1efa6685e"
+  ],
+  "pre_max_tasks_per_tenant": 1,
+  "final_park_waiters": 0,
+  "llm_provider": "ollama",
+  "run_dir": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/122-implementation/measurements/20260811T063444Z-armC-n1"
+}

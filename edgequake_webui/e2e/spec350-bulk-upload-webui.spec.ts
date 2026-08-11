@@ -45,7 +45,9 @@ test.describe("GH-350: WebUI multi-file upload", () => {
 
     await expect(
       page
-        .getByText(/Processing Files|Upload Complete|Uploading|files/i)
+        .getByText(
+          /Processing Files|Transferring files|Transfer complete|Upload Complete|Uploading|files|admitted|queued/i,
+        )
         .first(),
     ).toBeVisible({ timeout: 20_000 });
 

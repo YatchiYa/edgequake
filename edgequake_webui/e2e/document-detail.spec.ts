@@ -125,8 +125,8 @@ test.describe("Document Detail Page", () => {
     // Navigate to first document
     await page.getByRole("link", { name: /view/i }).first().click();
 
-    // Click "View in Graph" button
-    await page.getByRole("button", { name: /view in graph/i }).click();
+    // Click softened graph CTA (SPEC-122: Open graph)
+    await page.getByRole("button", { name: /open graph|view in graph/i }).click();
 
     // Should navigate to graph page
     await expect(page).toHaveURL(/\/graph/);

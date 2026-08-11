@@ -1,0 +1,30 @@
+{
+  "arm": "B",
+  "n": 5,
+  "base_url": "http://127.0.0.1:8090",
+  "workspace_id": "68dbf054-764e-44a7-a6c6-d970a9f4f528",
+  "stamp": "20260811T063714Z",
+  "admit_s": 0.184,
+  "t_first_complete_s": 8.364,
+  "t_all_complete_s": 45.016,
+  "docs_per_min": 6.664,
+  "max_concurrent_processing_observed": 0,
+  "final_statuses": {
+    "019fef8a-1f11-7694-a834-dcdaad0f7b65": "completed",
+    "019fef8a-1f5a-77d7-8d5a-1d36ffa7c1c1": "completed",
+    "019fef8a-1f7a-7a9d-ba9a-23cd3829ed21": "completed",
+    "019fef8a-1f92-7a99-84bb-97816f617f4a": "completed",
+    "019fef8a-1faa-7587-840a-e9734c83c3da": "completed"
+  },
+  "document_ids": [
+    "019fef8a-1f11-7694-a834-dcdaad0f7b65",
+    "019fef8a-1f5a-77d7-8d5a-1d36ffa7c1c1",
+    "019fef8a-1f7a-7a9d-ba9a-23cd3829ed21",
+    "019fef8a-1f92-7a99-84bb-97816f617f4a",
+    "019fef8a-1faa-7587-840a-e9734c83c3da"
+  ],
+  "pre_max_tasks_per_tenant": 6,
+  "final_park_waiters": 0,
+  "llm_provider": "mistral",
+  "run_dir": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/122-implementation/measurements/20260811T063714Z-armB-n5"
+}

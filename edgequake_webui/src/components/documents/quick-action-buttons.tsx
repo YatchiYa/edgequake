@@ -21,10 +21,19 @@ import { ExternalLink, Eye, RefreshCw, Sparkles } from 'lucide-react';
 import * as React from 'react';
 
 /**
- * Statuses that allow "View in Graph" action
- * WHY: Only documents with extracted entities can be viewed in graph
+ * Statuses that allow graph explore action (completed extract only).
+ * WHY: Only documents with extracted entities can be explored in graph.
+ * SPEC-122: also require query_ready !== false when the serving fence is set.
  */
 const GRAPH_VIEWABLE_STATUSES: readonly string[] = ['completed', 'indexed'];
+
+function canExploreGraph(doc: Document): boolean {
+  const status = doc.status ?? '';
+  if (!GRAPH_VIEWABLE_STATUSES.includes(status)) return false;
+  // Fence false → indexed but not serving; don't imply graph is ready.
+  if (doc.query_ready === false) return false;
+  return true;
+}
 
 /**
  * Statuses that show "Retry" action
@@ -39,7 +48,7 @@ export interface QuickActionButtonsProps {
   onViewDetails: (doc: Document) => void;
   /** Handler for "Preview" click - opens side panel */
   onPreview: (doc: Document) => void;
-  /** Handler for "View in Graph" click - navigates to graph view */
+  /** Handler for graph explore — navigates to graph view */
   onViewInGraph: (doc: Document) => void;
   /** Handler for "Retry" click - reprocesses failed document */
   onRetry: (id: string) => void;
@@ -86,7 +95,7 @@ function ActionButton({ icon, label, onClick, className }: ActionButtonProps) {
  * Renders action buttons based on document status:
  * - View Details: Always visible
  * - Preview: Always visible
- * - View in Graph: Only for completed/indexed documents
+ * - Open graph: completed/indexed and not fence-blocked (query_ready !== false)
  * - Retry: Only for failed/partial_failure documents
  */
 export function QuickActionButtons({
@@ -99,7 +108,7 @@ export function QuickActionButtons({
   children,
 }: QuickActionButtonsProps) {
   const status = doc.status ?? '';
-  const canViewInGraph = GRAPH_VIEWABLE_STATUSES.includes(status);
+  const canViewInGraph = canExploreGraph(doc);
   // Orphan staging shells need dismiss + re-upload, not Retry/reprocess.
   const canRetry =
     RETRYABLE_STATUSES.includes(status) && !needsReuploadNotReprocess(doc);
@@ -122,11 +131,11 @@ export function QuickActionButtons({
           onClick={() => onPreview(doc)}
         />
 
-        {/* View in Graph - only for completed documents */}
+        {/* Open graph — only when extract done and serving fence allows */}
         {canViewInGraph && (
           <ActionButton
             icon={<Sparkles className="h-4 w-4" />}
-            label="View in Graph"
+            label="Open graph"
             onClick={() => onViewInGraph(doc)}
           />
         )}

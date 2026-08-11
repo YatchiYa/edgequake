@@ -14,6 +14,7 @@ import {
     XCircle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { transferCompleteHeader } from '@/lib/documents/admit-copy';
 import { ProgressPanelRow } from './progress-panel-row';
 import type { UploadingFile } from './types';
 
@@ -83,19 +84,22 @@ export function UploadProgressList({
             {showProcessingHeader ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {t('documents.upload.processing', 'Processing Files')}
+                {t('documents.upload.processing', 'Transferring files')}
               </span>
             ) : (
               <span className="flex items-center gap-2 text-green-600 dark:text-green-400">
                 <CheckCircle className="h-4 w-4" />
-                {t('documents.upload.complete', 'Upload Complete')}
+                {t(
+                  'documents.upload.transferComplete',
+                  transferCompleteHeader(),
+                )}
               </span>
             )}
           </h4>
         </div>
         <span className="text-xs text-muted-foreground">
           {completeCount}/{uploadingFiles.length}{' '}
-          {t('documents.upload.filesComplete', 'files complete')}
+          {t('documents.upload.filesComplete', 'files transferred')}
         </span>
       </div>
       

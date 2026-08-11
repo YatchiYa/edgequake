@@ -117,15 +117,25 @@
       "extracting": "Step 3: Processing pipeline...",
       "queued": "Queued for extraction (Task: {{taskId}})",
       "queuedPending": "Queued for processing…",
-      "success": "{{count}} file(s) uploaded successfully",
+      "admitted": "{{count}} file(s) admitted; processing queued",
+      "success": "{{count}} file(s) admitted; processing queued",
       "error": "{{count}} file(s) failed to upload",
       "allFailed": "All {{count}} file(s) failed to upload",
-      "partial": "Uploaded {{success}} file(s), {{failed}} failed",
-      "complete": "Uploaded! Processing in background...",
+      "partial": "Admitted {{success}} file(s); {{failed}} failed — processing queued for successful uploads",
+      "complete": "Transfer complete — processing queued",
+      "processing": "Transferring files",
+      "filesComplete": "files transferred",
+      "transferComplete": "Transfer complete — processing queued",
+      "bulk": {
+        "banner": "Processing {{processing}} · {{pending}} queued · {{completed}} completed",
+        "serialHint": "Processing one document at a time",
+        "parallelHint": "Processing up to {{k}} documents in parallel",
+        "queueMetricsLink": "Queue metrics"
+      },
       "fileTooLarge": "File \"{{name}}\" is too large ({{size}}MB). Maximum size is {{limit}}.",
       "invalidType": "File \"{{name}}\" has an unsupported format. Supported: TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP. DOCX/Excel are not supported.",
       "officeNotSupported": "File \"{{name}}\" is a Word/Excel file. Those formats are not supported. Use PDF, Markdown, text, JSON, or an image (PNG/JPG/GIF/WEBP).",
-      "viewInGraph": "View in Graph",
+      "viewInGraph": "Open graph",
       "duplicateSkipped": "Duplicate (skipped)",
       "uploadFailed": "Upload failed",
       "uploadDrop": "Upload files by clicking or dragging",
@@ -261,7 +271,7 @@
       "view": "View Details",
       "reprocess": "Reprocess",
       "delete": "Delete",
-      "viewInGraph": "View in Graph",
+      "viewInGraph": "Open graph",
       "cancel": "Cancel Extraction",
       "copyId": "Copy ID",
       "viewPdf": "View PDF"
@@ -317,7 +327,7 @@
       "noContent": "No content available",
       "noEntities": "No entities extracted yet",
       "entitiesExtracted": "{{count}} entities extracted",
-      "viewInGraphHint": "View in Knowledge Graph for detailed entity information"
+      "viewInGraphHint": "Explore extracted entities in the knowledge graph"
     },
     "preview": {
       "title": "Document Preview",
