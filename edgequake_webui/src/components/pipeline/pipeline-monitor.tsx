@@ -66,7 +66,7 @@ export function PipelineMonitor() {
         data-testid="spec100-pipeline-shell"
       >
         <div className="flex-shrink-0 sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
-          <div className="container mx-auto px-6 py-4 max-w-7xl">
+          <div className="container mx-auto px-page py-3 max-w-7xl">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <Link href="/documents">
@@ -76,7 +76,7 @@ export function PipelineMonitor() {
                   </Button>
                 </Link>
                 <div>
-                  <h1 className="text-2xl font-bold">Pipeline Monitor</h1>
+                  <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Pipeline Monitor</h1>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Building2 className="h-4 w-4" />
                     <span>{workspaceName}</span>
@@ -103,30 +103,30 @@ export function PipelineMonitor() {
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div
-            className="container mx-auto p-4 sm:p-6 max-w-7xl pb-8"
+            className="container mx-auto p-page max-w-7xl"
             data-testid="spec100-pipeline-main"
           >
             <PipelineStagesCard />
 
-            <div className="mt-4 sm:mt-6">
+            <div className="mt-page">
               <PipelineChunkProgressCard />
             </div>
 
-            <div className="mt-4 sm:mt-6">
+            <div className="mt-page">
               <PipelineProcessingDocumentsCard />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-4 sm:mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-page mt-page">
               <PipelineQueueMetricsCard />
               <PipelineActivityLogCard />
             </div>
 
-            <details className="mt-4 sm:mt-6 mb-4 group">
+            <details className="mt-page mb-page group">
               <summary className="cursor-pointer list-none flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
                 <span>Advanced Details</span>
               </summary>
-              <div className="mt-4">
+              <div className="mt-page">
                 <PipelineTaskQueueCard />
               </div>
             </details>

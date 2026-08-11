@@ -13,18 +13,21 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Document } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { CheckCircle, Clock, FileText, Loader2, StopCircle, XCircle } from 'lucide-react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface RecentActivityProps {
   documents: Document[];
   isLoading?: boolean;
+  /** Optional action/status aligned with the section title (e.g. SystemStatus). */
+  headerAction?: ReactNode;
 }
 
 const statusConfig = {
@@ -37,16 +40,17 @@ const statusConfig = {
   cancelled: { icon: StopCircle, color: 'text-gray-500', label: 'Cancelled', animate: false },
 } as const;
 
-export function RecentActivity({ documents, isLoading }: RecentActivityProps) {
+export function RecentActivity({ documents, isLoading, headerAction }: RecentActivityProps) {
   const { t } = useTranslation();
 
   return (
-    <Card data-testid="spec100-dashboard-activity">
-      <CardHeader>
+    <Card data-testid="spec100-dashboard-activity" className="py-4 gap-4">
+      <CardHeader className="pb-2">
         <CardTitle className="text-lg">{t('dashboard.recentActivity.title', 'Recent Activity')}</CardTitle>
         <CardDescription>
           {t('dashboard.recentActivity.subtitle', 'Latest document uploads and processing')}
         </CardDescription>
+        {headerAction ? <CardAction>{headerAction}</CardAction> : null}
       </CardHeader>
       {/* SPEC-100: min-h matches 5-row skeleton / ScrollArea so empty↔list does not CLS */}
       <CardContent className="min-h-[300px]">

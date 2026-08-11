@@ -110,25 +110,23 @@ export function QueryInterfaceSkeleton() {
  */
 export function DashboardSkeleton() {
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-page space-y-page">
       {/* Title */}
-      <div className="space-y-2">
-        <Skeleton className="h-8 w-[200px]" />
+      <div className="space-y-1">
+        <Skeleton className="h-7 w-[200px]" />
         <Skeleton className="h-4 w-[300px]" />
       </div>
       
       {/* Stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-24 rounded-lg" />
         ))}
       </div>
       
-      {/* Main content grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Skeleton className="h-[300px] rounded-lg" />
-        <Skeleton className="h-[300px] rounded-lg" />
-      </div>
+      {/* Main content */}
+      <Skeleton className="h-[200px] rounded-lg" />
+      <Skeleton className="h-[300px] rounded-lg" />
     </div>
   );
 }
@@ -138,16 +136,16 @@ export function DashboardSkeleton() {
  */
 export function SettingsSkeleton() {
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-page md:px-8 max-w-4xl mx-auto space-y-page">
       {/* Title */}
-      <div className="space-y-2">
-        <Skeleton className="h-8 w-[150px]" />
+      <div className="space-y-1">
+        <Skeleton className="h-7 w-[150px]" />
         <Skeleton className="h-4 w-[250px]" />
       </div>
       
       {/* Settings cards */}
       {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="border rounded-lg p-6 space-y-4">
+        <div key={i} className="border rounded-lg p-card space-y-4">
           <div className="flex items-center gap-2">
             <Skeleton className="h-5 w-5" />
             <Skeleton className="h-6 w-[120px]" />

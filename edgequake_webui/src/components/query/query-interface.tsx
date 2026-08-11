@@ -59,7 +59,7 @@ export function QueryInterface() {
     <div className="flex h-full min-h-0">
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <header
-          className="flex items-center justify-between border-b px-3 sm:px-5 py-3 shrink-0 bg-background/80 backdrop-blur-sm gap-2"
+          className="flex items-center justify-between border-b px-page py-2 shrink-0 bg-background/80 backdrop-blur-sm gap-2"
           role="banner"
         >
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -128,7 +128,7 @@ export function QueryInterface() {
         <div className="flex-1 min-h-0 overflow-hidden">
           <ScrollArea ref={scrollRef} className="h-full">
             <div
-              className="max-w-4xl lg:max-w-5xl mx-auto px-4 sm:px-6 py-6"
+              className="max-w-4xl lg:max-w-5xl mx-auto px-page pt-page pb-6"
               role="log"
               aria-live="polite"
               aria-label={t("query.messageList", "Conversation messages")}
@@ -166,7 +166,7 @@ export function QueryInterface() {
         </div>
 
         <div
-          className="border-t px-4 sm:px-6 py-3 bg-background shrink-0 relative z-10"
+          className="border-t px-page py-3 bg-background shrink-0 relative z-10"
           role="form"
           aria-label={t("query.form", "Query form")}
         >

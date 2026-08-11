@@ -33,10 +33,8 @@ export default function WorkspaceDeeplinkLayout({
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        {/* Breadcrumb Navigation - compact */}
-        <div className="border-b px-4 py-2 bg-muted/20">
-          <DynamicBreadcrumb />
-        </div>
+        {/* Breadcrumb: null at depth ≤ 1 (no empty band); bar at depth ≥ 2 */}
+        <DynamicBreadcrumb />
         {/* Main content area - no TenantGuard (pages handle their own context) */}
         <main 
           id="main-content" 

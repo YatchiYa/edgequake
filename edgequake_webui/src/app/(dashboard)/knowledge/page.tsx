@@ -160,14 +160,14 @@ export default function KnowledgePage() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-page p-page">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <BookOpen className="h-6 w-6" />
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl flex items-center gap-2">
+            <BookOpen className="h-5 w-5 sm:h-6 sm:w-6" />
             Knowledge Injection
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-0.5">
             Inject domain glossaries, acronyms, and definitions to enrich your knowledge graph.
           </p>
         </div>

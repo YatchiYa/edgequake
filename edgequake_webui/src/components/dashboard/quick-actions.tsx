@@ -46,8 +46,8 @@ export function QuickActions() {
   const { t } = useTranslation();
 
   return (
-    <Card className="border-0 shadow-sm">
-      <CardHeader className="pb-3">
+    <Card className="border-0 py-4 shadow-sm gap-4">
+      <CardHeader className="pb-2">
         <CardTitle className="text-base">{t('dashboard.quickActions.title', 'Quick Actions')}</CardTitle>
         <CardDescription className="text-xs">
           {t('dashboard.quickActions.subtitle', 'Get started with common tasks')}
@@ -62,14 +62,14 @@ export function QuickActions() {
                 key={action.id}
                 href={action.href}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-2 rounded-lg border p-4',
+                  'flex flex-col items-center justify-center gap-1.5 rounded-lg border px-3 py-3',
                   'bg-card hover:bg-muted/40 hover:border-border',
                   'transition-all duration-150 hover:shadow-sm',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
                 )}
               >
-                <div className="rounded-lg bg-muted p-2.5">
-                  <Icon className="h-5 w-5 text-foreground" />
+                <div className="rounded-lg bg-muted p-2">
+                  <Icon className="h-4 w-4 text-foreground" />
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-medium">{t(action.labelKey)}</p>

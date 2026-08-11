@@ -174,7 +174,7 @@ export default function WorkspacePage() {
   if (!selectedTenantId || !selectedWorkspaceId) {
     return (
       <ScrollArea className="h-full">
-        <div className="container mx-auto p-6">
+        <div className="container mx-auto p-page">
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <FolderKanban className="h-12 w-12 text-muted-foreground mb-4" />
@@ -198,7 +198,7 @@ export default function WorkspacePage() {
     return (
       <ScrollArea className="h-full">
         <div
-          className="container mx-auto space-y-6 p-6"
+          className="container mx-auto space-y-page p-page"
           data-testid="spec100-workspace-skeleton"
         >
           <Skeleton className="h-10 w-72" />
@@ -217,7 +217,7 @@ export default function WorkspacePage() {
   if (!workspace) {
     return (
       <ScrollArea className="h-full">
-        <div className="container mx-auto p-6">
+        <div className="container mx-auto p-page">
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
@@ -247,7 +247,7 @@ export default function WorkspacePage() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="container mx-auto space-y-4 p-4 md:p-6">
+      <div className="container mx-auto space-y-page p-page">
         <WorkspacePageHeader
           workspace={workspace}
           onRefresh={() => refetchWorkspace()}

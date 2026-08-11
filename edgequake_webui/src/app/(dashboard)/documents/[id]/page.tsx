@@ -414,11 +414,11 @@ export default function DocumentViewPage() {
           aria-hidden
         />
         <div className="flex min-h-0 flex-1">
-          <div className="flex min-h-0 flex-1 flex-col p-4 md:p-6">
+          <div className="flex min-h-0 flex-1 flex-col p-page">
             <Skeleton className="mb-3 h-8 w-1/2" />
             <Skeleton className="min-h-0 flex-1 w-full" />
           </div>
-          <div className="hidden w-[35%] shrink-0 border-l p-4 md:block">
+          <div className="hidden w-[35%] shrink-0 border-l px-page py-page md:block">
             <Skeleton className="mb-4 h-32 w-full" />
             <Skeleton className="h-48 w-full" />
             <Skeleton className="mt-4 h-24 w-full" />

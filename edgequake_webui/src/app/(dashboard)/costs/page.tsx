@@ -86,14 +86,14 @@ export default function CostDashboardPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b px-6 py-4">
+      <div className="border-b px-page py-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <DollarSign className="h-6 w-6" />
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl flex items-center gap-2">
+              <DollarSign className="h-5 w-5 sm:h-6 sm:w-6" />
               Cost Dashboard
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-0.5">
               Monitor LLM costs and usage across your workspace
             </p>
           </div>
@@ -135,10 +135,10 @@ export default function CostDashboardPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
+      <div className="flex-1 overflow-auto p-page">
+        <div className="max-w-7xl mx-auto space-y-page">
           {/* Top row: Summary and Budget */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-page">
             <div className="lg:col-span-2">
               <CostSummaryCard
                 summary={summary ?? null}
@@ -156,7 +156,7 @@ export default function CostDashboardPage() {
           </div>
 
           {/* Charts row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-page">
             {/* Cost by operation */}
             <CostBreakdownChart
               breakdown={summary ? {

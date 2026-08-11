@@ -140,7 +140,7 @@ export default function KnowledgeDetailPage() {
   if (isLoading && !data) {
     return (
       <div
-        className="flex flex-col gap-6 p-6"
+        className="flex flex-col gap-page p-page"
         data-testid="spec100-knowledge-detail-skeleton"
       >
         <div className="flex items-center gap-3">
@@ -174,7 +174,7 @@ export default function KnowledgeDetailPage() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-page p-page">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/knowledge">

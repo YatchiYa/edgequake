@@ -144,11 +144,11 @@ export default function SettingsPage() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-8">
+      <div className="p-page md:px-8 max-w-4xl mx-auto space-y-page">
         {/* Header */}
-        <header className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">{t('settings.title', 'Settings')}</h1>
-          <p className="text-base text-muted-foreground">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t('settings.title', 'Settings')}</h1>
+          <p className="text-sm text-muted-foreground sm:text-base">
             {t('settings.subtitle', 'Customize your EdgeQuake experience')}
           </p>
         </header>
@@ -631,7 +631,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Admin section — only fetches and renders for admin users (SPEC-0001) */}
-      <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
+      <div className="p-page md:px-8 max-w-4xl mx-auto space-y-page pt-0">
         <AdminQuotaSection />
         {/* User management — Issue #205: admin-only user CRUD */}
         <UserManagementCard />

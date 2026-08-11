@@ -173,10 +173,10 @@ export default function DashboardPage() {
       <Suspense fallback={null}>
         <WorkspaceUrlUpdater />
       </Suspense>
-      <div className="p-page space-y-6">
-        {/* Header Section — contextual, not generic marketing copy */}
+      <div className="p-page space-y-page">
+        {/* Header Section — flush under chrome; contextual, not marketing copy */}
         <header className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
             {selectedWorkspace?.name ?? t('dashboard.title', 'Dashboard')}
           </h1>
           <p
@@ -197,7 +197,7 @@ export default function DashboardPage() {
 
         {/* Statistics Section - Shows workspace-specific counts */}
         {/* @implements FEAT1001 - Dashboard statistics visualization */}
-        <section aria-label="Statistics" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <section aria-label="Statistics" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatsCard
             title={t('dashboard.stats.documents', 'Documents')}
             value={documentValue}
@@ -245,17 +245,13 @@ export default function DashboardPage() {
           <QuickActions />
         </section>
 
-        {/* Recent Activity and System Status */}
-        <section aria-label="Activity and Status" className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <RecentActivity 
-              documents={recentDocuments} 
-              isLoading={coldDocs}
-            />
-          </div>
-          <div>
-            <SystemStatus />
-          </div>
+        {/* Recent Activity — system status aligned with section title */}
+        <section aria-label="Activity and Status">
+          <RecentActivity
+            documents={recentDocuments}
+            isLoading={coldDocs}
+            headerAction={<SystemStatus />}
+          />
         </section>
       </div>
     </ScrollArea>

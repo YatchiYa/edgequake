@@ -122,8 +122,11 @@
   
   /* Page Layout */
   --page-padding-x: var(--space-6);        /* 24px horizontal page padding */
-  --page-padding-y: var(--space-6);        /* 24px vertical page padding */
-  --page-gap: var(--space-6);              /* 24px gap between page sections */
+  --page-padding-y: var(--space-6);        /* 24px vertical page padding (legacy symmetric) */
+  /* Tighter top inset under app chrome — header already frames the surface */
+  --page-padding-top: var(--space-3);      /* 12px — closes header→title gap */
+  --page-padding-bottom: var(--space-6);   /* 24px bottom breathing room */
+  --page-gap: var(--space-5);              /* 20px section rhythm (was 24px) */
   
   /* Section Spacing */
   --section-gap: var(--space-8);           /* 32px gap between major sections */
@@ -348,7 +351,7 @@
 
 /* Page Layout */
 .page-container {
-  padding: var(--page-padding-y) var(--page-padding-x);
+  padding: var(--page-padding-top) var(--page-padding-x) var(--page-padding-bottom);
 }
 
 .page-content {
@@ -531,7 +534,7 @@
 }
 
 .p-page {
-  padding: var(--page-padding-y) var(--page-padding-x);
+  padding: var(--page-padding-top) var(--page-padding-x) var(--page-padding-bottom);
 }
 
 .px-page {
@@ -539,7 +542,31 @@
   padding-right: var(--page-padding-x);
 }
 
+.pt-page {
+  padding-top: var(--page-padding-top);
+}
+
+.pb-page {
+  padding-bottom: var(--page-padding-bottom);
+}
+
 .py-page {
-  padding-top: var(--page-padding-y);
-  padding-bottom: var(--page-padding-y);
+  padding-top: var(--page-padding-top);
+  padding-bottom: var(--page-padding-bottom);
+}
+
+.gap-page {
+  gap: var(--page-gap);
+}
+
+.mt-page {
+  margin-top: var(--page-gap);
+}
+
+.mb-page {
+  margin-bottom: var(--page-gap);
+}
+
+.space-y-page > :not([hidden]) ~ :not([hidden]) {
+  margin-top: var(--page-gap);
 }
