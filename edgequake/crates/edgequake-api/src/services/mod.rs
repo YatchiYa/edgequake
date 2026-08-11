@@ -26,6 +26,7 @@ pub mod document_delete_admit;
 pub mod document_deletion;
 pub mod document_graph_cascade;
 pub mod document_graph_lineage;
+pub mod graph_cleanup_timeout;
 pub mod document_metadata_repair;
 pub mod document_metadata_scan;
 #[cfg(feature = "postgres")]
@@ -162,6 +163,11 @@ pub use document_graph_lineage::{
     build_document_graph_lineage, entity_summary_from_node, relationship_summary_from_edge,
     DocumentGraphLineageBuild,
 };
+pub use graph_cleanup_timeout::{
+    api_error_graph_cleanup_timeout, deletion_failed_graph_cleanup_timeout,
+    graph_cleanup_timeout_user_message, is_source_discovery_timeout, log_graph_cleanup_timeout,
+    map_cascade_error_for_reprocess, GraphCleanupAction,
+};
 #[cfg(feature = "postgres")]
 pub use document_mm_asset_persist::{
     delete_document_mm_assets, list_mm_asset_summaries_for_document, load_mm_asset_bytes,
@@ -181,8 +187,8 @@ pub use document_vector_storage::{
 pub use entity_graph_lookup::{entity_lookup_candidates, lookup_entity_node_for_context};
 pub use graph_community::detect_communities_guarded;
 pub use graph_materialization::{
-    admit_graph_materialization, graph_query_timeout, run_timed_graph_query,
-    GraphMaterializationGuard,
+    admit_graph_materialization, graph_query_timeout, is_db_statement_timeout,
+    run_timed_graph_query, GraphMaterializationGuard,
 };
 pub use include_pdf_assets::{include_extracted_pdf_assets, IncludePdfAssetsResult};
 pub use ingest_admission::{
@@ -293,7 +299,9 @@ pub use reprocess_admission::{
     is_reprocess_terminal_recoverable, ReprocessAdmitContext, ReprocessAdmitDecision,
     ReprocessSkipReason,
 };
-pub use retract_document_indexes::{retract_document_indexes, retract_on_cancel_total};
+pub use retract_document_indexes::{
+    retract_document_indexes, retract_document_indexes_checked, retract_on_cancel_total,
+};
 pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, RetrievalIdCache};
 pub use source_reference_builder::{build_sources_from_context, is_injection_source};
 pub use staging_admission::{

@@ -518,8 +518,11 @@ impl PostgresAGEGraphStorage {
               AND {src} IS NOT NULL
               AND {tgt} IS NOT NULL
               AND (
-                ({props})::jsonb->>'source_chunk_id' IN (SELECT probe_id FROM probes)
-                OR ({props})::jsonb->>'source_document_id' IN (SELECT probe_id FROM probes)
+                -- SPEC-119 / LAW-119-2: btree expression must match (no ::jsonb on ->>).
+                -- ::jsonb cast defeats idx_edge_source_chunk_id / idx_edge_source_document_id
+                -- (same class as GH-362). Modern GIN path above keeps ::jsonb -> 'source_ids'.
+                {props}->>'source_chunk_id' IN (SELECT probe_id FROM probes)
+                OR {props}->>'source_document_id' IN (SELECT probe_id FROM probes)
               )
             LIMIT 5000
             "#,

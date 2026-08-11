@@ -272,6 +272,28 @@ impl PostgresAGEGraphStorage {
                     self.graph_name
                 ),
             ),
+            // SPEC-119 / GH-375: Symptom F singular citation btrees (delete/reprocess discovery).
+            // Expression must match scan_ops singular filter (no ::jsonb on ->>).
+            (
+                "idx_edge_source_chunk_id",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_source_chunk_id
+                       ON {}."EDGE" (
+                         (ag_catalog.agtype_to_json(properties)->>'source_chunk_id')
+                       )"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_edge_source_document_id",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_source_document_id
+                       ON {}."EDGE" (
+                         (ag_catalog.agtype_to_json(properties)->>'source_document_id')
+                       )"#,
+                    self.graph_name
+                ),
+            ),
             (
                 "idx_edge_props_gin",
                 format!(

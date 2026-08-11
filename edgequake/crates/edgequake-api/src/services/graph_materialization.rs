@@ -34,7 +34,9 @@ pub fn graph_query_timeout(budget: &ResourceBudgetConfig) -> Duration {
     Duration::from_secs(budget.graph_query_timeout_secs)
 }
 
-fn is_db_statement_timeout(message: &str) -> bool {
+/// True when a storage/DB error string indicates Postgres statement cancellation.
+/// SPEC-006 graph materialization + SPEC-119 delete/reprocess UX (DRY).
+pub fn is_db_statement_timeout(message: &str) -> bool {
     message.contains("statement timeout") || message.contains("canceling statement")
 }
 

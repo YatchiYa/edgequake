@@ -416,15 +416,17 @@ pub(crate) async fn run_reprocess_failed(
         )
         .await;
         // SPEC-059 + SPEC-089 F-336-12 / LAW-H1: one retract SSOT (vectors + graph).
+        // SPEC-119: use checked retract so discovery timeouts fail closed with product copy
+        // (do not continue reprocess on a half-cleaned graph).
         // Do **not** call `cleanup_document_graph_data` after retract — that re-ran
         // the same cascade discovery (double CROSS JOIN ×256 → pool amp).
-        let retract_stats = crate::services::retract_document_indexes(
+        let retract_stats = crate::services::retract_document_indexes_checked(
             &state.storage.graph_storage,
             &vector,
             None,
             doc_id,
         )
-        .await;
+        .await?;
         tracing::info!(
             document_id = %doc_id,
             entities_removed = retract_stats.entities_removed,

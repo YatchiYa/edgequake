@@ -4,7 +4,10 @@ use edgequake_tasks::{DeletionTaskData, Task, TaskResult};
 use tokio_util::sync::CancellationToken;
 
 use crate::middleware::TenantContext;
-use crate::services::{perform_document_deletion, reset_deleting_status};
+use crate::services::{
+    deletion_failed_graph_cleanup_timeout, is_source_discovery_timeout, log_graph_cleanup_timeout,
+    perform_document_deletion, reset_deleting_status, GraphCleanupAction,
+};
 
 use super::DocumentTaskProcessor;
 
@@ -56,7 +59,18 @@ impl DocumentTaskProcessor {
                 }))
             }
             Err(e) => {
-                let reason = format!("Deletion failed: {e}");
+                // SPEC-119 LAW-119-5: product copy only; raw detail in logs.
+                let detail = e.to_string();
+                let reason = if is_source_discovery_timeout(&detail) {
+                    log_graph_cleanup_timeout(
+                        &data.document_id,
+                        GraphCleanupAction::Delete,
+                        &detail,
+                    );
+                    deletion_failed_graph_cleanup_timeout()
+                } else {
+                    format!("Deletion failed: {detail}")
+                };
                 reset_deleting_status(
                     state,
                     &data.document_id,
