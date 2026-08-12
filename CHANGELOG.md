@@ -25,6 +25,7 @@ Migrations **145–147**. Upgrade: [`docs/operations/upgrade-to-0.24.4.md`](docs
 
 ### Changed
 - **WebUI** — header-to-content spacing tighten; documents table layout polish.
+- **SPEC-001 Acc publish refresh** — medical-mid n=200 Acc **statistical tie** (EQ **0.783** / LR **0.774**; Δ CI includes 0); archive [`medical-mid-20260812T004216Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20260812T004216Z/). Scorecard: [`docs/comparisons/eq-vs-lightrag-acc-bench.md`](docs/comparisons/eq-vs-lightrag-acc-bench.md).
 
 ## [0.24.3] — 2026-08-07
 

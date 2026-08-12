@@ -31,6 +31,7 @@ Smoke → core Acc history (newest last). Each row is an archived `scorecard.jso
 | medical-mid-20260802T153928Z | medical-mid | True | 200 | 0.8102 | 0.7807 | +0.0295 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | medical-mid-20260807T070449Z | medical-mid | False | 200 | 0.5103 | 0.7820 | -0.2718 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | medical-mid-20260807T081848Z | medical-mid | True | 200 | 0.7784 | 0.7881 | -0.0097 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260812T004216Z | medical-mid | True | 200 | 0.7827 | 0.7737 | +0.0089 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | smoke-20260719T011512Z | smoke | False | 40 | 0.2289 | 0.2311 | -0.0023 | generation_eval | 8 | 8 | 1.0000 | 1.0000 |
 | smoke-20260719T011516Z | smoke | False | 8 | 1.0000 | 1.0000 | +0.0000 | rouge_proxy | 4 | 4 | 0.0000 | 0.0000 |
 | smoke-20260719T011554Z | smoke | False | 40 | 0.2289 | 0.2311 | -0.0023 | generation_eval | 8 | 8 | 1.0000 | 1.0000 |

@@ -1,12 +1,12 @@
 # bench001 LIVE — `medical-mid`
 
-- **updated:** `2026-08-07T08:18:48Z`
-- **started:** `2026-08-07T08:15:51Z`
-- **run elapsed:** `36m02s`
+- **updated:** `2026-08-12T00:42:16Z`
+- **started:** `2026-08-12T00:41:47Z`
+- **run elapsed:** `15m01s`
 - **phase:** `report` (done)
 - **progress:** `50/50`
 - **ETA (phase):** `0s`
-- **detail:** valid=True archive=medical-mid-20260807T081848Z
+- **detail:** valid=True archive=medical-mid-20260812T004216Z
 
 ## Corpus / chunking
 
@@ -24,9 +24,9 @@
 
 | at (UTC) | phase | status | detail | eta | run |
 |----------|-------|--------|--------|-----|-----|
-| 2026-08-07T08:18:47Z | score_parallel | running | EQ=done LR=done eval∥=24 | — | 36m01s |
-| 2026-08-07T08:18:47Z | score_parallel | done | elapsed=4m16s | — | 36m01s |
-| 2026-08-07T08:18:48Z | report | done | valid=True archive=medical-mid-20260807T081848Z | — | 36m02s |
+| 2026-08-12T00:42:16Z | score_parallel | running | EQ=done LR=done eval∥=24 | — | 15m01s |
+| 2026-08-12T00:42:16Z | score_parallel | done | elapsed=45s | — | 15m01s |
+| 2026-08-12T00:42:16Z | report | done | valid=True archive=medical-mid-20260812T004216Z | — | 15m01s |
 
 ## Monitor
 

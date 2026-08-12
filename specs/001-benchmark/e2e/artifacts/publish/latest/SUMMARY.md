@@ -22,50 +22,50 @@
 
 | SUT | Acc | F1 | cos |
 |-----|-----|----|-----|
-| EdgeQuake mix | 0.7784 | 0.7164 | 0.9643 |
-| LightRAG mix | 0.7881 | 0.7287 | 0.9663 |
-| Δ (EQ − LR) | -0.0097 | -0.0123 | -0.0020 |
+| EdgeQuake mix | 0.7827 | 0.7217 | 0.9656 |
+| LightRAG mix | 0.7737 | 0.7098 | 0.9655 |
+| Δ (EQ − LR) | +0.0089 | 0.0119 | 0.0001 |
 
-- **Δ Acc 95% CI (bootstrap):** [-0.0444, +0.0236] (n=200)
+- **Δ Acc 95% CI (bootstrap):** [-0.0517, +0.1183] (n=49)
 
 ## Retrieval (L2)
 
 | SUT | evidence_recall | context_relevancy |
 |-----|-----------------|-------------------|
-| EdgeQuake | 0.9062 | 0.4250 |
-| LightRAG | 0.9436 | 0.4987 |
+| EdgeQuake | 0.9241 | 0.4395 |
+| LightRAG | 0.9521 | 0.4861 |
 
 ## By question_type (EQ Acc)
 
-- **Fact Retrieval:** 0.7954
-- **Complex Reasoning:** 0.7699
-- **Contextual Summarize:** 0.7847
-- **Creative Generation:** 0.7635
+- **Fact Retrieval:** 0.7800
+- **Complex Reasoning:** 0.7563
+- **Contextual Summarize:** 0.8585
+- **Creative Generation:** 0.7360
 
 ## By question_type (LR Acc)
 
-- **Fact Retrieval:** 0.7757
-- **Complex Reasoning:** 0.7667
-- **Contextual Summarize:** 0.8210
-- **Creative Generation:** 0.7890
+- **Fact Retrieval:** 0.7327
+- **Complex Reasoning:** 0.7293
+- **Contextual Summarize:** 0.8385
+- **Creative Generation:** 0.7945
 
 ## Ops
 
-- EQ empty-answer rate: 0.010
+- EQ empty-answer rate: 0.000
 - LR empty-answer rate: 0.000
 - EQ empty-context rate: 0.000
 - LR empty-context rate: 0.000
-- EQ query p50/p95 ms: 9642 / 16348
-- LR query p50/p95 ms: 4654 / 7655
-- ingest wall s: 1393.6
-- EQ/LR p50 ratio: 2.072 (SLO ≤1.5×: FAIL/WAIVE)
-- EQ stage p50 ms: keyword=1975, embed=1785, retrieve=964, generate=2437
+- EQ query p50/p95 ms: 3992 / 7946
+- LR query p50/p95 ms: 1002 / 1994
+- ingest wall s: 613.8
+- EQ/LR p50 ratio: 3.984 (SLO ≤1.5×: FAIL/WAIVE)
+- EQ stage p50 ms: keyword=1033, embed=1358, retrieve=139, generate=1811
 
 ## Pins
 
 ```json
 {
-  "edgequake_git_sha": "91c982a14",
+  "edgequake_git_sha": "1e775b873",
   "dataset_id": "GraphRAG-Bench/GraphRAG-Bench",
   "dataset_revision": "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546",
   "fixture_id": "medical_publish_question_ids_v1",
@@ -173,10 +173,13 @@
   "adaptive_chunking": false,
   "chunk_token_size": 1200,
   "chunk_overlap_token_size": 100,
+  "extract_max_entities": 40,
+  "extract_max_records": 100,
+  "extract_caps_selection": "fifo",
   "ingest_max_chars": null,
   "eq_query_concurrency": 4,
   "lr_query_concurrency_effective": 1,
-  "fairness_note": "Matched top-k=30 budgets; LR rerank off (no model); L2 Evidence Recall + Context Relevancy required for valid smoke+; EQ Mix arm gate off (LR-like always-on local+global+naive) unless EDGEQUAKE_MIX_ARM_GATE=true on the server; Mix fusion default round_robin (SPEC-086 E2-occ; rrf is labeled ablation); Acc PATH_PRUNE=0 (022 P0; soft path only with CE+protect); Phase-1 EDGEQUAKE_MIX_RELEVANCY_PRUNE Acc default off; fair Acc ingest: adaptive_chunking off + chunk_token_size=1200 (LightRAG CHUNK_SIZE parity) unless explicitly ablated; smoke-fast Acc may set BENCH001_INGEST_MAX_CHARS for fast force-ingest (full corpus = 0)",
+  "fairness_note": "Matched top-k=30 budgets; LR rerank off (no model); L2 Evidence Recall + Context Relevancy required for valid smoke+; EQ Mix arm gate off (LR-like always-on local+global+naive) unless EDGEQUAKE_MIX_ARM_GATE=true on the server; Mix fusion default round_robin (SPEC-086 E2-occ; rrf is labeled ablation); Acc PATH_PRUNE=0 (022 P0; soft path only with CE+protect); Phase-1 EDGEQUAKE_MIX_RELEVANCY_PRUNE Acc default off; fair Acc ingest: adaptive_chunking off + chunk_token_size=1200 (LightRAG CHUNK_SIZE parity) unless explicitly ablated; fair Acc extract: 40/100 + EDGEQUAKE_EXTRACT_CAPS_SELECTION=fifo (SPEC-117; product default may be relation_aware); smoke-fast Acc may set BENCH001_INGEST_MAX_CHARS for fast force-ingest (full corpus = 0)",
   "eq_query_mode": "mix",
   "lr_query_mode": "mix",
   "chunk_size": 1200,
