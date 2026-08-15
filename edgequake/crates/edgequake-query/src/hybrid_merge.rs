@@ -71,6 +71,9 @@ pub fn merge_hybrid_contexts(
     naive: QueryContext,
     max_chunks: usize,
 ) -> QueryContext {
+    let _stage = edgequake_observability::enter_pipeline_stage("query.fuse");
+    let fusion = crate::hybrid_merge::hybrid_fusion_mode_label(hybrid_fusion_mode_from_env());
+    edgequake_observability::record_observation_meta("fusion", fusion);
     let local = prune_empty_arm_graph(local);
     let global = prune_empty_arm_graph(global);
     // Naive is chunk-only by construction; no entity prune needed.

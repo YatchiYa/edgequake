@@ -398,6 +398,20 @@ impl DocumentTaskProcessor {
         data: edgequake_tasks::PdfProcessingData,
         cancel_token: CancellationToken,
     ) -> TaskResult<serde_json::Value> {
+        edgequake_observability::with_ingest_task_span(async {
+            self.process_pdf_processing_inner(task, data, cancel_token)
+                .await
+        })
+        .await
+    }
+
+    #[cfg(feature = "postgres")]
+    async fn process_pdf_processing_inner(
+        &self,
+        task: &mut Task,
+        data: edgequake_tasks::PdfProcessingData,
+        cancel_token: CancellationToken,
+    ) -> TaskResult<serde_json::Value> {
         use edgequake_storage::{
             ExtractionMethod, PdfProcessingStatus, UpdatePdfProcessingRequest,
         };
@@ -510,6 +524,14 @@ impl DocumentTaskProcessor {
             },
         )
         .await?;
+
+        let _langfuse = self
+            .stamp_ingest_langfuse_for_document(
+                &early_doc_id,
+                Some(&data.tenant_id.to_string()),
+                Some(&data.workspace_id.to_string()),
+            )
+            .await;
 
         let metadata_key = edgequake_storage::kv_keys::doc_metadata(&early_doc_id);
         let has_existing_document = self
@@ -990,10 +1012,13 @@ impl DocumentTaskProcessor {
             ..conversion_config.clone()
         };
 
-        let markdown = if let Some(md) = precomputed_markdown {
-            md
-        } else {
-            match extraction_method {
+        let markdown = edgequake_observability::with_pipeline_stage_span(
+            "ingest.converting",
+            async {
+                Ok(if let Some(md) = precomputed_markdown {
+                    md
+                } else {
+                    match extraction_method {
                 ExtractionMethod::Vision => {
                     // Absolute budget (backstop). Primary hang detection is the
                     // progress/stall watchdog — slow-but-progressing docs complete.
@@ -1061,11 +1086,14 @@ impl DocumentTaskProcessor {
                                 "Cancelled during vision PDF conversion".to_string(),
                             ));
                         }
-                        result = crate::services::run_with_vision_stall_watchdog(
-                            converter.convert(&pdf_data, &conversion_config),
-                            Arc::clone(&vision_heartbeat),
-                            stall_secs,
-                            absolute_secs,
+                        result = edgequake_observability::with_pipeline_stage_span(
+                            "ingest.pass_a",
+                            crate::services::run_with_vision_stall_watchdog(
+                                converter.convert(&pdf_data, &conversion_config),
+                                Arc::clone(&vision_heartbeat),
+                                stall_secs,
+                                absolute_secs,
+                            ),
                         ) => result,
                     };
 
@@ -1168,8 +1196,32 @@ impl DocumentTaskProcessor {
                             ))
                         })?
                 }
-            }
+                    }
+                }) as Result<String, edgequake_tasks::TaskError>
+            },
+        )
+        .await?;
+
+        let parser = match extraction_method {
+            ExtractionMethod::Vision => "vision",
+            ExtractionMethod::EdgeParse => "edgeparse",
+            ExtractionMethod::Text => "text",
+            ExtractionMethod::Hybrid => "auto",
         };
+        edgequake_observability::record_ingest_parse_meta(
+            edgequake_observability::IngestParseMeta {
+                parser: Some(parser.to_string()),
+                vision_provider: Some(data.vision_provider.clone()),
+                vision_model: vision_model.clone(),
+                page_count: Some(page_count),
+                pass: Some(if matches!(extraction_method, ExtractionMethod::Vision) {
+                    "a".into()
+                } else {
+                    parser.into()
+                }),
+                fallback: Some(fallback_warning.is_some()),
+            },
+        );
 
         let markdown = strip_nul_bytes(markdown);
         drop(pdf_data);
@@ -1714,5 +1766,37 @@ mod tests {
         let pdf = pdf_storage.get_pdf(&pdf_id).await.unwrap().unwrap();
         assert_eq!(pdf.processing_status, PdfProcessingStatus::Completed);
         assert_eq!(pdf.markdown_content.as_deref(), Some(markdown));
+    }
+}
+
+#[cfg(test)]
+mod spec124_ingest_converting {
+    #[test]
+    fn pdf_processing_source_has_converting_and_pass_helpers() {
+        let src = include_str!("pdf_processing.rs");
+        let prod = src
+            .split("mod spec124_ingest_converting")
+            .next()
+            .expect("production source");
+        assert!(
+            prod.contains("ingest.converting"),
+            "pdf_processing.rs must wrap converting"
+        );
+        assert!(
+            prod.contains("ingest.pass_a"),
+            "pdf_processing.rs must wrap Pass A convert"
+        );
+        assert!(
+            prod.contains("record_ingest_parse_meta"),
+            "pdf_processing.rs must record parse meta via SSOT"
+        );
+        assert!(
+            prod.contains("stamp_ingest_langfuse_for_document"),
+            "pdf worker must stamp ingest Langfuse identity"
+        );
+        assert!(
+            prod.contains("with_ingest_task_span"),
+            "pdf worker must start ingest.task chain"
+        );
     }
 }

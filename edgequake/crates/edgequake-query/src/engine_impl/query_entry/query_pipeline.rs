@@ -40,6 +40,44 @@ pub(crate) struct PreparedQuery {
     pub max_chunks: usize,
 }
 
+/// LAW-124-21: stamp filterable query pipeline metadata from QueryStats (once).
+pub(crate) fn record_query_pipeline_langfuse(
+    mode: QueryMode,
+    stats: Option<&QueryStats>,
+    citation_count: usize,
+) {
+    let fusion = match mode {
+        QueryMode::Mix => Some(
+            crate::fusion::mix_fusion_mode_label(crate::fusion::mix_fusion_mode_from_env())
+                .to_string(),
+        ),
+        QueryMode::Hybrid => Some(
+            crate::hybrid_merge::hybrid_fusion_mode_label(
+                crate::hybrid_merge::hybrid_fusion_mode_from_env(),
+            )
+            .to_string(),
+        ),
+        _ => None,
+    };
+    let mut meta = edgequake_observability::QueryPipelineMeta {
+        mode: Some(mode.as_str().to_string()),
+        fusion,
+        citation_count: Some(citation_count),
+        ..Default::default()
+    };
+    if let Some(s) = stats {
+        meta.query_intent = s.query_intent.clone();
+        meta.arms_run = s.arms_run.clone();
+        meta.keyword_cache_hit = Some(s.keyword_cache_hit);
+        meta.answer_cache_hit = Some(s.answer_cache_hit);
+        meta.reasoning_effort = s.reasoning_effort.clone();
+        meta.sparse_outcome = s.sparse_outcome.clone();
+        meta.context_empty = Some(s.context_empty);
+        meta.context_truncated = Some(s.context_truncated);
+    }
+    edgequake_observability::record_query_pipeline_meta(meta);
+}
+
 impl QueryEngine {
     /// Run the full non-streaming query pipeline with explicit providers.
     #[tracing::instrument(
@@ -257,21 +295,39 @@ impl QueryEngine {
         let should_rerank = request.enable_rerank.unwrap_or(self.config.enable_rerank);
         if should_rerank && self.reranker.is_some() {
             let rerank_start = Instant::now();
-            let reranked_chunks = self
-                .rerank_chunks(
-                    &request.query,
-                    context.chunks,
-                    request.enable_rerank,
-                    request.rerank_top_k,
-                    prefer_bm25,
-                    protect_first,
-                    &topic_protect_ids,
-                )
+            let reranked_chunks =
+                edgequake_observability::with_pipeline_stage_span("query.rerank", async {
+                    let chunks = self
+                        .rerank_chunks(
+                            &request.query,
+                            context.chunks,
+                            request.enable_rerank,
+                            request.rerank_top_k,
+                            prefer_bm25,
+                            protect_first,
+                            &topic_protect_ids,
+                        )
+                        .await;
+                    let backend = if prefer_bm25 { "bm25" } else { "ce" };
+                    edgequake_observability::record_observation_meta("rerank_backend", backend);
+                    edgequake_observability::record_observation_io(
+                        Some(&format!("{{\"applied\":true,\"backend\":\"{backend}\"}}")),
+                        Some(&format!("{{\"chunks\":{}}}", chunks.len())),
+                    );
+                    chunks
+                })
                 .await;
             context.chunks = reranked_chunks;
             if let Some(s) = stats.as_mut() {
                 s.rerank_time_ms = Some(rerank_start.elapsed().as_millis() as u64);
             }
+        } else {
+            let _stage = edgequake_observability::enter_pipeline_stage("query.rerank");
+            edgequake_observability::record_observation_meta("rerank_applied", "false");
+            edgequake_observability::record_observation_io(
+                Some("{\"applied\":false}"),
+                Some("{\"skipped\":true}"),
+            );
         }
 
         crate::entity_rank::rank_entities_for_prompt(
@@ -468,6 +524,7 @@ impl QueryEngine {
                         ll_count = ll.len(),
                         "083 hl/ll override — skip keyword LLM"
                     );
+                    let _stage = edgequake_observability::enter_pipeline_stage("keyword-override");
                     Ok(ExtractedKeywords::new(
                         hl,
                         ll,
@@ -475,6 +532,7 @@ impl QueryEngine {
                     ))
                 } else if matches!(keyword_mode, crate::keywords::KeywordMode::Heuristic) {
                     tracing::debug!("060 KEYWORD_MODE=heuristic — skip keyword LLM");
+                    let _stage = edgequake_observability::enter_pipeline_stage("keyword-heuristic");
                     Ok(crate::keywords::heuristic_extracted_keywords(
                         &keyword_query,
                     ))
@@ -497,7 +555,23 @@ impl QueryEngine {
                 // keyword_query for prompt/keyword extraction, not the vector.
                 // X-10: L2-normalize via Embedding::normalize after embed_one.
                 let result = if self.config.use_keyword_extraction {
-                    match providers.embedding.embed_one(&request.query).await {
+                    match edgequake_observability::with_rag_embedding_span(
+                        "query.embed",
+                        providers.embedding.model(),
+                        providers.embedding.name(),
+                        async {
+                            let vec = providers.embedding.embed_one(&request.query).await?;
+                            edgequake_observability::record_embedding_io(
+                                "query",
+                                1,
+                                1,
+                                Some(vec.len()),
+                            );
+                            Ok::<_, edgequake_llm::error::LlmError>(vec)
+                        },
+                    )
+                    .await
+                    {
                         Ok(mut vector) => {
                             // X-10: L2-normalize (same math as Embedding::normalize;
                             // local to avoid query→core dependency cycle).
@@ -566,7 +640,8 @@ impl QueryEngine {
         providers: &QueryProviders<'_>,
     ) -> Result<QueryContext> {
         use edgequake_observability::{
-            query_preview, record_rag_retrieval_outcome, with_rag_retrieval_span, RagRetrievalAttrs,
+            query_preview, record_rag_retrieval_complete, with_rag_retrieval_span,
+            RagRetrievalAttrs,
         };
 
         let tenant = request.tenant_id();
@@ -722,10 +797,14 @@ impl QueryEngine {
                 },
                 async {
                     let ctx = retrieve.await?;
-                    record_rag_retrieval_outcome(
-                        ctx.chunks.is_empty() && ctx.entities.is_empty(),
+                    let empty = ctx.chunks.is_empty() && ctx.entities.is_empty();
+                    record_rag_retrieval_complete(
+                        empty,
                         false,
                         None,
+                        ctx.chunks.len(),
+                        ctx.entities.len(),
+                        ctx.chunks.first().map(|c| c.content.as_str()),
                     );
                     Ok(ctx)
                 },
@@ -814,6 +893,7 @@ impl QueryEngine {
             if answer_active && !has_images && !final_context.is_empty() {
                 if let Some(cache) = self.llm_response_cache.as_ref() {
                     if let Some(cached) = cache.get_return(&cache_key).await {
+                        let _stage = edgequake_observability::enter_pipeline_stage("answer-cache");
                         stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;
                         stats.ttft_ms = Some(0);
                         stats.answer_cache_hit = true;
@@ -840,6 +920,7 @@ impl QueryEngine {
                     // Legacy sync L1 path (tests that only call with_answer_cache pre-103).
                     let legacy_key = crate::cache::answer_cache_key(&prompt);
                     if let Some(cached) = cache.get(&legacy_key) {
+                        let _stage = edgequake_observability::enter_pipeline_stage("answer-cache");
                         stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;
                         stats.ttft_ms = Some(0);
                         stats.answer_cache_hit = true;
@@ -874,6 +955,8 @@ impl QueryEngine {
         stats.generated_tokens = generated_tokens;
         stats.reasoning_effort = request.reasoning_effort.clone();
         stats.total_time_ms = pipeline_start.elapsed().as_millis() as u64;
+
+        record_query_pipeline_langfuse(mode, Some(&stats), final_context.chunks.len());
 
         // SPEC-046 OPS-P3.22: optional LLM-judge faithfulness (opt-in).
         // Falls back to heuristic sampler (OPS-P2.20) when judge off / fails.
@@ -1105,5 +1188,44 @@ mod keyword_override_tests {
                 .and_then(|v| v.as_str()),
             Some("TNM")
         );
+    }
+}
+
+#[cfg(test)]
+mod spec124_pipeline_meta {
+    /// LAW-124-21: finalize stamps QueryPipelineMeta via SSOT helper.
+    #[test]
+    fn finalize_source_records_query_pipeline_meta() {
+        let src = include_str!("query_pipeline.rs");
+        let prod = src
+            .split("mod spec124_pipeline_meta")
+            .next()
+            .expect("production source");
+        assert!(
+            prod.contains("record_query_pipeline_langfuse"),
+            "query_pipeline.rs must stamp pipeline meta from QueryStats"
+        );
+        assert!(
+            prod.contains("record_query_pipeline_meta"),
+            "query crate must call observability record_query_pipeline_meta SSOT"
+        );
+        assert!(
+            prod.contains("query.embed"),
+            "query pipeline must wrap embed as query.embed"
+        );
+        assert!(
+            prod.contains("query.rerank"),
+            "query pipeline must emit query.rerank observation"
+        );
+        for cost_key in [
+            "gen_ai.usage.cost",
+            "langfuse.observation.cost_details",
+            "langfuse.observation.cost",
+        ] {
+            assert!(
+                !prod.contains(cost_key),
+                "query pipeline must not emit cost attr {cost_key}"
+            );
+        }
     }
 }

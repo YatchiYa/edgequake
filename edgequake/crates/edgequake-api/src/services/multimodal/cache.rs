@@ -140,10 +140,25 @@ where
     F: Fn(&str) -> Result<T, String>,
     G: Fn(&str) -> String,
 {
-    let response = llm
-        .chat(&initial_messages, None)
-        .await
-        .map_err(|e| format!("LLM call failed: {e}"))?;
+    let response = edgequake_observability::with_llm_generation(
+        "pdf-pass-b-figure",
+        llm.model(),
+        llm.name(),
+        async {
+            let resp = llm
+                .chat(&initial_messages, None)
+                .await
+                .map_err(|e| format!("LLM call failed: {e}"))?;
+            let rec = edgequake_observability::LlmGenerationRecord::from_response(
+                Some("{\"kind\":\"pass_b_figure\"}"),
+                &resp.content,
+                resp.prompt_tokens as u64,
+                resp.completion_tokens as u64,
+            );
+            Ok::<_, String>((resp, rec))
+        },
+    )
+    .await?;
     let text = response.content.trim().to_string();
     if text.is_empty() {
         return Err("LLM returned empty content".into());
@@ -158,10 +173,25 @@ where
                 ),
                 ChatMessage::user(build_repair_user(&text)),
             ];
-            let repair = llm
-                .chat(&repair_messages, None)
-                .await
-                .map_err(|e| format!("LLM repair call failed: {e}"))?;
+            let repair = edgequake_observability::with_llm_generation(
+                "pdf-pass-b-figure",
+                llm.model(),
+                llm.name(),
+                async {
+                    let resp = llm
+                        .chat(&repair_messages, None)
+                        .await
+                        .map_err(|e| format!("LLM repair call failed: {e}"))?;
+                    let rec = edgequake_observability::LlmGenerationRecord::from_response(
+                        Some("{\"kind\":\"pass_b_figure_repair\"}"),
+                        &resp.content,
+                        resp.prompt_tokens as u64,
+                        resp.completion_tokens as u64,
+                    );
+                    Ok::<_, String>((resp, rec))
+                },
+            )
+            .await?;
             let repair_text = repair.content.trim().to_string();
             parse(&repair_text)
                 .map_err(|second_err| {

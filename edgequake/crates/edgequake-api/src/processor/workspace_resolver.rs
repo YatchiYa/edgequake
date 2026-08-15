@@ -1,6 +1,36 @@
 use super::*;
+use edgequake_observability::{stamp_ingest_langfuse, LangfuseTraceIdentity};
 
 impl DocumentTaskProcessor {
+    /// SPEC-124 I8: ingest session = document_id; slugs additive to GUIDs (fail-open).
+    pub(super) async fn stamp_ingest_langfuse_for_document(
+        &self,
+        document_id: &str,
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> edgequake_observability::LangfuseIdentityGuard {
+        let mut identity =
+            LangfuseTraceIdentity::from_parts(Some(document_id), None, tenant_id, workspace_id);
+        if let (Some(svc), Some(wid)) = (self.workspace_service.as_ref(), workspace_id) {
+            if let Ok(ws_uuid) = uuid::Uuid::parse_str(wid) {
+                if let Ok(Some(ws)) = svc.get_workspace(ws_uuid).await {
+                    let tenant_slug = match svc.get_tenant(ws.tenant_id).await {
+                        Ok(Some(t)) => Some(t.slug),
+                        _ => None,
+                    };
+                    identity = identity.with_slugs(tenant_slug.as_deref(), Some(ws.slug.as_str()));
+                    if identity.tenant_id.is_none() {
+                        identity.tenant_id = Some(ws.tenant_id.to_string());
+                    }
+                    if identity.workspace_id.is_none() {
+                        identity.workspace_id = Some(ws.workspace_id.to_string());
+                    }
+                }
+            }
+        }
+        stamp_ingest_langfuse(identity)
+    }
+
     /// SPEC-032: Creates a new Pipeline instance configured with the workspace's
     /// LLM and embedding providers. Falls back to the default pipeline if:
     /// - No workspace_id provided

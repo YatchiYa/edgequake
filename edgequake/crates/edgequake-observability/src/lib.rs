@@ -6,6 +6,10 @@
 
 pub mod error_context;
 pub mod http_span;
+pub mod langfuse;
+pub mod langfuse_attrs;
+pub mod langfuse_context;
+pub mod langfuse_meta;
 pub mod propagation;
 pub mod rag_span;
 pub mod request_context;
@@ -13,7 +17,12 @@ pub mod subscriber;
 pub mod utf8_truncate;
 
 #[cfg(feature = "otel")]
+pub mod baggage_span_processor;
+#[cfg(feature = "otel")]
 pub mod trace_context;
+
+#[cfg(all(test, feature = "otel"))]
+mod inmemory_otel_tests;
 
 pub mod query_guard;
 
@@ -24,13 +33,43 @@ pub use error_context::ErrorEvent;
 pub use http_span::{record_http_error, record_http_status, with_http_span};
 pub use query_guard::{QueryFailureGuard, QueryOutcomeGuard};
 pub use rag_span::{
-    query_preview, record_rag_retrieval_outcome, with_rag_generation_span, with_rag_retrieval_span,
-    RagRetrievalAttrs,
+    enter_pipeline_stage, query_preview, record_embedding_io, record_feature_tag,
+    record_gen_ai_usage, record_ingest_document_input, record_ingest_document_output,
+    record_observation_io, record_observation_type_span, record_pipeline_chunk_extraction_io,
+    record_query_root_io, record_rag_retrieval_complete, record_rag_retrieval_io,
+    record_rag_retrieval_outcome, stamp_ingest_langfuse, stamp_query_langfuse,
+    stamp_query_langfuse_identity, with_feature_root_span, with_ingest_document_span,
+    with_ingest_task_span, with_llm_generation, with_pipeline_stage_span, with_rag_embedding_span,
+    with_rag_generation_span, with_rag_retrieval_span, LlmGenerationRecord, RagRetrievalAttrs,
+    OBSERVATION_IO_PREVIEW_CHARS,
 };
 pub use utf8_truncate::{
     utf8_clamp_span, utf8_prefix, utf8_prefix_at_sentence, utf8_prefix_ellipsis,
 };
 
+pub use langfuse::{
+    langfuse_otlp_headers, langfuse_otlp_headers_from_env, normalize_base_url, unquote_env_value,
+    LangfuseConfig, LangfuseConfigRequirement, DEFAULT_LANGFUSE_BASE_URL,
+};
+pub use langfuse_attrs::{
+    is_forbidden_cost_attr, LangfuseTraceIdentity, COST_ATTR_DENYLIST, GEN_AI_COMPLETION,
+    GEN_AI_CONVERSATION_ID, GEN_AI_PROMPT, GEN_AI_USAGE_INPUT_TOKENS, GEN_AI_USAGE_OUTPUT_TOKENS,
+    LANGFUSE_BAGGAGE_ALLOWLIST, LANGFUSE_META_TENANT_ID, LANGFUSE_META_TENANT_SLUG,
+    LANGFUSE_META_WORKSPACE_ID, LANGFUSE_META_WORKSPACE_SLUG, LANGFUSE_OBSERVATION_INPUT,
+    LANGFUSE_OBSERVATION_METADATA_PREFIX, LANGFUSE_OBSERVATION_OUTPUT, LANGFUSE_OBSERVATION_TYPE,
+    LANGFUSE_SESSION_ID, LANGFUSE_TRACE_METADATA_PREFIX, LANGFUSE_TRACE_TAGS, LANGFUSE_USER_ID,
+    OBSERVATION_TYPE_CHAIN, OBSERVATION_TYPE_EMBEDDING, OBSERVATION_TYPE_GENERATION,
+    OBSERVATION_TYPE_RETRIEVER, OBSERVATION_TYPE_SPAN, SESSION_ID, USER_ID,
+};
+pub use langfuse_context::{
+    bind_langfuse_identity, bind_langfuse_trace_identity, bind_langfuse_trace_identity_async,
+    with_langfuse_identity_async, LangfuseIdentityGuard,
+};
+pub use langfuse_meta::{
+    record_ingest_kg_meta, record_ingest_parse_meta, record_observation_meta,
+    record_query_pipeline_meta, record_trace_meta, IngestKgMeta, IngestParseMeta,
+    QueryPipelineMeta,
+};
 pub use propagation::{harvest_propagation_headers, PropagationHeaders};
 pub use request_context::{
     current_llm_provider, current_request_id, parse_trace_id_from_traceparent, resolve_request_id,
@@ -39,7 +78,8 @@ pub use request_context::{
     TRACEPARENT_HEADER, TRACESTATE_HEADER,
 };
 pub use subscriber::{
-    init_observability, log_format_label, LogFormat, ObservabilityConfig, ObservabilityGuard,
+    init_observability, log_format_label, otel_feature_built, LogFormat, ObservabilityConfig,
+    ObservabilityGuard,
 };
 #[cfg(feature = "otel")]
 pub use trace_context::{extract_from_headers, inject_current_context};

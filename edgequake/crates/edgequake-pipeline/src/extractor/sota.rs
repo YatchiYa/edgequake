@@ -341,8 +341,26 @@ where
                 "Making LLM call with adaptive max_tokens"
             );
 
-            // Make LLM call using chat interface with options
-            let response = match self.llm_provider.chat(&messages, Some(&options)).await {
+            // Make LLM call using chat interface with options (SPEC-124: generation span)
+            let model = self.llm_provider.model().to_string();
+            let provider_name = self.llm_provider.name().to_string();
+            let response = match edgequake_observability::with_llm_generation(
+                "extract-entities",
+                &model,
+                &provider_name,
+                async {
+                    let resp = self.llm_provider.chat(&messages, Some(&options)).await?;
+                    let rec = edgequake_observability::LlmGenerationRecord::from_response(
+                        Some(&chunk.content),
+                        &resp.content,
+                        resp.prompt_tokens as u64,
+                        resp.completion_tokens as u64,
+                    );
+                    Ok::<_, edgequake_llm::error::LlmError>((resp, rec))
+                },
+            )
+            .await
+            {
                 Ok(resp) => resp,
                 Err(e) => {
                     // SPEC-083 X-30: prefer typed LlmError::Timeout; string markers only as fallback.

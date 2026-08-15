@@ -107,6 +107,14 @@ impl QueryEngine {
         let answer_llm = providers.answer_llm.clone();
         let (context, mode) = self.run_context_pipeline(&request, providers).await?;
         let context = self.enrich_retrieved_context(&request, context).await;
+        let mut stream_stats = crate::types::QueryStats::default();
+        stream_stats.absorb_arm_metadata(&context);
+        stream_stats.context_empty = context.is_empty();
+        super::query_pipeline::record_query_pipeline_langfuse(
+            mode,
+            Some(&stream_stats),
+            context.chunks.len(),
+        );
         self.stream_answer_from_context(&request, context, mode, answer_llm)
             .await
     }
@@ -226,26 +234,111 @@ impl QueryEngine {
         let prompt_for_cache = prompt.clone();
         let cache_key_for_write = cache_key.clone();
         let context_nonempty = answer_cache_on && !context.is_empty();
+        let model = llm.model().to_string();
+        let provider_name = llm.name().to_string();
+        let query_text = request.query.clone();
 
-        // 083: prefer system/user chat when not COMPLETE_BLOB (even for stream entry —
-        // token stream API is one-blob; chat preserves LR roles as a one-shot stream).
-        let stream = if !use_complete_blob {
-            use edgequake_llm::traits::{ChatMessage, CompletionOptions};
-            let messages = vec![
-                ChatMessage::system(&system_text),
-                ChatMessage::user(&request.query),
-            ];
-            let completion_opts = request
-                .reasoning_effort
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(|effort| CompletionOptions {
-                    reasoning_effort: Some(effort.to_string()),
-                    ..Default::default()
-                });
-            match llm.chat(&messages, completion_opts.as_ref()).await {
-                Ok(response) => {
+        // SPEC-124: WebUI primary path is streaming — wrap GenAI generation span here.
+        let stream = edgequake_observability::with_rag_generation_span(
+            "generate-answer",
+            &model,
+            &provider_name,
+            async {
+                // 083: prefer system/user chat when not COMPLETE_BLOB (even for stream entry —
+                // token stream API is one-blob; chat preserves LR roles as a one-shot stream).
+                if !use_complete_blob {
+                    use edgequake_llm::traits::{ChatMessage, CompletionOptions};
+                    let messages = vec![
+                        ChatMessage::system(&system_text),
+                        ChatMessage::user(&query_text),
+                    ];
+                    let completion_opts = request
+                        .reasoning_effort
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(|effort| CompletionOptions {
+                            reasoning_effort: Some(effort.to_string()),
+                            ..Default::default()
+                        });
+                    match llm.chat(&messages, completion_opts.as_ref()).await {
+                        Ok(response) => {
+                            edgequake_observability::record_gen_ai_usage(
+                                Some(response.prompt_tokens as u64),
+                                Some(response.completion_tokens as u64),
+                            );
+                            edgequake_observability::record_observation_io(
+                                Some(&query_text),
+                                Some(&response.content),
+                            );
+                            if context_nonempty && !response.content.is_empty() {
+                                if let Some(cache) = llm_cache.as_ref() {
+                                    cache
+                                        .set_return(
+                                            &cache_key_for_write,
+                                            crate::cache::LlmCacheType::Query,
+                                            &response.content,
+                                            Some(&prompt_for_cache),
+                                        )
+                                        .await;
+                                } else if let Some(cache) = answer_cache.as_ref() {
+                                    cache.set(
+                                        &crate::cache::answer_cache_key(&prompt_for_cache),
+                                        &response.content,
+                                    );
+                                }
+                            }
+                            return Ok::<TokenStream, QueryError>(
+                                futures::stream::once(async move { Ok(response.content) }).boxed(),
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                "083 stream chat failed; falling back to text stream/complete"
+                            );
+                            if llm.supports_streaming() {
+                                return llm
+                                    .stream(&prompt)
+                                    .await
+                                    .map(|stream| {
+                                        stream.map(|res| res.map_err(QueryError::from)).boxed()
+                                    })
+                                    .map_err(QueryError::from);
+                            }
+                            let response = llm.complete(&prompt).await.map_err(QueryError::from)?;
+                            edgequake_observability::record_gen_ai_usage(
+                                Some(response.prompt_tokens as u64),
+                                Some(response.completion_tokens as u64),
+                            );
+                            edgequake_observability::record_observation_io(
+                                Some(&query_text),
+                                Some(&response.content),
+                            );
+                            return Ok(
+                                futures::stream::once(async move { Ok(response.content) }).boxed()
+                            );
+                        }
+                    }
+                } else if llm.supports_streaming() {
+                    llm.stream(&prompt)
+                        .await
+                        .map(|stream| stream.map(|res| res.map_err(QueryError::from)).boxed())
+                        .map_err(QueryError::from)
+                } else {
+                    tracing::warn!(
+                        provider = llm.name(),
+                        "Provider doesn't support streaming, falling back to non-streaming mode"
+                    );
+                    let response = llm.complete(&prompt).await.map_err(QueryError::from)?;
+                    edgequake_observability::record_gen_ai_usage(
+                        Some(response.prompt_tokens as u64),
+                        Some(response.completion_tokens as u64),
+                    );
+                    edgequake_observability::record_observation_io(
+                        Some(&query_text),
+                        Some(&response.content),
+                    );
                     if context_nonempty && !response.content.is_empty() {
                         if let Some(cache) = llm_cache.as_ref() {
                             cache
@@ -263,55 +356,48 @@ impl QueryEngine {
                             );
                         }
                     }
-                    futures::stream::once(async move { Ok(response.content) }).boxed()
+                    Ok(futures::stream::once(async move { Ok(response.content) }).boxed())
                 }
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        "083 stream chat failed; falling back to text stream/complete"
-                    );
-                    if llm.supports_streaming() {
-                        llm.stream(&prompt)
-                            .await
-                            .map(|stream| stream.map(|res| res.map_err(QueryError::from)).boxed())
-                            .map_err(QueryError::from)?
-                    } else {
-                        let response = llm.complete(&prompt).await.map_err(QueryError::from)?;
-                        futures::stream::once(async move { Ok(response.content) }).boxed()
-                    }
-                }
-            }
-        } else if llm.supports_streaming() {
-            llm.stream(&prompt)
-                .await
-                .map(|stream| stream.map(|res| res.map_err(QueryError::from)).boxed())
-                .map_err(QueryError::from)?
-        } else {
-            tracing::warn!(
-                provider = llm.name(),
-                "Provider doesn't support streaming, falling back to non-streaming mode"
-            );
-            let response = llm.complete(&prompt).await.map_err(QueryError::from)?;
-            if context_nonempty && !response.content.is_empty() {
-                if let Some(cache) = llm_cache.as_ref() {
-                    cache
-                        .set_return(
-                            &cache_key_for_write,
-                            crate::cache::LlmCacheType::Query,
-                            &response.content,
-                            Some(&prompt_for_cache),
-                        )
-                        .await;
-                } else if let Some(cache) = answer_cache.as_ref() {
-                    cache.set(
-                        &crate::cache::answer_cache_key(&prompt_for_cache),
-                        &response.content,
-                    );
-                }
-            }
-            futures::stream::once(async move { Ok(response.content) }).boxed()
-        };
+            },
+        )
+        .await?;
 
         Ok((context, mode, stream))
+    }
+}
+
+#[cfg(test)]
+mod spec124_stream_genai {
+    /// LAW-124-15 / E26: stream answer path must wrap GenAI generation (CI grep).
+    #[test]
+    fn stream_answer_source_contains_generation_span() {
+        let src = include_str!("query_stream.rs");
+        // Exclude this test module so denylist string literals are not false positives.
+        let prod = src
+            .split("mod spec124_stream_genai")
+            .next()
+            .expect("production source");
+        assert!(
+            prod.contains("with_rag_generation_span"),
+            "query_stream.rs must call with_rag_generation_span for WebUI stream path"
+        );
+        assert!(
+            prod.contains("\"generate-answer\""),
+            "stream path must use stable operation name generate-answer"
+        );
+        assert!(
+            prod.contains("record_gen_ai_usage"),
+            "stream path must record token usage when available"
+        );
+        for cost_key in [
+            "gen_ai.usage.cost",
+            "langfuse.observation.cost_details",
+            "langfuse.observation.cost",
+        ] {
+            assert!(
+                !prod.contains(cost_key),
+                "stream path must not emit cost attr {cost_key}"
+            );
+        }
     }
 }

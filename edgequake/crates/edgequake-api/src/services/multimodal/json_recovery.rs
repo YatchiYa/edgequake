@@ -51,10 +51,25 @@ where
     F: Fn(&str) -> Result<T, String>,
     G: Fn(&str) -> String,
 {
-    let response = llm
-        .chat(&initial_messages, None)
-        .await
-        .map_err(|e| format!("VLM call failed: {e}"))?;
+    let response = edgequake_observability::with_llm_generation(
+        "pdf-pass-b-figure",
+        llm.model(),
+        llm.name(),
+        async {
+            let resp = llm
+                .chat(&initial_messages, None)
+                .await
+                .map_err(|e| format!("VLM call failed: {e}"))?;
+            let rec = edgequake_observability::LlmGenerationRecord::from_response(
+                Some("{\"kind\":\"pass_b_figure\"}"),
+                &resp.content,
+                resp.prompt_tokens as u64,
+                resp.completion_tokens as u64,
+            );
+            Ok::<_, String>((resp, rec))
+        },
+    )
+    .await?;
     let text = response.content.trim();
     if text.is_empty() {
         return Err("VLM returned empty content".into());
@@ -67,10 +82,25 @@ where
                 ChatMessage::system(JSON_REPAIR_SYSTEM),
                 ChatMessage::user(build_repair_user(text)),
             ];
-            let repair = llm
-                .chat(&repair_messages, None)
-                .await
-                .map_err(|e| format!("VLM repair call failed: {e}"))?;
+            let repair = edgequake_observability::with_llm_generation(
+                "pdf-pass-b-figure",
+                llm.model(),
+                llm.name(),
+                async {
+                    let resp = llm
+                        .chat(&repair_messages, None)
+                        .await
+                        .map_err(|e| format!("VLM repair call failed: {e}"))?;
+                    let rec = edgequake_observability::LlmGenerationRecord::from_response(
+                        Some("{\"kind\":\"pass_b_figure_repair\"}"),
+                        &resp.content,
+                        resp.prompt_tokens as u64,
+                        resp.completion_tokens as u64,
+                    );
+                    Ok::<_, String>((resp, rec))
+                },
+            )
+            .await?;
             parse(repair.content.trim()).map_err(|second_err| {
                 format!("JSON parse failed after retry: {first_err}; repair: {second_err}")
             })

@@ -96,6 +96,12 @@ services:
       # automatically use their configured model (e.g. gemma4:e4b) for vision too.
       EDGEQUAKE_VISION_MODEL:       ${EDGEQUAKE_VISION_MODEL:-${EDGEQUAKE_LLM_MODEL:-}}
       OPENAI_API_KEY:               ${OPENAI_API_KEY:-}
+      # SPEC-124 Langfuse observability (OTLP/HTTP)
+      LANGFUSE_PUBLIC_KEY:          ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY:          ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL:            ${LANGFUSE_BASE_URL:-}
+      LANGFUSE_HOST:                ${LANGFUSE_HOST:-}
+      EDGEQUAKE_LANGFUSE_ENABLED:   ${EDGEQUAKE_LANGFUSE_ENABLED:-}
       # WHY: OPENAI_BASE_URL must NOT be set to an empty string.
       # When unset on the host ${OPENAI_BASE_URL:-} evaluates to "", which the
       # OpenAI provider uses as the base URL, breaking every request with

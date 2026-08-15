@@ -39,6 +39,17 @@ async fn complete_with_optional_effort(
     }
 }
 
+/// SPEC-124 LAW-124-12/14: record tokens + truncated I/O on current generation span.
+fn record_answer_gen_ai(response: &LLMResponse, input: &str, output: &str) {
+    edgequake_observability::LlmGenerationRecord::from_response(
+        Some(input),
+        output,
+        response.prompt_tokens as u64,
+        response.completion_tokens as u64,
+    )
+    .record_on_current_span();
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AnswerPromptStyle {
     Default,
@@ -560,7 +571,8 @@ Generate a comprehensive, well-structured answer that integrates observations fr
 
         let provider = llm_override.unwrap_or(&self.llm_provider);
         let completion_opts = answer_completion_options(reasoning_effort);
-        let opts_ref = completion_opts.as_ref();
+        let model = provider.model().to_string();
+        let provider_name = provider.name().to_string();
 
         // FEAT0203: Two distinct call paths based on whether images are attached.
         //
@@ -573,6 +585,43 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         // roles, so it can use both freely.
         //
         // 083: text-only default matches LightRAG kg_query (system=rag_response, user=query).
+        // SPEC-124: wrap generation in GenAI span for Langfuse / OTEL.
+        edgequake_observability::with_rag_generation_span(
+            "generate-answer",
+            &model,
+            &provider_name,
+            async {
+                self.generate_answer_inner(
+                    query,
+                    context,
+                    provider.as_ref(),
+                    system_prompt_extension,
+                    images,
+                    conversation_history,
+                    question_type,
+                    response_type,
+                    completion_opts.as_ref(),
+                )
+                .await
+            },
+        )
+        .await
+    }
+
+    /// Inner answer generation (called under `rag.generation` span).
+    #[allow(clippy::too_many_arguments)]
+    async fn generate_answer_inner(
+        &self,
+        query: &str,
+        context: &QueryContext,
+        provider: &dyn crate::LLMProvider,
+        system_prompt_extension: Option<&str>,
+        images: Option<&[ImageData]>,
+        conversation_history: &[ConversationMessage],
+        question_type: Option<&str>,
+        response_type: Option<&str>,
+        opts_ref: Option<&CompletionOptions>,
+    ) -> Result<(String, usize)> {
         let prompt = self.build_prompt(
             query,
             context,
@@ -604,11 +653,11 @@ Generate a comprehensive, well-structured answer that integrates observations fr
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!(error = %e, "Vision chat failed; retrying as text-only query");
-                    complete_with_optional_effort(provider.as_ref(), &prompt, opts_ref).await?
+                    complete_with_optional_effort(provider, &prompt, opts_ref).await?
                 }
             }
         } else if use_complete_blob {
-            complete_with_optional_effort(provider.as_ref(), &prompt, opts_ref).await?
+            complete_with_optional_effort(provider, &prompt, opts_ref).await?
         } else {
             let messages = vec![ChatMessage::system(&system_text), ChatMessage::user(query)];
             match provider.chat(&messages, opts_ref).await {
@@ -618,7 +667,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
                         error = %e,
                         "083 chat generate failed; falling back to complete blob"
                     );
-                    complete_with_optional_effort(provider.as_ref(), &prompt, opts_ref).await?
+                    complete_with_optional_effort(provider, &prompt, opts_ref).await?
                 }
             }
         };
@@ -630,18 +679,17 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         if content.is_empty() {
             tracing::warn!("080 empty LLM answer with non-empty context — retry once");
             let retry = if use_complete_blob {
-                complete_with_optional_effort(provider.as_ref(), &prompt, opts_ref).await?
+                complete_with_optional_effort(provider, &prompt, opts_ref).await?
             } else {
                 let messages = vec![ChatMessage::system(&system_text), ChatMessage::user(query)];
                 match provider.chat(&messages, opts_ref).await {
                     Ok(r) => r,
-                    Err(_) => {
-                        complete_with_optional_effort(provider.as_ref(), &prompt, opts_ref).await?
-                    }
+                    Err(_) => complete_with_optional_effort(provider, &prompt, opts_ref).await?,
                 }
             };
             let retry_content = retry.content.trim().to_string();
             if !retry_content.is_empty() {
+                record_answer_gen_ai(&retry, query, &retry_content);
                 return Ok((
                     finalize_answer_text(retry_content, gold_compat),
                     retry.completion_tokens,
@@ -653,6 +701,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
                 gold_compat,
                 "080 empty LLM after retry — extractive fallback from context"
             );
+            edgequake_observability::record_observation_io(Some(query), Some(&fallback));
             return Ok((finalize_answer_text(fallback, gold_compat), 0));
         }
 
@@ -680,6 +729,7 @@ then elaborate. Do not invent facts outside Context.\n"
                         ) > crate::grounding::answer_context_token_coverage(&content, &corpus)
                             || crate::grounding::answer_has_context_span(&retry_content, &corpus))
                     {
+                        record_answer_gen_ai(&retry, query, &retry_content);
                         return Ok((
                             finalize_answer_text(retry_content, gold_compat),
                             retry.completion_tokens,
@@ -689,6 +739,7 @@ then elaborate. Do not invent facts outside Context.\n"
             }
         }
 
+        record_answer_gen_ai(&response, query, &content);
         Ok((
             finalize_answer_text(content, gold_compat),
             response.completion_tokens,
@@ -718,31 +769,42 @@ then elaborate. Do not invent facts outside Context.\n"
         conversation_history: &[ConversationMessage],
     ) -> Result<(String, usize)> {
         let provider = llm_override.unwrap_or(&self.llm_provider);
-        let messages = conversation_context::build_bypass_chat_messages(
-            query,
-            conversation_history,
-            system_prompt_extension,
-            DEFAULT_CONVERSATION_TURN_LIMIT,
-            images,
-        );
-
-        let response = match provider.chat(&messages, None).await {
-            Ok(r) => r,
-            Err(e) if images.is_some_and(|i| !i.is_empty()) => {
-                tracing::warn!(error = %e, "Bypass vision chat failed; retrying as text-only");
-                let text_only = conversation_context::build_bypass_chat_messages(
+        let model = provider.model().to_string();
+        let provider_name = provider.name().to_string();
+        edgequake_observability::with_rag_generation_span(
+            "generate-bypass-answer",
+            &model,
+            &provider_name,
+            async {
+                let messages = conversation_context::build_bypass_chat_messages(
                     query,
                     conversation_history,
                     system_prompt_extension,
                     DEFAULT_CONVERSATION_TURN_LIMIT,
-                    None,
+                    images,
                 );
-                provider.chat(&text_only, None).await?
-            }
-            Err(e) => return Err(e.into()),
-        };
 
-        Ok((response.content, response.completion_tokens))
+                let response = match provider.chat(&messages, None).await {
+                    Ok(r) => r,
+                    Err(e) if images.is_some_and(|i| !i.is_empty()) => {
+                        tracing::warn!(error = %e, "Bypass vision chat failed; retrying as text-only");
+                        let text_only = conversation_context::build_bypass_chat_messages(
+                            query,
+                            conversation_history,
+                            system_prompt_extension,
+                            DEFAULT_CONVERSATION_TURN_LIMIT,
+                            None,
+                        );
+                        provider.chat(&text_only, None).await?
+                    }
+                    Err(e) => return Err(e.into()),
+                };
+
+                record_answer_gen_ai(&response, query, &response.content);
+                Ok((response.content, response.completion_tokens))
+            },
+        )
+        .await
     }
 
     /// Stream Bypass / Chat as real tokens when the provider supports `stream()`.
@@ -814,39 +876,59 @@ then elaborate. Do not invent facts outside Context.\n"
         images: &[ImageData],
     ) -> Result<TokenStream> {
         let provider = llm_override.unwrap_or_else(|| self.llm_provider.clone());
-        let system_text = self.build_vision_system_message(context, system_prompt_extension);
-        let messages = vec![
-            ChatMessage::system(&system_text),
-            ChatMessage::user_with_images(query, images.to_vec()),
-        ];
+        let model = provider.model().to_string();
+        let provider_name = provider.name().to_string();
+        edgequake_observability::with_rag_generation_span(
+            "generate-answer",
+            &model,
+            &provider_name,
+            async {
+                let system_text =
+                    self.build_vision_system_message(context, system_prompt_extension);
+                let messages = vec![
+                    ChatMessage::system(&system_text),
+                    ChatMessage::user_with_images(query, images.to_vec()),
+                ];
 
-        match provider.chat(&messages, None).await {
-            Ok(r) => Ok(futures::stream::once(async move { Ok(r.content) }).boxed()),
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    "Streaming vision chat failed; falling back to text-only stream"
-                );
-                // Text-only fallback: prefer streaming if supported, else one-shot.
-                let prompt =
-                    self.build_prompt(query, context, system_prompt_extension, &[], None, None);
-                if provider.supports_streaming() {
-                    provider
-                        .stream(&prompt)
-                        .await
-                        .map(|s| {
-                            s.map(|res| res.map_err(crate::error::QueryError::from))
-                                .boxed()
-                        })
-                        .map_err(crate::error::QueryError::from)
-                } else {
-                    let resp = provider
-                        .complete(&prompt)
-                        .await
-                        .map_err(crate::error::QueryError::from)?;
-                    Ok(futures::stream::once(async move { Ok(resp.content) }).boxed())
+                match provider.chat(&messages, None).await {
+                    Ok(r) => {
+                        record_answer_gen_ai(&r, query, &r.content);
+                        Ok(futures::stream::once(async move { Ok(r.content) }).boxed())
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "Streaming vision chat failed; falling back to text-only stream"
+                        );
+                        let prompt = self.build_prompt(
+                            query,
+                            context,
+                            system_prompt_extension,
+                            &[],
+                            None,
+                            None,
+                        );
+                        if provider.supports_streaming() {
+                            provider
+                                .stream(&prompt)
+                                .await
+                                .map(|s| {
+                                    s.map(|res| res.map_err(crate::error::QueryError::from))
+                                        .boxed()
+                                })
+                                .map_err(crate::error::QueryError::from)
+                        } else {
+                            let resp = provider
+                                .complete(&prompt)
+                                .await
+                                .map_err(crate::error::QueryError::from)?;
+                            record_answer_gen_ai(&resp, query, &resp.content);
+                            Ok(futures::stream::once(async move { Ok(resp.content) }).boxed())
+                        }
+                    }
                 }
-            }
-        }
+            },
+        )
+        .await
     }
 }

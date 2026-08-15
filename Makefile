@@ -236,6 +236,11 @@ export
 
 # Environment variables (can be overridden from shell)
 OPENAI_API_KEY ?= $(shell echo $$OPENAI_API_KEY)
+# SPEC-124 Langfuse: do NOT use `?= $(shell echo $$VAR)` here.
+# When unset, that defines an empty Make var; bare `export` above then exports
+# LANGFUSE_*='' into every recipe, and `LANGFUSE_FOO="$(LANGFUSE_FOO)"` on
+# cargo lines clears a real shell export. Rely on Make's automatic env import,
+# `-include .env`, and APPLY_LANGFUSE_ENV (sources .env, never forces empty).
 
 # ── Ingest throughput profile (SPEC-047 / P-G13) ─────────────────────────────
 # Detected workstation class: 16 logical CPUs · ~128 GiB RAM.
@@ -383,6 +388,38 @@ export WORKER_THREADS MAX_TASKS_PER_TENANT \
 	EDGEQUAKE_PROVIDER_BUDGET EDGEQUAKE_EXTRACT_REASONING_EFFORT \
 	OLLAMA_CONTEXT_LENGTH DATABASE_POOL_SIZE
 
+# SPEC-124: load repo `.env` into the current recipe shell, then apply Make/CLI
+# overrides ONLY when the shell var is still empty (do not clobber bash-sourced
+# values). GNU Make `-include .env` keeps surrounding quotes in $(VAR); bash
+# `. .env` strips them — overwriting after source caused silent Langfuse 401.
+# Always strip one matching quote pair after apply so process env stays clean.
+define APPLY_LANGFUSE_ENV
+set -a; [ -f "$(ROOT_DIR)/.env" ] && . "$(ROOT_DIR)/.env"; set +a; \
+[ -z "$$LANGFUSE_PUBLIC_KEY" ] && [ -n "$(LANGFUSE_PUBLIC_KEY)" ] && export LANGFUSE_PUBLIC_KEY="$(LANGFUSE_PUBLIC_KEY)"; \
+[ -z "$$LANGFUSE_SECRET_KEY" ] && [ -n "$(LANGFUSE_SECRET_KEY)" ] && export LANGFUSE_SECRET_KEY="$(LANGFUSE_SECRET_KEY)"; \
+[ -z "$$LANGFUSE_BASE_URL" ] && [ -n "$(LANGFUSE_BASE_URL)" ] && export LANGFUSE_BASE_URL="$(LANGFUSE_BASE_URL)"; \
+[ -z "$$LANGFUSE_HOST" ] && [ -n "$(LANGFUSE_HOST)" ] && export LANGFUSE_HOST="$(LANGFUSE_HOST)"; \
+[ -z "$$EDGEQUAKE_LANGFUSE_ENABLED" ] && [ -n "$(EDGEQUAKE_LANGFUSE_ENABLED)" ] && export EDGEQUAKE_LANGFUSE_ENABLED="$(EDGEQUAKE_LANGFUSE_ENABLED)"; \
+_eq_unquote_env() { \
+	_v=$$1; \
+	case "$$_v" in \
+		\"*\") _v=$${_v#\"}; _v=$${_v%\"} ;; \
+		\'*\') _v=$${_v#\'}; _v=$${_v%\'} ;; \
+	esac; \
+	printf '%s' "$$_v"; \
+}; \
+[ -n "$$LANGFUSE_PUBLIC_KEY" ] && export LANGFUSE_PUBLIC_KEY="$$(_eq_unquote_env "$$LANGFUSE_PUBLIC_KEY")"; \
+[ -n "$$LANGFUSE_SECRET_KEY" ] && export LANGFUSE_SECRET_KEY="$$(_eq_unquote_env "$$LANGFUSE_SECRET_KEY")"; \
+[ -n "$$LANGFUSE_BASE_URL" ] && export LANGFUSE_BASE_URL="$$(_eq_unquote_env "$$LANGFUSE_BASE_URL")"; \
+[ -n "$$LANGFUSE_HOST" ] && export LANGFUSE_HOST="$$(_eq_unquote_env "$$LANGFUSE_HOST")"; \
+[ -n "$$EDGEQUAKE_LANGFUSE_ENABLED" ] && export EDGEQUAKE_LANGFUSE_ENABLED="$$(_eq_unquote_env "$$EDGEQUAKE_LANGFUSE_ENABLED")"; \
+if [ -n "$$LANGFUSE_PUBLIC_KEY" ] && [ -n "$$LANGFUSE_SECRET_KEY" ]; then \
+	echo "$(YELLOW)→ LANGFUSE_* keys detected — Langfuse OTLP export enabled (SPEC-124)$(RESET)"; \
+else \
+	echo "$(YELLOW)→ LANGFUSE_* not set — add to $(ROOT_DIR)/.env or export in this shell, then restart$(RESET)"; \
+fi
+endef
+
 # Shared exports appended to /tmp/edgequake-start.sh by backend-bg.
 # SPEC-047: also pin VLM + chart modality so bench restarts do not silently drop MV-32.
 define BACKEND_STABILITY_EXPORTS
@@ -441,6 +478,11 @@ printf '%s\n' "export DATABASE_POOL_SIZE=\"$(DATABASE_POOL_SIZE)\"" >> /tmp/edge
 printf '%s\n' "export VLM_PROCESS_ENABLE=\"$(VLM_PROCESS_ENABLE)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_CHART_MODALITY_FILTER=\"true\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_MM_ANALYSIS_CACHE=\"true\"" >> /tmp/edgequake-start.sh; \
+[ -n "$${LANGFUSE_PUBLIC_KEY}" ] && printf '%s\n' "export LANGFUSE_PUBLIC_KEY=\"$${LANGFUSE_PUBLIC_KEY}\"" >> /tmp/edgequake-start.sh; \
+[ -n "$${LANGFUSE_SECRET_KEY}" ] && printf '%s\n' "export LANGFUSE_SECRET_KEY=\"$${LANGFUSE_SECRET_KEY}\"" >> /tmp/edgequake-start.sh; \
+[ -n "$${LANGFUSE_BASE_URL}" ] && printf '%s\n' "export LANGFUSE_BASE_URL=\"$${LANGFUSE_BASE_URL}\"" >> /tmp/edgequake-start.sh; \
+[ -n "$${LANGFUSE_HOST}" ] && printf '%s\n' "export LANGFUSE_HOST=\"$${LANGFUSE_HOST}\"" >> /tmp/edgequake-start.sh; \
+[ -n "$${EDGEQUAKE_LANGFUSE_ENABLED}" ] && printf '%s\n' "export EDGEQUAKE_LANGFUSE_ENABLED=\"$${EDGEQUAKE_LANGFUSE_ENABLED}\"" >> /tmp/edgequake-start.sh; \
 if [ "$${WAVE2_GREENFIELD:-$(WAVE2_GREENFIELD)}" = "1" ]; then \
   printf '%s\n' "export EDGEQUAKE_VECTOR_STORAGE=halfvec" >> /tmp/edgequake-start.sh; \
   printf '%s\n' "export EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1" >> /tmp/edgequake-start.sh; \
@@ -718,6 +760,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	done; \
 	sleep 0.3; \
 	echo "$(YELLOW)→ Starting backend on port $$BACKEND_PORT (DATABASE_URL port: $$(printf '%s' $$_EFF_DB_URL | sed -E 's|.*:([0-9]+)/.*|\1|'))...$(RESET)"; \
+	$(APPLY_LANGFUSE_ENV); \
 	if [ -n "$(OPENAI_API_KEY)" ]; then \
 		(cd $(BACKEND_DIR) && \
 			PORT="$$BACKEND_PORT" \
@@ -1043,6 +1086,7 @@ backend-dev: db-wait ## Run backend in development mode with PostgreSQL (uses .e
 	fi
 	@$(LOAD_EFF_DB_URL); \
 	$(VISIBLE_MIGRATE_STEP); \
+	$(APPLY_LANGFUSE_ENV); \
 	cd $(BACKEND_DIR) && \
 		PORT="$(BACKEND_PORT)" \
 		DATABASE_URL="$$_EFF_DB_URL" \
@@ -1071,6 +1115,7 @@ backend-db: db-wait ## Run backend with PostgreSQL storage (uses .env configurat
 	fi
 	@$(LOAD_EFF_DB_URL); \
 	$(VISIBLE_MIGRATE_STEP); \
+	$(APPLY_LANGFUSE_ENV); \
 	cd $(BACKEND_DIR) && \
 		PORT="$(BACKEND_PORT)" \
 		DATABASE_URL="$$_EFF_DB_URL" \
@@ -1126,6 +1171,7 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 	@# when another PostgreSQL occupies the default 5432).
 	@$(LOAD_EFF_DB_URL); \
 	$(VISIBLE_MIGRATE_STEP); \
+	$(APPLY_LANGFUSE_ENV); \
 	set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
 	for BPID in $$(lsof -nP -iTCP:$${BACKEND_PORT:-$(BACKEND_PORT)} -sTCP:LISTEN -t 2>/dev/null || true); do \
 		echo "$(YELLOW)→ Freeing port $${BACKEND_PORT:-$(BACKEND_PORT)} (PID $$BPID) before backend-bg start$(RESET)"; \
@@ -2146,13 +2192,15 @@ stack: ## ⚡ One command: pull all GHCR images and start API + Web UI + DB  (<3
 	fi
 	@echo ""
 	@echo "$(YELLOW)→ Pulling images...$(RESET)"
-	@EDGEQUAKE_LLM_PROVIDER=$${EDGEQUAKE_LLM_PROVIDER:-$$([ -n "$(OPENAI_API_KEY)" ] && echo "openai" || echo "ollama")} \
+	@$(APPLY_LANGFUSE_ENV); \
+	EDGEQUAKE_LLM_PROVIDER=$${EDGEQUAKE_LLM_PROVIDER:-$$([ -n "$(OPENAI_API_KEY)" ] && echo "openai" || echo "ollama")} \
 	OPENAI_API_KEY="$(OPENAI_API_KEY)" \
 	EDGEQUAKE_VERSION=$${EDGEQUAKE_VERSION:-latest} \
 	docker compose -f $(QUICKSTART_COMPOSE) pull
 	@echo ""
 	@echo "$(YELLOW)→ Starting services...$(RESET)"
-	@EDGEQUAKE_LLM_PROVIDER=$${EDGEQUAKE_LLM_PROVIDER:-$$([ -n "$(OPENAI_API_KEY)" ] && echo "openai" || echo "ollama")} \
+	@$(APPLY_LANGFUSE_ENV); \
+	EDGEQUAKE_LLM_PROVIDER=$${EDGEQUAKE_LLM_PROVIDER:-$$([ -n "$(OPENAI_API_KEY)" ] && echo "openai" || echo "ollama")} \
 	OPENAI_API_KEY="$(OPENAI_API_KEY)" \
 	EDGEQUAKE_VERSION=$${EDGEQUAKE_VERSION:-latest} \
 	docker compose -f $(QUICKSTART_COMPOSE) up -d
@@ -2812,7 +2860,7 @@ logs: ## Show recent logs from all services
 	@echo "$(BOLD)Docker Container Status:$(RESET)"
 	@cd $(DOCKER_DIR) && docker compose ps 2>/dev/null || echo "Docker not running"
 
-.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates
+.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates spec124-proof
 
 resource-proof: ## Run SPEC-006 resource safety proof suite (mock; no Postgres required)
 	@chmod +x specifications/006-ensure-perf/e2e/run_resource_proof.sh scripts/spec006_no_get_all_api.sh scripts/spec006_budget_catalog_sync.sh scripts/spec006_source_ids_migration.sh scripts/spec006_no_unguarded_community_api.sh scripts/spec006_no_adhoc_resource_budget.sh scripts/spec006_apply_migration_038.sh edgequake/scripts/migrations/apply_038.sh
@@ -2865,6 +2913,18 @@ spec090-perf-smoke: ## SPEC-090 falsifiable scaling smoke (needs DATABASE_URL)
 
 observability-proof: ## Run SPEC-018 observability proof suite (Rust + WebUI)
 	@./specs/018-observability/e2e/run_observability_proof.sh
+
+spec124-proof: ## SPEC-124 Langfuse CI-unfakable proofs (InMemory OTEL + contracts; no keys)
+	@echo "$(BOLD)SPEC-124 proof$(RESET)"
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-observability --lib inmemory_otel
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-observability --lib langfuse_
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-observability --lib rag_span
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-query --lib spec124_stream_genai
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-query --lib spec124_pipeline_meta
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-pipeline --lib gleaning_source_wraps_llm_generation
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-pipeline --lib spec124_ingest_stages
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-api --lib spec124_ingest_converting
+	@echo "$(GREEN)✓ SPEC-124 proof passed$(RESET)"
 
 observability-jaeger: ## Docker stack with Jaeger OTLP + JSON logs (SPEC-018)
 	@cd $(DOCKER_DIR) && docker compose -f docker-compose.yml -f docker-compose.observability.yml --profile observability up --build

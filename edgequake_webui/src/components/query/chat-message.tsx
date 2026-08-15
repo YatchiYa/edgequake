@@ -15,6 +15,8 @@
  */
 'use client';
 
+import { LangfuseOpenSessionLink } from '@/components/settings/langfuse-open-trace-link';
+import { useActiveConversationId } from '@/stores/use-query-ui-store';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -201,6 +203,7 @@ const MetadataBar = memo(function MetadataBar({
   durationMs,
   llmProvider,
   llmModel,
+  sessionId,
   copied,
   onCopy,
   onRegenerate,
@@ -212,6 +215,8 @@ const MetadataBar = memo(function MetadataBar({
   durationMs?: number;
   llmProvider?: string;
   llmModel?: string;
+  /** Langfuse session = durable conversation_id (SPEC-124). */
+  sessionId?: string | null;
   copied: boolean;
   onCopy: () => void;
   onRegenerate?: () => void;
@@ -330,6 +335,10 @@ const MetadataBar = memo(function MetadataBar({
         )}
       </div>
 
+      {sessionId ? (
+        <LangfuseOpenSessionLink sessionId={sessionId} className="h-7 text-xs px-2" />
+      ) : null}
+
       {/* Actions */}
       <div className="flex items-center gap-1 ml-auto">
         <TooltipProvider>
@@ -421,6 +430,7 @@ const AssistantMessage = memo(function AssistantMessage({
 }: ChatMessageProps) {
   const { t } = useTranslation();
   const router = useRouter();
+  const sessionId = useActiveConversationId();
   const [copied, setCopied] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
 
@@ -535,6 +545,7 @@ const AssistantMessage = memo(function AssistantMessage({
               durationMs={message.durationMs}
               llmProvider={message.llmProvider}
               llmModel={message.llmModel}
+              sessionId={sessionId}
               copied={copied}
               onCopy={handleCopy}
               onRegenerate={onRegenerate}

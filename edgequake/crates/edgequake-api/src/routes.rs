@@ -672,6 +672,8 @@ fn api_v1_routes() -> Router<AppState> {
             "/settings/providers",
             get(handlers::list_available_providers),
         )
+        // SPEC-124 Langfuse observability status (env-only)
+        .route("/settings/langfuse", get(handlers::get_langfuse_settings))
         // Effective configuration with full resolution chain (explainability)
         .route("/config/effective", get(handlers::get_effective_config))
         // Models Configuration API (SPEC-032 OODA 66-70)

@@ -251,8 +251,14 @@ pub struct QueryEngineHealthSnapshot {
 pub struct ObservabilityHealthSnapshot {
     /// Active log format: `"plain"` or `"json"` (`EDGEQUAKE_LOG_FORMAT`).
     pub log_format: String,
-    /// Whether OTLP export is enabled at runtime.
+    /// Whether OTLP gRPC export is enabled at runtime.
     pub otel_enabled: bool,
+    /// SPEC-124: Langfuse keys present and not force-disabled.
+    #[serde(default)]
+    pub langfuse_enabled: bool,
+    /// SPEC-124: non-secret Langfuse base URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub langfuse_base_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

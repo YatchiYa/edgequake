@@ -292,6 +292,15 @@ async fn build_operational_health(state: &AppState) -> Option<OperationalHealth>
         observability: ObservabilityHealthSnapshot {
             log_format: log_format_label(obs_cfg.log_format).to_string(),
             otel_enabled: obs_cfg.otel_enabled,
+            langfuse_enabled: obs_cfg.langfuse.enabled,
+            langfuse_base_url: if obs_cfg.langfuse.enabled
+                || obs_cfg.langfuse.public_key_configured
+                || obs_cfg.langfuse.secret_key_configured
+            {
+                Some(obs_cfg.langfuse.base_url.clone())
+            } else {
+                None
+            },
         },
         read_model: ReadModelHealthSnapshot {
             merge_strategy: crate::document_read_model::MERGE_STRATEGY.to_string(),

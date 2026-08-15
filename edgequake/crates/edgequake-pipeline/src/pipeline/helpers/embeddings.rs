@@ -500,8 +500,18 @@ async fn safe_embed(
             "SPEC-046 OPS-P1.7: embedding inputs truncated under Truncate policy"
         );
     }
-    let mut embeddings =
-        embed_with_token_budget(provider, &guarded.texts, progress, cancel).await?;
+    let mut embeddings = edgequake_observability::with_rag_embedding_span(
+        "embed-chunks",
+        provider.model(),
+        provider.name(),
+        async {
+            let emb = embed_with_token_budget(provider, &guarded.texts, progress, cancel).await?;
+            let dim = emb.first().map(|v| v.len());
+            edgequake_observability::record_embedding_io(kind, guarded.texts.len(), emb.len(), dim);
+            Ok::<_, crate::error::PipelineError>(emb)
+        },
+    )
+    .await?;
     if embeddings.len() != texts.len() {
         tracing::warn!(
             expected = texts.len(),

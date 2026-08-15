@@ -48,6 +48,36 @@ pub async fn resolve_query_workspace(
     }
 }
 
+/// SPEC-124 I8: Langfuse identity with UUIDs plus optional slugs (fail-open on slug lookup).
+pub async fn langfuse_query_identity(
+    state: &AppState,
+    session_id: Option<&str>,
+    user_id: Option<&str>,
+    header_tenant_id: Option<&str>,
+    workspace: Option<&edgequake_core::Workspace>,
+) -> edgequake_observability::LangfuseTraceIdentity {
+    use edgequake_observability::LangfuseTraceIdentity;
+
+    let tenant_id = workspace
+        .map(|ws| ws.tenant_id.to_string())
+        .or_else(|| header_tenant_id.map(str::to_string));
+    let workspace_id = workspace.map(|ws| ws.workspace_id.to_string());
+    let mut identity = LangfuseTraceIdentity::from_parts(
+        session_id,
+        user_id,
+        tenant_id.as_deref(),
+        workspace_id.as_deref(),
+    );
+    if let Some(ws) = workspace {
+        let tenant_slug = match state.workspace_service.get_tenant(ws.tenant_id).await {
+            Ok(Some(t)) => Some(t.slug),
+            _ => None,
+        };
+        identity = identity.with_slugs(tenant_slug.as_deref(), Some(ws.slug.as_str()));
+    }
+    identity
+}
+
 /// Get workspace-specific embedding provider for query execution.
 ///
 /// @implements SPEC-032: Workspace-specific embedding in query process

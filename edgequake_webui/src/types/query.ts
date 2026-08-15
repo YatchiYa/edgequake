@@ -88,6 +88,8 @@ export interface QueryRequest {
   llm_provider?: string;
   /** LLM model override. @implements SPEC-006 + SPEC-032 */
   llm_model?: string;
+  /** Optional Langfuse / GenAI session id (SPEC-124). Chat uses conversation_id instead. */
+  session_id?: string;
   /** Payload tier for source snippets. @implements SPEC-037 + SPEC-028 */
   content_granularity?: 'citation' | 'agent' | 'debug';
 }
@@ -153,6 +155,8 @@ export interface QueryResponse {
   stats?: QueryStreamStats;
   conversation_id?: string;
   reranked?: boolean;
+  /** SPEC-124: correlation trace id for Langfuse deep links */
+  trace_id?: string;
 }
 
 export interface QueryStreamChunk {

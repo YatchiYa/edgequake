@@ -89,6 +89,39 @@ pub async fn run_multimodal_analyze_stage_outcome_with_cancel(
     converting_substep: Option<super::super::ConvertingSubstepReporter>,
     cancel_token: Option<CancellationToken>,
 ) -> super::analyzer::AnalyzeOutcome {
+    edgequake_observability::with_pipeline_stage_span("ingest.pass_b", async {
+        run_multimodal_analyze_stage_outcome_inner(
+            markdown,
+            process_options,
+            filename,
+            workspace_service,
+            workspace_id,
+            fallback_llm,
+            asset_base_dir,
+            document_id,
+            kv_storage,
+            converting_substep,
+            cancel_token,
+        )
+        .await
+    })
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_multimodal_analyze_stage_outcome_inner(
+    markdown: String,
+    process_options: Option<&str>,
+    filename: &str,
+    workspace_service: Option<&SharedWorkspaceService>,
+    workspace_id: Uuid,
+    fallback_llm: Arc<dyn LLMProvider>,
+    asset_base_dir: Option<&Path>,
+    document_id: Option<&str>,
+    kv_storage: Option<Arc<dyn KVStorage>>,
+    converting_substep: Option<super::super::ConvertingSubstepReporter>,
+    cancel_token: Option<CancellationToken>,
+) -> super::analyzer::AnalyzeOutcome {
     // Pass B uses shorter local VLM timeout than page OCR (never-stuck profile).
     let vlm = resolve_vlm_provider_for_pass_b(
         workspace_service,

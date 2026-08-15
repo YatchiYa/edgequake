@@ -133,6 +133,17 @@ pub async fn chat_completion(
         conv.conversation_id
     };
 
+    // SPEC-124: durable conversation_id → Langfuse session / GenAI conversation.
+    let langfuse_id = crate::handlers::query::langfuse_query_identity(
+        &state,
+        Some(&conversation_id.to_string()),
+        Some(&user_id.to_string()),
+        Some(&tenant_id.to_string()),
+        workspace.as_ref(),
+    )
+    .await;
+    let _langfuse_identity = edgequake_observability::stamp_query_langfuse_identity(langfuse_id);
+
     // 2. Save user message
     let user_message = state
         .conversation_service
@@ -327,6 +338,9 @@ pub async fn chat_completion(
         llm_override.clone(),
     )
     .await?;
+
+    // SPEC-124: root observation I/O (query turn).
+    edgequake_observability::record_query_root_io(&request.message, &result.answer);
 
     // 4. Build sources and resolve document names for chunk sources
     let mut sources = build_sources(&result.context, request.content_granularity);

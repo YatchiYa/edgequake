@@ -266,6 +266,9 @@ fn fuse_mix_contexts(
     plan: ArmPlan,
     max_chunks: usize,
 ) -> QueryContext {
+    let _stage = edgequake_observability::enter_pipeline_stage("query.fuse");
+    let fusion = crate::fusion::mix_fusion_mode_label(crate::fusion::mix_fusion_mode_from_env());
+    edgequake_observability::record_observation_meta("fusion", fusion);
     // Match Hybrid: drop orphan KG payloads when an arm returned no chunks.
     let local_context = crate::hybrid_merge::prune_empty_arm_graph(local_context.clone());
     let global_context = crate::hybrid_merge::prune_empty_arm_graph(global_context.clone());

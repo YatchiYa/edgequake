@@ -7,7 +7,7 @@
 use crate::context::QueryContext;
 use crate::error::Result;
 use edgequake_observability::{
-    query_preview, record_query_arm_duration, record_rag_retrieval_outcome,
+    query_preview, record_query_arm_duration, record_rag_retrieval_complete,
     with_rag_retrieval_span, RagRetrievalAttrs,
 };
 use std::time::Instant;
@@ -51,10 +51,14 @@ where
             },
             async {
                 let ctx = f().await?;
-                record_rag_retrieval_outcome(
-                    ctx.chunks.is_empty() && ctx.entities.is_empty(),
+                let empty = ctx.chunks.is_empty() && ctx.entities.is_empty();
+                record_rag_retrieval_complete(
+                    empty,
                     false,
                     None,
+                    ctx.chunks.len(),
+                    ctx.entities.len(),
+                    ctx.chunks.first().map(|c| c.content.as_str()),
                 );
                 Ok::<QueryContext, crate::error::QueryError>(ctx)
             },

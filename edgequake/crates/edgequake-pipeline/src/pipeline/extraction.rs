@@ -219,6 +219,11 @@ impl Pipeline {
         fields(
             chunk_count = chunks.len(),
             error.code = tracing::field::Empty,
+            langfuse.observation.type = %edgequake_observability::OBSERVATION_TYPE_SPAN,
+            langfuse.observation.input = tracing::field::Empty,
+            langfuse.observation.output = tracing::field::Empty,
+            gen_ai.prompt = tracing::field::Empty,
+            gen_ai.completion = tracing::field::Empty,
         )
     )]
     pub(super) async fn resilient_extract_parallel(
@@ -232,6 +237,7 @@ impl Pipeline {
         >,
         on_chunk_extracted: Option<super::ChunkExtractedCallback>,
     ) -> crate::error::ResilientExtractionResult {
+        edgequake_observability::record_observation_type_span();
         use crate::error::{ChunkExtractionOutcome, ChunkFailure, ResilientExtractionResult};
         let resume_by_chunk_id = std::sync::Arc::new(resume_by_chunk_id.unwrap_or_default());
         let on_chunk_extracted = on_chunk_extracted.clone();
@@ -241,6 +247,12 @@ impl Pipeline {
         ));
 
         let total_chunks = chunks.len();
+        edgequake_observability::record_pipeline_chunk_extraction_io(
+            total_chunks,
+            None,
+            None,
+            None,
+        );
         let timeout_secs = self.config.chunk_extraction_timeout_secs;
         // C-18: treat max_retries=0 as one attempt (config name means retries,
         // but a zero loop would silently skip extraction).
@@ -597,6 +609,18 @@ impl Pipeline {
             .collect()
             .await;
 
-        ResilientExtractionResult::from_outcomes(outcomes)
+        let result = ResilientExtractionResult::from_outcomes(outcomes);
+        let entity_count: usize = result
+            .successful_extractions
+            .iter()
+            .map(|e| e.entities.len())
+            .sum();
+        edgequake_observability::record_pipeline_chunk_extraction_io(
+            total_chunks,
+            Some(result.successful_extractions.len()),
+            Some(result.failed_chunks.len()),
+            Some(entity_count),
+        );
+        result
     }
 }

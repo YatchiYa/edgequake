@@ -17,6 +17,41 @@ impl DocumentTaskProcessor {
         task: &mut Task,
         data: TextInsertData,
         cancel_token: CancellationToken,
+        fairness: Option<FairnessPermit>,
+    ) -> TaskResult<serde_json::Value> {
+        let document_id = data
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("document_id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(&data.file_source)
+            .to_string();
+        let tenant_id = data
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("tenant_id"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let workspace_id = data.workspace_id.clone();
+        edgequake_observability::with_ingest_task_span(async {
+            let _langfuse = self
+                .stamp_ingest_langfuse_for_document(
+                    &document_id,
+                    tenant_id.as_deref(),
+                    Some(workspace_id.as_str()),
+                )
+                .await;
+            self.process_text_insert_inner(task, data, cancel_token, fairness)
+                .await
+        })
+        .await
+    }
+
+    async fn process_text_insert_inner(
+        &self,
+        task: &mut Task,
+        data: TextInsertData,
+        cancel_token: CancellationToken,
         mut fairness: Option<FairnessPermit>,
     ) -> TaskResult<serde_json::Value> {
         let processing_start = std::time::Instant::now();

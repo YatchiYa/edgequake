@@ -10,8 +10,9 @@ use axum::{
     Extension, Json,
 };
 use edgequake_observability::{
-    record_llm_request, record_query_completed, scope_llm_provider, ErrorEvent, PropagationHeaders,
-    QueryFailureGuard, RequestContext,
+    record_llm_request, record_query_completed, record_query_root_io, scope_llm_provider,
+    stamp_query_langfuse_identity, ErrorEvent, PropagationHeaders, QueryFailureGuard,
+    RequestContext,
 };
 use futures::stream::StreamExt;
 use serde_json::json;
@@ -125,6 +126,19 @@ pub async fn stream_query(
         .as_ref()
         .map(|ws| ws.tenant_id.to_string())
         .or_else(|| tenant_ctx.tenant_id.clone());
+
+    // SPEC-124: optional client session — never synthesize from request_id.
+    let langfuse_id = super::workspace_resolve::langfuse_query_identity(
+        &state,
+        request.session_id.as_deref(),
+        tenant_ctx.user_id.as_deref(),
+        data_tenant_id
+            .as_deref()
+            .or(tenant_ctx.tenant_id.as_deref()),
+        workspace.as_ref(),
+    )
+    .await;
+    let _langfuse_identity = stamp_query_langfuse_identity(langfuse_id.clone());
 
     let mut allowed_document_ids = None;
     // SPEC-005 + SPEC-006: Resolve document filter
@@ -301,11 +315,14 @@ pub async fn stream_query(
     let stream_include_subgraph = request.include_subgraph;
     let stream_use_v3 = use_v3;
     let stream_content_granularity = request.content_granularity;
+    let stream_query_text = request.query.clone();
 
     let spawn_provider = used_provider
         .clone()
         .unwrap_or_else(|| "default".to_string());
+    let langfuse_id_spawn = langfuse_id.clone();
     tokio::spawn(async move {
+        edgequake_observability::bind_langfuse_trace_identity_async(langfuse_id_spawn, async {
         scope_llm_provider(spawn_provider.clone(), async {
             let retrieval_start = std::time::Instant::now();
 
@@ -488,6 +505,8 @@ pub async fn stream_query(
                     // SPEC-006 FR-003: Emit done event with stats
                     let generation_time_ms = gen_start.elapsed().as_millis() as u64;
                     let tokens_used = accumulator.estimated_tokens();
+                    let full_answer = accumulator.content().to_string();
+                    record_query_root_io(&stream_query_text, &full_answer);
                     let total_time_ms = retrieval_time_ms + generation_time_ms;
                     let tokens_per_second = if generation_time_ms > 0 {
                         Some(tokens_used as f32 / (generation_time_ms as f32 / 1000.0))
@@ -550,6 +569,8 @@ pub async fn stream_query(
                         .await;
                 }
             }
+        })
+        .await;
         })
         .await;
     });

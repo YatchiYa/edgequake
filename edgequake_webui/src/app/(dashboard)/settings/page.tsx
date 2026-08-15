@@ -6,6 +6,7 @@ import { AdminQuotaSection } from '@/components/settings/admin-quota-section';
 import { ConfigExplainabilityPanel } from '@/components/settings/config-explainability-panel';
 import { PdfParserSettingsCard } from '@/components/settings/pdf-parser-settings-card';
 import { ProviderStatusCard } from '@/components/settings/provider-status-card';
+import { LangfuseObservabilityCard } from '@/components/settings/langfuse-observability-card';
 import { UserManagementCard } from '@/components/settings/user-management-card';
 import { VisionLLMSettingsCard } from '@/components/settings/vision-llm-settings-card';
 import {
@@ -233,6 +234,9 @@ export default function SettingsPage() {
 
       {/* Provider Status */}
       <ProviderStatusCard />
+
+      {/* Langfuse Observability (SPEC-124) */}
+      <LangfuseObservabilityCard />
 
       {/* Config Explainability — full priority chain per area */}
       <ConfigExplainabilityPanel />

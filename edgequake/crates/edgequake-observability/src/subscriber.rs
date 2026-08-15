@@ -1,8 +1,12 @@
 //! Tracing subscriber initialization (JSON/plain + optional OTLP).
+//!
+//! SPEC-124: optional dual export — OTLP gRPC (Jaeger) + OTLP HTTP (Langfuse).
 
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::Layer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+
+use crate::langfuse::LangfuseConfig;
 
 /// Configuration for observability bootstrap.
 #[derive(Debug, Clone)]
@@ -11,6 +15,13 @@ pub struct ObservabilityConfig {
     pub default_filter: String,
     pub otel_enabled: bool,
     pub service_name: String,
+    /// SPEC-124 Langfuse status (env-only; no secret values stored).
+    pub langfuse: LangfuseConfig,
+}
+
+/// Whether this binary was compiled with the `otel` Cargo feature.
+pub const fn otel_feature_built() -> bool {
+    cfg!(feature = "otel")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +37,7 @@ impl Default for ObservabilityConfig {
             default_filter: "edgequake=info,edgequake_api=info,edgequake_query=info,edgequake_pipeline=info,edgequake_storage=warn,tower_http=warn,sqlx=warn".into(),
             otel_enabled: false,
             service_name: "edgequake-api".into(),
+            langfuse: LangfuseConfig::default(),
         }
     }
 }
@@ -55,12 +67,20 @@ impl ObservabilityConfig {
             "edgequake=info,edgequake_api=info,edgequake_query=info,edgequake_pipeline=info,edgequake_storage=warn,tower_http=warn,sqlx=warn".into()
         });
 
+        let langfuse = LangfuseConfig::from_env();
+
         Self {
             log_format,
             default_filter,
             otel_enabled,
             service_name,
+            langfuse,
         }
+    }
+
+    /// True when any OTLP bridge should be installed (Jaeger and/or Langfuse).
+    pub fn otel_layer_needed(&self) -> bool {
+        self.otel_enabled || self.langfuse.enabled
     }
 }
 
@@ -99,8 +119,8 @@ pub fn init_observability(config: ObservabilityConfig) -> ObservabilityGuard {
         .unwrap_or_else(|_| EnvFilter::new(&config.default_filter));
 
     #[cfg(feature = "otel")]
-    let (tracer_provider, otel_layer) = if config.otel_enabled {
-        init_otel_layers(&config.service_name)
+    let (tracer_provider, otel_layer) = if config.otel_layer_needed() {
+        init_otel_layers(&config.service_name, &config)
     } else {
         (None, None)
     };
@@ -176,6 +196,8 @@ pub fn init_observability(config: ObservabilityConfig) -> ObservabilityGuard {
         log_format = ?config.log_format,
         otel_enabled = config.otel_enabled,
         otel_endpoint = ?otel_endpoint,
+        langfuse_enabled = config.langfuse.enabled,
+        langfuse_base_url = %config.langfuse.base_url,
         service_name = %config.service_name,
         log_span_events = log_span_events,
         "Observability initialized"
@@ -196,28 +218,18 @@ type OtelLayer = tracing_opentelemetry::OpenTelemetryLayer<
 #[cfg(feature = "otel")]
 fn init_otel_layers(
     service_name: &str,
+    config: &ObservabilityConfig,
 ) -> (
     Option<opentelemetry_sdk::trace::SdkTracerProvider>,
     Option<OtelLayer>,
 ) {
     use opentelemetry::trace::TracerProvider;
     use opentelemetry::KeyValue;
-    use opentelemetry_otlp::WithExportConfig;
+    use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
     use opentelemetry_sdk::{trace::SdkTracerProvider, Resource};
 
-    let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
-    let mut builder = opentelemetry_otlp::SpanExporter::builder().with_tonic();
-    if let Some(ref ep) = endpoint {
-        builder = builder.with_endpoint(ep.clone());
-    }
-
-    let exporter = match builder.build() {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("OTEL exporter build failed: {e}; continuing without OTLP");
-            return (None, None);
-        }
-    };
+    // reqwest 0.13 + rustls 0.23: HTTPS OTLP (Langfuse) needs a process-default CryptoProvider.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     let resource = Resource::builder()
         .with_attributes([
@@ -226,19 +238,82 @@ fn init_otel_layers(
                 "service.version",
                 std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".into()),
             ),
+            KeyValue::new(
+                "deployment.environment",
+                std::env::var("EDGEQUAKE_ENVIRONMENT")
+                    .or_else(|_| std::env::var("DEPLOYMENT_ENVIRONMENT"))
+                    .unwrap_or_else(|_| "development".into()),
+            ),
         ])
         .build();
 
-    let provider = SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
+    let mut provider_builder = SdkTracerProvider::builder()
         .with_resource(resource)
-        .build();
+        // SPEC-124: copy allowlisted session/user baggage onto every span before export.
+        .with_span_processor(crate::baggage_span_processor::LangfuseBaggageSpanProcessor::new());
+    let mut any_exporter = false;
 
+    // --- Jaeger / generic OTLP gRPC (existing path) ---
+    if config.otel_enabled {
+        let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
+        let mut builder = opentelemetry_otlp::SpanExporter::builder().with_tonic();
+        if let Some(ref ep) = endpoint {
+            builder = builder.with_endpoint(ep.clone());
+        }
+        match builder.build() {
+            Ok(exporter) => {
+                provider_builder = provider_builder.with_batch_exporter(exporter);
+                any_exporter = true;
+            }
+            Err(e) => {
+                eprintln!("OTEL gRPC exporter build failed: {e}; continuing without gRPC OTLP");
+            }
+        }
+    }
+
+    // --- Langfuse OTLP/HTTP (SPEC-124; Langfuse does not support gRPC) ---
+    if config.langfuse.enabled {
+        if let Some(headers) = crate::langfuse::langfuse_otlp_headers_from_env() {
+            let endpoint = config.langfuse.otlp_endpoint();
+            let builder = opentelemetry_otlp::SpanExporter::builder()
+                .with_http()
+                .with_endpoint(endpoint)
+                .with_headers(headers);
+            match builder.build() {
+                Ok(exporter) => {
+                    provider_builder = provider_builder.with_batch_exporter(exporter);
+                    any_exporter = true;
+                    eprintln!(
+                        "Langfuse OTLP/HTTP exporter enabled → {}",
+                        config.langfuse.otlp_endpoint()
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Langfuse OTLP/HTTP exporter build failed: {e}; continuing without Langfuse"
+                    );
+                }
+            }
+        } else {
+            eprintln!(
+                "WARNING: Langfuse enabled but keys missing at exporter build — skipping HTTP OTLP"
+            );
+        }
+    }
+
+    if !any_exporter {
+        return (None, None);
+    }
+
+    let provider = provider_builder.build();
     let tracer = provider.tracer(service_name.to_string());
     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
     opentelemetry::global::set_text_map_propagator(
-        opentelemetry_sdk::propagation::TraceContextPropagator::new(),
+        opentelemetry::propagation::TextMapCompositePropagator::new(vec![
+            Box::new(opentelemetry_sdk::propagation::TraceContextPropagator::new()),
+            Box::new(opentelemetry_sdk::propagation::BaggagePropagator::new()),
+        ]),
     );
 
     (Some(provider), Some(otel_layer))
@@ -280,12 +355,22 @@ fn warn_on_otel_misconfiguration(config: &ObservabilityConfig) {
         .unwrap_or(false);
 
     #[cfg(not(feature = "otel"))]
-    if endpoint_set || config.otel_enabled {
-        eprintln!(
-            "WARNING: OTLP export requested (OTEL_EXPORTER_OTLP_ENDPOINT or EDGEQUAKE_OTEL_ENABLED) \
-             but this binary was built without the `otel` feature — traces will not leave the process. \
-             Rebuild with: cargo build -p edgequake --features otel"
-        );
+    {
+        if endpoint_set || config.otel_enabled {
+            eprintln!(
+                "WARNING: OTLP export requested (OTEL_EXPORTER_OTLP_ENDPOINT or EDGEQUAKE_OTEL_ENABLED) \
+                 but this binary was built without the `otel` feature — traces will not leave the process. \
+                 Rebuild with: cargo build -p edgequake --features otel"
+            );
+        }
+        if config.langfuse.enabled
+            || (config.langfuse.public_key_configured && config.langfuse.secret_key_configured)
+        {
+            eprintln!(
+                "WARNING: Langfuse keys are set but this binary was built without the `otel` feature — \
+                 Langfuse OTLP/HTTP export is unavailable. Rebuild with: cargo build -p edgequake --features otel"
+            );
+        }
     }
 
     #[cfg(feature = "otel")]
@@ -332,6 +417,23 @@ mod tests {
         });
     }
 
+    #[test]
+    fn otel_layer_needed_with_langfuse_only() {
+        let mut cfg = ObservabilityConfig::default();
+        assert!(!cfg.otel_layer_needed());
+        cfg.langfuse.enabled = true;
+        assert!(cfg.otel_layer_needed());
+    }
+
+    #[test]
+    fn otel_feature_built_is_true_by_default() {
+        // SPEC-124: otel is in default features — Settings should not say rebuild required.
+        assert!(
+            otel_feature_built(),
+            "otel must be enabled by default (edgequake-observability default features)"
+        );
+    }
+
     /// SPEC-083 D-46: source contract — EnvFilter applied on OTEL layer.
     #[test]
     fn contract_otel_respects_rust_log() {
@@ -359,5 +461,19 @@ mod tests {
             t == ".with(otel)" || t.ends_with(".with(otel)")
         });
         assert!(!bare, "D-46: bare .with(otel) must not appear");
+    }
+
+    /// SPEC-124: subscriber must mention HTTP Langfuse path (not gRPC-only).
+    #[test]
+    fn contract_langfuse_http_exporter_present() {
+        let src = include_str!("subscriber.rs");
+        assert!(
+            src.contains("with_http"),
+            "SPEC-124: Langfuse uses OTLP/HTTP"
+        );
+        assert!(
+            src.contains("langfuse"),
+            "SPEC-124: Langfuse wiring required"
+        );
     }
 }

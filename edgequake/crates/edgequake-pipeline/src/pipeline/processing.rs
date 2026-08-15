@@ -8,6 +8,7 @@
 //! All three share common logic via helpers for embedding generation,
 //! stats aggregation, and lineage building (DRY).
 
+use std::future::Future;
 use std::time::Instant;
 
 use futures::stream::{self, StreamExt};
@@ -24,6 +25,56 @@ use super::{
 };
 
 impl Pipeline {
+    /// SPEC-124: one ingest.document root + I/O for all process* entry points.
+    async fn run_under_ingest_root<F, Fut>(
+        document_id: &str,
+        content: &str,
+        work: F,
+    ) -> Result<ProcessingResult>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<ProcessingResult>>,
+    {
+        edgequake_observability::with_ingest_document_span(async {
+            edgequake_observability::record_ingest_document_input(document_id, content);
+            let result = work().await?;
+            edgequake_observability::record_ingest_document_output(
+                result.stats.chunk_count,
+                result.stats.entity_count,
+                result.stats.relationship_count,
+                result.stats.successful_chunks,
+                result.stats.failed_chunks,
+            );
+            Ok(result)
+        })
+        .await
+    }
+
+    /// LAW-124-22: chunking observation + KG meta (strategy/size/overlap).
+    async fn chunk_under_span(&self, content: &str, document_id: &str) -> Result<Vec<TextChunk>> {
+        edgequake_observability::with_pipeline_stage_span("ingest.chunking", async {
+            let chunks = self.chunker.chunk_async(content, document_id).await?;
+            edgequake_observability::record_observation_io(
+                Some(&format!("{{\"chars\":{}}}", content.len())),
+                Some(&format!("{{\"chunks\":{}}}", chunks.len())),
+            );
+            edgequake_observability::record_ingest_kg_meta(edgequake_observability::IngestKgMeta {
+                chunk_strategy: Some(self.config.chunk_strategy.as_str().to_string()),
+                chunk_size: Some(self.config.chunker.chunk_size),
+                overlap: Some(self.config.chunker.chunk_overlap),
+                gleaning_max: None,
+                embed_model: self
+                    .embedding_provider
+                    .as_ref()
+                    .map(|p| p.model().to_string()),
+                embed_dim: None,
+                extract_entity_cap: None,
+            });
+            Ok(chunks)
+        })
+        .await
+    }
+
     /// Shared tail: link extractions, embed, build lineage (SPEC-017 ISP dedupe).
     #[allow(clippy::too_many_arguments)]
     async fn finish_document_processing(
@@ -68,20 +119,31 @@ impl Pipeline {
     ///
     /// Uses fail-fast extraction: the first chunk error aborts all processing.
     pub async fn process(&self, document_id: &str, content: &str) -> Result<ProcessingResult> {
-        let start = Instant::now();
+        Self::run_under_ingest_root(document_id, content, || async {
+            let start = Instant::now();
 
-        let chunks = self.chunker.chunk_async(content, document_id).await?;
-        let stats = self.init_chunk_stats(&chunks);
+            let chunks = self.chunk_under_span(content, document_id).await?;
+            let stats = self.init_chunk_stats(&chunks);
 
-        let mut extractions = Vec::new();
-        if self.config.enable_entity_extraction || self.config.enable_relationship_extraction {
-            if let Some(extractor) = &self.extractor {
-                extractions = self.extract_parallel(&chunks, extractor).await?;
+            let mut extractions = Vec::new();
+            if self.config.enable_entity_extraction || self.config.enable_relationship_extraction {
+                if let Some(extractor) = &self.extractor {
+                    extractions = self.extract_parallel(&chunks, extractor).await?;
+                }
             }
-        }
 
-        self.finish_document_processing(document_id, start, chunks, extractions, stats, None, None)
+            self.finish_document_processing(
+                document_id,
+                start,
+                chunks,
+                extractions,
+                stats,
+                None,
+                None,
+            )
             .await
+        })
+        .await
     }
 
     /// Process a document with chunk-level progress callbacks.
@@ -91,22 +153,33 @@ impl Pipeline {
         content: &str,
         progress_callback: Option<ChunkProgressCallback>,
     ) -> Result<ProcessingResult> {
-        let start = Instant::now();
+        Self::run_under_ingest_root(document_id, content, || async {
+            let start = Instant::now();
 
-        let chunks = self.chunker.chunk_async(content, document_id).await?;
-        let stats = self.init_chunk_stats(&chunks);
+            let chunks = self.chunk_under_span(content, document_id).await?;
+            let stats = self.init_chunk_stats(&chunks);
 
-        let mut extractions = Vec::new();
-        if self.config.enable_entity_extraction || self.config.enable_relationship_extraction {
-            if let Some(extractor) = &self.extractor {
-                extractions = self
-                    .extract_parallel_with_progress(&chunks, extractor, progress_callback)
-                    .await?;
+            let mut extractions = Vec::new();
+            if self.config.enable_entity_extraction || self.config.enable_relationship_extraction {
+                if let Some(extractor) = &self.extractor {
+                    extractions = self
+                        .extract_parallel_with_progress(&chunks, extractor, progress_callback)
+                        .await?;
+                }
             }
-        }
 
-        self.finish_document_processing(document_id, start, chunks, extractions, stats, None, None)
+            self.finish_document_processing(
+                document_id,
+                start,
+                chunks,
+                extractions,
+                stats,
+                None,
+                None,
+            )
             .await
+        })
+        .await
     }
 
     /// Process a document with resilient chunk-level error handling.
@@ -146,116 +219,119 @@ impl Pipeline {
         >,
         on_chunk_extracted: Option<crate::pipeline::types::ChunkExtractedCallback>,
     ) -> Result<ProcessingResult> {
-        let start = Instant::now();
+        Self::run_under_ingest_root(document_id, content, || async {
+            let start = Instant::now();
 
-        let chunks = self.chunker.chunk_async(content, document_id).await?;
-        let mut stats = self.init_chunk_stats(&chunks);
+            let chunks = self.chunk_under_span(content, document_id).await?;
+            let mut stats = self.init_chunk_stats(&chunks);
 
-        let mut extractions = Vec::new();
-        if self.config.enable_entity_extraction || self.config.enable_relationship_extraction {
-            if let Some(extractor) = &self.extractor {
-                let resilient_result = self
-                    .resilient_extract_parallel(
-                        &chunks,
-                        extractor,
-                        progress_callback,
-                        cancel_token.clone(),
-                        resume_by_chunk_id,
-                        on_chunk_extracted,
-                    )
-                    .await;
+            let mut extractions = Vec::new();
+            if self.config.enable_entity_extraction || self.config.enable_relationship_extraction {
+                if let Some(extractor) = &self.extractor {
+                    let resilient_result = self
+                        .resilient_extract_parallel(
+                            &chunks,
+                            extractor,
+                            progress_callback,
+                            cancel_token.clone(),
+                            resume_by_chunk_id,
+                            on_chunk_extracted,
+                        )
+                        .await;
 
-                tracing::info!(
-                    document_id = %document_id,
-                    total_chunks = resilient_result.total_chunks,
-                    successful = resilient_result.successful_extractions.len(),
-                    failed = resilient_result.failed_chunks.len(),
-                    success_rate = %format!("{:.1}%", resilient_result.success_rate() * 100.0),
-                    "Resilient extraction completed"
-                );
+                    tracing::info!(
+                        document_id = %document_id,
+                        total_chunks = resilient_result.total_chunks,
+                        successful = resilient_result.successful_extractions.len(),
+                        failed = resilient_result.failed_chunks.len(),
+                        success_rate = %format!("{:.1}%", resilient_result.success_rate() * 100.0),
+                        "Resilient extraction completed"
+                    );
 
-                if resilient_result.is_complete_failure() {
-                    let failure_summary: Vec<String> = resilient_result
-                        .failed_chunks
-                        .iter()
-                        .map(|f| format!("Chunk {}: {}", f.chunk_index, f.error))
-                        .collect();
-
-                    return Err(crate::error::PipelineError::ExtractionError(format!(
-                        "All {} chunks failed extraction. Failures: {}",
-                        resilient_result.total_chunks,
-                        failure_summary.join("; ")
-                    )));
-                }
-
-                stats.successful_chunks = resilient_result.successful_extractions.len();
-                stats.failed_chunks = resilient_result.failed_chunks.len();
-
-                if !resilient_result.failed_chunks.is_empty() {
-                    stats.chunk_errors = Some(
-                        resilient_result
+                    if resilient_result.is_complete_failure() {
+                        let failure_summary: Vec<String> = resilient_result
                             .failed_chunks
                             .iter()
-                            .map(|f| ChunkErrorInfo {
-                                chunk_id: f.chunk_id.clone(),
-                                chunk_index: f.chunk_index,
-                                error_message: f.error.clone(),
-                                was_timeout: f.was_timeout,
-                                retry_attempts: f.retry_attempts,
-                            })
-                            .collect(),
-                    );
+                            .map(|f| format!("Chunk {}: {}", f.chunk_index, f.error))
+                            .collect();
 
-                    tracing::warn!(
-                        document_id = %document_id,
-                        failed_count = resilient_result.failed_chunks.len(),
-                        "Some chunks failed extraction, continuing with partial results"
-                    );
+                        return Err(crate::error::PipelineError::ExtractionError(format!(
+                            "All {} chunks failed extraction. Failures: {}",
+                            resilient_result.total_chunks,
+                            failure_summary.join("; ")
+                        )));
+                    }
+
+                    stats.successful_chunks = resilient_result.successful_extractions.len();
+                    stats.failed_chunks = resilient_result.failed_chunks.len();
+
+                    if !resilient_result.failed_chunks.is_empty() {
+                        stats.chunk_errors = Some(
+                            resilient_result
+                                .failed_chunks
+                                .iter()
+                                .map(|f| ChunkErrorInfo {
+                                    chunk_id: f.chunk_id.clone(),
+                                    chunk_index: f.chunk_index,
+                                    error_message: f.error.clone(),
+                                    was_timeout: f.was_timeout,
+                                    retry_attempts: f.retry_attempts,
+                                })
+                                .collect(),
+                        );
+
+                        tracing::warn!(
+                            document_id = %document_id,
+                            failed_count = resilient_result.failed_chunks.len(),
+                            "Some chunks failed extraction, continuing with partial results"
+                        );
+                    }
+
+                    extractions = resilient_result.successful_extractions;
                 }
-
-                extractions = resilient_result.successful_extractions;
             }
-        }
 
-        let mut result = self
-            .finish_document_processing(
-                document_id,
-                start,
-                chunks,
-                extractions,
-                stats,
-                embed_progress.as_ref(),
-                cancel_token.as_ref(),
-            )
-            .await?;
+            let mut result = self
+                .finish_document_processing(
+                    document_id,
+                    start,
+                    chunks,
+                    extractions,
+                    stats,
+                    embed_progress.as_ref(),
+                    cancel_token.as_ref(),
+                )
+                .await?;
 
-        if result.stats.chunk_count == 0 {
-            return Err(crate::error::PipelineError::ChunkingError(
-                "Document chunking produced 0 chunks - content may be empty or malformed"
-                    .to_string(),
-            ));
-        }
+            if result.stats.chunk_count == 0 {
+                return Err(crate::error::PipelineError::ChunkingError(
+                    "Document chunking produced 0 chunks - content may be empty or malformed"
+                        .to_string(),
+                ));
+            }
 
-        if result.stats.entity_count == 0 && result.stats.chunk_count > 0 {
-            tracing::warn!(
-                document_id = document_id,
-                chunk_count = result.stats.chunk_count,
-                successful_chunks = result.stats.successful_chunks,
-                failed_chunks = result.stats.failed_chunks,
-                has_extractor = self.extractor.is_some(),
-                "Pipeline processed {} chunks but extracted 0 entities - document accepted with zero entities",
-                result.stats.chunk_count
-            );
-            result.stats.error_details = Some(format!(
-                "Extracted 0 entities from {} chunks ({} succeeded, {} failed). \
-                 Document chunks are stored for semantic search.",
-                result.stats.chunk_count,
-                result.stats.successful_chunks,
-                result.stats.failed_chunks
-            ));
-        }
+            if result.stats.entity_count == 0 && result.stats.chunk_count > 0 {
+                tracing::warn!(
+                    document_id = document_id,
+                    chunk_count = result.stats.chunk_count,
+                    successful_chunks = result.stats.successful_chunks,
+                    failed_chunks = result.stats.failed_chunks,
+                    has_extractor = self.extractor.is_some(),
+                    "Pipeline processed {} chunks but extracted 0 entities - document accepted with zero entities",
+                    result.stats.chunk_count
+                );
+                result.stats.error_details = Some(format!(
+                    "Extracted 0 entities from {} chunks ({} succeeded, {} failed). \
+                     Document chunks are stored for semantic search.",
+                    result.stats.chunk_count,
+                    result.stats.successful_chunks,
+                    result.stats.failed_chunks
+                ));
+            }
 
-        Ok(result)
+            Ok(result)
+        })
+        .await
     }
 
     /// Process multiple documents in parallel.
@@ -278,5 +354,29 @@ impl Pipeline {
             .await;
 
         results.into_iter().collect()
+    }
+}
+
+#[cfg(test)]
+mod spec124_ingest_stages {
+    #[test]
+    fn processing_source_wraps_chunking_and_kg_meta() {
+        let src = include_str!("processing.rs");
+        let prod = src
+            .split("mod spec124_ingest_stages")
+            .next()
+            .expect("production source");
+        assert!(
+            prod.contains("ingest.chunking"),
+            "processing.rs must emit ingest.chunking"
+        );
+        assert!(
+            prod.contains("record_ingest_kg_meta"),
+            "processing.rs must record IngestKgMeta via SSOT"
+        );
+        assert!(
+            prod.contains("chunk_under_span"),
+            "chunk_async must go through chunk_under_span"
+        );
     }
 }

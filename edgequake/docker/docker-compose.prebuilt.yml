@@ -44,6 +44,12 @@ services:
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
       - GOOGLE_ACCESS_TOKEN=${GOOGLE_ACCESS_TOKEN:-}
+      # SPEC-124 Langfuse
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - EDGEQUAKE_LANGFUSE_ENABLED=${EDGEQUAKE_LANGFUSE_ENABLED:-}
       # WHY host.docker.internal: Ollama typically runs on the host, not inside
       # Docker. Using the gateway address lets the container reach the host port.
       - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}

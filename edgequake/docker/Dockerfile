@@ -51,11 +51,12 @@ COPY edgequake/models.toml models.toml
 
 # Build release binary with SQLx offline mode (no database needed at build time).
 # pdfium-auto downloads and embeds the correct pdfium binary for TARGETPLATFORM.
-# Set ENABLE_OTEL=true to compile OTLP trace export (requires OTEL_EXPORTER_OTLP_ENDPOINT at runtime).
-ARG ENABLE_OTEL=false
+# OTLP (`otel`) is on by default (SPEC-124 Langfuse / Jaeger). Set ENABLE_OTEL=false
+# only if you need a deliberately slimmer image without the OTEL feature.
+ARG ENABLE_OTEL=true
 ENV SQLX_OFFLINE=true
-RUN if [ "$ENABLE_OTEL" = "true" ]; then \
-      cargo build --release --locked --features "postgres,vision,otel"; \
+RUN if [ "$ENABLE_OTEL" = "false" ]; then \
+      cargo build --release --locked --no-default-features --features "postgres,vision"; \
     else \
       cargo build --release --locked; \
     fi

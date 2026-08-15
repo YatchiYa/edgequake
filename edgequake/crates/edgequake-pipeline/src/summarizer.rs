@@ -142,6 +142,33 @@ pub struct LLMSummarizer {
 }
 
 impl LLMSummarizer {
+    /// Complete under a GenAI generation span (SPEC-124 LAW-124-12/13).
+    async fn complete_summarize(
+        &self,
+        operation: &str,
+        prompt: &str,
+        input_preview: &str,
+    ) -> Result<String> {
+        let model = self.llm_provider.model().to_string();
+        let provider_name = self.llm_provider.name().to_string();
+        edgequake_observability::with_llm_generation(operation, &model, &provider_name, async {
+            let response = self
+                .llm_provider
+                .complete(prompt)
+                .await
+                .map_err(|e| PipelineError::ExtractionError(format!("LLM error: {}", e)))?;
+            let content = response.content.trim().to_string();
+            let rec = edgequake_observability::LlmGenerationRecord::from_response(
+                Some(input_preview),
+                &content,
+                response.prompt_tokens as u64,
+                response.completion_tokens as u64,
+            );
+            Ok((content, rec))
+        })
+        .await
+    }
+
     /// Create a new LLM summarizer.
     pub fn new(
         llm_provider: Arc<dyn edgequake_llm::LLMProvider>,
@@ -299,12 +326,10 @@ impl LLMSummarizer {
             .entity_summary_prompt(entity_name, &descriptions_refs);
 
         let response = self
-            .llm_provider
-            .complete(&prompt)
-            .await
-            .map_err(|e| PipelineError::ExtractionError(format!("LLM error: {}", e)))?;
+            .complete_summarize("summarize-entity", &prompt, entity_name)
+            .await?;
 
-        Ok(response.content.trim().to_string())
+        Ok(response)
     }
 
     /// Merge relationship descriptions.
@@ -327,13 +352,9 @@ impl LLMSummarizer {
             .prompts
             .relationship_summary_prompt(source, target, &descriptions_refs);
 
-        let response = self
-            .llm_provider
-            .complete(&prompt)
+        let preview = format!("{source}->{target}");
+        self.complete_summarize("summarize-relationship", &prompt, &preview)
             .await
-            .map_err(|e| PipelineError::ExtractionError(format!("LLM error: {}", e)))?;
-
-        Ok(response.content.trim().to_string())
     }
 
     /// Reduce multiple summaries into one (for MapReduce reduce phase).
@@ -349,13 +370,8 @@ impl LLMSummarizer {
         let summaries_refs: Vec<&str> = summaries.iter().map(|s| s.as_str()).collect();
         let prompt = self.prompts.reduce_summary_prompt(&summaries_refs);
 
-        let response = self
-            .llm_provider
-            .complete(&prompt)
+        self.complete_summarize("summarize-reduce", &prompt, "reduce")
             .await
-            .map_err(|e| PipelineError::ExtractionError(format!("LLM error: {}", e)))?;
-
-        Ok(response.content.trim().to_string())
     }
 }
 
@@ -368,13 +384,8 @@ impl DescriptionSummarizer for LLMSummarizer {
 
         let prompt = self.build_prompt(description);
 
-        let response = self
-            .llm_provider
-            .complete(&prompt)
+        self.complete_summarize("summarize-description", &prompt, description)
             .await
-            .map_err(|e| PipelineError::ExtractionError(format!("LLM error: {}", e)))?;
-
-        Ok(response.content.trim().to_string())
     }
 }
 

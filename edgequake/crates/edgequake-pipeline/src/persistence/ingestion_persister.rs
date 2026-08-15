@@ -132,13 +132,16 @@ impl IngestionPersister for DefaultIngestionPersister {
         result: &ProcessingResult,
         chunk_options: ChunkVectorBuildOptions,
     ) -> Result<IngestionPersistOutput> {
-        persist_processing_result_impl(
-            self.graph_storage.clone(),
-            self.vector_storage.clone(),
-            &self.config,
-            ctx,
-            result,
-            chunk_options,
+        edgequake_observability::with_pipeline_stage_span(
+            "ingest.persist",
+            persist_processing_result_impl(
+                self.graph_storage.clone(),
+                self.vector_storage.clone(),
+                &self.config,
+                ctx,
+                result,
+                chunk_options,
+            ),
         )
         .await
     }
@@ -350,13 +353,16 @@ pub async fn persist_processing_result(
     result: &ProcessingResult,
     chunk_options: ChunkVectorBuildOptions,
 ) -> Result<IngestionPersistOutput> {
-    persist_processing_result_impl(
-        graph_storage,
-        vector_storage,
-        config,
-        ctx,
-        result,
-        chunk_options,
+    edgequake_observability::with_pipeline_stage_span(
+        "ingest.persist",
+        persist_processing_result_impl(
+            graph_storage,
+            vector_storage,
+            config,
+            ctx,
+            result,
+            chunk_options,
+        ),
     )
     .await
 }

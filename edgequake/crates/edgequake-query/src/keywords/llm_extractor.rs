@@ -74,10 +74,27 @@ impl LLMKeywordExtractor {
         let prompt = self.build_prompt(query);
 
         // Use the provided LLM override instead of self.llm_provider
-        let response = llm_override
-            .complete(&prompt)
-            .await
-            .map_err(QueryError::from)?;
+        let model = llm_override.model().to_string();
+        let provider_name = llm_override.name().to_string();
+        let response = edgequake_observability::with_llm_generation(
+            "extract-keywords",
+            &model,
+            &provider_name,
+            async {
+                let response = llm_override
+                    .complete(&prompt)
+                    .await
+                    .map_err(QueryError::from)?;
+                let rec = edgequake_observability::LlmGenerationRecord::from_response(
+                    Some(query),
+                    &response.content,
+                    response.prompt_tokens as u64,
+                    response.completion_tokens as u64,
+                );
+                Ok::<_, QueryError>((response, rec))
+            },
+        )
+        .await?;
 
         let mut extracted = self.parse_response(&response.content)?;
         extracted.query_intent =
@@ -363,11 +380,28 @@ impl KeywordExtractor for LLMKeywordExtractor {
 
         let prompt = self.build_prompt(query);
 
-        let response = self
-            .llm_provider
-            .complete(&prompt)
-            .await
-            .map_err(QueryError::from)?;
+        let model = self.llm_provider.model().to_string();
+        let provider_name = self.llm_provider.name().to_string();
+        let response = edgequake_observability::with_llm_generation(
+            "extract-keywords",
+            &model,
+            &provider_name,
+            async {
+                let response = self
+                    .llm_provider
+                    .complete(&prompt)
+                    .await
+                    .map_err(QueryError::from)?;
+                let rec = edgequake_observability::LlmGenerationRecord::from_response(
+                    Some(query),
+                    &response.content,
+                    response.prompt_tokens as u64,
+                    response.completion_tokens as u64,
+                );
+                Ok::<_, QueryError>((response, rec))
+            },
+        )
+        .await?;
 
         let mut extracted = self.parse_response(&response.content)?;
         extracted.query_intent =
@@ -385,11 +419,28 @@ impl KeywordExtractor for LLMKeywordExtractor {
 
         let prompt = self.build_prompt(query);
 
-        let response = self
-            .llm_provider
-            .complete(&prompt)
-            .await
-            .map_err(QueryError::from)?;
+        let model = self.llm_provider.model().to_string();
+        let provider_name = self.llm_provider.name().to_string();
+        let response = edgequake_observability::with_llm_generation(
+            "extract-keywords",
+            &model,
+            &provider_name,
+            async {
+                let response = self
+                    .llm_provider
+                    .complete(&prompt)
+                    .await
+                    .map_err(QueryError::from)?;
+                let rec = edgequake_observability::LlmGenerationRecord::from_response(
+                    Some(query),
+                    &response.content,
+                    response.prompt_tokens as u64,
+                    response.completion_tokens as u64,
+                );
+                Ok::<_, QueryError>((response, rec))
+            },
+        )
+        .await?;
 
         let mut extracted = self.parse_response(&response.content)?;
         extracted.query_intent =
@@ -535,6 +586,7 @@ impl KeywordExtractor for CachedKeywordExtractor {
             if let Ok(Some(cached)) = self.cache.get(&cache_key).await {
                 tracing::debug!(query = %query, "Keyword cache hit");
                 self.hit_flag.store(true, Ordering::Relaxed);
+                let _stage = edgequake_observability::enter_pipeline_stage("keyword-cache");
                 return Ok(cached);
             }
         }

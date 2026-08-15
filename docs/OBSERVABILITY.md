@@ -16,9 +16,14 @@ See [SPEC-018](../specs/018-observability/README.md) for the full audit and proo
 | `EDGEQUAKE_LOG_FORMAT` | `json` or plain | plain |
 | `EDGEQUAKE_LOG_SPAN_EVENTS` | `1` / `true` — log span close events (duration) | off |
 | `EDGEQUAKE_DB_POOL_METRICS_INTERVAL_SECS` | DB pool gauge sampling interval (min 5) | `15` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint | (disabled) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint (Jaeger / collector) | (disabled) |
 | `OTEL_SERVICE_NAME` | Service name in traces | `edgequake-api` |
-| `EDGEQUAKE_OTEL_ENABLED` | `1` / `true` to enable OTLP layer | off |
+| `EDGEQUAKE_OTEL_ENABLED` | `1` / `true` to enable OTLP gRPC layer | off |
+| `LANGFUSE_PUBLIC_KEY` | Langfuse public key (`pk-lf-…`) — SPEC-124 | (disabled) |
+| `LANGFUSE_SECRET_KEY` | Langfuse secret key (`sk-lf-…`) — never logged | (disabled) |
+| `LANGFUSE_BASE_URL` | Langfuse UI + OTLP base (alias `LANGFUSE_HOST`) | `https://cloud.langfuse.com` |
+| `EDGEQUAKE_LANGFUSE_ENABLED` | Force on (`1`) / off (`0`); default = both keys set | auto |
+| `EDGEQUAKE_ENVIRONMENT` | `deployment.environment` on traces | `development` |
 | `EDGEQUAKE_QUEUE_PENDING_WARN` | Pending depth → elevated queue pressure | `100` |
 | `EDGEQUAKE_QUEUE_PENDING_CRITICAL` | Pending depth → critical; `/health` degraded | `500` (or 5× warn) |
 | `EDGEQUAKE_COMPENSATION_QUARANTINE_WARN` | Quarantine counter → elevated store contention | `1` |
@@ -26,12 +31,18 @@ See [SPEC-018](../specs/018-observability/README.md) for the full audit and proo
 | `EDGEQUAKE_DB_POOL_UTIL_WARN` | Pool utilization → elevated store contention | `0.75` |
 | `EDGEQUAKE_DB_POOL_UTIL_CRITICAL` | Pool utilization → critical store contention | `0.90` |
 
-**Build OTLP:** compile the workspace binary with the `otel` feature (not in default build). The feature wires `edgequake-observability/otel` and `edgequake-api/otel`:
+**Build OTLP:** the `otel` feature is **on by default** (SPEC-124) for the workspace binary, `edgequake-api`, and `edgequake-observability`. Export still needs runtime env (`LANGFUSE_*` and/or `OTEL_EXPORTER_OTLP_ENDPOINT`). To build without OTLP:
 
 ```bash
-# Release binary with OTLP + W3C parent linking
-cd edgequake && cargo build --release --features otel,postgres
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+cd edgequake && cargo build --release --no-default-features --features postgres,vision
+```
+
+Default build (includes OTLP + Langfuse-ready HTTP exporter):
+
+```bash
+# Release binary — otel is already in default features
+cd edgequake && cargo build --release
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317   # optional Jaeger
 export EDGEQUAKE_OTEL_ENABLED=1
 export EDGEQUAKE_LOG_FORMAT=json
 ```
@@ -88,6 +99,34 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml \
 ```
 
 The overlay sets `ENABLE_OTEL=true`, JSON logs, span-close events, and `OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317`.
+
+## Langfuse (SPEC-124)
+
+Langfuse accepts **OTLP/HTTP only** (not gRPC). When `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set, EdgeQuake registers a second BatchSpanProcessor that exports to `{LANGFUSE_BASE_URL}/api/public/otel/v1/traces` (`otel` is on by default). Programmatic OTLP exporters must use the full `/v1/traces` path — the SDK does not append it when `with_endpoint` is set.
+
+```bash
+# Preferred: uncomment in repo-root `.env` (make dev sources it)
+# Prefer unquoted values. Quoted Langfuse UI paste is OK — Make/Rust strip one "..." pair
+# (Make `-include` otherwise keeps quotes and OTLP Basic auth gets HTTP 401).
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com   # or US / self-hosted
+# Same shell alternative: export the three vars, then restart
+make kill-app && make backend-bg   # or: make dev
+# Docker stack: LANGFUSE_* is mapped in compose (quickstart / docker / api-only / prebuilt)
+```
+
+`make dev` / `backend-bg` / `backend-dev` call `APPLY_LANGFUSE_ENV`: source repo-root `.env`, apply Make/CLI overrides only when the shell var is empty (so bash-sourced values are not clobbered by Make-quoted includes), strip matching quotes, and never force `LANGFUSE_*=""`. Look for `LANGFUSE_* keys detected` in the make output.
+
+- Settings → **Langfuse Observability** card shows status + **Open in Langfuse** (no secrets in UI).
+- `GET /api/v1/settings/langfuse` returns the same status DTO.
+- `/health.operational.observability.langfuse_enabled` + `langfuse_base_url`.
+- Query responses may include `trace_id` for deep links (`{base}/trace/{id}`).
+- **Sessions:** chat turns bind durable `conversation_id` as Langfuse session / `gen_ai.conversation.id` (see [specs/124-langfuse-support/12-sessions-and-genai.md](../specs/124-langfuse-support/12-sessions-and-genai.md)). After two turns in the same conversation, open Langfuse → Observability → Sessions. Optional `/query` and `/query/stream` field `session_id` for API clients; never invent a session when omitted.
+- **Tokens yes / cost never:** generation and embedding spans record `gen_ai.usage.input_tokens` / `output_tokens` when the LLM returns counts. EdgeQuake **never** emits `gen_ai.usage.cost` or `langfuse.observation.cost_details`. Observation types: `generation`, `retriever`, `embedding`, `chain` (ingest root). See [13-metadata-tokens-and-coverage.md](../specs/124-langfuse-support/13-metadata-tokens-and-coverage.md).
+- **Observation Input/Output:** Langfuse UI reads `langfuse.observation.input` / `output` (not `gen_ai.retrieval.query.text`). Retriever, generation, embedding, ingest roots, and `pipeline_chunk_extraction` set truncated I/O. See [14-observation-io-and-full-observe.md](../specs/124-langfuse-support/14-observation-io-and-full-observe.md).
+
+Jaeger gRPC (`OTEL_EXPORTER_OTLP_ENDPOINT`) remains independent — both exporters can be active.
 
 Domain metrics include `edgequake_db_pool_connections` and task-queue gauges (sampled on each `/metrics` scrape when PostgreSQL is enabled).
 
@@ -146,8 +185,10 @@ make observability-proof
 | `query_stream` | edgequake-api | `request_id`, `query.mode`, `stream.format` |
 | `chat_stream` | edgequake-api | `request_id`, `query.mode` |
 | `sota_query_pipeline` | edgequake-query | pipeline phases |
-| `rag.retrieval` | edgequake-observability | `gen_ai.operation.name=retrieval`, `gen_ai.data_source.id`, `gen_ai.retrieval.top_k`, `rag.retrieval.arm`, `rag.retrieval.empty_result`, `rag.context.truncated`, `rag.retrieval.fallback` |
-| `rag.generation` | edgequake-observability | `gen_ai.operation.name=chat`, `gen_ai.request.model`, `gen_ai.provider.name` |
+| `rag.retrieval` | edgequake-observability | `gen_ai.operation.name=retrieval`, `langfuse.observation.type=retriever`, `gen_ai.data_source.id`, `gen_ai.retrieval.top_k`, `rag.retrieval.*` |
+| `rag.generation` | edgequake-observability | `gen_ai.operation.name=chat`, `langfuse.observation.type=generation`, model/provider, `gen_ai.usage.input_tokens` / `output_tokens` (never cost) |
+| `rag.embedding` | edgequake-observability | `gen_ai.operation.name=embeddings`, `langfuse.observation.type=embedding` |
+| `feature.root` / `ingest.document` | edgequake-observability | `langfuse.observation.type=chain`, `langfuse.trace.tags=ingest` |
 | `task_process` | edgequake-tasks | `task_id`, `tenant_id`, `task_type` |
 | `pipeline_chunk_extraction` | edgequake-pipeline | chunk index |
 

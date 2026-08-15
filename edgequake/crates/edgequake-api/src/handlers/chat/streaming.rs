@@ -158,6 +158,19 @@ pub async fn chat_completion_stream(
         conv.conversation_id
     };
 
+    // SPEC-124: stamp HTTP/chat_stream span; re-bind inside spawn for child spans.
+    let langfuse_id = crate::handlers::query::langfuse_query_identity(
+        &state,
+        Some(&conversation_id.to_string()),
+        Some(&user_id.to_string()),
+        Some(&tenant_id.to_string()),
+        workspace.as_ref(),
+    )
+    .await;
+    let _langfuse_identity_outer =
+        edgequake_observability::stamp_query_langfuse_identity(langfuse_id.clone());
+    let langfuse_id_spawn = langfuse_id;
+
     // 2. Save user message (BEFORE streaming)
     let user_message = state
         .conversation_service
@@ -215,6 +228,9 @@ pub async fn chat_completion_stream(
     // 6. Spawn background task for LLM streaming
     let stream_request_id_spawn = stream_request_id.clone();
     tokio::spawn(async move {
+        edgequake_observability::bind_langfuse_trace_identity_async(
+            langfuse_id_spawn,
+            async move {
         // Send initial event
         if tx.send(initial_event).await.is_err() {
             ErrorEvent::log_stream_disconnect(
@@ -602,6 +618,9 @@ pub async fn chat_completion_stream(
         let tokens_used = accumulator.estimated_tokens();
         let full_content = accumulator.content().to_string();
 
+        // SPEC-124: root observation I/O after stream completes.
+        edgequake_observability::record_query_root_io(&message_content, &full_content);
+
         // SPEC-040 #259: conversation may be deleted while the LLM stream runs.
         if !super::conversation_guard::conversation_exists(&state_clone, conversation_id)
             .await
@@ -759,6 +778,9 @@ pub async fn chat_completion_stream(
                 let _ = tx.send(ChatStreamEvent::Error { message: msg, code }).await;
             }
         }
+            },
+        )
+        .await;
     });
 
     // 7. Convert channel to SSE stream

@@ -12,8 +12,8 @@ use axum::{
 use edgequake_audit::{AuditEvent, AuditEventType, AuditResult};
 use edgequake_observability::{
     record_faithfulness_sample, record_llm_request, record_popular_node_fallback,
-    record_sparse_retrieval_outcome, scope_llm_provider, PropagationHeaders, QueryOutcomeGuard,
-    RequestContext,
+    record_query_root_io, record_sparse_retrieval_outcome, scope_llm_provider,
+    stamp_query_langfuse_identity, PropagationHeaders, QueryOutcomeGuard, RequestContext,
 };
 use tracing::debug;
 
@@ -92,6 +92,19 @@ pub async fn execute_query(
         .as_ref()
         .map(|ws| ws.tenant_id.to_string())
         .or_else(|| tenant_ctx.tenant_id.clone());
+
+    // SPEC-124: optional client session — never synthesize from request_id.
+    let langfuse_id = super::workspace_resolve::langfuse_query_identity(
+        &state,
+        request.session_id.as_deref(),
+        tenant_ctx.user_id.as_deref(),
+        data_tenant_id
+            .as_deref()
+            .or(tenant_ctx.tenant_id.as_deref()),
+        workspace.as_ref(),
+    )
+    .await;
+    let _langfuse_identity = stamp_query_langfuse_identity(langfuse_id);
 
     let mut allowed_document_ids = None;
     if let Some(ref filter) = request.document_filter {
@@ -190,6 +203,9 @@ pub async fn execute_query(
     )
     .await?;
 
+    // SPEC-124 LAW-124-16: root observation I/O for Langfuse browse/eval.
+    record_query_root_io(&request.query, &result.answer);
+
     let reranker_configured = state.query.engine_impl.has_reranker();
     let reranked = request.enable_rerank && reranker_configured;
 
@@ -255,7 +271,7 @@ pub async fn execute_query(
         );
     }
 
-    let response = build_legacy_query_response(
+    let mut response = build_legacy_query_response(
         result,
         sources,
         conversation_id,
@@ -265,6 +281,8 @@ pub async fn execute_query(
         request.include_subgraph,
         request.rerank_top_k,
     );
+    // SPEC-124: expose correlation trace id for Langfuse deep links.
+    response.trace_id = edgequake_observability::trace_id_from_request_id(&req_ctx.request_id);
 
     let mut headers = HeaderMap::new();
     if request.context_only {

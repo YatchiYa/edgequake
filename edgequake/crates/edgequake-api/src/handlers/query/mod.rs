@@ -159,7 +159,8 @@ pub(crate) async fn resolve_chunk_file_paths(
 
 // Re-export workspace resolve functions for other modules
 pub use workspace_resolve::{
-    get_workspace_embedding_provider, get_workspace_vector_storage, resolve_query_workspace,
+    get_workspace_embedding_provider, get_workspace_vector_storage, langfuse_query_identity,
+    resolve_query_workspace,
 };
 
 #[cfg(test)]
@@ -213,6 +214,7 @@ mod tests {
             extra_headers: None,
             include_subgraph: true,
             content_granularity: ContentGranularity::Citation,
+            session_id: None,
         };
 
         let (ctx, propagation) = test_extensions();
@@ -257,6 +259,7 @@ mod tests {
             extra_headers: None,
             include_subgraph: true,
             content_granularity: ContentGranularity::Citation,
+            session_id: None,
         };
 
         let (ctx, propagation) = test_extensions();
@@ -293,6 +296,7 @@ mod tests {
             extra_headers: None,
             include_subgraph: true,
             content_granularity: ContentGranularity::Citation,
+            session_id: None,
         };
 
         let (ctx, propagation) = test_extensions();
@@ -339,6 +343,7 @@ mod tests {
                 extra_headers: None,
                 include_subgraph: true,
                 content_granularity: ContentGranularity::Citation,
+                session_id: None,
             };
 
             let (ctx, propagation) = test_extensions();
@@ -384,6 +389,7 @@ mod tests {
             extra_headers: None,
             include_subgraph: true,
             content_granularity: ContentGranularity::Citation,
+            session_id: None,
         };
 
         let (ctx, propagation) = test_extensions();
@@ -428,6 +434,7 @@ mod tests {
             extra_headers: None,
             include_subgraph: true,
             content_granularity: ContentGranularity::Citation,
+            session_id: None,
         };
 
         let (ctx, propagation) = test_extensions();
@@ -464,6 +471,7 @@ mod tests {
             extra_headers: None,
             include_subgraph: true,
             content_granularity: ContentGranularity::Citation,
+            session_id: None,
         };
 
         let (ctx, propagation) = test_extensions();

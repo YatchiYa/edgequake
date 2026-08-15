@@ -52,7 +52,7 @@ name = "spec115_mistral_ingest"
 path = "examples/spec115_mistral_ingest.rs"
 
 [features]
-default = ["postgres", "vision"]
+default = ["postgres", "vision", "otel"]
 otel = ["edgequake-observability/otel", "edgequake-api/otel"]
 postgres = ["edgequake-api/postgres", "edgequake-storage/postgres"]
 vision = ["edgequake-api/vision"]
@@ -64,7 +64,7 @@ edgequake-llm = { workspace = true }
 edgequake-pipeline = { workspace = true }
 edgequake-query = { workspace = true }
 edgequake-api = { workspace = true }
-edgequake-observability = { workspace = true, features = ["metrics"] }
+edgequake-observability = { workspace = true, features = ["metrics", "otel"] }
 edgequake-tasks = { workspace = true }
 edgequake-pdf = { workspace = true }
 tokio = { workspace = true }

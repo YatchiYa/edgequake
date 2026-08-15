@@ -153,6 +153,14 @@ pub struct QueryRequest {
     #[serde(default)]
     pub conversation_history: Option<Vec<ConversationMessage>>,
 
+    /// Optional Langfuse / GenAI session id (SPEC-124).
+    ///
+    /// When set, exported OTEL spans carry `langfuse.session.id` /
+    /// `gen_ai.conversation.id`. Never invent — omit when no durable session exists.
+    /// Chat uses `conversation_id` instead; this is for direct `/query` clients.
+    #[serde(default)]
+    pub session_id: Option<String>,
+
     /// Enable reranking of retrieved chunks for better relevance.
     #[serde(default = "default_enable_rerank")]
     pub enable_rerank: bool,
@@ -312,6 +320,10 @@ pub struct StreamQueryRequest {
     /// @implements SPEC-037 + SPEC-028
     #[serde(default = "default_content_granularity")]
     pub content_granularity: ContentGranularity,
+
+    /// Optional Langfuse / GenAI session id (SPEC-124). Mirrors `QueryRequest.session_id`.
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 // ============================================================================
@@ -528,6 +540,10 @@ pub struct QueryResponse {
     /// SPEC-083 X-21: retrieval explainability (arms / sparse / intent).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub explain: Option<ExplainTraceDto>,
+
+    /// SPEC-124: W3C-style trace id derived from request correlation (Open in Langfuse).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
 }
 
 /// API projection of engine [`edgequake_query::ExplainTrace`].
@@ -919,6 +935,7 @@ mod tests {
             conversation_id: None,
             reranked: false,
             explain: None,
+            trace_id: None,
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["mode"], "hybrid");

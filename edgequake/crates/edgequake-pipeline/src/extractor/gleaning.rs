@@ -277,13 +277,34 @@ impl EntityExtractor for GleaningExtractor {
                 self.reasoning_effort.as_deref(),
                 self.llm_provider.name(),
             );
-            let response = self
-                .llm_provider
-                .complete_with_options(&gleaning_prompt, &options)
-                .await
-                .map_err(|e| {
-                    PipelineError::ExtractionError(format!("Gleaning LLM error: {}", e))
-                })?;
+            let model = self.llm_provider.model().to_string();
+            let provider_name = self.llm_provider.name().to_string();
+            let response = edgequake_observability::with_llm_generation(
+                "extract-entities-glean",
+                &model,
+                &provider_name,
+                async {
+                    let resp = self
+                        .llm_provider
+                        .complete_with_options(&gleaning_prompt, &options)
+                        .await
+                        .map_err(|e| {
+                            PipelineError::ExtractionError(format!("Gleaning LLM error: {}", e))
+                        })?;
+                    edgequake_observability::record_observation_meta(
+                        "gleaning_iteration",
+                        &iteration.to_string(),
+                    );
+                    let rec = edgequake_observability::LlmGenerationRecord::from_response(
+                        Some(&chunk.content),
+                        &resp.content,
+                        resp.prompt_tokens as u64,
+                        resp.completion_tokens as u64,
+                    );
+                    Ok::<_, PipelineError>((resp, rec))
+                },
+            )
+            .await?;
 
             // Accumulate token usage from gleaning iterations
             result.input_tokens += response.prompt_tokens;
@@ -404,5 +425,37 @@ mod tests {
 
         extractor.apply_entity_schema_to_entities(&mut entities);
         assert_eq!(entities[0].entity_type, "OTHER");
+    }
+
+    /// LAW-124-15: gleaning LLM iterations must use GenAI generation SSOT.
+    #[test]
+    fn gleaning_source_wraps_llm_generation() {
+        let src = include_str!("gleaning.rs");
+        let prod = src
+            .split("mod tests")
+            .next()
+            .expect("production source before tests");
+        assert!(
+            prod.contains("with_llm_generation"),
+            "gleaning.rs must call with_llm_generation"
+        );
+        assert!(
+            prod.contains("\"extract-entities-glean\""),
+            "gleaning must use stable operation name extract-entities-glean"
+        );
+        assert!(
+            prod.contains("LlmGenerationRecord"),
+            "gleaning must record usage + I/O via LlmGenerationRecord"
+        );
+        for cost_key in [
+            "gen_ai.usage.cost",
+            "langfuse.observation.cost_details",
+            "langfuse.observation.cost",
+        ] {
+            assert!(
+                !prod.contains(cost_key),
+                "gleaning must not emit cost attr {cost_key}"
+            );
+        }
     }
 }
