@@ -2173,10 +2173,14 @@ spec103-llm-cache-proof: ## SPEC-103: unit + contract LLM cache proof (MemoryKV 
 
 spec109-reasoning-effort-proof: ## SPEC-109: reasoning effort clamp + API contract proof
 	@echo "$(BOLD)$(BLUE)SPEC-109 reasoning effort proof$(RESET)"
-	@cd $(ROOT_DIR)/../edgequake-llm && \
-	  cargo test reasoning_capabilities --lib -- --nocapture && \
-	  cargo test test_reasoning_effort --lib -- --nocapture && \
-	  cargo test test_apply_reasoning_effort --lib -- --nocapture
+	@if [ -d "$(ROOT_DIR)/../edgequake-llm" ]; then \
+	  cd $(ROOT_DIR)/../edgequake-llm && \
+	    cargo test reasoning_capabilities --lib -- --nocapture && \
+	    cargo test test_reasoning_effort --lib -- --nocapture && \
+	    cargo test test_apply_reasoning_effort --lib -- --nocapture; \
+	else \
+	  echo "$(YELLOW)skip sibling edgequake-llm unit tests (use crates.io 0.10.8)$(RESET)"; \
+	fi
 	@cd $(ROOT_DIR)/edgequake && \
 	  cargo test -p edgequake-core --lib llm_roles:: -- --nocapture && \
 	  cargo test -p edgequake-pipeline --lib completion_options:: -- --nocapture && \
@@ -3058,11 +3062,8 @@ spec128-proof: ## SPEC-128 figure prune SSOT + layout overlay contracts (unfakab
 		echo "$(YELLOW)skip pdf2md text_blocks (sibling crate missing)$(RESET)"; \
 	fi
 	@node $(FRONTEND_DIR)/scripts/copy-pdf-worker.mjs
-	@if curl -fsS "$(FRONTEND_URL)" 2>/dev/null | grep -qi 'EdgeQuake'; then \
-		cd $(FRONTEND_DIR) && PLAYWRIGHT_SKIP_STACK_CHECK=1 PLAYWRIGHT_BASE_URL="$(FRONTEND_URL)" pnpm exec playwright test e2e/spec128-layout-overlay.spec.ts --project=chromium --grep-invert "live "; \
-	else \
-		cd $(FRONTEND_DIR) && PLAYWRIGHT_SKIP_STACK_CHECK=1 pnpm exec playwright test e2e/spec128-layout-overlay.spec.ts --project=chromium --grep-invert "live "; \
-	fi
+	@# Mocked overlay suite uses Playwright webServer (do not reuse a stale make-dev FE).
+	@cd $(FRONTEND_DIR) && PLAYWRIGHT_SKIP_STACK_CHECK=1 pnpm exec playwright test e2e/spec128-layout-overlay.spec.ts --project=chromium --grep-invert "live " --retries=1
 	@if curl -fsS "$(BACKEND_URL)/health" >/dev/null 2>&1 && curl -fsS "$(FRONTEND_URL)" 2>/dev/null | grep -qi 'EdgeQuake'; then \
 		echo "$(YELLOW)→ SPEC-128 live overlay (persisted layout)$(RESET)"; \
 		cd $(FRONTEND_DIR) && E2E_LIVE_STACK=1 EQ_BACKEND_URL="$(BACKEND_URL)" EDGEQUAKE_API_URL="$(BACKEND_URL)" PLAYWRIGHT_BASE_URL="$(FRONTEND_URL)" pnpm exec playwright test e2e/spec128-layout-overlay.spec.ts --project=chromium --grep "live overlay on persisted"; \

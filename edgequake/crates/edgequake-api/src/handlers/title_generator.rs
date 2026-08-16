@@ -19,8 +19,8 @@
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-use edgequake_llm::traits::{ChatMessage, CompletionOptions, LLMProvider};
 use edgequake_llm::resolve_effective_temperature;
+use edgequake_llm::traits::{ChatMessage, CompletionOptions, LLMProvider};
 
 /// System prompt for title generation.
 const TITLE_SYSTEM_PROMPT: &str = "\

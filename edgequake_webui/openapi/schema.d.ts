@@ -7671,6 +7671,8 @@ export interface components {
          *       "env_snippet": {},
          *       "export_active": {},
          *       "otel_feature_built": {},
+         *       "project_id": {},
+         *       "project_ui_url": {},
          *       "public_key_configured": {},
          *       "secret_key_configured": {},
          *       "ui_url": {}
@@ -7689,9 +7691,9 @@ export interface components {
             /** @description Whether this binary was built with `--features otel`. */
             otel_feature_built: boolean;
             /** @description Project id for `/project/{id}/…` UI routes. None when export is off or unresolved. */
-            project_id?: string;
+            project_id?: string | null;
             /** @description `{configured_base}/project/{id}` when export is on and project id is known. */
-            project_ui_url?: string;
+            project_ui_url?: string | null;
             public_key_configured: boolean;
             secret_key_configured: boolean;
             /** @description Same as base_url — Langfuse Cloud region / self-hosted host. */

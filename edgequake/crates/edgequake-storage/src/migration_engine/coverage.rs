@@ -814,10 +814,7 @@ mod tests {
         let tgt_id = Uuid::new_v4();
         let src = "FLOW_DIRECTION";
         let tgt = "ARROW_1_(SHADED_BOX_->CIRCULAR_TARGET)";
-        let index = EntityNameIndex::from_rows([
-            (src_id, src.into()),
-            (tgt_id, tgt.into()),
-        ]);
+        let index = EntityNameIndex::from_rows([(src_id, src.into()), (tgt_id, tgt.into())]);
         let key = crate::format_relationship_legacy_key(src, tgt, "RELATED_TO");
         assert_eq!(
             index.parse_relationship_legacy_key(&key),

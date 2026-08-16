@@ -4,11 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.25.0] — 2026-08-16
+
+Minor: Langfuse observability (SPEC-124), structure-aware markdown pack (SPEC-125),
+provider KV / prompt cache (SPEC-126), PDF layout overlay (SPEC-128), LLM transport
+omit/Responses (SPEC-131), and partner reliability (#378–#381 / SPEC-129–133).
+Migration **148**. Upgrade: [`docs/operations/upgrade-to-0.25.0.md`](docs/operations/upgrade-to-0.25.0.md).
+
+**Deps (crates.io):** `edgequake-llm` **0.10.8**, `edgequake-pdf2md` **0.9.11** (path patches removed).
+
+**SPEC-001 Acc:** attested from existing [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run for this cut.
+
 ### Fixed
 - **SPEC-133 — relationship fleet-mirror target-arrow parse** — Legacy id `{src}->{tgt}:{rel}` was still ambiguous when the **target** name contained `->` (e.g. `FLOW_DIRECTION->ARROW_1_(SHADED_BOX_->CIRCULAR_TARGET):RELATED_TO`), causing typed fleet mirror near-misses (`995/1000`) and fail-closed KG persist on diagram/handwriting PDFs. Index-guided both-resolve parse (`EntityNameIndex::parse_relationship_legacy_key` / `parse_relationship_legacy_key_with_resolver`) closes the residual after the v0.24.2 source-arrow `rsplit` fix. Wired through fleet mirror, iw2 backfill, stamp, and coverage. E2E: `e2e_spec133_target_arrow_map_miss`. Spec: [`specs/133-kv-error/`](specs/133-kv-error/).
+- **Issue #380 / SPEC-130 — sink→fleet-mirror relationship UUIDs** — CQRS relationship sink now passes typed relationship UUIDs into fleet mirror so RelVectors re-resolve-by-name no longer fail-closes dense KG persist. Spec: [`specs/130-fleet-mirror/`](specs/130-fleet-mirror/).
+- **Issue #381 / SPEC-129 — CHECK-safe document status SSOT** — Slim-checkpoint resume no longer projects illegal statuses (e.g. `re_embedding`) into `documents.status`; maps through CHECK-safe SSOT (`processing`) so touch/resume cannot violate `documents_valid_status`. Spec: [`specs/129-touchd_document_faill/`](specs/129-touchd_document_faill/).
+- **Issue #378 / SPEC-132 — multi-PDF admit honesty** — Non-blocking wake after durable persist; per-file WebUI timeout; PDFs admitted only via `/documents/pdf` or `/pdf/batch` (no silent generic multipart stall). Spec: [`specs/132-multiple-pdf/`](specs/132-multiple-pdf/).
 
 ### Added
+- **SPEC-124 Langfuse OTLP/HTTP observability** — Nested RAG traces → Langfuse (OTLP/HTTP); Settings deep-link (no secrets in UI); chat `conversation_id` sessions; optional `/query` `session_id`; local Langfuse v4 Docker (`make langfuse-up`). Coexists with Prometheus/Jaeger. Spec: [`specs/124-langfuse-support/`](specs/124-langfuse-support/) · ops: [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
+- **SPEC-125 structure-aware markdown pack** — Heading-dense `.md` chunking without orphan heading chunks; `ingest.chunking` distribution metadata (counts only). Spec: [`specs/125-better-chunking/`](specs/125-better-chunking/).
 - **SPEC-126 provider KV / prompt cache** — default-on prefix reuse per LLM vendor (`EDGEQUAKE_PROMPT_CACHE`). Distinct from SPEC-103 (does not skip generation; Acc leaves this on). Native OpenAI/Azure send GPT-5.6 explicit breakpoints and learn from structured `error.param` 400s (not host/model heuristics). Compatible/Mistral/NVIDIA send `prompt_cache_key` only. Anthropic `cache_control`; OpenRouter `session_id` + `cache_control`; Bedrock Converse `cachePoint`. Extract/glean/keyword/summarize/judge keep a stable system prefix. Mix KV is small unless Mix instructions exceed vendor min tokens. E2E: `e2e_spec126_prompt_cache`.
+- **SPEC-128 PDF layout overlay** — Migration **148** `document_pages` + `page_layout_regions`; viewer overlay; figure prune default; L0/L1 geometry via `edgequake-pdf2md` **0.9.11**. Spec: [`specs/128-improve-pdf-parsing/`](specs/128-improve-pdf-parsing/).
+- **Issue #379 / SPEC-131 — omit-temperature / Responses API** — `EDGEQUAKE_LLM_OMIT_TEMPERATURE`, `EDGEQUAKE_LLM_OMIT_REASONING_EFFORT`, `EDGEQUAKE_LLM_API_FORMAT=chat_completions|responses` (`store: false`); permanent `llm_unsupported_param` for Mantle Gemma/Grok. Requires `edgequake-llm` **0.10.8**. Spec: [`specs/131-env-config-temp-openai-support/`](specs/131-env-config-temp-openai-support/).
 
 ### Changed
 - **SPEC-001 Acc publish refresh** — medical-mid n=200 Acc **statistical tie** (EQ **0.792** / LR **0.786**; Δ CI **[-0.022, +0.034]**); archive [`medical-mid-20260815T110218Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T110218Z/). Acc-law **medical-full n=2062** (chunk **1200/100**) labeled peer [`ACC_E2OCC_086_MEDICAL_FULL_v1`](specs/001-benchmark/e2e/artifacts/publish/peers/ACC_E2OCC_086_MEDICAL_FULL_v1/): Acc **point tie** 0.786/0.786 (closed P0-full 6pp gap); ctx 0.427 — **not Beat**; does not replace `publish/latest`. Scorecard: [`docs/comparisons/eq-vs-lightrag-acc-bench.md`](docs/comparisons/eq-vs-lightrag-acc-bench.md) · [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/).

@@ -427,7 +427,15 @@ Relational data-layer cutover (typed SSOT) and the LightRAG-parity response cach
 | `EDGEQUAKE_QUERY_ANSWER_CACHE` | Boolean | follows master | Query-answer cache override (SPEC-103) |
 | `EDGEQUAKE_PROMPT_CACHE` | Boolean | `1` | **Provider KV / prompt-cache**. Native OpenAI (constructor, including proxies) and Azure send `prompt_cache_key` + GPT-5.6 explicit breakpoints; a structured `error.param` 400 disables them for that process. Compatible/Mistral/NVIDIA: key only. Anthropic: `cache_control`. OpenRouter: `cache_control` + `session_id`. Bedrock Converse: `cachePoint`. Default **on**. Does not skip generation. Acc leaves this on. |
 | `EDGEQUAKE_PROMPT_CACHE_TTL` | String | `5m` | Anthropic `cache_control` and Bedrock Converse `cachePoint` TTL (`5m` or `1h`) |
+| `EDGEQUAKE_LLM_OMIT_TEMPERATURE` | Boolean | `0` | **SPEC-131 / #379** — never send `temperature` upstream (Mantle Gemma/Grok reject it). |
+| `EDGEQUAKE_LLM_OMIT_REASONING_EFFORT` | Boolean | `0` | **SPEC-131** — never send `reasoning_effort` upstream. |
+| `EDGEQUAKE_LLM_API_FORMAT` | String | `chat_completions` | **SPEC-131** — upstream transport: `chat_completions` (default) or `responses` (GPT-5.6 Mantle; `store: false`). |
 | `EDGEQUAKE_EXTRACTION_LANGUAGE` | String | `English` | Fleet default KG extraction NL language (SPEC-096); workspace metadata overrides |
+| `LANGFUSE_PUBLIC_KEY` | String | (unset) | **SPEC-124** — Langfuse public key (`pk-lf-…`). With secret key, enables OTLP/HTTP exporter. |
+| `LANGFUSE_SECRET_KEY` | String | (unset) | **SPEC-124** — Langfuse secret key (`sk-lf-…`); never logged / never shown in UI. |
+| `LANGFUSE_BASE_URL` | String | `https://cloud.langfuse.com` | **SPEC-124** — Langfuse UI + OTLP base (alias `LANGFUSE_HOST`). Local: `http://localhost:3310` after `make langfuse-up`. |
+| `LANGFUSE_PROJECT_ID` | String | (auto) | **SPEC-124** — optional project id for Settings deep-link; else fetched once from `/api/public/projects`. |
+| `EDGEQUAKE_LANGFUSE_ENABLED` | Boolean | follows keys | **SPEC-124** — force-enable when keys present; see [OBSERVABILITY.md](../OBSERVABILITY.md). |
 
 > **Acc note:** The benchmark pins `EDGEQUAKE_LLM_CACHE=0` for fair cold peers (response cache). Provider KV cache (`EDGEQUAKE_PROMPT_CACHE`) stays **on** — it does not change answers. Irreversible drops (**125** KV, **126/131** vectors) are human-gated via the CLI flag `edgequake migrate --confirm-drop` or the `EDGEQUAKE_MIGRATION_CONFIRM_DROP=1` env var — never set it casually in shared env files.
 

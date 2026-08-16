@@ -240,11 +240,7 @@ mod tests {
     #[test]
     fn contract_spec133_parse_target_arrow_with_resolver() {
         let cases = [
-            (
-                "LEFT_MARGIN",
-                "LEFT_MARGIN_VALUE_1->_00_->_+",
-                "RELATED_TO",
-            ),
+            ("LEFT_MARGIN", "LEFT_MARGIN_VALUE_1->_00_->_+", "RELATED_TO"),
             (
                 "SMALL_BOXED_LABEL_T.",
                 "LEFT_MARGIN_LABEL_1->_00_->_+",
@@ -260,17 +256,12 @@ mod tests {
                 "ARROW_2_(CIRCULAR_TARGET_->VERTICAL_PANEL)",
                 "RELATED_TO",
             ),
-            (
-                "LEFT_MARGIN_SEQUENCE",
-                "SEQUENCE_1->_00_->_+",
-                "RELATED_TO",
-            ),
+            ("LEFT_MARGIN_SEQUENCE", "SEQUENCE_1->_00_->_+", "RELATED_TO"),
         ];
         for (src, tgt, rel) in cases {
             let key = format_relationship_legacy_key(src, tgt, rel);
-            let parsed = parse_relationship_legacy_key_with_resolver(&key, |n| {
-                n == src || n == tgt
-            });
+            let parsed =
+                parse_relationship_legacy_key_with_resolver(&key, |n| n == src || n == tgt);
             assert_eq!(
                 parsed,
                 Some((src.into(), tgt.into(), rel.into())),

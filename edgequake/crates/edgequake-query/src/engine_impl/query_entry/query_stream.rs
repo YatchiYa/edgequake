@@ -292,9 +292,9 @@ impl QueryEngine {
                                     );
                                 }
                             }
-                            return Ok::<TokenStream, QueryError>(
+                            Ok::<TokenStream, QueryError>(
                                 futures::stream::once(async move { Ok(response.content) }).boxed(),
-                            );
+                            )
                         }
                         Err(e) => {
                             tracing::warn!(
@@ -319,9 +319,7 @@ impl QueryEngine {
                                 Some(&query_text),
                                 Some(&response.content),
                             );
-                            return Ok(
-                                futures::stream::once(async move { Ok(response.content) }).boxed()
-                            );
+                            Ok(futures::stream::once(async move { Ok(response.content) }).boxed())
                         }
                     }
                 } else if llm.supports_streaming() {

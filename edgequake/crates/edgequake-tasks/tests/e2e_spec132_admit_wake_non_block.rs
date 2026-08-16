@@ -26,15 +26,9 @@ async fn e2e_spec132_admit_wake_non_block() {
         TaskType::Insert,
         serde_json::json!({"role": "filler"}),
     );
-    enqueue_with_delivery(
-        &storage,
-        &queue,
-        &notifier,
-        TaskDeliveryMode::Local,
-        filler,
-    )
-    .await
-    .expect("first enqueue");
+    enqueue_with_delivery(&storage, &queue, &notifier, TaskDeliveryMode::Local, filler)
+        .await
+        .expect("first enqueue");
 
     let blocked = Task::new(
         tenant,

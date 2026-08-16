@@ -5,7 +5,7 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.24.4-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.25.0-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
@@ -69,13 +69,13 @@ EDGEQUAKE_LLM_PROVIDER=ollama \
 curl -s http://localhost:8080/health | python3 -m json.tool
 ```
 
-> Pin a version: `EDGEQUAKE_VERSION=0.24.4 sh quickstart.sh`
+> Pin a version: `EDGEQUAKE_VERSION=0.25.0 sh quickstart.sh`
 
-### What's new in 0.24.4
+### What's new in 0.25.0
 
-Patch: partner reliability (#370 PDF matrix honesty, #374 legacy_vector_id race, #375 delete citation indexes, #376 injection IDs), SPEC-123 env/config cascade, SPEC-122 admit honesty, SPEC-114/015V/116/117 KG + vision + extract budget. Migrations **145–147**.
+Minor: Langfuse OTLP/HTTP (SPEC-124), structure-aware markdown pack (SPEC-125), provider KV / prompt cache (SPEC-126), PDF layout overlay (SPEC-128 + mig **148**), omit-temperature / Responses API (SPEC-131 / #379), multi-PDF admit honesty (#378), document status CHECK SSOT (#381), fleet-mirror UUID + target-`->` parse (#380 / SPEC-133). Crates.io deps: `edgequake-llm` **0.10.8**, `edgequake-pdf2md` **0.9.11**.
 
-Upgrade: **[upgrade-to-0.24.4.md](docs/operations/upgrade-to-0.24.4.md)** · changelog: [CHANGELOG.md](CHANGELOG.md).
+Upgrade: **[upgrade-to-0.25.0.md](docs/operations/upgrade-to-0.25.0.md)** · changelog: [CHANGELOG.md](CHANGELOG.md).
 
 ### What's new in 0.24.0
 
@@ -315,10 +315,10 @@ docker compose -f docker-compose.prebuilt.yml up -d
 
 ```bash
 # Pin full stack to this release
-EDGEQUAKE_VERSION=0.24.4 docker compose -f docker-compose.quickstart.yml up -d
+EDGEQUAKE_VERSION=0.25.0 docker compose -f docker-compose.quickstart.yml up -d
 
 # Pin PostgreSQL major (optional; default tag follows EDGEQUAKE_VERSION → PG18)
-EDGEQUAKE_VERSION=0.24.4 EDGEQUAKE_POSTGRES_TAG=0.21.0-pg16 \
+EDGEQUAKE_VERSION=0.25.0 EDGEQUAKE_POSTGRES_TAG=0.21.0-pg16 \
   docker compose -f docker-compose.quickstart.yml up -d
 ```
 

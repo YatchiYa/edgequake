@@ -106,10 +106,6 @@ jobs:
         working-directory: edgequake
         run: cargo nextest run -p edgequake-api --test e2e_spec126_prompt_cache --locked --test-threads=1
 
-      - name: SPEC-126 llm crate e2e
-        working-directory: ${{ github.workspace }}/../edgequake-llm
-        run: cargo test --test e2e_spec126_prompt_cache -- --test-threads=1
-
   resource-proof:
     name: SPEC-006 Resource Proof
     runs-on: ubuntu-latest

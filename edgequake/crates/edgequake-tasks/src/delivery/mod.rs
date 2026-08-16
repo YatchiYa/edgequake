@@ -38,19 +38,17 @@ pub async fn enqueue_with_delivery(
     let track_id = task.track_id.clone();
     storage.create_task(&task).await?;
     match mode {
-        TaskDeliveryMode::Local | TaskDeliveryMode::Bridged => {
-            match queue.try_send(task).await {
-                Ok(()) => {}
-                Err(TaskError::QueueFull) => {
-                    warn!(
-                        track_id = %track_id,
-                        "SPEC-132: wake channel full after durable persist; \
-                         task remains pending for claim_next/hydrate"
-                    );
-                }
-                Err(e) => return Err(e),
+        TaskDeliveryMode::Local | TaskDeliveryMode::Bridged => match queue.try_send(task).await {
+            Ok(()) => {}
+            Err(TaskError::QueueFull) => {
+                warn!(
+                    track_id = %track_id,
+                    "SPEC-132: wake channel full after durable persist; \
+                     task remains pending for claim_next/hydrate"
+                );
             }
-        }
+            Err(e) => return Err(e),
+        },
         TaskDeliveryMode::NotifyOnly => notifier.notify(&track_id).await?,
     }
     Ok(())
@@ -159,7 +157,12 @@ mod tests {
         let notifier = Arc::new(NoopTaskNotifier);
         let (tenant, workspace) = test_ids();
 
-        let first = Task::new(tenant, workspace, TaskType::Insert, serde_json::json!({"n": 1}));
+        let first = Task::new(
+            tenant,
+            workspace,
+            TaskType::Insert,
+            serde_json::json!({"n": 1}),
+        );
         enqueue_with_delivery(
             &storage,
             &queue,
@@ -170,7 +173,12 @@ mod tests {
         .await
         .unwrap();
 
-        let second = Task::new(tenant, workspace, TaskType::Insert, serde_json::json!({"n": 2}));
+        let second = Task::new(
+            tenant,
+            workspace,
+            TaskType::Insert,
+            serde_json::json!({"n": 2}),
+        );
         let second_id = second.track_id.clone();
         enqueue_with_delivery(
             &storage,
@@ -183,7 +191,10 @@ mod tests {
         .expect("admit must succeed when wake is full");
 
         let stored = storage.get_task(&second_id).await.unwrap();
-        assert!(stored.is_some(), "second task must be durable after soft wake miss");
+        assert!(
+            stored.is_some(),
+            "second task must be durable after soft wake miss"
+        );
         assert_eq!(queue.size().await.unwrap(), 1);
     }
 }

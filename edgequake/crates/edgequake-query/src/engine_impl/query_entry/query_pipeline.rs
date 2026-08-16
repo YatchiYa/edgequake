@@ -981,7 +981,7 @@ impl QueryEngine {
         stats.reasoning_effort = request.reasoning_effort.clone();
         stats.total_time_ms = pipeline_start.elapsed().as_millis() as u64;
 
-        record_query_pipeline_langfuse(mode, Some(&stats), final_context.chunks.len());
+        record_query_pipeline_langfuse(mode, Some(stats), final_context.chunks.len());
 
         // SPEC-046 OPS-P3.22: optional LLM-judge faithfulness (opt-in).
         // Falls back to heuristic sampler (OPS-P2.20) when judge off / fails.

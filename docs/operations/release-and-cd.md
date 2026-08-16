@@ -4,9 +4,13 @@ title: "Release & CD Cycle"
 
 # Release & CD Cycle
 
-> **Product: v0.24.4** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.25.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 >
-> Upgrade: [upgrade-to-0.24.4.md](upgrade-to-0.24.4.md) (SPEC-118…123 + mig 145–147). Prior: [upgrade-to-0.24.3.md](upgrade-to-0.24.3.md) (SPEC-112 pools + UTF-8 truncate).
+> Upgrade: [upgrade-to-0.25.0.md](upgrade-to-0.25.0.md) (SPEC-124…133 + mig 148). Prior: [upgrade-to-0.24.4.md](upgrade-to-0.24.4.md) (SPEC-118…123 + mig 145–147).
+>
+> **SPEC-001 Acc (this cut):** attested existing [`publish/latest`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run.
+>
+> **crates.io deps:** `edgequake-llm` **0.10.8**, `edgequake-pdf2md` **0.9.11** (workspace crates remain GHCR-only).
 
 This document describes how to cut a release, run quality gates, and verify the published Docker images.
 

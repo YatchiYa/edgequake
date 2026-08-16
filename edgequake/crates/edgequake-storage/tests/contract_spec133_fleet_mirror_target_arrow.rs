@@ -164,8 +164,5 @@ async fn contract_spec133_fleet_mirror_target_arrow_fail_closed() {
     assert_eq!(report.eligible, 1, "{report:?}");
     assert_eq!(report.resolved, 0, "{report:?}");
     assert!(!report.is_complete());
-    assert!(
-        report.misses.iter().any(|m| m == &legacy_id),
-        "{report:?}"
-    );
+    assert!(report.misses.iter().any(|m| m == &legacy_id), "{report:?}");
 }

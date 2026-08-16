@@ -76,8 +76,9 @@ pub fn extraction_completion_options_with_effort(
     desired: Option<&str>,
     provider: &str,
 ) -> CompletionOptions {
-    let reasoning_effort =
-        apply_omit_reasoning_effort(resolve_extraction_reasoning_effort(provider, model, desired));
+    let reasoning_effort = apply_omit_reasoning_effort(resolve_extraction_reasoning_effort(
+        provider, model, desired,
+    ));
     CompletionOptions {
         max_tokens: Some(max_tokens),
         temperature: resolve_effective_temperature(model, 0.0),

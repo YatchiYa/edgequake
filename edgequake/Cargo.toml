@@ -100,7 +100,7 @@ name = "graphrag_bench"
 harness = false
 
 [workspace.package]
-version = "0.24.4"
+version = "0.25.0"
 edition = "2021"
 rust-version = "1.95"
 license = "Apache-2.0"
@@ -177,18 +177,19 @@ edgequake-api = { path = "crates/edgequake-api" }
 edgequake-auth = { path = "crates/edgequake-auth" }
 edgequake-core = { path = "crates/edgequake-core" }
 edgequake-pdf = { path = "crates/edgequake-pdf" }
-# SSOT with pdf2md 0.9.10 (llm ≥0.10.7 / OTEL 0.32 — no 0.6.x diamond).
-# SPEC-113/extract: Ollama think:false for effort=none (crates.io 0.10.7 + local patch).
+# SSOT with pdf2md 0.9.11 (llm ≥0.10.8 / OTEL 0.32 — no 0.6.x diamond).
+# SPEC-113/extract: Ollama think:false for effort=none (crates.io 0.10.7+).
 # SPEC-126: provider KV / prompt-cache (prompt_cache_key + Anthropic cache_control).
-edgequake-llm = "0.10.7"
+# SPEC-131: omit-temperature / Responses API (crates.io 0.10.8).
+edgequake-llm = "0.10.8"
 edgequake-pipeline = { path = "crates/edgequake-pipeline" }
 edgequake-query = { path = "crates/edgequake-query" }
 edgequake-storage = { path = "crates/edgequake-storage" }
 edgequake-tasks = { path = "crates/edgequake-tasks" }
 edgequake-observability = { path = "crates/edgequake-observability" }
 edgeparse-core = "0.2.5"
-# SSOT with published pdf2md 0.9.10 (pdfium-auto 0.3.1: atomic extract + chromium/7961).
-edgequake-pdf2md = { version = "0.9.10", default-features = false, features = [
+# SSOT with published pdf2md 0.9.11 (SPEC-128 page geometry + text layout).
+edgequake-pdf2md = { version = "0.9.11", default-features = false, features = [
     "bundled",
 ] }
 
@@ -212,11 +213,4 @@ debug = true
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3
-
-# Unify pdf2md / other crates.io dependents onto the local llm crate (SPEC-126).
-# After publishing edgequake-llm 0.10.8, bump the workspace pin and drop this patch.
-# SPEC-128: path-patch pdf2md so L0/L1 geometry gates land without a crates.io publish.
-[patch.crates-io]
-edgequake-llm = { path = "../../edgequake-llm" }
-edgequake-pdf2md = { path = "../../edgequake-pdf2md" }
 
