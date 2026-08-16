@@ -146,7 +146,13 @@ where
         llm.name(),
         async {
             let resp = llm
-                .chat(&initial_messages, None)
+                .chat(
+                    &initial_messages,
+                    Some(
+                        &edgequake_llm::CompletionOptions::default()
+                            .with_role_cache("multimodal", llm),
+                    ),
+                )
                 .await
                 .map_err(|e| format!("LLM call failed: {e}"))?;
             let rec = edgequake_observability::LlmGenerationRecord::from_response(
@@ -179,7 +185,13 @@ where
                 llm.name(),
                 async {
                     let resp = llm
-                        .chat(&repair_messages, None)
+                        .chat(
+                            &repair_messages,
+                            Some(
+                                &edgequake_llm::CompletionOptions::default()
+                                    .with_role_cache("multimodal", llm),
+                            ),
+                        )
                         .await
                         .map_err(|e| format!("LLM repair call failed: {e}"))?;
                     let rec = edgequake_observability::LlmGenerationRecord::from_response(

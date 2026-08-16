@@ -1,5 +1,7 @@
 {
-  "workspace_id": "64998cf1-a077-45fa-89be-18364779d3f7",
+  "workspace_id": "23b09c73-aa3f-4497-8e11-c448ffad8c53",
   "full_corpus": true,
-  "updated_at_utc": "2026-08-12T00:42:16Z"
+  "eq_workspace_name": "bench001-smoke",
+  "valid": true,
+  "invalid_reason": null
 }

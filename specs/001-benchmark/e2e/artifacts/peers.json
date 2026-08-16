@@ -1,7 +1,7 @@
 {
   "spec": "001-benchmark",
-  "updated_at_utc": "2026-08-02T13:26:30Z",
-  "honesty": "Split peers \u2014 never merge Acc / L2 / latency / gap-close. Ship product Equal = 083 PRODUCT_QUERY_API_v1. Acc CI = labeled keep only (gap_close_occ E2 / e2_chat_split_fair). Acc Equal mid path STOP (085). Mid Parity unfinished (binding). Acc Beat fishing STOP. Acc headline = P0 medical-mid (publish/latest) = medical-mid-20260802T132630Z (Acc point lead EQ 0.811 / LR 0.778; L2 incomplete \u2014 not Beat). Cold latency SSOT = C1COLD_v1 / smoke-20260723T134452Z (1.02\u00d7). 080\u2013082 packing REJECT. Labeled peers must not overwrite Acc warm.",
+  "updated_at_utc": "2026-08-16T01:22:00Z",
+  "honesty": "Split peers \u2014 never merge Acc / L2 / latency / gap-close. Ship product Equal = 083 PRODUCT_QUERY_API_v1. Acc CI = labeled keep only (gap_close_occ E2 / e2_chat_split_fair). Acc Equal mid path STOP (085). Mid Parity unfinished (binding). Acc Beat fishing STOP (088: CTX_GWC KEEP ctx; FACT_ER_L2 KEEP Fact+4.9pp; MID_GWC_FACT REJECT composition). Acc headline = E2-occ 086 medical-mid (publish/latest) = medical-mid-20260815T110218Z (Acc statistical tie EQ 0.792 / LR 0.786; L2 promote gates unmet \u2014 not Beat). Acc-law full = ACC_E2OCC_086_MEDICAL_FULL_v1 / medical-full-20260816T012004Z (chunk 1200/100; Acc point tie 0.786/0.786; ctx 0.427 \u2014 not Beat; not publish/latest). Cold latency SSOT = C1COLD_v1 / smoke-20260723T134452Z (1.02\u00d7). Warm product latency peer = EQ_LLM_CACHE_WARM_v1 / medical-mid-20260815T132034Z (EQ 82 ms / LR 993 ms = 0.083\u00d7; cache-aided; not Acc Beat). 080\u2013082 packing REJECT. Labeled peers must not overwrite Acc warm.",
   "claim_surface": {
     "product_equal": "product_query_api",
     "acc_ci_labeled_keep": "gap_close_occ",
@@ -12,25 +12,25 @@
   "peers": {
     "acc_headline": {
       "label": "Acc publish headline (P0 medical-mid)",
-      "workspace_id": "e3216f05-479e-4770-bdc3-05c5bd94078f",
-      "pack": "P0_rrf_bm25",
-      "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
-      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260802T132630Z",
+      "workspace_id": "23b09c73-aa3f-4497-8e11-c448ffad8c53",
+      "pack": "ACC_E2OCC_086",
+      "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T110218Z",
       "publish": "specs/001-benchmark/e2e/artifacts/publish/latest",
       "metrics": {
-        "eq_acc": 0.811,
-        "lr_acc": 0.778,
-        "eq_ctx_rel": 0.415,
-        "eq_evidence_recall": 0.904,
-        "lr_ctx_rel": 0.497,
-        "lr_evidence_recall": 0.946,
-        "fact_er": 0.86,
+        "eq_acc": 0.792,
+        "lr_acc": 0.786,
+        "eq_ctx_rel": 0.471,
+        "eq_evidence_recall": 0.932,
+        "lr_ctx_rel": 0.510,
+        "lr_evidence_recall": 0.949,
+        "fact_er": 0.847,
         "acc_delta_ci": [
-          0.001,
-          0.065
+          -0.022,
+          0.034
         ],
         "n_questions": 200,
-        "verdict": "ACC_POINT_LEAD_L2_INCOMPLETE"
+        "verdict": "STATISTICAL_TIE_L2_GATES_UNMET"
       },
       "use_for": [
         "acc_publish_ssot",
@@ -42,23 +42,27 @@
       ]
     },
     "acc_headline_full": {
-      "label": "Acc P0 medical-full scale check (n=2062) \u2014 not publish/latest",
-      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
-      "pack": "P0_rrf_bm25",
-      "profile_id": "P0_path_off_bm25_restore_v1_lrlike_arms_v2",
-      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-full-20260722T204100Z",
-      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/P0_MEDICAL_FULL_v1",
+      "label": "Acc E2-occ 086 medical-full scale check (n=2062, chunk 1200/100) \u2014 not publish/latest",
+      "workspace_id": "23b09c73-aa3f-4497-8e11-c448ffad8c53",
+      "pack": "ACC_E2OCC_086",
+      "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-full-20260816T012004Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/ACC_E2OCC_086_MEDICAL_FULL_v1",
       "metrics": {
-        "eq_acc": 0.724,
-        "lr_acc": 0.784,
-        "eq_ctx_rel": 0.394,
-        "eq_evidence_recall": 0.913,
-        "fact_er": 0.905,
+        "eq_acc": 0.786,
+        "lr_acc": 0.786,
+        "eq_ctx_rel": 0.427,
+        "lr_ctx_rel": 0.485,
+        "eq_evidence_recall": 0.927,
+        "eq_fact_er": 0.914,
+        "lr_fact_er": 0.945,
         "acc_delta_ci": [
-          -0.107,
-          -0.042
+          -0.16,
+          0.047
         ],
-        "n_questions": 2062
+        "n_questions": 2062,
+        "chunk_token_size": 1200,
+        "chunk_overlap_token_size": 100
       },
       "use_for": [
         "acc_scale_check",
@@ -69,7 +73,7 @@
         "beat_claims",
         "silent_publish_latest"
       ],
-      "verdict": "SCALE \u2014 LR Acc CI excludes 0 at n=2062; Acc latest stays mid P0 (079)"
+      "verdict": "SCALE \u2014 Acc point tie 0.786/0.786 (closed P0-full 6pp gap); chunk 1200/100; ctx 0.427 < 0.50; Acc latest stays mid T110218Z"
     },
     "gap_close_occ": {
       "label": "Gap-close E2 (L1.5 + occurrence_sort) \u2014 keep (best Acc CI)",
@@ -512,6 +516,163 @@
         "warm_cache_latency_claims",
         "beat_claims"
       ]
+    },
+    "latency_eq_llm_cache_warm": {
+      "label": "Latency EQ_LLM_CACHE_WARM_v1 (matched warm LLM+embed cache)",
+      "workspace_id": "23b09c73-aa3f-4497-8e11-c448ffad8c53",
+      "pack": "eq-llm-cache-warm",
+      "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T132034Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/EQ_LLM_CACHE_WARM_v1",
+      "script": "make bench001-medical-mid-eq-llm-cache-warm",
+      "metrics": {
+        "eq_acc": 0.792,
+        "lr_acc": 0.773,
+        "eq_query_p50_ms": 82,
+        "lr_query_p50_ms": 993,
+        "eq_lr_p50_ratio": 0.083,
+        "eq_llm_cache": true,
+        "lr_enable_llm_cache": true,
+        "eq_keyword_p50_ms": 0,
+        "eq_embed_p50_ms": 0,
+        "eq_retrieve_p50_ms": 56,
+        "eq_generate_p50_ms": 0,
+        "latency_slo_1_5x": true
+      },
+      "use_for": [
+        "warm_product_latency_claims",
+        "llm_embed_cache_parity"
+      ],
+      "not_for": [
+        "acc_headline",
+        "fair_cold_latency_claims",
+        "beat_claims",
+        "silent_publish_latest"
+      ],
+      "verdict": "WARM LATENCY WIN labeled \u2014 EQ 82 ms vs LR 993 ms (0.083\u00d7); Acc statistical tie; Acc latest frozen; cold SSOT remains C1COLD_v1"
+    },
+    "ctx_gwc_v1": {
+      "label": "088 W1 CTX_GWC_v1 \u2014 GRAPH_WALK_COMPRESS=1 (not Acc)",
+      "workspace_id": "23b09c73-aa3f-4497-8e11-c448ffad8c53",
+      "pack": "ctx-gwc",
+      "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T133601Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/CTX_GWC_v1",
+      "metrics": {
+        "eq_acc": 0.763,
+        "lr_acc": 0.792,
+        "eq_ctx_rel": 0.501,
+        "lr_ctx_rel": 0.490,
+        "eq_evidence_recall": 0.942,
+        "eq_fact_er": 0.876,
+        "lr_fact_er": 0.960,
+        "acc_delta_ci": [-0.079, 0.016],
+        "n_questions": 200,
+        "graph_walk_compress": true
+      },
+      "use_for": [
+        "ctx_rel_labeled",
+        "088_w1_keep"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims",
+        "silent_publish_latest"
+      ],
+      "verdict": "KEEP ctx_rel 0.501 \u2014 Acc point tax; Fact ER still short of Beat; Acc latest frozen"
+    },
+    "fact_er_l2_v1": {
+      "label": "088 W3 FACT_ER_L2_v1 \u2014 L2_FACT_BM25_POOL=acc (not Acc)",
+      "workspace_id": "23b09c73-aa3f-4497-8e11-c448ffad8c53",
+      "pack": "fact-er-l2",
+      "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T135129Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/FACT_ER_L2_v1",
+      "metrics": {
+        "eq_acc": 0.775,
+        "lr_acc": 0.773,
+        "eq_ctx_rel": 0.471,
+        "lr_ctx_rel": 0.507,
+        "eq_evidence_recall": 0.949,
+        "eq_fact_er": 0.896,
+        "lr_fact_er": 0.930,
+        "acc_delta_ci": [-0.084, 0.056],
+        "n_questions": 200,
+        "l2_fact_bm25_pool": "acc"
+      },
+      "use_for": [
+        "fact_er_labeled",
+        "088_w3_keep"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims",
+        "silent_publish_latest"
+      ],
+      "verdict": "KEEP Fact ER 0.896 (+4.9pp vs Acc SSOT) \u2014 Beat gate 0.900 miss -0.004; ctx flat; Acc latest frozen"
+    },
+    "mid_gwc_fact_v1": {
+      "label": "088 Mid MID_GWC_FACT_v1 \u2014 GWC+FACT pool=acc (REJECT composition)",
+      "workspace_id": "23b09c73-aa3f-4497-8e11-c448ffad8c53",
+      "pack": "mid-gwc-fact",
+      "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T135805Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/MID_GWC_FACT_v1",
+      "metrics": {
+        "eq_acc": 0.776,
+        "lr_acc": 0.772,
+        "eq_ctx_rel": 0.473,
+        "lr_ctx_rel": 0.492,
+        "eq_evidence_recall": 0.945,
+        "eq_fact_er": 0.908,
+        "lr_fact_er": 0.950,
+        "acc_delta_ci": [-0.042, 0.063],
+        "n_questions": 200,
+        "graph_walk_compress": true,
+        "l2_fact_bm25_pool": "acc"
+      },
+      "use_for": [
+        "088_mid_composition_reject"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims",
+        "silent_publish_latest",
+        "medical_full_beat_scale"
+      ],
+      "verdict": "REJECT Mid \u2014 ctx 0.473 (GWC alone 0.501 regresses); Fact ER 0.908 < 0.920; Acc latest frozen; Phase G STOP"
+    },
+    "mid_gwc_fact_pre_v1": {
+      "label": "088 Mid MID_GWC_FACT_PRE_v1 \u2014 GWC + pool=acc pre-compress (REJECT)",
+      "workspace_id": "23b09c73-aa3f-4497-8e11-c448ffad8c53",
+      "pack": "mid-gwc-fact-pre",
+      "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T141834Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/MID_GWC_FACT_PRE_v1",
+      "metrics": {
+        "eq_acc": 0.768,
+        "lr_acc": 0.782,
+        "eq_ctx_rel": 0.485,
+        "lr_ctx_rel": 0.491,
+        "eq_evidence_recall": 0.940,
+        "eq_fact_er": 0.905,
+        "lr_fact_er": 0.940,
+        "acc_delta_ci": [-0.074, 0.024],
+        "n_questions": 200,
+        "graph_walk_compress": true,
+        "l2_fact_bm25_pool": "acc",
+        "l2_fact_bm25_pool_pre_compress": true
+      },
+      "use_for": [
+        "088_mid_coupled_reject"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims",
+        "silent_publish_latest",
+        "medical_full_beat_scale"
+      ],
+      "verdict": "REJECT Mid \u2014 pre-compress pool holds Fact ER 0.905 but ctx 0.485 < 0.50; Acc latest frozen; Phase G STOP"
     },
     "d1_unify_reject": {
       "label": "080 D1 R6 unify \u2014 REJECT (not gap-close keep)",

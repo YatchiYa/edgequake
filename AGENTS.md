@@ -673,6 +673,8 @@ make backend-bg
 | `EDGEQUAKE_LLM_PROVIDER`       | Optional | Override LLM provider           | `openai`, `ollama`, `lmstudio`, `mock`               |
 | `EDGEQUAKE_EMBEDDING_PROVIDER` | Optional | Hybrid mode: separate embedding | `ollama` (use with `EDGEQUAKE_LLM_PROVIDER=openai`)  |
 | `EDGEQUAKE_LLM_CACHE`          | Optional | Master keywords+answer LLM cache (SPEC-103; default **on**) | `0` / `false` disables both; Acc pins `0` |
+| `EDGEQUAKE_PROMPT_CACHE`       | Optional | Provider KV / prompt-cache (SPEC-126; default **on**) | `0` disables prefix keys/`cache_control`; Acc leaves on |
+| `EDGEQUAKE_PROMPT_CACHE_TTL`   | Optional | Anthropic/Bedrock cache TTL (SPEC-126; default `5m`) | `5m` or `1h` |
 | `EDGEQUAKE_KEYWORD_CACHE`      | Optional | Keyword extract cache override (SPEC-103) | `0` disables keywords only |
 | `EDGEQUAKE_QUERY_ANSWER_CACHE` | Optional | Answer cache override (SPEC-103; unset follows master) | `0` / `1` |
 | `EDGEQUAKE_REASONING_EFFORT`   | Optional | Fleet default reasoning effort (SPEC-109); role env overrides | `none`, `minimal`, `low`, … |

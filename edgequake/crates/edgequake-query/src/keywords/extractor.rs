@@ -275,6 +275,15 @@ pub trait KeywordExtractor: Send + Sync {
         hasher.update(query.as_bytes());
         hex::encode(hasher.finalize())
     }
+
+    /// Probe keyword cache without an LLM round-trip (warm Mix embed law).
+    ///
+    /// Default: miss. [`super::CachedKeywordExtractor`] returns a hit when
+    /// SPEC-103 keyword cache holds this query so `pipeline_prepare` can skip
+    /// speculative `embed_one` and issue one unique `embed([q, hl, ll])`.
+    async fn peek_cached(&self, _query: &str) -> Option<ExtractedKeywords> {
+        None
+    }
 }
 
 #[cfg(test)]

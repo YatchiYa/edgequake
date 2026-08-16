@@ -185,6 +185,7 @@ impl RecursiveCharacterChunking {
         chunk_size: usize,
         chunk_overlap: usize,
         strip_whitespace: bool,
+        len: fn(&str) -> usize,
     ) -> Vec<SpanPiece> {
         if splits.is_empty() {
             return Vec::new();
@@ -193,7 +194,7 @@ impl RecursiveCharacterChunking {
         let separator_len = if separator.is_empty() {
             0
         } else {
-            recursive_token_len(separator)
+            len(separator)
         };
 
         let mut docs: Vec<SpanPiece> = Vec::new();
@@ -201,7 +202,7 @@ impl RecursiveCharacterChunking {
         let mut total = 0usize;
 
         for split in splits {
-            let split_len = recursive_token_len(&split.0);
+            let split_len = len(&split.0);
             let with_sep = total
                 + split_len
                 + if current_doc.is_empty() {
@@ -235,7 +236,7 @@ impl RecursiveCharacterChunking {
                             > chunk_size
                             && total > 0)
                     {
-                        let removed_len = recursive_token_len(&current_doc[0].0)
+                        let removed_len = len(&current_doc[0].0)
                             + if current_doc.len() > 1 {
                                 separator_len
                             } else {
@@ -269,6 +270,7 @@ impl RecursiveCharacterChunking {
         separators: &[String],
         chunk_size: usize,
         chunk_overlap: usize,
+        len: fn(&str) -> usize,
     ) -> Vec<SpanPiece> {
         let mut separator = separators.last().cloned().unwrap_or_default();
         let mut rest: &[String] = &[];
@@ -296,7 +298,7 @@ impl RecursiveCharacterChunking {
         let mut good_splits: Vec<SpanPiece> = Vec::new();
 
         for split in splits {
-            if recursive_token_len(&split.0) < chunk_size {
+            if len(&split.0) < chunk_size {
                 good_splits.push(split);
             } else if !good_splits.is_empty() {
                 final_chunks.extend(Self::merge_splits_with_spans(
@@ -305,6 +307,7 @@ impl RecursiveCharacterChunking {
                     chunk_size,
                     chunk_overlap,
                     true,
+                    len,
                 ));
                 good_splits.clear();
 
@@ -317,6 +320,7 @@ impl RecursiveCharacterChunking {
                         rest,
                         chunk_size,
                         chunk_overlap,
+                        len,
                     ));
                 }
             } else if rest.is_empty() {
@@ -328,6 +332,7 @@ impl RecursiveCharacterChunking {
                     rest,
                     chunk_size,
                     chunk_overlap,
+                    len,
                 ));
             }
         }
@@ -339,6 +344,7 @@ impl RecursiveCharacterChunking {
                 chunk_size,
                 chunk_overlap,
                 true,
+                len,
             ));
         }
 
@@ -364,11 +370,12 @@ impl RecursiveCharacterChunking {
         end_index -= raw_body.len() - right;
         Some((body, start_index, end_index))
     }
-}
 
-#[async_trait]
-impl ChunkingStrategy for RecursiveCharacterChunking {
-    async fn chunk(&self, content: &str, config: &ChunkerConfig) -> Result<Vec<ChunkResult>> {
+    fn chunk_inner(
+        content: &str,
+        config: &ChunkerConfig,
+        len: fn(&str) -> usize,
+    ) -> Result<Vec<ChunkResult>> {
         if content.trim().is_empty() {
             return Ok(Vec::new());
         }
@@ -382,16 +389,15 @@ impl ChunkingStrategy for RecursiveCharacterChunking {
         let mut order = 0usize;
 
         for region in regions {
-            // C-16: atomic regions larger than chunk_size must still split so
-            // huge tables/charts stay within the embedder window.
             let pieces = if region.atomic.is_some() {
-                if recursive_token_len(&region.text) > chunk_size {
+                if len(&region.text) > chunk_size {
                     Self::split_text_with_spans(
                         &region.text,
                         region.start,
                         &separators,
                         chunk_size,
                         chunk_overlap,
+                        len,
                     )
                 } else {
                     vec![(
@@ -407,6 +413,7 @@ impl ChunkingStrategy for RecursiveCharacterChunking {
                     &separators,
                     chunk_size,
                     chunk_overlap,
+                    len,
                 )
             };
 
@@ -414,7 +421,7 @@ impl ChunkingStrategy for RecursiveCharacterChunking {
                 if let Some((body, start, end)) = Self::trim_span_piece((text, start, end)) {
                     results.push(ChunkResult {
                         content: body.clone(),
-                        tokens: recursive_token_len(&body),
+                        tokens: len(&body),
                         chunk_order_index: order,
                         section: None,
                         start_offset: Some(start),
@@ -431,6 +438,24 @@ impl ChunkingStrategy for RecursiveCharacterChunking {
             .into_iter()
             .filter(|c| !c.content.is_empty())
             .collect())
+    }
+
+    /// SPEC-125: overflow split using tiktoken (or any length fn). Acc path stays
+    /// on [`recursive_token_len`] via [`ChunkingStrategy::chunk`].
+    pub(crate) fn chunk_with_len(
+        &self,
+        content: &str,
+        config: &ChunkerConfig,
+        len: fn(&str) -> usize,
+    ) -> Result<Vec<ChunkResult>> {
+        Self::chunk_inner(content, config, len)
+    }
+}
+
+#[async_trait]
+impl ChunkingStrategy for RecursiveCharacterChunking {
+    async fn chunk(&self, content: &str, config: &ChunkerConfig) -> Result<Vec<ChunkResult>> {
+        Self::chunk_inner(content, config, recursive_token_len)
     }
 
     fn name(&self) -> &str {
@@ -614,7 +639,14 @@ mod tests {
         ))
         .unwrap();
         let splits = RecursiveCharacterChunking::split_literal_with_spans(text.as_str(), "\n\n", 0);
-        let merged = RecursiveCharacterChunking::merge_splits_with_spans(&splits, "", 15, 0, true);
+        let merged = RecursiveCharacterChunking::merge_splits_with_spans(
+            &splits,
+            "",
+            15,
+            0,
+            true,
+            recursive_token_len,
+        );
         assert_eq!(
             merged.len(),
             3,
@@ -646,5 +678,35 @@ mod tests {
         assert_eq!(pieces.len(), 3);
         assert!(!pieces[0].0.starts_with('\n'));
         assert!(pieces[1].0.starts_with("\n\n"));
+    }
+
+    #[tokio::test]
+    async fn acc_chunk_stays_on_word_count_not_tiktoken() {
+        let text = "alpha beta gamma delta epsilon zeta eta theta iota kappa. ".repeat(40);
+        let config = ChunkerConfig {
+            chunk_size: 20,
+            chunk_overlap: 0,
+            min_chunk_size: 1,
+            separators: default_recursive_separators(),
+            ..Default::default()
+        };
+        let acc = RecursiveCharacterChunking
+            .chunk(&text, &config)
+            .await
+            .unwrap();
+        let tik = RecursiveCharacterChunking
+            .chunk_with_len(&text, &config, crate::token_estimator::count_tokens)
+            .unwrap();
+        assert!(!acc.is_empty() && !tik.is_empty());
+        assert_eq!(
+            acc[0].tokens,
+            recursive_token_len(&acc[0].content),
+            "Acc recursive must stamp word-count tokens"
+        );
+        assert_eq!(
+            tik[0].tokens,
+            crate::token_estimator::count_tokens(&tik[0].content),
+            "chunk_with_len must stamp tiktoken"
+        );
     }
 }

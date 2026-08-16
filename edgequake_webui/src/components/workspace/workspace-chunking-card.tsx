@@ -106,6 +106,15 @@ export function WorkspaceChunkingCard({
           </CardDescription>
           <p
             className="text-[11px] text-muted-foreground"
+            data-testid="chunking-markdown-pack-hint"
+          >
+            {t(
+              'workspace.chunking.markdownPackHint',
+              'Markdown files pack small headings into the token budget so a heading is not its own chunk.',
+            )}
+          </p>
+          <p
+            className="text-[11px] text-muted-foreground"
             data-testid="chunking-future-only-hint"
           >
             {t(

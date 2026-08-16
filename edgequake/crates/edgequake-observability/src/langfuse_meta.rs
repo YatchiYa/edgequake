@@ -186,6 +186,14 @@ pub struct IngestKgMeta {
     pub embed_model: Option<String>,
     pub embed_dim: Option<usize>,
     pub extract_entity_cap: Option<usize>,
+    /// SPEC-125: actual emitted token min (tiktoken / chunk.token_count).
+    pub token_min: Option<usize>,
+    /// SPEC-125: median emitted token count.
+    pub token_p50: Option<usize>,
+    /// SPEC-125: actual emitted token max.
+    pub token_max: Option<usize>,
+    /// SPEC-125: chunks whose body is ATX headings only.
+    pub orphan_heading_chunks: Option<usize>,
 }
 
 /// LAW-124-22 KG-slice facts.
@@ -216,6 +224,18 @@ impl IngestKgMeta {
         }
         if let Some(n) = self.extract_entity_cap {
             record_trace_meta("extract_entity_cap", &n.to_string());
+        }
+        if let Some(n) = self.token_min {
+            record_observation_meta("token_min", &n.to_string());
+        }
+        if let Some(n) = self.token_p50 {
+            record_observation_meta("token_p50", &n.to_string());
+        }
+        if let Some(n) = self.token_max {
+            record_observation_meta("token_max", &n.to_string());
+        }
+        if let Some(n) = self.orphan_heading_chunks {
+            record_observation_meta("orphan_heading_chunks", &n.to_string());
         }
     }
 }

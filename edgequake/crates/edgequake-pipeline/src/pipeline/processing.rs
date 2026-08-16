@@ -54,10 +54,11 @@ impl Pipeline {
     async fn chunk_under_span(&self, content: &str, document_id: &str) -> Result<Vec<TextChunk>> {
         edgequake_observability::with_pipeline_stage_span("ingest.chunking", async {
             let chunks = self.chunker.chunk_async(content, document_id).await?;
-            edgequake_observability::record_observation_io(
-                Some(&format!("{{\"chars\":{}}}", content.len())),
-                Some(&format!("{{\"chunks\":{}}}", chunks.len())),
+            let (input, output, dist) = crate::ingest_chunking_observation(
+                content.len(),
+                chunks.iter().map(|c| (c.token_count, c.content.as_str())),
             );
+            edgequake_observability::record_observation_io(Some(&input), Some(&output));
             edgequake_observability::record_ingest_kg_meta(edgequake_observability::IngestKgMeta {
                 chunk_strategy: Some(self.config.chunk_strategy.as_str().to_string()),
                 chunk_size: Some(self.config.chunker.chunk_size),
@@ -69,6 +70,10 @@ impl Pipeline {
                     .map(|p| p.model().to_string()),
                 embed_dim: None,
                 extract_entity_cap: None,
+                token_min: Some(dist.token_min),
+                token_p50: Some(dist.token_p50),
+                token_max: Some(dist.token_max),
+                orphan_heading_chunks: Some(dist.orphan_heading_chunks),
             });
             Ok(chunks)
         })
@@ -377,6 +382,10 @@ mod spec124_ingest_stages {
         assert!(
             prod.contains("chunk_under_span"),
             "chunk_async must go through chunk_under_span"
+        );
+        assert!(
+            prod.contains("ingest_chunking_observation"),
+            "ingest.chunking I/O must use ChunkTokenStats SSOT"
         );
     }
 }

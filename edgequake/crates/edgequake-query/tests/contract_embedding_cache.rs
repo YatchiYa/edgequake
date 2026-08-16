@@ -1,9 +1,7 @@
-//! Contract test for P-G9 (RC-14): query embedding cache.
+//! Contract test for P-G9 (RC-14) / 064: query embedding cache.
 //!
-//! Verifies that wrapping an `EmbeddingProvider` in
-//! `CachingEmbeddingProvider` skips redundant `embed_one` round-trips for
-//! identical query text, while `embed` (batch, ingestion) is delegated
-//! unchanged and never reads the cache.
+//! `CachingEmbeddingProvider` memoizes per-text for both `embed_one` and batch
+//! `embed` (same keys). `embed_one` is implemented as a 1-text `embed`.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -13,11 +11,9 @@ use edgequake_llm::traits::EmbeddingProvider;
 use edgequake_llm::MockProvider;
 use edgequake_query::cache::CachingEmbeddingProvider;
 
-/// Wraps an embedding provider and counts `embed_one` calls so the contract
-/// test can assert the cache short-circuits the inner provider.
+/// Wraps an embedding provider and counts inner `embed` RTTs.
 struct CountingEmbedding {
     inner: Arc<dyn EmbeddingProvider>,
-    embed_one_calls: Arc<AtomicUsize>,
     embed_calls: Arc<AtomicUsize>,
 }
 
@@ -39,34 +35,25 @@ impl EmbeddingProvider for CountingEmbedding {
         self.embed_calls.fetch_add(1, Ordering::SeqCst);
         self.inner.embed(texts).await
     }
-    async fn embed_one(&self, text: &str) -> edgequake_llm::Result<Vec<f32>> {
-        self.embed_one_calls.fetch_add(1, Ordering::SeqCst);
-        self.inner.embed_one(text).await
-    }
 }
 
 #[tokio::test]
 async fn repeated_query_embeddings_skip_inner_provider() {
     let mock: Arc<dyn EmbeddingProvider> = Arc::new(MockProvider::default());
-    let embed_one_calls = Arc::new(AtomicUsize::new(0));
     let embed_calls = Arc::new(AtomicUsize::new(0));
     let counting = Arc::new(CountingEmbedding {
         inner: mock,
-        embed_one_calls: embed_one_calls.clone(),
         embed_calls: embed_calls.clone(),
     }) as Arc<dyn EmbeddingProvider>;
 
     let cached = Arc::new(CachingEmbeddingProvider::with_defaults(counting));
 
-    // Three identical query embeddings.
     for _ in 0..3 {
         let _ = cached.embed_one("what is GraphRAG?").await.unwrap();
     }
 
-    // The inner provider's embed_one must be called exactly once; the other
-    // two calls must be served from the cache.
     assert_eq!(
-        embed_one_calls.load(Ordering::SeqCst),
+        embed_calls.load(Ordering::SeqCst),
         1,
         "repeated identical queries must hit the cache, not the inner provider"
     );
@@ -75,13 +62,11 @@ async fn repeated_query_embeddings_skip_inner_provider() {
 }
 
 #[tokio::test]
-async fn batch_embed_bypasses_cache_and_calls_inner() {
+async fn batch_embed_shares_per_text_cache_with_embed_one() {
     let mock: Arc<dyn EmbeddingProvider> = Arc::new(MockProvider::default());
-    let embed_one_calls = Arc::new(AtomicUsize::new(0));
     let embed_calls = Arc::new(AtomicUsize::new(0));
     let counting = Arc::new(CountingEmbedding {
         inner: mock,
-        embed_one_calls: embed_one_calls.clone(),
         embed_calls: embed_calls.clone(),
     }) as Arc<dyn EmbeddingProvider>;
 
@@ -90,17 +75,17 @@ async fn batch_embed_bypasses_cache_and_calls_inner() {
     let texts = vec!["chunk a".to_string(), "chunk b".to_string()];
     let out = cached.embed(&texts).await.unwrap();
     assert_eq!(out.len(), 2);
+    assert_eq!(embed_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(cached.misses(), 2);
+    assert_eq!(cached.hits(), 0);
 
-    // Batch embed must reach the inner provider and must NOT touch the
-    // embed_one cache (ingestion inputs are unique per call).
+    let _ = cached.embed_one("chunk a").await.unwrap();
     assert_eq!(
         embed_calls.load(Ordering::SeqCst),
         1,
-        "batch embed must delegate to the inner provider"
+        "embed_one must reuse the batch-populated per-text cache"
     );
-    assert_eq!(embed_one_calls.load(Ordering::SeqCst), 0);
-    assert_eq!(cached.hits(), 0);
-    assert_eq!(cached.misses(), 0);
+    assert_eq!(cached.hits(), 1);
 }
 
 #[tokio::test]

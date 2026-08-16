@@ -1,12 +1,13 @@
 //! Markdown-aware chunking with heading breadcrumbs (SPEC-026 Phase 2 P-03).
+//!
+//! SPEC-125: default path packs sibling sections to the token budget
+//! (`markdown_pack`). `EDGEQUAKE_MARKDOWN_PACK=0` restores heading-hard splits.
 
 use async_trait::async_trait;
 
-use super::recursive::RecursiveCharacterChunking;
-use super::text_utils::estimate_tokens;
-use super::types::{ChunkResult, ChunkerConfig, ChunkingStrategy, SectionMetadata};
+use super::markdown_pack::{markdown_chunk, markdown_pack_enabled};
+use super::types::{ChunkResult, ChunkerConfig, ChunkingStrategy};
 use crate::error::Result;
-use crate::markdown_ir::{extract_markdown_blocks, format_breadcrumb};
 
 /// Split markdown at heading boundaries; attach section metadata to each chunk.
 pub struct MarkdownChunking;
@@ -14,59 +15,7 @@ pub struct MarkdownChunking;
 #[async_trait]
 impl ChunkingStrategy for MarkdownChunking {
     async fn chunk(&self, content: &str, config: &ChunkerConfig) -> Result<Vec<ChunkResult>> {
-        if content.trim().is_empty() {
-            return Ok(Vec::new());
-        }
-
-        // 031 B3a: Acc prose blobs lack `#` headings — optionally lift FAQ cues.
-        let induced = crate::structure_induce::maybe_induce_structure(content);
-        let content = induced.as_str();
-
-        let blocks = extract_markdown_blocks(content);
-        let recursive = RecursiveCharacterChunking;
-        let mut results = Vec::new();
-        let mut order = 0usize;
-
-        for block in blocks {
-            let section = Some(SectionMetadata::from_block(
-                &block.parent_headings,
-                &block.heading,
-                block.level,
-            ));
-            let _breadcrumb = format_breadcrumb(&block.parent_headings, &block.heading);
-
-            let base_offset = block.start_offset;
-            let sub_chunks = recursive.chunk(&block.content, config).await?;
-            if sub_chunks.is_empty() && !block.content.trim().is_empty() {
-                results.push(ChunkResult {
-                    content: block.content.trim().to_string(),
-                    tokens: estimate_tokens(&block.content),
-                    chunk_order_index: order,
-                    section: section.clone(),
-                    // C-15: offsets are relative to the full document.
-                    start_offset: Some(base_offset),
-                    end_offset: Some(block.end_offset),
-                    ..Default::default()
-                });
-                order += 1;
-            } else {
-                for mut sub in sub_chunks {
-                    // C-15: rebase sub-chunk offsets onto the block's document base.
-                    if let Some(start) = sub.start_offset.as_mut() {
-                        *start = start.saturating_add(base_offset);
-                    }
-                    if let Some(end) = sub.end_offset.as_mut() {
-                        *end = end.saturating_add(base_offset);
-                    }
-                    sub.chunk_order_index = order;
-                    sub.section = section.clone();
-                    order += 1;
-                    results.push(sub);
-                }
-            }
-        }
-
-        Ok(results)
+        markdown_chunk(content, config, markdown_pack_enabled()).await
     }
 
     fn name(&self) -> &str {
@@ -102,5 +51,18 @@ mod tests {
             .unwrap()
             .heading_path
             .contains(&"Guide".to_string()));
+    }
+
+    #[tokio::test]
+    async fn packed_guide_is_single_chunk_at_200() {
+        let md = "# Guide\n\nIntro text.\n\n## Setup\n\nSetup steps here.";
+        let config = ChunkerConfig {
+            chunk_size: 200,
+            chunk_overlap: 10,
+            min_chunk_size: 1,
+            ..Default::default()
+        };
+        let chunks = MarkdownChunking.chunk(md, &config).await.unwrap();
+        assert_eq!(chunks.len(), 1, "small guide must pack, got {:?}", chunks);
     }
 }

@@ -450,6 +450,13 @@ def publish_pin_fields() -> dict[str, Any]:
         .strip()
         .lower()
         or "fact_replace",
+        # 088 W3: mix (pre-CE Mix pool) | acc (Acc-admitted / prompt chunks).
+        "l2_fact_bm25_pool": (
+            os.environ.get("EDGEQUAKE_L2_FACT_BM25_POOL") or "mix"
+        )
+        .strip()
+        .lower()
+        or "mix",
         "mix_intent_weights": (
             os.environ.get("EDGEQUAKE_MIX_INTENT_WEIGHTS") or ""
         )

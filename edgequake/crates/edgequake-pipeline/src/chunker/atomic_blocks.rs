@@ -79,12 +79,22 @@ fn is_hard_region_boundary(line: &str) -> bool {
     is_mm_chunk_header(t)
         || is_page_marker(t)
         || t == "<!-- multimodal-chunks -->"
-        || t.starts_with("```")
+        || fence_opener(t).is_some()
         || is_pipe_table_row(t)
 }
 
 fn is_region_boundary_line(line: &str, lines: &[(usize, &str)], idx: usize) -> bool {
     is_hard_region_boundary(line) || is_vlm_analyzed_block_start(lines, idx)
+}
+
+fn fence_opener(trimmed: &str) -> Option<&'static str> {
+    if trimmed.starts_with("```") {
+        Some("```")
+    } else if trimmed.starts_with("~~~") {
+        Some("~~~")
+    } else {
+        None
+    }
 }
 
 fn is_page_marker(line: &str) -> bool {
@@ -180,10 +190,10 @@ pub fn split_preserving_atomic_regions(content: &str) -> Vec<ContentRegion> {
                 region_end(content, &lines, idx),
                 Some(AtomicKind::MultimodalChunk),
             );
-        } else if trimmed.starts_with("```") {
+        } else if let Some(opener) = fence_opener(trimmed) {
             idx += 1;
             while idx < lines.len() {
-                if lines[idx].1.trim().starts_with("```") {
+                if lines[idx].1.trim().starts_with(opener) {
                     idx += 1;
                     break;
                 }
@@ -301,5 +311,14 @@ mod tests {
         assert!(regions
             .iter()
             .any(|r| r.atomic == Some(AtomicKind::FencedCode) && r.text.contains("```")));
+    }
+
+    #[test]
+    fn tilde_fence_is_atomic() {
+        let md = "Before\n\n~~~\n# not a heading\n~~~\n\nAfter";
+        let regions = split_preserving_atomic_regions(md);
+        assert!(regions.iter().any(
+            |r| r.atomic == Some(AtomicKind::FencedCode) && r.text.contains("# not a heading")
+        ));
     }
 }

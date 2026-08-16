@@ -168,7 +168,10 @@ pub async fn describe_image(
     ];
 
     let response = llm
-        .chat(&messages, None)
+        .chat(
+            &messages,
+            Some(&edgequake_llm::CompletionOptions::default().with_role_cache("vision", llm)),
+        )
         .await
         .map_err(|e| ApiError::Internal(format!("Vision LLM call failed for '{filename}': {e}")))?;
 

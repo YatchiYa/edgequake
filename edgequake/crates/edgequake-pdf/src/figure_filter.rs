@@ -222,7 +222,8 @@ impl FigureFilter {
             max_tokens: Some(80),
             temperature: Some(0.0),
             ..Default::default()
-        };
+        }
+        .with_role_cache("figure-filter", self.provider.as_ref());
         let messages = vec![
             ChatMessage::system(FIGURE_FILTER_PASS1_SYSTEM),
             ChatMessage::user_with_images(figure_filter_pass1_prompt(), vec![image]),
@@ -249,7 +250,8 @@ impl FigureFilter {
             max_tokens: Some(600),
             temperature: Some(0.0),
             ..Default::default()
-        };
+        }
+        .with_role_cache("figure-filter", self.provider.as_ref());
         let messages = vec![
             ChatMessage::system(FIGURE_FILTER_PASS2_SYSTEM),
             ChatMessage::user_with_images(figure_filter_pass2_prompt(kind), vec![image]),

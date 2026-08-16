@@ -31,9 +31,8 @@ pub fn json_extraction_prompt(
     json_extraction_prompt_with_caps(text, schema, language, ExtractionCaps::from_env())
 }
 
-/// Build the primary JSON entity-extraction user prompt with explicit caps.
-pub fn json_extraction_prompt_with_caps(
-    text: &str,
+/// Stable JSON extract system prefix (schema + format — cacheable across chunks).
+pub fn json_extraction_system_prompt_with_caps(
     schema: &EntityExtractionSchema,
     language: &str,
     caps: ExtractionCaps,
@@ -59,12 +58,26 @@ pub fn json_extraction_prompt_with_caps(
 - Use human-readable semantic names for entities (title case when case-insensitive).
 - Do **not** use UUIDs, GUIDs, ULIDs, MongoDB ObjectIds, hex hashes, AWS ARNs, or other opaque machine/resource IDs as entity `name`. Prefer the human referent; opaque IDs may appear only in `description`.
 
-{JSON_OUTPUT_FORMAT_SECTION}
+{JSON_OUTPUT_FORMAT_SECTION}"#
+    )
+}
 
-## Text to Analyze
-{text}
+/// Dynamic half of JSON extract (unique chunk text — keep after the stable system prefix).
+pub fn json_extraction_user_prompt(text: &str) -> String {
+    format!("## Text to Analyze\n{text}\n\n## JSON Response")
+}
 
-## JSON Response"#
+/// Build the primary JSON entity-extraction prompt with explicit caps.
+pub fn json_extraction_prompt_with_caps(
+    text: &str,
+    schema: &EntityExtractionSchema,
+    language: &str,
+    caps: ExtractionCaps,
+) -> String {
+    format!(
+        "{}\n\n{}",
+        json_extraction_system_prompt_with_caps(schema, language, caps),
+        json_extraction_user_prompt(text)
     )
 }
 
@@ -85,16 +98,13 @@ pub fn json_gleaning_prompt(
     )
 }
 
-/// Build gleaning prompt with explicit caps and optional truncation-continue wording.
-pub fn json_gleaning_prompt_with_caps(
-    text: &str,
-    previous_entities: &[String],
+/// Stable gleaning system prefix (schema + instructions — cacheable across chunks).
+pub fn json_gleaning_system_prompt_with_caps(
     schema: &EntityExtractionSchema,
     language: &str,
     caps: ExtractionCaps,
     after_caps_truncate: bool,
 ) -> String {
-    let prev_entities_str = previous_entities.join(", ");
     let types_section = json_entity_types_prompt_section(schema);
     let relation_section = json_relation_types_prompt_section(schema);
     let edges_section = json_relation_edges_prompt_section(schema);
@@ -120,9 +130,6 @@ pub fn json_gleaning_prompt_with_caps(
     format!(
         r#"{intro}
 
-## Already Identified Entities
-{prev_entities_str}
-
 ## Instructions
 Look for entities and relationships that were missed in the previous extraction.
 Focus on:
@@ -139,12 +146,31 @@ Focus on:
 
 {language_section}
 
-{JSON_OUTPUT_FORMAT_SECTION}
+{JSON_OUTPUT_FORMAT_SECTION}"#
+    )
+}
 
-## Text to Re-Analyze
-{text}
+/// Dynamic gleaning user turn (already-found entities + chunk text).
+pub fn json_gleaning_user_prompt(text: &str, previous_entities: &[String]) -> String {
+    let prev_entities_str = previous_entities.join(", ");
+    format!(
+        "## Already Identified Entities\n{prev_entities_str}\n\n## Text to Re-Analyze\n{text}\n\n## JSON Response"
+    )
+}
 
-## JSON Response"#
+/// Build gleaning prompt with explicit caps and optional truncation-continue wording.
+pub fn json_gleaning_prompt_with_caps(
+    text: &str,
+    previous_entities: &[String],
+    schema: &EntityExtractionSchema,
+    language: &str,
+    caps: ExtractionCaps,
+    after_caps_truncate: bool,
+) -> String {
+    format!(
+        "{}\n\n{}",
+        json_gleaning_system_prompt_with_caps(schema, language, caps, after_caps_truncate),
+        json_gleaning_user_prompt(text, previous_entities)
     )
 }
 
@@ -261,5 +287,28 @@ mod tests {
         assert!(prompt.contains("English"));
         assert!(prompt.contains("Output Language"));
         assert!(prompt.contains("\"entities\""));
+    }
+
+    #[test]
+    fn json_extract_system_prefix_excludes_chunk_text() {
+        let schema = EntityExtractionSchema::server_default();
+        let caps = ExtractionCaps::from_env();
+        let sys = json_extraction_system_prompt_with_caps(&schema, "English", caps);
+        let user = json_extraction_user_prompt("Alice works at Acme.");
+        assert!(!sys.contains("Alice works at Acme."));
+        assert!(user.contains("Alice works at Acme."));
+        assert!(sys.contains("Output Format"));
+    }
+
+    #[test]
+    fn json_glean_system_prefix_excludes_chunk_and_prior_entities() {
+        let schema = EntityExtractionSchema::server_default();
+        let caps = ExtractionCaps::from_env();
+        let sys = json_gleaning_system_prompt_with_caps(&schema, "English", caps, false);
+        let user = json_gleaning_user_prompt("UNIQUE_CHUNK_TEXT", &["PRIOR_ENTITY".into()]);
+        assert!(!sys.contains("UNIQUE_CHUNK_TEXT"));
+        assert!(!sys.contains("PRIOR_ENTITY"));
+        assert!(user.contains("UNIQUE_CHUNK_TEXT"));
+        assert!(user.contains("PRIOR_ENTITY"));
     }
 }

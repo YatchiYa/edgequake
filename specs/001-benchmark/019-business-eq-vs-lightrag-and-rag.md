@@ -1,8 +1,8 @@
 # How EdgeQuake Compares to LightRAG and Other RAG
 
 **Audience:** Business / product stakeholders  
-**Date:** 2026-08-02 (refresh — Acc publish mid **point lead** CI excludes 0 · L2 incomplete · cold latency **1.02×** · product Equal **083** · Acc Beat / Acc Equal mid **STOP**)  
-**Evidence base:** Fair head-to-head Acc on GraphRAG-Bench medical publish mid (n=200) · smoke n=40 peers for labeled Acc Fact / L2 packs · [peers.json](./e2e/artifacts/peers.json) · [Acc bench doc](../../docs/comparisons/eq-vs-lightrag-acc-bench.md) · [085 fairness Equal STOP](./001-edgquake-improvements/085-fairness-concurrency-equal-stop.md) · [083 product query API](./001-edgquake-improvements/083-lightrag-query-api-law.md) · [082 gold/citation](./001-edgquake-improvements/082-gold-citation-compat.md) · [081 Beat/Parity](./001-edgquake-improvements/081-beat-parity-first-principles.md) · [080 Beat roadmap](./001-edgquake-improvements/080-beat-lightrag-evidence-roadmap.md) · [055 First Principles hub](./001-edgquake-improvements/055-post-acc-ceiling-first-principles.md) · [063 why LR looked faster](./001-edgquake-improvements/063-why-lightrag-faster-cache-fairness.md) · [043 honesty](./001-edgquake-improvements/043-honesty-can-we-push.md)
+**Date:** 2026-08-16 (refresh — Acc mid **statistical tie** 0.792/0.786 · Acc-law full **point tie** 0.786/0.786 · L2 incomplete · cold latency **1.02×** · product Equal **083** · Acc Beat **STOP**)  
+**Evidence base:** Fair head-to-head Acc on GraphRAG-Bench medical-mid n=200 [`T110218Z`](./e2e/artifacts/history/medical-mid-20260815T110218Z/) · medical-full n=2062 Acc-law [`T012004Z`](./e2e/artifacts/history/medical-full-20260816T012004Z/) · [peers.json](./e2e/artifacts/peers.json) · [Acc bench doc](../../docs/comparisons/eq-vs-lightrag-acc-bench.md) · [088](./001-edgquake-improvements/088-beat-ctx-fact-er-program.md) · [085 fairness Equal STOP](./001-edgquake-improvements/085-fairness-concurrency-equal-stop.md) · [083 product query API](./001-edgquake-improvements/083-lightrag-query-api-law.md) · [080 Beat roadmap](./001-edgquake-improvements/080-beat-lightrag-evidence-roadmap.md) · [055 First Principles hub](./001-edgquake-improvements/055-post-acc-ceiling-first-principles.md)
 
 ---
 
@@ -10,24 +10,26 @@
 
 | Question | Plain answer |
 |----------|----------------|
-| Does EdgeQuake beat LightRAG on answer quality today? | **No Acc Beat claim.** Publish Acc shows an **Acc point lead** (EQ 0.811 vs LR 0.778; CI excludes 0) but **L2 incomplete** (ctx 0.415 &lt; 0.50). Do not claim “EdgeQuake beats LightRAG.” |
+| Does EdgeQuake beat LightRAG on answer quality today? | **No Acc Beat claim.** Publish Acc is a **statistical tie** (EQ 0.792 vs LR 0.786; CI includes 0). Acc-law **medical-full n=2062** is a **point tie** (0.786/0.786). L2 incomplete (mid ctx 0.471 &lt; 0.50). |
 | Do we equal LightRAG anywhere? | **Yes — product query API** ([083](./001-edgquake-improvements/083-lightrag-query-api-law.md)): `hl_keywords`/`ll_keywords` skip keyword LLM + system/user generate. **Not** Acc mid Parity (ctx still &lt;0.50). |
-| What is Acc CI “keep”? | Publish Acc mid CI excludes 0 with EQ ahead on Acc — still **not** Parity / Beat without L2 gates ([080](./001-edgquake-improvements/080-phase-g-promote-checklist.md)). |
+| What is Acc CI “keep”? | Publish Acc mid CI **includes 0** (tie). Acc-law full is a point tie. Still **not** Parity / Beat without L2 gates ([080](./001-edgquake-improvements/080-phase-g-promote-checklist.md)). |
 | What is the publish sample? | **n=200 medical-mid** (`make bench`). Smoke n=40 is a daily gate only — first principles forbid publishing smoke as the release score. |
 | Is EdgeQuake a serious GraphRAG peer? | **Yes** — Acc-competitive under fair Mistral pins; cold Mix latency ≈ LightRAG (**1.02×**). Product stack (Postgres, API, PDF) is a different job. |
 | How do we report fairly? | **Split peers** — never one unlabeled “winner.” Product Equal ≠ Acc CI keep ≠ Acc headline ≠ L2 Parity ≠ warm-cache latency. |
-| Where is LightRAG ahead? | **L2** on publish Acc (recall 0.946 vs 0.904; ctx 0.498 vs 0.415). Warm “~6× faster” was **LLM-cache-aided**. |
-| Where is EdgeQuake ahead? | **Product/platform** (API, Postgres, multi-tenant) · **query API law** (083) · Acc by-type on today’s publish mid (all four types point-lead). |
+| Where is LightRAG ahead? | **L2** on publish Acc (recall 0.949 vs 0.932; ctx 0.510 vs 0.471). Warm “~6× faster” was **LLM-cache-aided**. |
+| Where is EdgeQuake ahead? | **Product/platform** (API, Postgres, multi-tenant) · **query API law** (083) · **warm Mix wall** under matched cache (**0.083×**, labeled) · Acc by-type on today’s publish mid. |
 | Are we “state of the art” vs all RAG? | **Competitive on Acc with LightRAG; not retrieval SOTA.** HippoRAG2-class leads on clean+complete retrieval. |
 
-**Bottom line:** Ship **product Equal LightRAG** on the query contract ([083](./001-edgquake-improvements/083-lightrag-query-api-law.md)). Acc mid Parity / Beat remain **STOP**. Publish Acc may show a point lead — report Acc honestly, never Beat without L2. Next investment: **UX (TTFT) / product caches** and L2 cleanliness — not Acc Beat fishing.
+**Bottom line:** Ship **product Equal LightRAG** on the query contract ([083](./001-edgquake-improvements/083-lightrag-query-api-law.md)). Acc mid Parity / Beat remain **STOP**. Publish Acc is a **statistical tie** — report Acc honestly, never Beat without L2. Next investment: **UX (TTFT) / product caches** and L2 cleanliness — not Acc Beat fishing. Acc ingest stays **chunk 1200/100**.
 
 ### Split peers (required reading)
 
 | Peer | What it optimizes | Headline numbers |
 |------|-------------------|------------------|
-| **Acc headline** (P0 mid) | Publish Acc SSOT | EQ Acc **0.811** · LR **0.778** · CI [+0.001, +0.065] · [T132630Z](./e2e/artifacts/history/medical-mid-20260802T132630Z/) |
+| **Acc headline** (E2-occ 086 mid) | Publish Acc SSOT | EQ Acc **0.792** · LR **0.786** · CI [−0.022, +0.034] · [T110218Z](./e2e/artifacts/history/medical-mid-20260815T110218Z/) |
+| **Acc-law full** (`ACC_E2OCC_086_MEDICAL_FULL_v1`) | Scale n=2062 · chunk 1200/100 | EQ Acc **0.786** · LR **0.786** · ctx 0.427 · [T012004Z](./e2e/artifacts/history/medical-full-20260816T012004Z/) — **not Beat** |
 | **Cold latency** (`c1cold`) | Fair EQ/LR p50 | ratio **1.02×** · [T134452Z](./e2e/artifacts/history/smoke-20260723T134452Z/) · peer `C1COLD_v1` |
+| **Warm latency** (`EQ_LLM_CACHE_WARM_v1`) | Matched LLM+embed cache wall | EQ **82 ms** / LR **993 ms** · **0.083×** · [T132034Z](./e2e/artifacts/history/medical-mid-20260815T132034Z/) — **not Acc Beat** |
 | **Product Equal** ([083](./001-edgquake-improvements/083-lightrag-query-api-law.md)) | Query API = LightRAG (hl/ll + chat roles) | keyword_time_ms **909→0** · peer `PRODUCT_QUERY_API_v1` |
 | **Acc CI keep** (E2 occ mid) | Labeled Acc statistical tie | EQ Acc **0.765** · CI [−0.031, +0.040] · ctx 0.491 · [T133053Z](./e2e/artifacts/history/medical-mid-20260722T133053Z/) — **not** Parity |
 | **Acc Fact** (`a1fp` / B5, n=40) | Answer quality + Fact | EQ Acc **0.801** · ctx 0.519 · [T120315Z](./e2e/artifacts/history/smoke-20260720T120315Z/) |
@@ -62,22 +64,22 @@ Think of three layers:
 
 | Layer | What it means for the business | EdgeQuake vs LightRAG (fair Acc) |
 |-------|--------------------------------|----------------------------------|
-| **Answer quality (Acc)** | “Are answers roughly as good?” | Acc **point lead** on publish mid (0.811 vs 0.778; CI excludes 0) — **not** Beat without L2 |
-| **Evidence coverage** | “Did we find the right source material?” | LightRAG ahead on publish (0.946 vs 0.904) |
-| **Context cleanliness** | “Is the prompt full of noise that confuses the model?” | LightRAG ahead on publish (0.498 vs 0.415); do not claim product L2 parity |
+| **Answer quality (Acc)** | “Are answers roughly as good?” | Acc **statistical tie** on publish mid (0.792 vs 0.786; CI includes 0) — Acc-law full n=2062 **point tie** (0.786/0.786) — **not** Beat without L2 |
+| **Evidence coverage** | “Did we find the right source material?” | LightRAG ahead on publish (0.949 vs 0.932) |
+| **Context cleanliness** | “Is the prompt full of noise that confuses the model?” | LightRAG ahead on publish (0.510 vs 0.471); do not claim product L2 parity |
 | **Speed** | “How long until the user sees an answer?” | **Fair cold Mix ≈ tied** (1.02×, [T134452Z](./e2e/artifacts/history/smoke-20260723T134452Z/)). Warm Acc LR sub-second was answer/keyword **cache**. |
 | **Product / ops** | API, database, tenancy, PDF pipeline, UI | **EdgeQuake’s strength** as a deployable stack — different job from a research library |
 
 ### By question type (where each system feels stronger)
 
-Publish medical-mid n=200 ([T132630Z](./e2e/artifacts/history/medical-mid-20260802T132630Z/)): Acc overall **point lead** for EdgeQuake on all four types; LightRAG still leads **L2**.
+Publish medical-mid n=200 ([T110218Z](./e2e/artifacts/history/medical-mid-20260815T110218Z/)): Acc overall **statistical tie**; LightRAG still leads **L2**.
 
 | User need | Who leads on publish Acc | Takeaway |
 |-----------|--------------------------|----------|
-| Simple fact lookup | **EdgeQuake** | Acc lead; L2 provenance still LR-favored |
-| Multi-hop reasoning | **EdgeQuake** | Keep Mix arms + packing honest |
-| Long summarization | **EdgeQuake** | Coverage strength on this pin |
-| Creative / open-ended | **EdgeQuake** | Small edge; do not overclaim Beat |
+| Simple fact lookup | **EdgeQuake** | Acc 0.779 vs 0.756; L2 provenance still LR-favored |
+| Multi-hop reasoning | **EdgeQuake** | Acc 0.797 vs 0.778 |
+| Long summarization | **LightRAG** | Acc 0.844 vs 0.814 — only type LR leads |
+| Creative / open-ended | **EdgeQuake** | Acc 0.776 vs 0.766; do not overclaim Beat |
 
 ---
 
@@ -143,7 +145,7 @@ Avoid:
 1. **Ship split peers honestly** — Acc Fact vs L2 Parity ([`peers.json`](./e2e/artifacts/peers.json)); never one unlabeled winner.  
 2. **Naming / ingest fidelity** — [056](./001-edgquake-improvements/056-naming-identity-lr-parity.md) short-numeric law (Acc re-ingest deferred).  
 3. **Latency honesty** — [063](./001-edgquake-improvements/063-why-lightrag-faster-cache-fairness.md) cold ≈1.0×; product polish [064](./001-edgquake-improvements/064-product-ttft-cache-batch-embed.md) (TTFT + opt-in caches) — not Acc Beat.  
-4. **Do not claim Beat** — CI still includes 0 on n=40; Soft Mix Acc knobs exhausted.  
+4. **Do not claim Beat** — mid Acc CI includes 0; Acc-law full (chunk 1200/100) is a point tie; ctx still &lt; 0.50; Soft Mix Acc knobs exhausted.  
 
 Historical ladder (E0–E4 / P0–P5): [022](./001-edgquake-improvements/022-deep-top-performance-plan.md) · [028](./001-edgquake-improvements/028-first-principles-beat-roadmap.md).
 

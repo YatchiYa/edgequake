@@ -33,16 +33,8 @@ impl QueryEngine {
         embedding_provider: Arc<dyn crate::EmbeddingProvider>,
         vector_storage: Arc<dyn VectorStorage>,
     ) -> Result<crate::types::QueryResponse> {
-        self.run_query_pipeline(
-            request,
-            QueryProviders {
-                embedding: embedding_provider.as_ref(),
-                vector_storage: Some(&vector_storage),
-                keyword_llm: None,
-                answer_llm: None,
-            },
-        )
-        .await
+        self.query_with_role_llms(request, embedding_provider, vector_storage, None, None)
+            .await
     }
 
     /// Execute a query with full workspace configuration AND optional LLM overrides.
@@ -77,10 +69,11 @@ impl QueryEngine {
         keyword_llm: Option<Arc<dyn crate::LLMProvider>>,
         answer_llm: Option<Arc<dyn crate::LLMProvider>>,
     ) -> Result<crate::types::QueryResponse> {
+        let embedding = self.cached_embedding_for(embedding_provider);
         self.run_query_pipeline(
             request,
             QueryProviders {
-                embedding: embedding_provider.as_ref(),
+                embedding: embedding.as_ref(),
                 vector_storage: Some(&vector_storage),
                 keyword_llm,
                 answer_llm,

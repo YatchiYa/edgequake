@@ -8,6 +8,43 @@ pub const PREFACE_HEADING: &str = "Preface/Uncategorized";
 static ATX_HEADING: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(#{1,6})\s+(.*?)\s*$").unwrap());
 
+/// Parse a CommonMark ATX heading line (`#`–`######` + space + text).
+///
+/// Up to three leading spaces are allowed (CommonMark). A blockquote
+/// (`> ## x`) is not a heading. Four-space indent is a code block, not ATX.
+pub fn parse_atx_heading(line: &str) -> Option<(u8, String)> {
+    let trimmed = line.trim_end_matches('\r').trim_end();
+    if trimmed.starts_with('>') {
+        return None;
+    }
+    let bytes = trimmed.as_bytes();
+    let mut indent = 0usize;
+    while indent < 3 && indent < bytes.len() && bytes[indent] == b' ' {
+        indent += 1;
+    }
+    let rest = &trimmed[indent..];
+    let caps = ATX_HEADING.captures(rest)?;
+    let level = caps.get(1).map(|m| m.as_str().len()).unwrap_or(1) as u8;
+    let heading_text = caps.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
+    Some((level, clean_heading(&heading_text)))
+}
+
+/// True when every non-empty line is an ATX heading (orphan / heading-only chunk).
+pub fn is_atx_heading_only_text(text: &str) -> bool {
+    let mut any = false;
+    for line in text.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        any = true;
+        if parse_atx_heading(line).is_none() {
+            return false;
+        }
+    }
+    any
+}
+
 /// A contiguous markdown block under one heading context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MarkdownBlock {
@@ -60,7 +97,7 @@ pub fn extract_markdown_blocks(content: &str) -> Vec<MarkdownBlock> {
         let line_len = line.len();
         let trimmed = line.trim_end_matches('\n');
 
-        if let Some(caps) = ATX_HEADING.captures(trimmed) {
+        if let Some((level, heading_text)) = parse_atx_heading(trimmed) {
             flush(
                 &mut blocks,
                 &mut cur_lines,
@@ -70,10 +107,6 @@ pub fn extract_markdown_blocks(content: &str) -> Vec<MarkdownBlock> {
                 block_start,
                 byte_offset,
             );
-
-            let level = caps.get(1).map(|m| m.as_str().len()).unwrap_or(1) as u8;
-            let mut heading_text = caps.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
-            heading_text = clean_heading(&heading_text);
 
             heading_stack.truncate(level.saturating_sub(1) as usize);
             cur_parents = heading_stack.iter().map(|(_, h)| h.clone()).collect();
@@ -144,5 +177,15 @@ mod tests {
         let blocks = extract_markdown_blocks(md);
         let c_block = blocks.iter().find(|b| b.heading == "C").unwrap();
         assert!(c_block.parent_headings.is_empty());
+    }
+
+    #[test]
+    fn commonmark_indent_atx() {
+        assert!(parse_atx_heading("## Ok").is_some());
+        assert!(parse_atx_heading("   ## Three").is_some());
+        assert!(parse_atx_heading("    ## Four").is_none());
+        assert!(parse_atx_heading("> ## Quote").is_none());
+        assert!(parse_atx_heading("Title").is_none());
+        assert!(parse_atx_heading("=====").is_none());
     }
 }

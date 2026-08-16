@@ -38,6 +38,7 @@
 | Query key body | Full built RAG prompt (context-inclusive) |
 | Extract/summary | Out of v1 (ingest/MM paths stay) |
 | Acc fairness | Pin `EDGEQUAKE_LLM_CACHE=0` on Acc backends |
+| Provider KV (SPEC-126) | Separate switch; Acc **leaves on** |
 
 ## Surfaces
 

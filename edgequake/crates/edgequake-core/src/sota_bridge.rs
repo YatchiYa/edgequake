@@ -71,12 +71,15 @@ async fn query_bypass(
     _params: &QueryParams,
 ) -> Result<QueryResult> {
     let generation_start = std::time::Instant::now();
-    let prompt = format!(
-        "Answer the following question to the best of your ability.\n\nQuestion: {}\n\nAnswer:",
-        query
-    );
+    let opts = edgequake_llm::CompletionOptions::default().with_role_cache("bypass", llm.as_ref());
+    let messages = vec![
+        edgequake_llm::traits::ChatMessage::system(
+            "Answer the following question to the best of your ability.",
+        ),
+        edgequake_llm::traits::ChatMessage::user(query),
+    ];
     let response = llm
-        .complete(&prompt)
+        .chat(&messages, Some(&opts))
         .await
         .map_err(|e| Error::internal(format!("LLM error: {}", e)))?;
     Ok(QueryResult {

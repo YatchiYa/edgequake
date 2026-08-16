@@ -96,12 +96,13 @@ pub use anthropic_images::{
 };
 pub use chunk_storage::build_chunk_kv_records;
 pub use chunker::{
-    calculate_line_numbers, default_recursive_separators, is_mm_chunk_header, make_page_marker,
-    parse_page_marker, resolve_chunker, split_into_page_segments, split_preserving_atomic_regions,
-    AtomicKind, CharacterBasedChunking, ChunkOptions, ChunkResult, ChunkStrategy, Chunker,
+    calculate_line_numbers, default_recursive_separators, ingest_chunking_observation,
+    is_mm_chunk_header, make_page_marker, markdown_chunk, markdown_pack_enabled, parse_page_marker,
+    resolve_chunker, split_into_page_segments, split_preserving_atomic_regions, AtomicKind,
+    CharacterBasedChunking, ChunkOptions, ChunkResult, ChunkStrategy, ChunkTokenStats, Chunker,
     ChunkerConfig, ChunkingStrategy, ContentRegion, MarkdownChunking, PageAwareChunking,
     PageMarkerWriter, ParagraphBoundaryChunking, RecursiveCharacterChunking, SectionMetadata,
-    SentenceBoundaryChunking, TextChunk, TokenBasedChunking, PAGE_MARKER_PREFIX,
+    SentenceBoundaryChunking, TextChunk, TokenBasedChunking, MARKDOWN_PACK_ENV, PAGE_MARKER_PREFIX,
     PAGE_MARKER_SUFFIX,
 };
 pub use error::{
@@ -118,7 +119,10 @@ pub use ingestion_pipeline::{
     build_chunker_config, build_chunker_config_with_policy, build_ingestion_pipeline,
     build_ingestion_pipeline_simple, IngestionPipelineOptions,
 };
-pub use markdown_ir::{extract_markdown_blocks, format_breadcrumb, PREFACE_HEADING};
+pub use markdown_ir::{
+    extract_markdown_blocks, format_breadcrumb, is_atx_heading_only_text, parse_atx_heading,
+    PREFACE_HEADING,
+};
 pub use structure_induce::{
     induce_faq_markdown, maybe_induce_structure, structure_induce_mode_from_env,
     StructureInduceMode, STRUCTURE_INDUCE_ENV,

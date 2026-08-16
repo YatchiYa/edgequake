@@ -1,0 +1,10 @@
+EdgeQuake vs LightRAG — LABELED WARM LATENCY peer (EQ_LLM_CACHE_WARM_v1)
+NOT Acc headline — Acc SSOT remains publish/latest (medical-mid-20260815T110218Z).
+Protocol: fill+warm Mix · EQ EDGEQUAKE_LLM_CACHE=1 · LR enable_llm_cache=True · n=200 medical-mid
+Warm latency: EQ p50 82 ms · LR p50 993 ms · ratio 0.083×
+EQ stages p50: keyword=0 · embed=0 · retrieve=56 · generate=0
+Acc (same pack): EQ 0.792 · LR 0.773 · Δ CI includes 0 ⇒ statistical tie — NOT Acc Beat
+Allowed claim: warm product Mix wall beats LightRAG under matched LLM+embed cache.
+Forbidden: Acc Beat / replacing publish/latest / claiming cold engine win.
+Reproduce: make bench001-medical-mid-eq-llm-cache-warm
+Archive: medical-mid-20260815T132034Z · Valid: True · 2026-08-15T13:20:34Z

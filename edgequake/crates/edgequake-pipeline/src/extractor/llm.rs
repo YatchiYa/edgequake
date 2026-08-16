@@ -123,6 +123,7 @@ where
     L: edgequake_llm::LLMProvider + ?Sized,
 {
     /// Build the extraction prompt.
+    #[cfg(test)]
     fn build_prompt(&self, chunk: &TextChunk) -> String {
         let text =
             crate::prompts::text_with_section_context(&chunk.content, chunk.section.as_ref());
@@ -156,7 +157,18 @@ where
     L: edgequake_llm::LLMProvider + Send + Sync + ?Sized,
 {
     async fn extract(&self, chunk: &TextChunk) -> Result<ExtractionResult> {
-        let prompt = self.build_prompt(chunk);
+        let text =
+            crate::prompts::text_with_section_context(&chunk.content, chunk.section.as_ref());
+        let system = crate::prompts::json_extraction_system_prompt_with_caps(
+            &self.entity_schema,
+            &self.language,
+            self.resolved_caps(),
+        );
+        let user = crate::prompts::json_extraction_user_prompt(&text);
+        let messages = vec![
+            edgequake_llm::traits::ChatMessage::system(&system),
+            edgequake_llm::traits::ChatMessage::user(&user),
+        ];
 
         // WHY provider-aware effort + max_tokens:
         // - Cloud reasoning models exhaust completion_tokens on CoT without a floor.
@@ -171,7 +183,7 @@ where
 
         let response = self
             .llm_provider
-            .complete_with_options(&prompt, &options)
+            .chat(&messages, Some(&options))
             .await
             .map_err(|e| PipelineError::ExtractionError(format!("LLM error: {}", e)))?;
 
@@ -184,16 +196,19 @@ where
                     error = %parse_err,
                     "Extract JSON parse failed — attempting repair turn"
                 );
-                let repair_prompt = format!(
-                    "Your previous response was not valid extraction JSON.\n\
+                let repair_user = format!(
+                    "{user}\n\nYour previous response was not valid extraction JSON.\n\
                      Validator error: {parse_err}\n\n\
                      Return ONLY a JSON object with keys \"entities\" and \"relationships\".\n\
-                     No markdown fences, no commentary.\n\n\
-                     Original task:\n{prompt}"
+                     No markdown fences, no commentary."
                 );
+                let repair_messages = vec![
+                    edgequake_llm::traits::ChatMessage::system(&system),
+                    edgequake_llm::traits::ChatMessage::user(&repair_user),
+                ];
                 let repair = self
                     .llm_provider
-                    .complete_with_options(&repair_prompt, &options)
+                    .chat(&repair_messages, Some(&options))
                     .await
                     .map_err(|e| {
                         PipelineError::ExtractionError(format!(

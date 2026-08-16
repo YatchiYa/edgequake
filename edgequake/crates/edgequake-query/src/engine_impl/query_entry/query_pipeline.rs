@@ -358,10 +358,15 @@ impl QueryEngine {
         }
 
         // 022 P1: graph-walk context compression (after path prune, before truncation).
-        if crate::graph_walk_compress::graph_walk_compress_enabled() {
-            let kw = keywords_from_context_metadata(&context);
-            context = crate::graph_walk_compress::apply_graph_walk_compress(context, &kw);
-        }
+        let pre_gwc_chunks: Option<Vec<crate::context::RetrievedChunk>> =
+            if crate::graph_walk_compress::graph_walk_compress_enabled() {
+                let snapshot = context.chunks.clone();
+                let kw = keywords_from_context_metadata(&context);
+                context = crate::graph_walk_compress::apply_graph_walk_compress(context, &kw);
+                Some(snapshot)
+            } else {
+                None
+            };
 
         let pre_e = context.entities.len();
         let pre_r = context.relationships.len();
@@ -433,14 +438,31 @@ impl QueryEngine {
                         tracing::debug!(?intent, "027d L2 FactReplace: non-fact → CE sources");
                         context.chunks.clone()
                     } else {
-                        let bm25_mix =
-                            crate::l2_bm25_union::bm25_order_chunks(&request.query, &mix, k).await;
+                        let pool = crate::l2_bm25_union::l2_fact_bm25_pool();
+                        // 088: with GWC on, `context.chunks` is post-compress; for the
+                        // judge-honest pool use the pre-compress Acc-admitted snapshot.
+                        let acc_pool: &Vec<crate::context::RetrievedChunk> =
+                            match (crate::l2_bm25_union::l2_fact_bm25_pool_pre_compress(), &pre_gwc_chunks) {
+                                (true, Some(pre)) => pre,
+                                _ => &context.chunks,
+                            };
+                        let pool_chunks = match pool {
+                            crate::l2_bm25_union::L2FactBm25Pool::AccPrompt => acc_pool,
+                            crate::l2_bm25_union::L2FactBm25Pool::MixPreCe => &mix,
+                        };
+                        let bm25_mix = crate::l2_bm25_union::bm25_order_chunks(
+                            &request.query,
+                            pool_chunks,
+                            k,
+                        )
+                        .await;
                         let citation = crate::l2_bm25_union::union_bm25_ce_chunks(
                             &bm25_mix,
                             &context.chunks,
                             crate::l2_bm25_union::L2Bm25Mode::Replace,
                         );
                         tracing::debug!(
+                            pool = pool.as_str(),
                             bm25_mix = bm25_mix.len(),
                             citation = citation.len(),
                             "027d L2 FactReplace: factual → BM25 sources"
@@ -508,87 +530,91 @@ impl QueryEngine {
         let keyword_llm = providers.keyword_llm.clone();
         let keyword_mode = crate::keywords::keyword_mode_from_env();
         let keyword_override = request.keyword_override_lists();
-        let (raw_keywords_result, query_vec_result) = tokio::join!(
-            async {
-                let t0 = Instant::now();
-                let result = if !self.config.use_keyword_extraction {
-                    Ok(ExtractedKeywords::new(
-                        vec![],
-                        vec![],
-                        QueryIntent::Exploratory,
-                    ))
-                } else if let Some((hl, ll)) = keyword_override {
-                    tracing::info!(
-                        keyword_source = "request_override",
-                        hl_count = hl.len(),
-                        ll_count = ll.len(),
-                        "083 hl/ll override — skip keyword LLM"
-                    );
-                    let _stage = edgequake_observability::enter_pipeline_stage("keyword-override");
-                    Ok(ExtractedKeywords::new(
-                        hl,
-                        ll,
-                        QueryIntent::classify_heuristic(&keyword_query),
-                    ))
-                } else if matches!(keyword_mode, crate::keywords::KeywordMode::Heuristic) {
-                    tracing::debug!("060 KEYWORD_MODE=heuristic — skip keyword LLM");
-                    let _stage = edgequake_observability::enter_pipeline_stage("keyword-heuristic");
-                    Ok(crate::keywords::heuristic_extracted_keywords(
-                        &keyword_query,
-                    ))
-                } else if let Some(llm) = keyword_llm {
-                    self.keyword_extractor
-                        .extract_with_llm_override(&keyword_query, Some(llm))
-                        .await
-                } else {
-                    self.keyword_extractor
-                        .extract_extended(&keyword_query)
-                        .await
-                };
-                (result, t0.elapsed().as_millis() as u64)
-            },
-            async {
-                let t0 = Instant::now();
-                // Skip embed_one when keywords are disabled — compute_with_query_vec
-                // batch-embeds three levels (MockProvider / LightRAG parity).
-                // D-38: embed the question only; conversation history stays in
-                // keyword_query for prompt/keyword extraction, not the vector.
-                // X-10: L2-normalize via Embedding::normalize after embed_one.
-                let result = if self.config.use_keyword_extraction {
-                    match edgequake_observability::with_rag_embedding_span(
-                        "query.embed",
-                        providers.embedding.model(),
-                        providers.embedding.name(),
-                        async {
-                            let vec = providers.embedding.embed_one(&request.query).await?;
-                            edgequake_observability::record_embedding_io(
-                                "query",
-                                1,
-                                1,
-                                Some(vec.len()),
-                            );
-                            Ok::<_, edgequake_llm::error::LlmError>(vec)
-                        },
-                    )
+        let peeked = if self.config.use_keyword_extraction
+            && keyword_override.is_none()
+            && !matches!(keyword_mode, crate::keywords::KeywordMode::Heuristic)
+        {
+            self.keyword_extractor.peek_cached(&keyword_query).await
+        } else {
+            None
+        };
+        // Cold: overlap embed_one(query) with keyword LLM. Warm cache hit /
+        // heuristic / override: skip prefetch so unique [q, hl, ll] share one RTT.
+        let prefetch_query_embed = self.config.use_keyword_extraction
+            && peeked.is_none()
+            && keyword_override.is_none()
+            && !matches!(keyword_mode, crate::keywords::KeywordMode::Heuristic);
+
+        let extract_keywords = async {
+            let t0 = Instant::now();
+            let result = if !self.config.use_keyword_extraction {
+                Ok(ExtractedKeywords::new(
+                    vec![],
+                    vec![],
+                    QueryIntent::Exploratory,
+                ))
+            } else if let Some((hl, ll)) = keyword_override {
+                tracing::info!(
+                    keyword_source = "request_override",
+                    hl_count = hl.len(),
+                    ll_count = ll.len(),
+                    "083 hl/ll override — skip keyword LLM"
+                );
+                let _stage = edgequake_observability::enter_pipeline_stage("keyword-override");
+                Ok(ExtractedKeywords::new(
+                    hl,
+                    ll,
+                    QueryIntent::classify_heuristic(&keyword_query),
+                ))
+            } else if matches!(keyword_mode, crate::keywords::KeywordMode::Heuristic) {
+                tracing::debug!("060 KEYWORD_MODE=heuristic — skip keyword LLM");
+                let _stage = edgequake_observability::enter_pipeline_stage("keyword-heuristic");
+                Ok(crate::keywords::heuristic_extracted_keywords(
+                    &keyword_query,
+                ))
+            } else if let Some(llm) = keyword_llm {
+                self.keyword_extractor
+                    .extract_with_llm_override(&keyword_query, Some(llm))
                     .await
-                    {
-                        Ok(mut vector) => {
-                            // X-10: L2-normalize (same math as Embedding::normalize;
-                            // local to avoid query→core dependency cycle).
-                            let norm: f32 = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
-                            if norm > 0.0 {
-                                vector.iter_mut().for_each(|x| *x /= norm);
-                            }
-                            Ok(vector)
-                        }
-                        Err(e) => Err(e),
-                    }
-                } else {
-                    Ok(vec![])
-                };
-                (result, t0.elapsed().as_millis() as u64)
-            }
-        );
+            } else {
+                self.keyword_extractor
+                    .extract_extended(&keyword_query)
+                    .await
+            };
+            (result, t0.elapsed().as_millis() as u64)
+        };
+
+        let embed_query = async {
+            let t0 = Instant::now();
+            // D-38: embed the question only; conversation history stays in
+            // keyword_query for prompt/keyword extraction, not the vector.
+            let result = match edgequake_observability::with_rag_embedding_span(
+                "query.embed",
+                providers.embedding.model(),
+                providers.embedding.name(),
+                async {
+                    let vec = providers.embedding.embed_one(&request.query).await?;
+                    edgequake_observability::record_embedding_io("query", 1, 1, Some(vec.len()));
+                    Ok::<_, edgequake_llm::error::LlmError>(vec)
+                },
+            )
+            .await
+            {
+                Ok(vector) => Ok(crate::cache::embedding_cache::l2_normalize_vec(vector)),
+                Err(e) => Err(e),
+            };
+            (result, t0.elapsed().as_millis() as u64)
+        };
+
+        let (raw_keywords_result, query_vec_result) = if prefetch_query_embed {
+            tokio::join!(extract_keywords, embed_query)
+        } else if let Some(cached) = peeked {
+            tracing::debug!("warm keyword cache peek — skip speculative embed_one");
+            ((Ok(cached), 0), (Ok(Vec::new()), 0))
+        } else {
+            let kw = extract_keywords.await;
+            (kw, (Ok(Vec::new()), 0))
+        };
 
         let (raw_keywords, keyword_time_ms) = {
             let (r, ms) = raw_keywords_result;

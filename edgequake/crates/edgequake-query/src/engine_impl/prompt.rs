@@ -22,6 +22,27 @@ fn answer_completion_options(reasoning_effort: Option<&str>) -> Option<Completio
         })
 }
 
+/// Split Mix instructions (stable prefix) from retrieved context (dynamic).
+///
+/// SOTA Aug 2026: provider KV cache only hits when the shared prefix is byte-identical
+/// and sits first. Putting Mix context in the system message made the prefix
+/// query-dependent, so cross-query cache never hit.
+pub(super) fn answer_chat_parts(system_with_context: &str, query: &str) -> (String, String) {
+    const MARKER: &str = "\n---Context---\n";
+    if edgequake_llm::provider_prompt_cache_enabled() {
+        if let Some((instructions, rest)) = system_with_context.split_once(MARKER) {
+            let user = format!("---Context---\n{rest}\n---User Query---\n\n{query}");
+            return (instructions.to_string(), user);
+        }
+    }
+    (system_with_context.to_string(), query.to_string())
+}
+
+pub(super) fn answer_chat_messages(system_with_context: &str, query: &str) -> Vec<ChatMessage> {
+    let (system, user) = answer_chat_parts(system_with_context, query);
+    vec![ChatMessage::system(system), ChatMessage::user(user)]
+}
+
 async fn complete_with_optional_effort(
     provider: &dyn LLMProvider,
     prompt: &str,
@@ -47,6 +68,7 @@ fn record_answer_gen_ai(response: &LLMResponse, input: &str, output: &str) {
         response.prompt_tokens as u64,
         response.completion_tokens as u64,
     )
+    .with_provider_cache(response.cache_hit_tokens, response.cache_write_tokens)
     .record_on_current_span();
 }
 
@@ -638,6 +660,10 @@ Generate a comprehensive, well-structured answer that integrates observations fr
             response_type,
         );
         let use_complete_blob = Self::answer_complete_blob_enabled();
+        let chat_opts = opts_ref
+            .cloned()
+            .unwrap_or_default()
+            .with_provider_prompt_cache("query", provider.name(), provider.model());
         let response = if let Some(imgs) = images.filter(|i| !i.is_empty()) {
             let system_text = self.build_vision_system_message(context, system_prompt_extension);
             let user_text = conversation_context::query_with_conversation_context(
@@ -645,11 +671,12 @@ Generate a comprehensive, well-structured answer that integrates observations fr
                 conversation_history,
                 DEFAULT_CONVERSATION_TURN_LIMIT,
             );
+            let (sys, user) = answer_chat_parts(&system_text, &user_text);
             let messages = vec![
-                ChatMessage::system(&system_text),
-                ChatMessage::user_with_images(&user_text, imgs.to_vec()),
+                ChatMessage::system(&sys),
+                ChatMessage::user_with_images(&user, imgs.to_vec()),
             ];
-            match provider.chat(&messages, opts_ref).await {
+            match provider.chat(&messages, Some(&chat_opts)).await {
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!(error = %e, "Vision chat failed; retrying as text-only query");
@@ -659,8 +686,8 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         } else if use_complete_blob {
             complete_with_optional_effort(provider, &prompt, opts_ref).await?
         } else {
-            let messages = vec![ChatMessage::system(&system_text), ChatMessage::user(query)];
-            match provider.chat(&messages, opts_ref).await {
+            let messages = answer_chat_messages(&system_text, query);
+            match provider.chat(&messages, Some(&chat_opts)).await {
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!(
@@ -681,8 +708,8 @@ Generate a comprehensive, well-structured answer that integrates observations fr
             let retry = if use_complete_blob {
                 complete_with_optional_effort(provider, &prompt, opts_ref).await?
             } else {
-                let messages = vec![ChatMessage::system(&system_text), ChatMessage::user(query)];
-                match provider.chat(&messages, opts_ref).await {
+                let messages = answer_chat_messages(&system_text, query);
+                match provider.chat(&messages, Some(&chat_opts)).await {
                     Ok(r) => r,
                     Err(_) => complete_with_optional_effort(provider, &prompt, opts_ref).await?,
                 }
@@ -784,7 +811,9 @@ then elaborate. Do not invent facts outside Context.\n"
                     images,
                 );
 
-                let response = match provider.chat(&messages, None).await {
+                let bypass_opts =
+                    CompletionOptions::default().with_role_cache("bypass", provider.as_ref());
+                let response = match provider.chat(&messages, Some(&bypass_opts)).await {
                     Ok(r) => r,
                     Err(e) if images.is_some_and(|i| !i.is_empty()) => {
                         tracing::warn!(error = %e, "Bypass vision chat failed; retrying as text-only");
@@ -795,7 +824,7 @@ then elaborate. Do not invent facts outside Context.\n"
                             DEFAULT_CONVERSATION_TURN_LIMIT,
                             None,
                         );
-                        provider.chat(&text_only, None).await?
+                        provider.chat(&text_only, Some(&bypass_opts)).await?
                     }
                     Err(e) => return Err(e.into()),
                 };
@@ -885,12 +914,18 @@ then elaborate. Do not invent facts outside Context.\n"
             async {
                 let system_text =
                     self.build_vision_system_message(context, system_prompt_extension);
+                let (sys, user) = answer_chat_parts(&system_text, query);
+                let chat_opts = CompletionOptions::default().with_provider_prompt_cache(
+                    "vision",
+                    provider.name(),
+                    provider.model(),
+                );
                 let messages = vec![
-                    ChatMessage::system(&system_text),
-                    ChatMessage::user_with_images(query, images.to_vec()),
+                    ChatMessage::system(&sys),
+                    ChatMessage::user_with_images(&user, images.to_vec()),
                 ];
 
-                match provider.chat(&messages, None).await {
+                match provider.chat(&messages, Some(&chat_opts)).await {
                     Ok(r) => {
                         record_answer_gen_ai(&r, query, &r.content);
                         Ok(futures::stream::once(async move { Ok(r.content) }).boxed())
@@ -930,5 +965,24 @@ then elaborate. Do not invent facts outside Context.\n"
             },
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod prefix_cache_tests {
+    use super::answer_chat_parts;
+
+    #[test]
+    fn splits_context_into_user_when_prompt_cache_on() {
+        let system = "---Role---\nYou are helpful.\n---Context---\nENTITIES: X";
+        let (sys, user) = answer_chat_parts(system, "What is X?");
+        if edgequake_llm::provider_prompt_cache_enabled() {
+            assert!(!sys.contains("ENTITIES: X"));
+            assert!(user.contains("ENTITIES: X"));
+            assert!(user.contains("What is X?"));
+        } else {
+            assert_eq!(sys, system);
+            assert_eq!(user, "What is X?");
+        }
     }
 }

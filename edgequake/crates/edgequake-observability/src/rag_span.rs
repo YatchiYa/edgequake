@@ -115,6 +115,8 @@ pub struct LlmGenerationRecord {
     pub output_tokens: Option<u64>,
     pub input: Option<String>,
     pub output: Option<String>,
+    pub cache_hit_tokens: Option<u64>,
+    pub cache_write_tokens: Option<u64>,
 }
 
 impl LlmGenerationRecord {
@@ -130,13 +132,32 @@ impl LlmGenerationRecord {
             output_tokens: Some(completion_tokens),
             input: input.map(str::to_string),
             output: Some(output.to_string()),
+            cache_hit_tokens: None,
+            cache_write_tokens: None,
         }
+    }
+
+    /// Copy provider KV-cache usage onto this record (OpenAI/Mistral `cached_tokens`).
+    pub fn with_provider_cache(
+        mut self,
+        cache_hit_tokens: Option<usize>,
+        cache_write_tokens: Option<usize>,
+    ) -> Self {
+        self.cache_hit_tokens = cache_hit_tokens.map(|n| n as u64);
+        self.cache_write_tokens = cache_write_tokens.map(|n| n as u64);
+        self
     }
 
     /// Apply usage + I/O onto the current generation span.
     pub fn record_on_current_span(&self) {
         record_gen_ai_usage(self.input_tokens, self.output_tokens);
         record_observation_io(self.input.as_deref(), self.output.as_deref());
+        if let Some(n) = self.cache_hit_tokens {
+            crate::langfuse_meta::record_observation_meta("cache_hit_tokens", &n.to_string());
+        }
+        if let Some(n) = self.cache_write_tokens {
+            crate::langfuse_meta::record_observation_meta("cache_write_tokens", &n.to_string());
+        }
     }
 }
 

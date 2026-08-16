@@ -62,7 +62,8 @@ pub async fn generate_title(llm_provider: Arc<dyn LLMProvider>, first_message: &
         // reject explicit temperature overrides and only accept their built-in default.
         temperature: effective_temperature_for_model(llm_provider.model(), 0.3),
         ..Default::default()
-    };
+    }
+    .with_role_cache("title", llm_provider.as_ref());
 
     match llm_provider.chat(&messages, Some(&options)).await {
         Ok(response) => {

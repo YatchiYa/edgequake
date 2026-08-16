@@ -37,15 +37,21 @@ fn markdown_ir_resets_stack_on_h1() {
 }
 
 #[tokio::test]
-async fn markdown_chunking_splits_at_headings() {
+async fn markdown_chunking_packs_small_manual() {
     let md = fixture("structured_manual.md");
     let config = ChunkerConfig {
         chunk_size: 200,
         chunk_overlap: 10,
+        min_chunk_size: 1,
         ..Default::default()
     };
     let chunks = MarkdownChunking.chunk(&md, &config).await.unwrap();
-    assert!(chunks.len() >= 2);
+    assert_eq!(
+        chunks.len(),
+        1,
+        "SPEC-125: small heading-dense manual packs to 1 chunk, got {}",
+        chunks.len()
+    );
 }
 
 #[tokio::test]

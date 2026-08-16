@@ -32,6 +32,48 @@ pub fn l2_bm25_mix_top_k() -> usize {
         .clamp(1, 100)
 }
 
+/// Pool for FactReplace BM25 reorder (`EDGEQUAKE_L2_FACT_BM25_POOL`).
+///
+/// - `mix` (default / Acc E2-occ): BM25 over Mix pre-CE (can promote lexical false friends).
+/// - `acc`: BM25 over post-truncate Acc prompt chunks only (membership-honest L2; 088 FACT_ER_L2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum L2FactBm25Pool {
+    MixPreCe,
+    AccPrompt,
+}
+
+pub fn l2_fact_bm25_pool() -> L2FactBm25Pool {
+    match std::env::var("EDGEQUAKE_L2_FACT_BM25_POOL")
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "acc" | "prompt" | "ce" | "admitted" => L2FactBm25Pool::AccPrompt,
+        _ => L2FactBm25Pool::MixPreCe,
+    }
+}
+
+impl L2FactBm25Pool {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MixPreCe => "mix",
+            Self::AccPrompt => "acc",
+        }
+    }
+}
+
+/// 088: GWC + FactReplace — keep the L2 citation BM25 pool on the **pre-compress**
+/// Acc-admitted list so GWC (reasoning compress) does not poison judge sources.
+pub fn l2_fact_bm25_pool_pre_compress() -> bool {
+    matches!(
+        std::env::var("EDGEQUAKE_L2_FACT_BM25_POOL_PRE_COMPRESS")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
 /// Lexical BM25 reorder of Mix candidates (sync; uses `BM25Reranker::for_rag`).
 pub async fn bm25_order_chunks(
     query: &str,
@@ -168,5 +210,16 @@ mod tests {
         std::env::set_var("EDGEQUAKE_L2_BM25_MODE", "fact_replace");
         assert_eq!(l2_bm25_mode(), L2Bm25Mode::FactReplace);
         std::env::remove_var("EDGEQUAKE_L2_BM25_MODE");
+    }
+
+    #[test]
+    fn fact_bm25_pool_defaults_mix_acc_override() {
+        std::env::remove_var("EDGEQUAKE_L2_FACT_BM25_POOL");
+        assert_eq!(l2_fact_bm25_pool(), L2FactBm25Pool::MixPreCe);
+        std::env::set_var("EDGEQUAKE_L2_FACT_BM25_POOL", "acc");
+        assert_eq!(l2_fact_bm25_pool(), L2FactBm25Pool::AccPrompt);
+        std::env::set_var("EDGEQUAKE_L2_FACT_BM25_POOL", "mix");
+        assert_eq!(l2_fact_bm25_pool(), L2FactBm25Pool::MixPreCe);
+        std::env::remove_var("EDGEQUAKE_L2_FACT_BM25_POOL");
     }
 }

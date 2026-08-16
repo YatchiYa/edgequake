@@ -1,0 +1,11 @@
+name: Checkout edgequake-llm
+description: Sibling crate for [patch.crates-io] path ../../edgequake-llm (SPEC-126)
+runs:
+  using: composite
+  steps:
+    - name: Checkout raphaelmansuy/edgequake-llm
+      uses: actions/checkout@v6
+      with:
+        repository: raphaelmansuy/edgequake-llm
+        path: ../edgequake-llm
+        persist-credentials: false

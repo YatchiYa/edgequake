@@ -10,34 +10,35 @@ This file maintains traceability between code features, business requirements, a
 
 ## Index
 
-| Feature ID | Description | Status | Spec / Release |
-| ---------- | ----------- | ------ | -------------- |
-| FEAT-0001 | Tenant Workspace Quota Management | Completed | SPEC-0001 / #133 |
-| FEAT-0002 | Knowledge Injection (Glossaries & Synonyms) | Completed | [SPEC-0002](../specifications/0002_knowledge_injection_issue_131/) / v0.8.0 |
-| FEAT-0003 | Explainability & Model Picker (config chain) | Completed | [SPEC-043](../specs/043-update-edgequake-llm/000-index.md) / v0.17.0 |
-| FEAT-0004 | Graph Edge Labels | Planned | SPEC-0004 / #91 |
-| FEAT-0005 | Custom Entity Configuration | Completed | [SPEC-0005](../specifications/0005_custom_entity_config_issue_85/) / v0.8.0 |
-| FEAT-006 | Unified Streaming Response Protocol | Completed | SPEC-006 / #56 |
-| FEAT-007 | Vector Storage SQL Pre-Filtering | Completed | SPEC-007 |
-| FEAT-008 | Explicit Provider/Model Transparency in UI | Completed | MISSION-01 / v0.9.19 |
-| FEAT-009 | Document Deletion Correctness | Completed | MISSION-02 / v0.9.19 |
-| FEAT-010 | Configurable PDF Parser Backend (Vision/EdgeParse) | Completed | MISSION-03 / v0.10.0 |
-| FEAT-011 | Vision PDF Ingest & Side-by-Side Viewer | Completed | [SPEC-047](../specs/047-rag-evaluation/000-index.md) / v0.17.0 |
-| FEAT-012 | Real-Time Pipeline Progress (WS bridge) | Completed | [SPEC-048](../specs/048-improve-ux/000-index.md) / v0.17.0 |
-| FEAT-013 | Deletion & Reprocess Progress Parity | Completed | [SPEC-050](../specs/050-pipeline-and-delete/README.md) / v0.17.0 |
-| FEAT-014 | GraphRAG / Hybrid RAG Ops & ACC Science | Completed | [SPEC-046](../specs/046-graphrag-study/00-INDEX.md) / v0.16.0 |
-| FEAT-015 | OpenAPI-Native API Explorer | Completed | [SPEC-035](../specs/035-api-explorer/) / v0.15.x |
-| FEAT-016 | Mistral First-Class Provider | Completed | v0.11.0 |
-| FEAT-017 | Embedding Progress Reporting | Completed | #197 / v0.11.3 |
-| FEAT-018 | Runtime Auth Secure by Default | Completed | SPEC-027 / v0.13.x |
-| FEAT-019 | Documents List & Mix-Scale Perf Gates | Completed | [SPEC-054](../specs/054-fix-bugs-17/) / v0.18.0 |
-| FEAT-020 | Claim/Lease Delivery & Convert→Ingest SSOT | Completed | [SPEC-057](../specs/057-pipeline-reliability/000-index.md) / v0.19.0 |
-| FEAT-035 | OpenAPI Explorer (WebUI implementation) | Completed | [SPEC-035](../specs/035-api-explorer/) — code marker |
-| FEAT-094 | Standalone PDF→Markdown Parse API | Completed | [SPEC-094](../specs/94-api-markdown/00-spec.md) / v0.23.0 |
-| FEAT-096 | Multi-Language Extraction (workspace-scoped) | Completed | [SPEC-096](../specs/096-multi-language-extraction/) / v0.23.0 |
-| FEAT-101 | Wizard Onboarding & Setup API | Completed | [SPEC-101](../specs/101-wizard-mode-tenant-workspace/) / v0.23.0 |
-| FEAT-102 | Custom Entity Type Colors (workspace graph) | Completed | [SPEC-102](../specs/102-custom-entity-type-colors/) / v0.23.0 |
-| FEAT-103 | LightRAG-Parity LLM Cache | Completed | [SPEC-103](../specs/103-llm-cache/) / v0.23.0 |
+| Feature ID | Description                                        | Status    | Spec / Release                                                              |
+| ------------| ----------------------------------------------------| -----------| -----------------------------------------------------------------------------|
+| FEAT-0001  | Tenant Workspace Quota Management                  | Completed | SPEC-0001 / #133                                                            |
+| FEAT-0002  | Knowledge Injection (Glossaries & Synonyms)        | Completed | [SPEC-0002](../specifications/0002_knowledge_injection_issue_131/) / v0.8.0 |
+| FEAT-0003  | Explainability & Model Picker (config chain)       | Completed | [SPEC-043](../specs/043-update-edgequake-llm/000-index.md) / v0.17.0        |
+| FEAT-0004  | Graph Edge Labels                                  | Planned   | SPEC-0004 / #91                                                             |
+| FEAT-0005  | Custom Entity Configuration                        | Completed | [SPEC-0005](../specifications/0005_custom_entity_config_issue_85/) / v0.8.0 |
+| FEAT-006   | Unified Streaming Response Protocol                | Completed | SPEC-006 / #56                                                              |
+| FEAT-007   | Vector Storage SQL Pre-Filtering                   | Completed | SPEC-007                                                                    |
+| FEAT-008   | Explicit Provider/Model Transparency in UI         | Completed | MISSION-01 / v0.9.19                                                        |
+| FEAT-009   | Document Deletion Correctness                      | Completed | MISSION-02 / v0.9.19                                                        |
+| FEAT-010   | Configurable PDF Parser Backend (Vision/EdgeParse) | Completed | MISSION-03 / v0.10.0                                                        |
+| FEAT-011   | Vision PDF Ingest & Side-by-Side Viewer            | Completed | [SPEC-047](../specs/047-rag-evaluation/000-index.md) / v0.17.0              |
+| FEAT-012   | Real-Time Pipeline Progress (WS bridge)            | Completed | [SPEC-048](../specs/048-improve-ux/000-index.md) / v0.17.0                  |
+| FEAT-013   | Deletion & Reprocess Progress Parity               | Completed | [SPEC-050](../specs/050-pipeline-and-delete/README.md) / v0.17.0            |
+| FEAT-014   | GraphRAG / Hybrid RAG Ops & ACC Science            | Completed | [SPEC-046](../specs/046-graphrag-study/00-INDEX.md) / v0.16.0               |
+| FEAT-015   | OpenAPI-Native API Explorer                        | Completed | [SPEC-035](../specs/035-api-explorer/) / v0.15.x                            |
+| FEAT-016   | Mistral First-Class Provider                       | Completed | v0.11.0                                                                     |
+| FEAT-017   | Embedding Progress Reporting                       | Completed | #197 / v0.11.3                                                              |
+| FEAT-018   | Runtime Auth Secure by Default                     | Completed | SPEC-027 / v0.13.x                                                          |
+| FEAT-019   | Documents List & Mix-Scale Perf Gates              | Completed | [SPEC-054](../specs/054-fix-bugs-17/) / v0.18.0                             |
+| FEAT-020   | Claim/Lease Delivery & Convert→Ingest SSOT         | Completed | [SPEC-057](../specs/057-pipeline-reliability/000-index.md) / v0.19.0        |
+| FEAT-035   | OpenAPI Explorer (WebUI implementation)            | Completed | [SPEC-035](../specs/035-api-explorer/) — code marker                        |
+| FEAT-094   | Standalone PDF→Markdown Parse API                  | Completed | [SPEC-094](../specs/94-api-markdown/00-spec.md) / v0.23.0                   |
+| FEAT-096   | Multi-Language Extraction (workspace-scoped)       | Completed | [SPEC-096](../specs/096-multi-language-extraction/) / v0.23.0               |
+| FEAT-101   | Wizard Onboarding & Setup API                      | Completed | [SPEC-101](../specs/101-wizard-mode-tenant-workspace/) / v0.23.0            |
+| FEAT-102   | Custom Entity Type Colors (workspace graph)        | Completed | [SPEC-102](../specs/102-custom-entity-type-colors/) / v0.23.0               |
+| FEAT-103   | LightRAG-Parity LLM Cache                          | Completed | [SPEC-103](../specs/103-llm-cache/) / v0.23.0                               |
+| FEAT-126   | Provider KV / Prompt Cache                         | Completed | [SPEC-126](../specs/126-provider-kv-cache/)                                 |
 
 ---
 
@@ -237,6 +238,26 @@ Unified keyword + answer `LlmResponseCache` (L1 memory + L2 `public.llm_cache`):
 - Master switch `EDGEQUAKE_LLM_CACHE` defaults **on**; overrides `EDGEQUAKE_KEYWORD_CACHE` / `EDGEQUAKE_QUERY_ANSWER_CACHE`
 - Acc pins cache **off** (`EDGEQUAKE_LLM_CACHE=0`) for fair cold peers
 - Proof: `make spec103-llm-cache-proof`
+
+---
+
+### FEAT-126 — Provider KV / Prompt Cache (SPEC-126)
+
+**Spec**: [specs/126-provider-kv-cache](../specs/126-provider-kv-cache/)  
+**Status**: ✅ Implemented
+
+Per-provider prompt/KV cache policy (default **on**). Distinct from SPEC-103 response cache:
+
+- Native OpenAI (`OpenAIProvider`, including official-OpenAI proxies) / Azure: `prompt_cache_key` plus GPT-5.6 explicit breakpoints (`prompt_cache_options` / `prompt_cache_breakpoint`). Support is learned from structured `error.param` 400s — not from model-name or hostname parsing. `OpenAIProvider::compatible` never sends GPT-5.6 fields.
+- Mistral / NVIDIA / OpenAI-compatible: `prompt_cache_key` only (`eq:{role}:{provider}:{model}`)
+- Anthropic: `cache_control` on stable system prefix; TTL `EDGEQUAKE_PROMPT_CACHE_TTL` (`5m`/`1h`)
+- OpenRouter: `cache_control` + `prompt_cache_key` + `session_id` (sticky routing, Aug 2026)
+- Bedrock Converse: `cachePoint` after system blocks (protocol, not model-id sniffing)
+- Gemini / Ollama: layout-only (implicit prefix reuse; Gemini `cachedContents` when the flag is on)
+- Mix/answer + extract/glean/keyword/summarize/judge: stable instructions first, dynamic content last
+- Acc keeps this **on** (does not skip generation / does not change answers)
+- Highest-volume win is extract/glean (many chunks × same system). Mix KV is small unless Mix instructions exceed vendor min tokens.
+- E2E (CI): `e2e_spec126_prompt_cache` — Native explicit fields, Compatible omits them, structured `param` 400 retry. Live OpenAI `cached_tokens` proof is `#[ignore]` (`EDGEQUAKE_LIVE_PROMPT_CACHE=1`). Vendor APIs verified August 2026.
 
 ---
 

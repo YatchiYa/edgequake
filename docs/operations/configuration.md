@@ -425,9 +425,11 @@ Relational data-layer cutover (typed SSOT) and the LightRAG-parity response cach
 | `EDGEQUAKE_LLM_CACHE` | Boolean | `1` | **Master** LLM cache switch (keywords + answers); set `0`/`false` to disable both |
 | `EDGEQUAKE_KEYWORD_CACHE` | Boolean | follows master | Keyword-extraction cache override (SPEC-103) |
 | `EDGEQUAKE_QUERY_ANSWER_CACHE` | Boolean | follows master | Query-answer cache override (SPEC-103) |
+| `EDGEQUAKE_PROMPT_CACHE` | Boolean | `1` | **Provider KV / prompt-cache**. Native OpenAI (constructor, including proxies) and Azure send `prompt_cache_key` + GPT-5.6 explicit breakpoints; a structured `error.param` 400 disables them for that process. Compatible/Mistral/NVIDIA: key only. Anthropic: `cache_control`. OpenRouter: `cache_control` + `session_id`. Bedrock Converse: `cachePoint`. Default **on**. Does not skip generation. Acc leaves this on. |
+| `EDGEQUAKE_PROMPT_CACHE_TTL` | String | `5m` | Anthropic `cache_control` and Bedrock Converse `cachePoint` TTL (`5m` or `1h`) |
 | `EDGEQUAKE_EXTRACTION_LANGUAGE` | String | `English` | Fleet default KG extraction NL language (SPEC-096); workspace metadata overrides |
 
-> **Acc note:** The benchmark pins `EDGEQUAKE_LLM_CACHE=0` for fair cold peers. Irreversible drops (**125** KV, **126/131** vectors) are human-gated via the CLI flag `edgequake migrate --confirm-drop` or the `EDGEQUAKE_MIGRATION_CONFIRM_DROP=1` env var — never set it casually in shared env files.
+> **Acc note:** The benchmark pins `EDGEQUAKE_LLM_CACHE=0` for fair cold peers (response cache). Provider KV cache (`EDGEQUAKE_PROMPT_CACHE`) stays **on** — it does not change answers. Irreversible drops (**125** KV, **126/131** vectors) are human-gated via the CLI flag `edgequake migrate --confirm-drop` or the `EDGEQUAKE_MIGRATION_CONFIRM_DROP=1` env var — never set it casually in shared env files.
 
 ---
 

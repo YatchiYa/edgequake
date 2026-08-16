@@ -79,8 +79,28 @@ fn contract_gleaning_uses_completion_options() {
         .join("../edgequake-pipeline/src/extractor/gleaning.rs");
     let src = std::fs::read_to_string(path).unwrap();
     assert!(
-        src.contains("complete_with_options"),
-        "gleaning must use complete_with_options (C-17)"
+        src.contains("extraction_completion_options")
+            && src.contains(".chat(")
+            && src.contains("with_provider_prompt_cache"),
+        "gleaning must share extraction CompletionOptions via chat (C-17 / SPEC-126)"
+    );
+}
+
+#[test]
+fn contract_extract_chat_uses_shared_prompt_cache_options() {
+    let extract = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../edgequake-pipeline/src/extractor/llm.rs");
+    let options = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../edgequake-pipeline/src/extractor/completion_options.rs");
+    let extract_src = std::fs::read_to_string(extract).unwrap();
+    let options_src = std::fs::read_to_string(options).unwrap();
+    assert!(
+        extract_src.contains(".chat(") && extract_src.contains("extraction_completion_options"),
+        "extract llm.rs must chat with shared extraction CompletionOptions (SPEC-126)"
+    );
+    assert!(
+        options_src.contains("with_provider_prompt_cache(\"extract\""),
+        "extraction CompletionOptions must attach eq:extract prompt_cache_key (SPEC-126)"
     );
 }
 

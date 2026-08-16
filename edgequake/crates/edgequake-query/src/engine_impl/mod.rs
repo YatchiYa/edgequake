@@ -70,6 +70,7 @@
 //! - [`QueryRequest`] for query parameters
 //! - [docs/features.md](../../../../../../docs/features.md) for feature details
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -271,41 +272,114 @@ pub struct QueryEmbeddings {
 }
 
 impl QueryEmbeddings {
-    /// Compute all embeddings in a single batch.
-    pub async fn compute(
+    /// High/low keyword strings used as Mix embed inputs (LightRAG parity).
+    pub(crate) fn keyword_level_texts(
         query: &str,
         keywords: &ExtractedKeywords,
-        embedder: &dyn EmbeddingProvider,
-    ) -> Result<Self> {
+    ) -> (String, String) {
         let high_level_text = if keywords.high_level.is_empty() {
             query.to_string()
         } else {
             keywords.high_level.join(", ")
         };
-
         let low_level_text = if keywords.low_level.is_empty() {
             query.to_string()
         } else {
             keywords.low_level.join(", ")
         };
+        (high_level_text, low_level_text)
+    }
 
-        // Batch embed all three texts
-        let texts = vec![query.to_string(), high_level_text, low_level_text];
+    fn take_level(known: &HashMap<String, Vec<f32>>, text: &str) -> Vec<f32> {
+        known.get(text).cloned().unwrap_or_default()
+    }
 
-        let embeddings = embedder.embed(&texts).await.map_err(QueryError::from)?;
+    /// One embed RTT for remaining unique texts; X-10 L2-normalize every vector.
+    ///
+    /// `query_vec` prefetch (cold path) is reused so we never re-embed the
+    /// question. Empty prefetch + identical level texts keeps the SPEC-017
+    /// triple batch so MockProvider queues still pop three slots.
+    async fn assemble(
+        query: &str,
+        keywords: &ExtractedKeywords,
+        query_vec: Vec<f32>,
+        embedder: &dyn EmbeddingProvider,
+    ) -> Result<Self> {
+        let (high_level_text, low_level_text) = Self::keyword_level_texts(query, keywords);
+        let all_equal = high_level_text == query && low_level_text == query;
 
-        if embeddings.len() != 3 {
-            return Err(QueryError::Internal(format!(
-                "Expected 3 embeddings, got {}",
-                embeddings.len()
-            )));
+        if all_equal && !query_vec.is_empty() {
+            let v = crate::cache::embedding_cache::l2_normalize_vec(query_vec);
+            return Ok(Self {
+                query: v.clone(),
+                high_level: v.clone(),
+                low_level: v,
+            });
+        }
+
+        if all_equal && query_vec.is_empty() {
+            // One unique RTT (warm peek / keyword-off). Scatter the same vector
+            // to all Mix levels — do not send [q,q,q] (extra payload, same RTT).
+            let embeds = embedder
+                .embed(&[query.to_string()])
+                .await
+                .map_err(QueryError::from)?;
+            let v = crate::cache::embedding_cache::l2_normalize_vec(
+                embeds.into_iter().next().unwrap_or_default(),
+            );
+            return Ok(Self {
+                query: v.clone(),
+                high_level: v.clone(),
+                low_level: v,
+            });
+        }
+
+        let mut known: HashMap<String, Vec<f32>> = HashMap::new();
+        if !query_vec.is_empty() {
+            known.insert(
+                query.to_string(),
+                crate::cache::embedding_cache::l2_normalize_vec(query_vec),
+            );
+        }
+        let needed = [
+            query.to_string(),
+            high_level_text.clone(),
+            low_level_text.clone(),
+        ];
+        let mut missing: Vec<String> = Vec::new();
+        for text in &needed {
+            if !known.contains_key(text) && !missing.iter().any(|m| m == text) {
+                missing.push(text.clone());
+            }
+        }
+        if !missing.is_empty() {
+            let embeds = embedder.embed(&missing).await.map_err(QueryError::from)?;
+            if embeds.len() != missing.len() {
+                return Err(QueryError::Internal(format!(
+                    "Expected {} unique embeddings, got {}",
+                    missing.len(),
+                    embeds.len()
+                )));
+            }
+            for (text, vec) in missing.into_iter().zip(embeds) {
+                known.insert(text, crate::cache::embedding_cache::l2_normalize_vec(vec));
+            }
         }
 
         Ok(Self {
-            query: embeddings[0].clone(),
-            high_level: embeddings[1].clone(),
-            low_level: embeddings[2].clone(),
+            query: Self::take_level(&known, query),
+            high_level: Self::take_level(&known, &high_level_text),
+            low_level: Self::take_level(&known, &low_level_text),
         })
+    }
+
+    /// Compute all Mix embeddings in one unique `embed()` batch (LR #2728).
+    pub async fn compute(
+        query: &str,
+        keywords: &ExtractedKeywords,
+        embedder: &dyn EmbeddingProvider,
+    ) -> Result<Self> {
+        Self::assemble(query, keywords, Vec::new(), embedder).await
     }
 
     /// Simple embedding (same for all levels).
@@ -317,79 +391,18 @@ impl QueryEmbeddings {
         }
     }
 
-    /// Compute keyword-level embeddings when the query vector is already available.
+    /// Reuse a speculative query vector, then one unique batch for the rest.
     ///
-    /// WHY: In the parallel query pipeline, the query embedding is computed
-    /// concurrently with keyword extraction. Once both are ready, this method
-    /// embeds only the keyword texts, avoiding a redundant re-embedding of the
-    /// query and reducing total embedding calls.
-    ///
-    /// If both keyword texts fall back to the query string (empty keywords),
-    /// the pre-computed `query_vec` is reused for all three levels — no extra
-    /// embedding call is made at all.
+    /// WHY: Cold Mix overlaps `embed_one(query)` with keyword LLM. Warm Mix
+    /// (keyword cache hit) skips prefetch and calls [`Self::compute`] instead
+    /// so hl/ll share the same RTT as the question (064 / LightRAG #2728).
     pub async fn compute_with_query_vec(
         query: &str,
         query_vec: Vec<f32>,
         keywords: &ExtractedKeywords,
         embedder: &dyn EmbeddingProvider,
     ) -> Result<Self> {
-        let high_level_text = if keywords.high_level.is_empty() {
-            query.to_string()
-        } else {
-            keywords.high_level.join(", ")
-        };
-
-        let low_level_text = if keywords.low_level.is_empty() {
-            query.to_string()
-        } else {
-            keywords.low_level.join(", ")
-        };
-
-        // When high/low texts equal the query, vectors are identical — reuse the
-        // precomputed query_vec (057/058 C1c). Avoids a cache-bypassing triple
-        // `embed()` batch that re-pays remote embed RTT after parallel embed_one.
-        //
-        // Empty query_vec = keyword extraction off: keep legacy triple batch so
-        // MockProvider queues can supply distinct slots (SPEC-017 / e2e_sota).
-        if high_level_text == query && low_level_text == query {
-            if !query_vec.is_empty() {
-                return Ok(Self {
-                    query: query_vec.clone(),
-                    high_level: query_vec.clone(),
-                    low_level: query_vec,
-                });
-            }
-            let texts = vec![query.to_string(), query.to_string(), query.to_string()];
-            let embeds = embedder.embed(&texts).await.map_err(QueryError::from)?;
-            if embeds.len() >= 3 {
-                return Ok(Self {
-                    query: embeds[0].clone(),
-                    high_level: embeds[1].clone(),
-                    low_level: embeds[2].clone(),
-                });
-            }
-            return Ok(Self {
-                query: query_vec.clone(),
-                high_level: query_vec.clone(),
-                low_level: query_vec,
-            });
-        }
-
-        // Embed only the keyword texts (query_vec is already computed).
-        let texts = vec![high_level_text, low_level_text];
-        let embeds = embedder.embed(&texts).await.map_err(QueryError::from)?;
-        if embeds.len() != 2 {
-            return Err(QueryError::Internal(format!(
-                "Expected 2 keyword embeddings, got {}",
-                embeds.len()
-            )));
-        }
-
-        Ok(Self {
-            query: query_vec,
-            high_level: embeds[0].clone(),
-            low_level: embeds[1].clone(),
-        })
+        Self::assemble(query, keywords, query_vec, embedder).await
     }
 }
 
@@ -416,6 +429,11 @@ pub struct QueryEngine {
     llm_response_cache: Option<crate::cache::SharedLlmResponseCache>,
     /// Shared flag set by [`CachedKeywordExtractor`] on hit (LAW-C8).
     keyword_cache_hit_flag: Arc<std::sync::atomic::AtomicBool>,
+    /// LRU wrappers for injected workspace embedders whose identity differs
+    /// from the engine default (064 / Acc Mix). Same-model injects reuse
+    /// [`Self::embedding_provider`] instead of a fresh uncached client.
+    alternate_embed_caches:
+        Arc<std::sync::RwLock<std::collections::HashMap<String, Arc<dyn EmbeddingProvider>>>>,
 }
 
 impl QueryEngine {
@@ -464,6 +482,9 @@ impl QueryEngine {
             answer_cache: None,
             llm_response_cache: None,
             keyword_cache_hit_flag,
+            alternate_embed_caches: Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         }
     }
 
@@ -645,6 +666,9 @@ impl QueryEngine {
             answer_cache: None,
             llm_response_cache: None,
             keyword_cache_hit_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            alternate_embed_caches: Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         }
     }
 
@@ -688,6 +712,46 @@ impl QueryEngine {
     /// @implements FIX-168
     pub fn default_embedding_provider(&self) -> Arc<dyn EmbeddingProvider> {
         self.embedding_provider.clone()
+    }
+
+    /// Embed identity: same model ⇒ same vectors (pure function of text).
+    fn embedding_identity(provider: &dyn EmbeddingProvider) -> String {
+        format!(
+            "{}/{}/{}",
+            provider.name(),
+            provider.model(),
+            provider.dimension()
+        )
+    }
+
+    /// Acc Mix injects a fresh workspace embedder per request. Reuse the engine
+    /// LRU when identity matches; otherwise wrap once per identity so repeats
+    /// skip the embed RTT (064 first principle: memoize a pure function).
+    pub(crate) fn cached_embedding_for(
+        &self,
+        injected: Arc<dyn EmbeddingProvider>,
+    ) -> Arc<dyn EmbeddingProvider> {
+        let key = Self::embedding_identity(injected.as_ref());
+        if key == Self::embedding_identity(self.embedding_provider.as_ref()) {
+            return Arc::clone(&self.embedding_provider);
+        }
+        {
+            let map = self
+                .alternate_embed_caches
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            if let Some(cached) = map.get(&key) {
+                return Arc::clone(cached);
+            }
+        }
+        let wrapped: Arc<dyn EmbeddingProvider> = Arc::new(
+            crate::cache::CachingEmbeddingProvider::with_defaults(injected),
+        );
+        let mut map = self
+            .alternate_embed_caches
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        Arc::clone(map.entry(key).or_insert(wrapped))
     }
 
     /// Get the engine's default vector storage.
@@ -781,14 +845,67 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(out.query, query_vec);
-        assert_eq!(out.high_level, query_vec);
-        assert_eq!(out.low_level, query_vec);
+        assert_eq!(out.query, out.high_level);
+        assert_eq!(out.high_level, out.low_level);
+        assert_eq!(out.query.len(), query_vec.len());
         assert_eq!(
             provider.calls.load(Ordering::SeqCst),
             0,
             "must reuse query_vec — no embed() batch"
         );
+    }
+
+    #[tokio::test]
+    async fn compute_unique_batch_is_one_embed_rtt_for_distinct_levels() {
+        use crate::keywords::QueryIntent;
+        use edgequake_llm::MockProvider;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct CountingEmbed {
+            inner: MockProvider,
+            calls: AtomicUsize,
+            last_len: AtomicUsize,
+        }
+        #[async_trait::async_trait]
+        impl EmbeddingProvider for CountingEmbed {
+            fn name(&self) -> &str {
+                EmbeddingProvider::name(&self.inner)
+            }
+            fn model(&self) -> &str {
+                EmbeddingProvider::model(&self.inner)
+            }
+            fn dimension(&self) -> usize {
+                EmbeddingProvider::dimension(&self.inner)
+            }
+            fn max_tokens(&self) -> usize {
+                EmbeddingProvider::max_tokens(&self.inner)
+            }
+            async fn embed(&self, texts: &[String]) -> edgequake_llm::Result<Vec<Vec<f32>>> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                self.last_len.store(texts.len(), Ordering::SeqCst);
+                self.inner.embed(texts).await
+            }
+            async fn embed_one(&self, text: &str) -> edgequake_llm::Result<Vec<f32>> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                self.inner.embed_one(text).await
+            }
+        }
+
+        let provider = CountingEmbed {
+            inner: MockProvider::default(),
+            calls: AtomicUsize::new(0),
+            last_len: AtomicUsize::new(0),
+        };
+        let keywords = ExtractedKeywords::new(
+            vec!["oncology".into()],
+            vec!["BRCA1".into()],
+            QueryIntent::Factual,
+        );
+        let _ = QueryEmbeddings::compute("what is BRCA1?", &keywords, &provider)
+            .await
+            .unwrap();
+        assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(provider.last_len.load(Ordering::SeqCst), 3);
     }
 
     /// @implements SPEC-004: build_prompt with system_prompt_extension

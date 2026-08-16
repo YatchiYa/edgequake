@@ -1,0 +1,302 @@
+{
+  "spec": "001",
+  "stage": "medical-mid",
+  "valid": true,
+  "invalid_reason": null,
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "banner": "EQ mix vs LR mix on GraphRAG-Bench (mistral/mistral-small-latest + mistral/mistral-embed) \u2014 publishable dual-SUT under matched top-k + L2 retrieval metrics. Not UltraDomain win-rates; Acc is not paper Table-2 comparable unless P0_paper ablation pins are used.",
+  "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+  "pins": {
+    "edgequake_git_sha": "d88c3da36",
+    "dataset_id": "GraphRAG-Bench/GraphRAG-Bench",
+    "dataset_revision": "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546",
+    "fixture_id": "medical_publish_question_ids_v1",
+    "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+    "llm_provider": "mistral",
+    "llm_model": "mistral-small-latest",
+    "vision_provider": "mistral",
+    "vision_model": "mistral-small-latest",
+    "embedding_provider": "mistral",
+    "embedding_model": "mistral-embed",
+    "embedding_dim": 1024,
+    "llm_base_url": "https://api.mistral.ai/v1",
+    "judge_provider": "mistral",
+    "judge_model": "mistral-small-latest",
+    "judge_base_url": "https://api.mistral.ai/v1",
+    "judge_embedding_model": "mistral-embed",
+    "lineage": {
+      "sut_llm": "mistral/mistral-small-latest",
+      "sut_vision": "mistral/mistral-small-latest",
+      "sut_embed": "mistral/mistral-embed@1024d",
+      "judge_llm": "mistral/mistral-small-latest",
+      "judge_metric_embed": "mistral-embed",
+      "llm_base_url": "https://api.mistral.ai/v1",
+      "judge_base_url": "https://api.mistral.ai/v1"
+    },
+    "judge_temperature": 0.0,
+    "judge_acc_factuality_weight": 0.75,
+    "judge_embed_backend": "auto",
+    "answer_style": "gold",
+    "recommended_mistral_judge": "mistral-medium-latest",
+    "acc_formula": "0.75*F1 + 0.25*embed_cosine (weights overridable)",
+    "acc_lift_note": "Closer Acc under Mistral judge: answer_style=gold (SUT) + judge_model=mistral-medium-latest; keep L2 gates",
+    "publish_fairness": true,
+    "retrieve_topk": 30,
+    "lr_top_k": 30,
+    "lr_chunk_top_k": 30,
+    "lr_enable_rerank": false,
+    "lr_enable_llm_cache": true,
+    "eq_max_results": 30,
+    "eq_rerank_top_k": 30,
+    "eq_enable_rerank": false,
+    "graph_walk": "bfs",
+    "kg_chunk_pick": "vector",
+    "l2_retrieval_required": true,
+    "mix_arm_gate": false,
+    "eq_mix_arm_gate_env": "false",
+    "mix_fusion": "round_robin",
+    "rr_order": "local_first",
+    "related_chunk_number": 5,
+    "kg_chunk_occurrence_sort": true,
+    "bm25_retrieval": true,
+    "kg_chunk_pick_timing": "per_arm",
+    "kg_chunk_pick_lr_budget": true,
+    "mix_relevancy_prune": false,
+    "mix_relevancy_keep": 12,
+    "mix_relevancy_score": "rrf",
+    "mix_graph_soft_prune": false,
+    "eq_reranker": "bm25",
+    "eq_reranker_provider": "",
+    "path_prune_fraction": 0.0,
+    "path_prune_orphan_entities": false,
+    "rerank_protect_first": 0,
+    "min_rerank_score": 0.1,
+    "entity_rank": "retrieval",
+    "relation_select": "default",
+    "mix_local_weight": 1.0,
+    "mix_global_weight": 1.0,
+    "mix_naive_weight": 1.0,
+    "context_format": "flat",
+    "passage_pack": false,
+    "graph_walk_compress": false,
+    "popular_node_fallback": false,
+    "keyword_lexical_boost": false,
+    "content_headings": false,
+    "l2_sources_union": false,
+    "l2_sources_mix_top_k": 30,
+    "fact_reranker": null,
+    "fact_ce_skip": false,
+    "keyword_mode": "llm",
+    "keyword_llm_provider": null,
+    "keyword_llm_model": null,
+    "extract_llm_provider": null,
+    "extract_llm_model": null,
+    "fact_protect_bm25": false,
+    "coverage_protect_first": 0,
+    "topic_entity_admit": false,
+    "topic_ce_protect": false,
+    "topic_trunc_protect": false,
+    "topic_trunc_protect_max": 4,
+    "topic_materialize": false,
+    "topic_materialize_max": 4,
+    "topic_materialize_content": false,
+    "topic_materialize_types": "",
+    "intent_rerank": false,
+    "l2_bm25_union": true,
+    "l2_bm25_mix_top_k": 30,
+    "l2_bm25_mode": "fact_replace",
+    "mix_intent_weights": false,
+    "intent_factual_bias": false,
+    "answer_prompt": "default",
+    "answer_specific_types": "",
+    "structure_induce": "off",
+    "min_chunk_budget_ratio": 0.4,
+    "query_arm_concurrency": 16,
+    "adaptive_chunking": false,
+    "chunk_token_size": 1200,
+    "chunk_overlap_token_size": 100,
+    "extract_max_entities": 40,
+    "extract_max_records": 100,
+    "extract_caps_selection": "fifo",
+    "ingest_max_chars": null,
+    "eq_query_concurrency": 4,
+    "lr_query_concurrency_effective": 1,
+    "fairness_note": "Matched top-k=30 budgets; LR rerank off (no model); L2 Evidence Recall + Context Relevancy required for valid smoke+; EQ Mix arm gate off (LR-like always-on local+global+naive) unless EDGEQUAKE_MIX_ARM_GATE=true on the server; Mix fusion default round_robin (SPEC-086 E2-occ; rrf is labeled ablation); Acc PATH_PRUNE=0 (022 P0; soft path only with CE+protect); Phase-1 EDGEQUAKE_MIX_RELEVANCY_PRUNE Acc default off; fair Acc ingest: adaptive_chunking off + chunk_token_size=1200 (LightRAG CHUNK_SIZE parity) unless explicitly ablated; fair Acc extract: 40/100 + EDGEQUAKE_EXTRACT_CAPS_SELECTION=fifo (SPEC-117; product default may be relation_aware); smoke-fast Acc may set BENCH001_INGEST_MAX_CHARS for fast force-ingest (full corpus = 0)",
+    "eq_query_mode": "mix",
+    "lr_query_mode": "mix",
+    "chunk_size": 1200,
+    "query_concurrency": 4,
+    "eval_concurrency": 24,
+    "judge": "generation_eval"
+  },
+  "metrics": {
+    "eq": {
+      "overall_acc": 0.8053356105999894,
+      "by_type": {
+        "Fact Retrieval": {
+          "rouge_score": 0.4270512294914239,
+          "answer_correctness": 0.7908980421456078,
+          "factuality_f1": 0.7351869883689511,
+          "embed_cosine": 0.9580312034755775
+        },
+        "Complex Reasoning": {
+          "rouge_score": 0.28297060650997713,
+          "answer_correctness": 0.7954401577908697,
+          "factuality_f1": 0.7396041436723485,
+          "embed_cosine": 0.9629482001464342
+        },
+        "Contextual Summarize": {
+          "answer_correctness": 0.8398399106052817,
+          "coverage_score": 0.7481968031968032,
+          "factuality_f1": 0.7952526193134998,
+          "embed_cosine": 0.9736017844806274
+        },
+        "Creative Generation": {
+          "answer_correctness": 0.7951643318581983,
+          "coverage_score": 0.5713751526251527,
+          "faithfulness": 0.469417641574317,
+          "factuality_f1": 0.7373260666756836,
+          "embed_cosine": 0.9686791274057426
+        }
+      },
+      "overall_f1": 0.7518424545076208,
+      "overall_cos": 0.9658150788770954,
+      "retrieval": {
+        "overall_context_relevancy": 0.47250000000000003,
+        "overall_evidence_recall": 0.928222886182445,
+        "by_type": {
+          "Fact Retrieval": {
+            "context_relevancy": 0.6,
+            "evidence_recall": 0.8733333333333333
+          },
+          "Complex Reasoning": {
+            "context_relevancy": 0.52,
+            "evidence_recall": 0.9461111111111111
+          },
+          "Contextual Summarize": {
+            "context_relevancy": 0.56,
+            "evidence_recall": 0.940011544011544
+          },
+          "Creative Generation": {
+            "context_relevancy": 0.21,
+            "evidence_recall": 0.9534355562737915
+          }
+        }
+      }
+    },
+    "lr": {
+      "overall_acc": 0.7982963927075257,
+      "by_type": {
+        "Fact Retrieval": {
+          "rouge_score": 0.4542193449125284,
+          "answer_correctness": 0.7872228309199454,
+          "factuality_f1": 0.729051226470302,
+          "embed_cosine": 0.9617376442688762
+        },
+        "Complex Reasoning": {
+          "rouge_score": 0.3117314020504765,
+          "answer_correctness": 0.7823391640939308,
+          "factuality_f1": 0.7218275279646993,
+          "embed_cosine": 0.9638740724816253
+        },
+        "Contextual Summarize": {
+          "answer_correctness": 0.8604350946684914,
+          "coverage_score": 0.7938779553779554,
+          "factuality_f1": 0.8222045414617836,
+          "embed_cosine": 0.9751267542886153
+        },
+        "Creative Generation": {
+          "answer_correctness": 0.7631884811477352,
+          "coverage_score": 0.5088447206388383,
+          "faithfulness": 0.5325991180118099,
+          "factuality_f1": 0.6960829763103636,
+          "embed_cosine": 0.9645049956598497
+        }
+      },
+      "overall_f1": 0.7422915680517871,
+      "overall_cos": 0.9663108666747416,
+      "retrieval": {
+        "overall_context_relevancy": 0.5,
+        "overall_evidence_recall": 0.9453163095074859,
+        "by_type": {
+          "Fact Retrieval": {
+            "context_relevancy": 0.585,
+            "evidence_recall": 0.95
+          },
+          "Complex Reasoning": {
+            "context_relevancy": 0.5,
+            "evidence_recall": 0.9066666666666667
+          },
+          "Contextual Summarize": {
+            "context_relevancy": 0.585,
+            "evidence_recall": 0.9608961038961038
+          },
+          "Creative Generation": {
+            "context_relevancy": 0.33,
+            "evidence_recall": 0.9637024674671733
+          }
+        }
+      }
+    },
+    "delta_eq_minus_lr": {
+      "overall_acc": 0.007039217892463645,
+      "overall_f1": 0.009550886455833685,
+      "overall_cos": -0.0004957877976462521,
+      "overall_evidence_recall": -0.017093423325040935,
+      "overall_context_relevancy": -0.02749999999999997,
+      "overall_acc_delta_ci": {
+        "mean": 0.007039217892463732,
+        "ci_low": -0.02321901538140623,
+        "ci_high": 0.03704306455251741,
+        "n": 200.0,
+        "n_boot": 2000.0,
+        "alpha": 0.05,
+        "n_paired": 200.0,
+        "n_eq": 200.0,
+        "n_lr": 200.0
+      },
+      "overall_f1_delta_ci": {
+        "mean": 0.009550886455833688,
+        "ci_low": -0.03030181696252313,
+        "ci_high": 0.049627867001553014,
+        "n": 200.0,
+        "n_boot": 2000.0,
+        "alpha": 0.05,
+        "n_paired": 200.0,
+        "n_eq": 200.0,
+        "n_lr": 200.0
+      },
+      "overall_cos_delta_ci": {
+        "mean": -0.0004957877976461667,
+        "ci_low": -0.0032142788982860147,
+        "ci_high": 0.002074792249582907,
+        "n": 200.0,
+        "n_boot": 2000.0,
+        "alpha": 0.05,
+        "n_paired": 200.0,
+        "n_eq": 200.0,
+        "n_lr": 200.0
+      }
+    }
+  },
+  "ops": {
+    "n_questions": 200,
+    "eq_empty_answer_rate": 0.0,
+    "lr_empty_answer_rate": 0.0,
+    "eq_empty_context_rate": 0.0,
+    "lr_empty_context_rate": 0.0,
+    "eq_query_p50_ms": 5691,
+    "eq_query_p95_ms": 10567,
+    "lr_query_p50_ms": 1255,
+    "lr_query_p95_ms": 1888,
+    "ingest_wall_s": 0.0,
+    "acc_components_present": true,
+    "eq_retrieve_p50_ms": 65,
+    "eq_generate_p50_ms": 2686,
+    "eq_embed_p50_ms": 1995,
+    "eq_keyword_p50_ms": 1756,
+    "eq_over_lr_p50_ratio": 4.535,
+    "latency_slo_1_5x": false
+  },
+  "created_at_utc": "2026-08-15T09:08:20Z"
+}

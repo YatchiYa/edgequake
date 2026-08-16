@@ -1,6 +1,6 @@
 # EdgeQuake vs LightRAG — Business Performance Report
 
-**Generated:** 2026-08-12T00:42:16Z  
+**Generated:** 2026-08-15T11:02:18Z  
 **Task:** GraphRAG-Bench Acc dual-SUT (July 2026 fair pins)  
 **Profile:** `ACC_E2OCC_086_v1_lrlike_arms_v2`  
 **Fixture:** `medical_publish_question_ids_v1` (n=200)  
@@ -11,10 +11,10 @@
 ```text
   Task     GraphRAG-Bench/EQ-vs-LR  (same corpus · questions · judge · Mix↔Mix)
   Sample   n=200 medical-mid (50/type) — bootstrap Acc CI is underpowered at smoke n=40; this is the defendable publish ladder before full core
-  Acc      EQ 0.783 · LR 0.774 · Δ 0.009
-  Δ Acc CI [-0.052, +0.118] (n=49) — includes 0 ⇒ tie
-  L2       evidence recall EQ 0.924 / LR 0.952 · ctx_rel EQ 0.439 / LR 0.486
-  Latency  query p50 EQ 3992 ms / LR 1002 ms
+  Acc      EQ 0.792 · LR 0.786 · Δ 0.006
+  Δ Acc CI [-0.022, +0.034] (n=200) — includes 0 ⇒ tie
+  L2       evidence recall EQ 0.932 / LR 0.949 · ctx_rel EQ 0.471 / LR 0.510
+  Latency  query p50 EQ 5715 ms / LR 1325 ms
   Verdict  STATISTICAL TIE on answer quality
 ```
 
@@ -22,8 +22,8 @@
 
 ```text
   STATISTICAL TIE on answer quality
-  Acc   EdgeQuake 0.783  ·  LightRAG 0.774  ·  Δ 0.009
-  Δ Acc 95% CI: [-0.052, +0.118] (n=49) — includes 0 ⇒ tie
+  Acc   EdgeQuake 0.792  ·  LightRAG 0.786  ·  Δ 0.006
+  Δ Acc 95% CI: [-0.022, +0.034] (n=200) — includes 0 ⇒ tie
 ```
 
 ## What we tested
@@ -40,21 +40,21 @@
 
 | Layer | Plain meaning | EdgeQuake | LightRAG | Winner |
 |-------|---------------|-----------|----------|--------|
-| Answer quality (Acc) | Are answers roughly as good? | 0.783 | 0.774 | Tie (CI) |
-| Evidence coverage | Did we find the right sources? | 0.924 | 0.952 | LightRAG |
-| Context cleanliness | Is the prompt low-noise? | 0.439 | 0.486 | LightRAG |
-| Speed (query p50) | Time to answer (ms) | 3992 | 1002 | LightRAG |
+| Answer quality (Acc) | Are answers roughly as good? | 0.792 | 0.786 | Tie (CI) |
+| Evidence coverage | Did we find the right sources? | 0.932 | 0.949 | LightRAG |
+| Context cleanliness | Is the prompt low-noise? | 0.471 | 0.510 | LightRAG |
+| Speed (query p50) | Time to answer (ms) | 5715 | 1325 | LightRAG |
 
-- **EQ/LR p50 ratio:** 3.984× (product SLO target ≤ 1.5×)
+- **EQ/LR p50 ratio:** 4.313× (product SLO target ≤ 1.5×)
 
 ## By question type (Acc)
 
 | User need | EdgeQuake | LightRAG | Who leads |
 |-----------|-----------|----------|-----------|
-| Fact lookup | 0.780 | 0.733 | EdgeQuake |
-| Multi-hop reasoning | 0.756 | 0.729 | EdgeQuake |
-| Summarization | 0.858 | 0.838 | EdgeQuake |
-| Creative / open-ended | 0.736 | 0.794 | LightRAG |
+| Fact lookup | 0.779 | 0.756 | EdgeQuake |
+| Multi-hop reasoning | 0.797 | 0.778 | EdgeQuake |
+| Summarization | 0.814 | 0.844 | LightRAG |
+| Creative / open-ended | 0.776 | 0.766 | EdgeQuake |
 
 ## July 2026 landscape
 
@@ -82,7 +82,7 @@ make bench001-smoke-acc    # daily smoke gate only (n=40; not release)
 ## Pointers
 
 - **This publish pack:** `specs/001-benchmark/e2e/artifacts/publish/latest/`
-- **Archive:** `specs/001-benchmark/e2e/artifacts/history/medical-mid-20260812T004216Z`
+- **Archive:** `specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T110218Z`
 - **Technical SUMMARY:** same folder / archive `SUMMARY.md`
 - **Static business brief:** `specs/001-benchmark/019-business-eq-vs-lightrag-and-rag.md`
 - **Acc honesty close:** `specs/001-benchmark/001-edgquake-improvements/018-e4-acc-tie-close.md`

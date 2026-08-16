@@ -1,0 +1,29 @@
+{
+  "created_at_utc": "2026-08-15T13:20:34Z",
+  "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+  "valid": true,
+  "verdict": "WARM_LATENCY_WIN_ACC_STATISTICAL_TIE",
+  "git_sha": "d88c3da36",
+  "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T132034Z",
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "can_claim_beats_lightrag": false,
+  "can_claim_warm_latency_win": true,
+  "n_questions": 200,
+  "fixture_id": "medical_publish_question_ids_v1",
+  "publish_peer": "EQ_LLM_CACHE_WARM_v1",
+  "labeled_peer": true,
+  "not_acc_headline": true,
+  "eq_llm_cache": true,
+  "lr_enable_llm_cache": true,
+  "metrics": {
+    "eq_query_p50_ms": 82,
+    "lr_query_p50_ms": 993,
+    "eq_lr_p50_ratio": 0.083,
+    "eq_keyword_p50_ms": 0,
+    "eq_embed_p50_ms": 0,
+    "eq_retrieve_p50_ms": 56,
+    "eq_generate_p50_ms": 0,
+    "eq_acc": 0.792,
+    "lr_acc": 0.773
+  }
+}

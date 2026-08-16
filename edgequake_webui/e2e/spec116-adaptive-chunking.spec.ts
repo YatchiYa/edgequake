@@ -234,6 +234,7 @@ test.describe("SPEC-116 workspace chunking", () => {
     const card = page.getByTestId("workspace-chunking-card");
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("chunking-future-only-hint")).toBeVisible();
+    await expect(page.getByTestId("chunking-markdown-pack-hint")).toBeVisible();
     await expect(page.getByTestId("ws-chunking-value")).toContainText(/Inherit/i);
 
     await page.getByTestId("workspace-edit-config").click();

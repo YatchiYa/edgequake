@@ -1,41 +1,41 @@
 {
   "judge": "retrieval_eval",
-  "overall_context_relevancy": 0.4915698778908718,
-  "overall_evidence_recall": 0.9523065823222799,
+  "overall_context_relevancy": 0.4847491596131492,
+  "overall_evidence_recall": 0.9464661570543327,
   "by_type": {
     "Fact Retrieval": {
-      "context_relevancy": 0.5946553446553446,
-      "evidence_recall": 0.9479819067084235
+      "context_relevancy": 0.6066350710900474,
+      "evidence_recall": 0.9445147870468942
     },
     "Complex Reasoning": {
-      "context_relevancy": 0.49942528735632186,
-      "evidence_recall": 0.9469253380364491
+      "context_relevancy": 0.4906716417910448,
+      "evidence_recall": 0.9340570589469268
     },
     "Contextual Summarize": {
-      "context_relevancy": 0.5976890756302521,
-      "evidence_recall": 0.9504064094341871
+      "context_relevancy": 0.577485380116959,
+      "evidence_recall": 0.9439629629629629
     },
     "Creative Generation": {
-      "context_relevancy": 0.27450980392156865,
-      "evidence_recall": 0.96391267511006
+      "context_relevancy": 0.26420454545454547,
+      "evidence_recall": 0.9633298192605467
     }
   },
   "raw": {
     "Fact Retrieval": {
-      "context_relevancy": 0.5946553446553446,
-      "evidence_recall": 0.9479819067084235
+      "context_relevancy": 0.6066350710900474,
+      "evidence_recall": 0.9445147870468942
     },
     "Complex Reasoning": {
-      "context_relevancy": 0.49942528735632186,
-      "evidence_recall": 0.9469253380364491
+      "context_relevancy": 0.4906716417910448,
+      "evidence_recall": 0.9340570589469268
     },
     "Contextual Summarize": {
-      "context_relevancy": 0.5976890756302521,
-      "evidence_recall": 0.9504064094341871
+      "context_relevancy": 0.577485380116959,
+      "evidence_recall": 0.9439629629629629
     },
     "Creative Generation": {
-      "context_relevancy": 0.27450980392156865,
-      "evidence_recall": 0.96391267511006
+      "context_relevancy": 0.26420454545454547,
+      "evidence_recall": 0.9633298192605467
     }
   }
 }

@@ -1,0 +1,194 @@
+{
+  "archive": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T110218Z",
+  "n_eq_preds": 200,
+  "n_lr_preds": 200,
+  "n_paired_eval": 200,
+  "scorecard": {
+    "eq_acc": 0.7915453483563613,
+    "lr_acc": 0.7858737967830962,
+    "eq_ctx": 0.47125,
+    "lr_ctx": 0.51,
+    "eq_er": 0.9315970953066541,
+    "lr_er": 0.9486312792599557,
+    "eq_fact_er": 0.8466666666666666,
+    "lr_fact_er": 0.95,
+    "eq_empty_answer_rate": 0.0,
+    "lr_empty_answer_rate": 0.0
+  },
+  "by_type_acc": {
+    "Complex Reasoning": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": 0.0186,
+      "eq_ahead": 25,
+      "lr_ahead": 17,
+      "near_tie": 8
+    },
+    "Contextual Summarize": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": -0.0293,
+      "eq_ahead": 16,
+      "lr_ahead": 28,
+      "near_tie": 6
+    },
+    "Creative Generation": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": 0.01,
+      "eq_ahead": 26,
+      "lr_ahead": 16,
+      "near_tie": 8
+    },
+    "Fact Retrieval": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": 0.0234,
+      "eq_ahead": 13,
+      "lr_ahead": 12,
+      "near_tie": 25
+    }
+  },
+  "empty_answers": {
+    "eq_count": 0,
+    "lr_count": 0,
+    "eq_ids_sample": []
+  },
+  "snr_proxy": {
+    "eq_mean_jaccard_gold_vs_context": 0.0128,
+    "lr_mean_jaccard_gold_vs_context": 0.0154,
+    "eq_lt_lr_count": 189
+  },
+  "fact_lr_wins_top": [
+    {
+      "id": "Medical-ba2c8007",
+      "eq_acc": 0.2377,
+      "lr_acc": 0.9882,
+      "delta": -0.7505,
+      "eq_snr": 0.0025,
+      "lr_snr": 0.003,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Is autoimmune disease associated with increased BCC risk?"
+    },
+    {
+      "id": "Medical-7a495600",
+      "eq_acc": 0.2367,
+      "lr_acc": 0.8825,
+      "delta": -0.6458,
+      "eq_snr": 0.0049,
+      "lr_snr": 0.0052,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What are the main risk factors for bone cancer?"
+    },
+    {
+      "id": "Medical-c1a69780",
+      "eq_acc": 0.4545,
+      "lr_acc": 0.8992,
+      "delta": -0.4447,
+      "eq_snr": 0.0078,
+      "lr_snr": 0.0109,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What diagnostic methods are used to diagnose breast cancer?"
+    },
+    {
+      "id": "Medical-20454e30",
+      "eq_acc": 0.484,
+      "lr_acc": 0.8806,
+      "delta": -0.3966,
+      "eq_snr": 0.0041,
+      "lr_snr": 0.0066,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which factors are considered risk factors for head and neck cancers?"
+    },
+    {
+      "id": "Medical-788a228f",
+      "eq_acc": 0.6144,
+      "lr_acc": 0.989,
+      "delta": -0.3746,
+      "eq_snr": 0.0025,
+      "lr_snr": 0.0029,
+      "gold_token_coverage": 0.8333,
+      "miss_class": "generation",
+      "question": "How does immunosuppression, such as HIV infection, affect cervical cancer risk?"
+    },
+    {
+      "id": "Medical-4361d3ae",
+      "eq_acc": 0.5582,
+      "lr_acc": 0.774,
+      "delta": -0.2158,
+      "eq_snr": 0.0068,
+      "lr_snr": 0.0102,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What surveillance methods are used after T1 rectal tumor resection?"
+    },
+    {
+      "id": "Medical-a2555661",
+      "eq_acc": 0.8398,
+      "lr_acc": 0.9954,
+      "delta": -0.1556,
+      "eq_snr": 0.0035,
+      "lr_snr": 0.0049,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which genetic syndromes increase the risk for CSCC?"
+    },
+    {
+      "id": "Medical-fca41ac7",
+      "eq_acc": 0.8427,
+      "lr_acc": 0.9851,
+      "delta": -0.1424,
+      "eq_snr": 0.0032,
+      "lr_snr": 0.0039,
+      "gold_token_coverage": 0.7778,
+      "miss_class": "generation",
+      "question": "What are the tumor characteristics of Tis stage in intrahepatic bile duct cancer?"
+    },
+    {
+      "id": "Medical-3785154c",
+      "eq_acc": 0.8709,
+      "lr_acc": 0.9981,
+      "delta": -0.1273,
+      "eq_snr": 0.0045,
+      "lr_snr": 0.0058,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What treatment is an option for some patients with stage I, II, or III pancreatic cancer?"
+    },
+    {
+      "id": "Medical-0ce3e959",
+      "eq_acc": 0.8081,
+      "lr_acc": 0.9286,
+      "delta": -0.1205,
+      "eq_snr": 0.0111,
+      "lr_snr": 0.0134,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What are the treatment options for platinum-resistant ovarian cancer?"
+    }
+  ],
+  "fact_miss_split": {
+    "fact_lr_wins_n": 10,
+    "membership_n": 0,
+    "generation_n": 10,
+    "membership_share": 0.0,
+    "generation_share": 1.0,
+    "note": "081 F1: membership = gold token coverage <0.15 in EQ Acc context; generation = coverage \u22650.15 but Acc still lags LR"
+  },
+  "ranked_failure_modes": [
+    {
+      "mode": "Fact_Acc_LR_ahead",
+      "count": 12,
+      "mean_delta": 0.0234,
+      "note": "Primary Acc type gap \u2014 often R6 list split / evidence miss"
+    },
+    {
+      "mode": "Fact_ER_gap",
+      "eq_fact_er": 0.8467,
+      "lr_fact_er": 0.95,
+      "note": "Supports D1 R6 Acc/L2 unify before packing retries"
+    }
+  ],
+  "recommended_next_phase": "F4_generation_after_F3",
+  "honesty": "Labeled forensics only \u2014 not Acc Beat; Acc publish/latest stays P0 mid"
+}

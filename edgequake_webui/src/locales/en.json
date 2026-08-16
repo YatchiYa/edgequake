@@ -782,6 +782,20 @@
       "typesRemappedToast": "Entity types updated to match extraction language. Applies to future ingestions.",
       "changedToast": "Extraction language updated. Reprocess documents to refresh the graph."
     },
+    "chunking": {
+      "title": "Chunking",
+      "description": "How documents are split into chunks before entity extraction.",
+      "markdownPackHint": "Markdown files pack small headings into the token budget so a heading is not its own chunk.",
+      "futureOnlyHint": "Applies to future document ingestions. Use Rebuild Knowledge Graph to re-chunk existing documents.",
+      "mode": "Mode",
+      "inherit": "Inherit (fleet env)",
+      "adaptive": "Adaptive",
+      "fixed": "Fixed",
+      "accFairChip": "Match LightRAG (Acc fair)",
+      "adaptiveHelp": "Adaptive sizing uses 1200, 800, or 600 tokens by document size (same thresholds as fleet adaptive).",
+      "size": "Chunk size (tokens)",
+      "overlap": "Overlap (tokens)"
+    },
     "edit": "Edit",
     "actions": "Workspace Actions",
     "actionsDesc": "Manage workspace data and re-process documents.",

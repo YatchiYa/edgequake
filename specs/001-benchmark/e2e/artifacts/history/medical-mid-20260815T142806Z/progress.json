@@ -1,0 +1,29 @@
+{
+  "stage": "medical-mid",
+  "started_at_utc": "2026-08-15T14:27:36Z",
+  "updated_at_utc": "2026-08-15T14:28:06Z",
+  "phases": [
+    {
+      "phase": "score_parallel",
+      "status": "running",
+      "at_utc": "2026-08-15T14:28:06Z",
+      "run_elapsed_s": 285.4524853749899,
+      "detail": "EQ=done LR=done eval\u2225=24",
+      "phase_elapsed_s": 45.16748087503947
+    },
+    {
+      "phase": "score_parallel",
+      "status": "done",
+      "at_utc": "2026-08-15T14:28:06Z",
+      "run_elapsed_s": 285.4531432079966,
+      "detail": "elapsed=45s"
+    }
+  ],
+  "current_phase": "score_parallel",
+  "counts": {
+    "done": 50,
+    "total": 50,
+    "eta_s": 0.0
+  },
+  "run_elapsed_s": 285.4531470420188
+}

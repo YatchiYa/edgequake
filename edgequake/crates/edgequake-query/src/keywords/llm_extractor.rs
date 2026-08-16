@@ -71,8 +71,6 @@ impl LLMKeywordExtractor {
             return Ok(extracted);
         }
 
-        let prompt = self.build_prompt(query);
-
         // Use the provided LLM override instead of self.llm_provider
         let model = llm_override.model().to_string();
         let provider_name = llm_override.name().to_string();
@@ -81,8 +79,10 @@ impl LLMKeywordExtractor {
             &model,
             &provider_name,
             async {
+                let messages = Self::keyword_chat_messages(query);
+                let opts = Self::keyword_completion_options(llm_override.as_ref());
                 let response = llm_override
-                    .complete(&prompt)
+                    .chat(&messages, Some(&opts))
                     .await
                     .map_err(QueryError::from)?;
                 let rec = edgequake_observability::LlmGenerationRecord::from_response(
@@ -90,7 +90,8 @@ impl LLMKeywordExtractor {
                     &response.content,
                     response.prompt_tokens as u64,
                     response.completion_tokens as u64,
-                );
+                )
+                .with_provider_cache(response.cache_hit_tokens, response.cache_write_tokens);
                 Ok::<_, QueryError>((response, rec))
             },
         )
@@ -104,12 +105,9 @@ impl LLMKeywordExtractor {
         Ok(extracted)
     }
 
-    /// Build the keyword extraction prompt.
-    ///
-    /// This prompt is designed to match LightRAG's extraction quality.
-    pub fn build_prompt(&self, query: &str) -> String {
-        format!(
-            r#"Extract high-level and low-level keywords from the following query, and classify the query intent.
+    /// Stable keyword-extract system prefix (definitions + examples — cacheable).
+    pub fn keyword_system_prompt() -> &'static str {
+        r#"Extract high-level and low-level keywords from the user query, and classify the query intent.
 
 ## Definitions
 
@@ -129,76 +127,101 @@ Examples: "GPT-4", "Sarah Chen", "PostgreSQL", "neural network", "Microsoft"
 Prefer **factual** for short What/Which/Who/Is/Does questions that expect one concrete answer (drug name, method, gene, yes/no).
 Prefer **exploratory** (not factual) only when the question asks for a structured overview, stages, subtypes, diagnostic panels, or multi-aspect summary ("What are the main stages…", "How are … classified?").
 
-## Query
-"{query}"
-
 ## Output Format
 Respond ONLY with valid JSON:
-{{
+{
   "high_level_keywords": ["concept1", "concept2", ...],
   "low_level_keywords": ["entity1", "term1", ...],
   "query_intent": "factual|relational|exploratory|comparative|procedural"
-}}
+}
 
 ## Examples
 
 Query: "How does machine learning improve healthcare outcomes?"
-{{
+{
   "high_level_keywords": ["machine learning", "healthcare", "improvement", "outcomes"],
   "low_level_keywords": ["ML algorithms", "medical diagnosis", "patient data", "clinical trials"],
   "query_intent": "relational"
-}}
+}
 
 Query: "What is the relationship between OpenAI and Microsoft?"
-{{
+{
   "high_level_keywords": ["business relationship", "partnership", "technology collaboration"],
   "low_level_keywords": ["OpenAI", "Microsoft", "GPT", "Azure", "investment"],
   "query_intent": "relational"
-}}
+}
 
 Query: "Who is Sarah Chen and what is her role in the research project?"
-{{
+{
   "high_level_keywords": ["research", "team roles", "project leadership"],
   "low_level_keywords": ["Sarah Chen", "researcher", "project"],
   "query_intent": "factual"
-}}
+}
 
 Query: "Compare Python and Rust for systems programming"
-{{
+{
   "high_level_keywords": ["programming languages", "systems programming", "language comparison"],
   "low_level_keywords": ["Python", "Rust", "performance", "memory safety", "type system"],
   "query_intent": "comparative"
-}}
+}
 
 Query: "How are the stages of esophageal cancer defined and what are their distinguishing features?"
-{{
+{
   "high_level_keywords": ["cancer staging", "esophageal cancer", "clinical classification"],
   "low_level_keywords": ["esophageal cancer", "TNM", "stage", "distinguishing features"],
   "query_intent": "exploratory"
-}}
+}
 
 Query: "What diagnostic method is required for MGZL?"
-{{
+{
   "high_level_keywords": ["diagnosis", "lymphoma", "pathology"],
   "low_level_keywords": ["MGZL", "hematopathologist", "diagnostic method"],
   "query_intent": "factual"
-}}
+}
 
 Query: "Which chemotherapy regimens are used for bladder cancer?"
-{{
+{
   "high_level_keywords": ["chemotherapy", "bladder cancer", "treatment regimens"],
   "low_level_keywords": ["bladder cancer", "cisplatin", "ddMVAC"],
   "query_intent": "factual"
-}}
+}
 
 Query: "Is autoimmune disease associated with increased BCC risk?"
-{{
+{
   "high_level_keywords": ["autoimmune disease", "skin cancer risk"],
   "low_level_keywords": ["BCC", "basal cell carcinoma", "autoimmune"],
   "query_intent": "factual"
-}}
+}"#
+    }
 
-Now extract keywords from the query above. Respond with JSON only:"#
+    /// Dynamic keyword user turn (the query only).
+    pub fn keyword_user_prompt(query: &str) -> String {
+        format!(
+            "## Query\n\"{query}\"\n\nNow extract keywords from the query above. Respond with JSON only:"
+        )
+    }
+
+    /// Combined prompt (blob / tests). Prefer [`Self::keyword_system_prompt`] + user for KV cache.
+    pub fn build_prompt(&self, query: &str) -> String {
+        format!(
+            "{}\n\n{}",
+            Self::keyword_system_prompt(),
+            Self::keyword_user_prompt(query)
+        )
+    }
+
+    fn keyword_chat_messages(query: &str) -> Vec<edgequake_llm::traits::ChatMessage> {
+        vec![
+            edgequake_llm::traits::ChatMessage::system(Self::keyword_system_prompt()),
+            edgequake_llm::traits::ChatMessage::user(Self::keyword_user_prompt(query)),
+        ]
+    }
+
+    fn keyword_completion_options(provider: &dyn LLMProvider) -> edgequake_llm::CompletionOptions {
+        edgequake_llm::CompletionOptions::default().with_provider_prompt_cache(
+            "keyword",
+            provider.name(),
+            provider.model(),
         )
     }
 
@@ -378,8 +401,6 @@ impl KeywordExtractor for LLMKeywordExtractor {
             return Ok(self.rule_based_keywords_for_mock(query).to_simple());
         }
 
-        let prompt = self.build_prompt(query);
-
         let model = self.llm_provider.model().to_string();
         let provider_name = self.llm_provider.name().to_string();
         let response = edgequake_observability::with_llm_generation(
@@ -387,9 +408,11 @@ impl KeywordExtractor for LLMKeywordExtractor {
             &model,
             &provider_name,
             async {
+                let messages = Self::keyword_chat_messages(query);
+                let opts = Self::keyword_completion_options(self.llm_provider.as_ref());
                 let response = self
                     .llm_provider
-                    .complete(&prompt)
+                    .chat(&messages, Some(&opts))
                     .await
                     .map_err(QueryError::from)?;
                 let rec = edgequake_observability::LlmGenerationRecord::from_response(
@@ -397,7 +420,8 @@ impl KeywordExtractor for LLMKeywordExtractor {
                     &response.content,
                     response.prompt_tokens as u64,
                     response.completion_tokens as u64,
-                );
+                )
+                .with_provider_cache(response.cache_hit_tokens, response.cache_write_tokens);
                 Ok::<_, QueryError>((response, rec))
             },
         )
@@ -417,8 +441,6 @@ impl KeywordExtractor for LLMKeywordExtractor {
             return Ok(extracted);
         }
 
-        let prompt = self.build_prompt(query);
-
         let model = self.llm_provider.model().to_string();
         let provider_name = self.llm_provider.name().to_string();
         let response = edgequake_observability::with_llm_generation(
@@ -426,9 +448,11 @@ impl KeywordExtractor for LLMKeywordExtractor {
             &model,
             &provider_name,
             async {
+                let messages = Self::keyword_chat_messages(query);
+                let opts = Self::keyword_completion_options(self.llm_provider.as_ref());
                 let response = self
                     .llm_provider
-                    .complete(&prompt)
+                    .chat(&messages, Some(&opts))
                     .await
                     .map_err(QueryError::from)?;
                 let rec = edgequake_observability::LlmGenerationRecord::from_response(
@@ -436,7 +460,8 @@ impl KeywordExtractor for LLMKeywordExtractor {
                     &response.content,
                     response.prompt_tokens as u64,
                     response.completion_tokens as u64,
-                );
+                )
+                .with_provider_cache(response.cache_hit_tokens, response.cache_write_tokens);
                 Ok::<_, QueryError>((response, rec))
             },
         )
@@ -655,6 +680,17 @@ impl KeywordExtractor for CachedKeywordExtractor {
     fn cache_key(&self, query: &str) -> String {
         self.build_cache_key(query)
     }
+
+    async fn peek_cached(&self, query: &str) -> Option<ExtractedKeywords> {
+        if !keyword_cache_enabled() {
+            return None;
+        }
+        self.cache
+            .get(&self.build_cache_key(query))
+            .await
+            .ok()
+            .flatten()
+    }
 }
 
 #[cfg(test)]
@@ -749,5 +785,14 @@ Done!"#;
         let out_off =
             LLMKeywordExtractor::maybe_apply_factual_intent_bias(q, QueryIntent::Exploratory);
         assert_eq!(out_off, QueryIntent::Exploratory);
+    }
+
+    #[test]
+    fn keyword_system_prompt_excludes_user_query() {
+        let sys = LLMKeywordExtractor::keyword_system_prompt();
+        let user = LLMKeywordExtractor::keyword_user_prompt("What is UNIQUE_QUERY_TOKEN?");
+        assert!(!sys.contains("UNIQUE_QUERY_TOKEN"));
+        assert!(user.contains("UNIQUE_QUERY_TOKEN"));
+        assert!(sys.contains("high_level_keywords"));
     }
 }

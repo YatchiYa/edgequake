@@ -29,7 +29,7 @@ use edgequake_llm::traits::EmbeddingProvider;
 ///
 /// Same math as `edgequake_core::types::Embedding::normalize` — kept local to
 /// avoid a `edgequake-query` → `edgequake-core` dependency cycle.
-fn l2_normalize_vec(mut vector: Vec<f32>) -> Vec<f32> {
+pub(crate) fn l2_normalize_vec(mut vector: Vec<f32>) -> Vec<f32> {
     let norm: f32 = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
     if norm > 0.0 {
         vector.iter_mut().for_each(|x| *x /= norm);

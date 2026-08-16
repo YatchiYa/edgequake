@@ -13,6 +13,20 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+fn split_keyword_chat_parts(prompt: &str, query: &str) -> (String, String) {
+    const MARKER: &str = "-Real Data-";
+    if let Some((sys, _)) = prompt.split_once(MARKER) {
+        let sys = sys.trim();
+        if !sys.is_empty() {
+            return (sys.to_string(), format!("Query: {query}\nOutput:"));
+        }
+    }
+    (
+        "Extract high-level and low-level keywords as JSON.".to_string(),
+        prompt.to_string(),
+    )
+}
+
 /// Keywords extracted from a query.
 ///
 /// High-level keywords focus on overarching concepts or themes,
@@ -101,8 +115,15 @@ impl KeywordExtractor {
 
         // Extract keywords via LLM
         let prompt = self.build_extraction_prompt(query_normalized);
+        let (system, user) = split_keyword_chat_parts(&prompt, query_normalized);
+        let opts = edgequake_llm::CompletionOptions::default()
+            .with_role_cache("keyword", self.llm.as_ref());
+        let messages = vec![
+            edgequake_llm::traits::ChatMessage::system(system),
+            edgequake_llm::traits::ChatMessage::user(user),
+        ];
         let response =
-            self.llm.complete(&prompt).await.map_err(|e| {
+            self.llm.chat(&messages, Some(&opts)).await.map_err(|e| {
                 Error::internal(format!("LLM error during keyword extraction: {}", e))
             })?;
 

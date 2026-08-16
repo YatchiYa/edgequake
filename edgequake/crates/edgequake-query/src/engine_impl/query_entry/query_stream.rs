@@ -87,10 +87,11 @@ impl QueryEngine {
         keyword_llm: Option<Arc<dyn crate::LLMProvider>>,
         answer_llm: Option<Arc<dyn crate::LLMProvider>>,
     ) -> Result<(QueryContext, QueryMode, TokenStream)> {
+        let embedding = self.cached_embedding_for(embedding_provider);
         self.stream_with_providers(
             request,
             QueryProviders {
-                embedding: embedding_provider.as_ref(),
+                embedding: embedding.as_ref(),
                 vector_storage: Some(&vector_storage),
                 keyword_llm,
                 answer_llm,
@@ -247,21 +248,24 @@ impl QueryEngine {
                 // 083: prefer system/user chat when not COMPLETE_BLOB (even for stream entry —
                 // token stream API is one-blob; chat preserves LR roles as a one-shot stream).
                 if !use_complete_blob {
-                    use edgequake_llm::traits::{ChatMessage, CompletionOptions};
-                    let messages = vec![
-                        ChatMessage::system(&system_text),
-                        ChatMessage::user(&query_text),
-                    ];
-                    let completion_opts = request
-                        .reasoning_effort
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|s| !s.is_empty())
-                        .map(|effort| CompletionOptions {
-                            reasoning_effort: Some(effort.to_string()),
-                            ..Default::default()
-                        });
-                    match llm.chat(&messages, completion_opts.as_ref()).await {
+                    use edgequake_llm::traits::CompletionOptions;
+                    let messages =
+                        super::super::prompt::answer_chat_messages(&system_text, &query_text);
+                    let completion_opts = {
+                        let mut opts = request
+                            .reasoning_effort
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                            .map(|effort| CompletionOptions {
+                                reasoning_effort: Some(effort.to_string()),
+                                ..Default::default()
+                            })
+                            .unwrap_or_default();
+                        opts = opts.with_provider_prompt_cache("query", llm.name(), llm.model());
+                        opts
+                    };
+                    match llm.chat(&messages, Some(&completion_opts)).await {
                         Ok(response) => {
                             edgequake_observability::record_gen_ai_usage(
                                 Some(response.prompt_tokens as u64),

@@ -304,7 +304,7 @@ fn emit_grouped_sections(
 // ============================================================================
 
 /// Check if a line is a markdown table separator (e.g., `| --- | --- |`).
-fn is_separator_line(line: &str) -> bool {
+pub(crate) fn is_separator_line(line: &str) -> bool {
     let trimmed = line.trim();
     if !trimmed.starts_with('|') {
         return false;

@@ -355,7 +355,8 @@ where
                         &resp.content,
                         resp.prompt_tokens as u64,
                         resp.completion_tokens as u64,
-                    );
+                    )
+                    .with_provider_cache(resp.cache_hit_tokens, resp.cache_write_tokens);
                     Ok::<_, edgequake_llm::error::LlmError>((resp, rec))
                 },
             )

@@ -2860,7 +2860,7 @@ logs: ## Show recent logs from all services
 	@echo "$(BOLD)Docker Container Status:$(RESET)"
 	@cd $(DOCKER_DIR) && docker compose ps 2>/dev/null || echo "Docker not running"
 
-.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates spec124-proof
+.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates spec124-proof spec125-proof
 
 resource-proof: ## Run SPEC-006 resource safety proof suite (mock; no Postgres required)
 	@chmod +x specifications/006-ensure-perf/e2e/run_resource_proof.sh scripts/spec006_no_get_all_api.sh scripts/spec006_budget_catalog_sync.sh scripts/spec006_source_ids_migration.sh scripts/spec006_no_unguarded_community_api.sh scripts/spec006_no_adhoc_resource_budget.sh scripts/spec006_apply_migration_038.sh edgequake/scripts/migrations/apply_038.sh
@@ -2925,6 +2925,16 @@ spec124-proof: ## SPEC-124 Langfuse CI-unfakable proofs (InMemory OTEL + contrac
 	@cd $(BACKEND_DIR) && cargo test -p edgequake-pipeline --lib spec124_ingest_stages
 	@cd $(BACKEND_DIR) && cargo test -p edgequake-api --lib spec124_ingest_converting
 	@echo "$(GREEN)✓ SPEC-124 proof passed$(RESET)"
+
+spec125-proof: ## SPEC-125 markdown pack proofs (heading-dense fixture + Acc geometry + ingest.chunking distribution)
+	@echo "$(BOLD)SPEC-125 proof$(RESET)"
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-pipeline --lib markdown_pack
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-pipeline --test contract_spec125_markdown_pack
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-pipeline --test e2e_spec125_markdown_pack
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-pipeline --test contract_spec026_recursive_chunking
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-pipeline --test e2e_spec116_chunk_geometry
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-observability --lib inmemory_ingest_chunking
+	@echo "$(GREEN)✓ SPEC-125 proof passed$(RESET)"
 
 observability-jaeger: ## Docker stack with Jaeger OTLP + JSON logs (SPEC-018)
 	@cd $(DOCKER_DIR) && docker compose -f docker-compose.yml -f docker-compose.observability.yml --profile observability up --build
@@ -3066,7 +3076,7 @@ bench047-full: bench047-install ## SPEC-047 full (135 docs) ≥10 parallel inges
 # ---------------------------------------------------------------------------
 # SPEC-001 — EdgeQuake HybridRAG vs LightRAG (GraphRAG-Bench)
 # ---------------------------------------------------------------------------
-.PHONY: bench bench-warm bench001-install bench001-doctor bench001-freeze-smoke bench001-smoke bench001-smoke-fast bench001-smoke-fast-large bench001-smoke-fast-acc bench001-smoke-acc bench001-medical-mid bench001-full bench001 bench001-acc-canary bench001-smoke-paper bench001-core bench001-acc-backend bench001-watch bench001-f1a bench001-f2a bench001-f3a bench001-f4a bench001-p0 bench001-p1a bench001-p1b bench001-p2a bench001-p2b bench001-p3a bench001-p3b bench001-p4 bench001-p5 bench001-q0 bench001-q1 bench001-q2 bench001-q3 bench001-q4 bench001-r0 bench001-r1 bench001-r2 bench001-r3 bench001-s0 bench001-s1 bench001-t0 bench001-t0b bench001-t0c bench001-t0d bench001-t1 bench001-a0 bench001-a1 bench001-a2 bench001-a3 bench001-a4 bench001-lr-identity bench001-lr-pack-bm25 bench001-lr-identity-fact-l2 bench001-medical-mid-lr-identity-fact-l2 bench001-lr-nf-fact-l2 bench001-medical-mid-lr-nf-fact-l2 bench001-lr-dense-fact-l2 bench001-medical-mid-lr-dense-fact-l2 bench001-lr-occ-fact-l2 bench001-medical-mid-lr-occ-fact-l2 bench001-lr-posttrunc-fact-l2 bench001-medical-mid-lr-posttrunc-fact-l2 bench001-medical-full-lr-occ-fact-l2 bench001-medical-full-p0 bench001-b1-audit bench001-b2-reingest bench001-b3-reingest bench001-b3b-reingest bench001-b5-reingest bench001-b6-reingest bench001-b7-reingest bench001-b8-reingest bench001-b9-reingest bench001-b10-reingest bench001-c1a bench001-c1b bench001-c1d bench001-c1e bench001-c1cold bench001-lr-unify-fact-l2 bench001-medical-mid-lr-unify-fact-l2 bench001-medical-full-lr-unify-fact-l2 bench001-lr-intent-w-fact-l2 bench001-medical-mid-lr-intent-w-fact-l2 bench001-lr-relsel-fact-l2 bench001-d0-forensics
+.PHONY: bench bench-warm bench001-medical-mid-eq-llm-cache-warm bench001-install bench001-doctor bench001-freeze-smoke bench001-smoke bench001-smoke-fast bench001-smoke-fast-large bench001-smoke-fast-acc bench001-smoke-acc bench001-medical-mid bench001-full bench001 bench001-acc-canary bench001-smoke-paper bench001-core bench001-acc-backend bench001-watch bench001-f1a bench001-f2a bench001-f3a bench001-f4a bench001-p0 bench001-p1a bench001-p1b bench001-p2a bench001-p2b bench001-p3a bench001-p3b bench001-p4 bench001-p5 bench001-q0 bench001-q1 bench001-q2 bench001-q3 bench001-q4 bench001-r0 bench001-r1 bench001-r2 bench001-r3 bench001-s0 bench001-s1 bench001-t0 bench001-t0b bench001-t0c bench001-t0d bench001-t1 bench001-a0 bench001-a1 bench001-a2 bench001-a3 bench001-a4 bench001-lr-identity bench001-lr-pack-bm25 bench001-lr-identity-fact-l2 bench001-medical-mid-lr-identity-fact-l2 bench001-lr-nf-fact-l2 bench001-medical-mid-lr-nf-fact-l2 bench001-lr-dense-fact-l2 bench001-medical-mid-lr-dense-fact-l2 bench001-lr-occ-fact-l2 bench001-medical-mid-lr-occ-fact-l2 bench001-lr-posttrunc-fact-l2 bench001-medical-mid-lr-posttrunc-fact-l2 bench001-medical-full-lr-occ-fact-l2 bench001-medical-full-p0 bench001-b1-audit bench001-b2-reingest bench001-b3-reingest bench001-b3b-reingest bench001-b5-reingest bench001-b6-reingest bench001-b7-reingest bench001-b8-reingest bench001-b9-reingest bench001-b10-reingest bench001-c1a bench001-c1b bench001-c1d bench001-c1e bench001-c1cold bench001-lr-unify-fact-l2 bench001-medical-mid-lr-unify-fact-l2 bench001-medical-full-lr-unify-fact-l2 bench001-lr-intent-w-fact-l2 bench001-medical-mid-lr-intent-w-fact-l2 bench001-lr-relsel-fact-l2 bench001-d0-forensics
 
 bench001-install: ## Install SPEC-001 Python harness (editable)
 	@cd tools/bench001 && pip3 install -e . -q
@@ -3369,8 +3379,8 @@ bench001-medical-mid: bench001-install bench001-acc-backend ## Acc medical-mid n
 	export BENCH001_FULL_ACC=1; \
 	export EDGEQUAKE_MIX_ARM_GATE="$(BENCH001_EQ_MIX_ARM_GATE)"; \
 	export EDGEQUAKE_ADAPTIVE_CHUNKING=0; \
-	export EDGEQUAKE_CHUNK_SIZE=1200; \
-	export EDGEQUAKE_CHUNK_OVERLAP=100; \
+	export EDGEQUAKE_CHUNK_SIZE="$${BENCH001_EQ_CHUNK_SIZE:-1200}"; \
+	export EDGEQUAKE_CHUNK_OVERLAP="$${BENCH001_EQ_CHUNK_OVERLAP:-100}"; \
 	export EDGEQUAKE_MIX_FUSION=round_robin; \
 	export EDGEQUAKE_HYBRID_FUSION=round_robin; \
 	export BENCH001_ALLOW_ROUND_ROBIN=1; \
@@ -3487,6 +3497,34 @@ bench-warm: ## Same as make bench but query-only (defaults to latest warm EQ wor
 	export BENCH001_EQ_WORKSPACE_ID; \
 	export BENCH001_QUERY_ONLY=1; \
 	$(MAKE) bench --no-print-directory
+
+# SPEC-103 labeled latency peer: Acc law + EQ response cache ON (not Acc Beat / not publish/latest).
+# Pass 1 fills public.llm_cache; pass 2 measures warm EQ vs warm LR (BENCH001_LR_ENABLE_LLM_CACHE default 1).
+bench001-medical-mid-eq-llm-cache-warm: ## SPEC-103: medical-mid fill+warm with EDGEQUAKE_LLM_CACHE=1 (SKIP publish/latest)
+	@set -e; \
+	export EDGEQUAKE_LLM_CACHE=1; \
+	if [ -z "$${BENCH001_EQ_WORKSPACE_ID:-}" ]; then \
+	  BENCH001_EQ_WORKSPACE_ID="$$(cd tools/bench001 && PYTHONPATH=. python3 -m bench001.cli resolve-warm-workspace)"; \
+	  echo "$(GREEN)eq-llm-cache-warm: workspace $${BENCH001_EQ_WORKSPACE_ID}$(RESET)"; \
+	fi; \
+	export BENCH001_EQ_WORKSPACE_ID; \
+	echo "$(YELLOW)→ Acc backend with EDGEQUAKE_LLM_CACHE=1 (labeled peer; Acc headline stays CACHE=0)$(RESET)"; \
+	$(MAKE) bench001-acc-backend --no-print-directory; \
+	grep -q 'EDGEQUAKE_LLM_CACHE="1"' /tmp/edgequake-start.sh \
+	  || { echo "$(RED)→ start.sh did not pin EDGEQUAKE_LLM_CACHE=1$(RESET)"; exit 1; }; \
+	export BENCH001_SKIP_BACKEND_RESTART=1; \
+	export BENCH001_QUERY_ONLY=1; \
+	export BENCH001_SKIP_PUBLISH_LATEST=1; \
+	export BENCH001_ALLOW_PUBLISH_LATEST=0; \
+	export BENCH001_LR_ENABLE_LLM_CACHE="$${BENCH001_LR_ENABLE_LLM_CACHE:-1}"; \
+	echo "$(BLUE)→ Pass 1/2: fill EQ llm_cache (no peer publish)$(RESET)"; \
+	unset BENCH001_PUBLISH_PEER; \
+	$(MAKE) bench001-medical-mid --no-print-directory; \
+	echo "$(BLUE)→ Pass 2/2: warm measure → peer EQ_LLM_CACHE_WARM_v1$(RESET)"; \
+	export BENCH001_PUBLISH_PEER="$${BENCH001_PUBLISH_PEER:-EQ_LLM_CACHE_WARM_v1}"; \
+	$(MAKE) bench001-medical-mid --no-print-directory; \
+	echo "$(GREEN)→ Peer: specs/001-benchmark/e2e/artifacts/publish/peers/EQ_LLM_CACHE_WARM_v1/$(RESET)"; \
+	echo "$(GREEN)→ SUMMARY: specs/001-benchmark/e2e/artifacts/medical-mid/SUMMARY.md$(RESET)"
 
 # Legacy aliases → make bench
 bench001-full: bench ## Alias: full Acc benchmark (n=200 medical-mid; mistral-small + mistral-embed)

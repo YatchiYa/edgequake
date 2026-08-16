@@ -7,4 +7,7 @@ mod breadcrumb;
 mod parse;
 
 pub use breadcrumb::{format_breadcrumb, HEADING_BREADCRUMB_SEP};
-pub use parse::{extract_markdown_blocks, MarkdownBlock, PREFACE_HEADING};
+pub use parse::{
+    extract_markdown_blocks, is_atx_heading_only_text, parse_atx_heading, MarkdownBlock,
+    PREFACE_HEADING,
+};

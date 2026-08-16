@@ -1,12 +1,14 @@
 # 080 — Beat LightRAG (evidence roadmap)
 
-**Status:** D0–D4 executed · packing STOP · continue in **[081](./081-beat-parity-first-principles.md)**  
-**Date:** 2026-07-23  
-**Keep query base:** E2 occ on B5 [`T133053Z`](../e2e/artifacts/history/medical-mid-20260722T133053Z/)  
+**Status:** D0–D4 executed · packing STOP · Acc Beat fishing STOP · continue in **[088](./088-beat-ctx-fact-er-program.md)**  
+**Date:** 2026-07-23 · **refresh 2026-08-16**  
+**Acc SSOT now:** E2-occ 086 mid [`T110218Z`](../e2e/artifacts/history/medical-mid-20260815T110218Z/) · `publish/latest` (EQ Acc **0.792** / LR **0.786** tie) · warm WS `23b09c73-…`  
+**Acc-law full:** [`T012004Z`](../e2e/artifacts/history/medical-full-20260816T012004Z/) · peer `ACC_E2OCC_086_MEDICAL_FULL_v1` (0.786/0.786 point tie; ctx 0.427 — **not Beat** · chunk **1200/100**)  
+**Keep query base (Jul-22 CI):** E2 occ on B5 [`T133053Z`](../e2e/artifacts/history/medical-mid-20260722T133053Z/)  
 **Fact ER label:** E2 on B6 ge2 [`T013716Z`](../e2e/artifacts/history/medical-mid-20260723T013716Z/) (not gap-close keep)  
-**Acc SSOT:** P0 mid [`T104918Z`](../e2e/artifacts/history/medical-mid-20260722T104918Z/) · `publish/latest` · warm WS `8e990410-…`  
+**Historical Acc SSOT (Jul-22 rows below):** P0 mid [`T104918Z`](../e2e/artifacts/history/medical-mid-20260722T104918Z/)  
 **Prior:** [079](./079-medical-full-scale-compare.md) · [078](./078-eq-vs-lightrag-first-principles-next.md) · [055](./055-post-acc-ceiling-first-principles.md)  
-**Next:** [081](./081-beat-parity-first-principles.md) — F1 forensics · B10 naming · no Mix packing retry
+**Next:** [088](./088-beat-ctx-fact-er-program.md) — query-only L2 exhausted; Acc ingest **chunk 1200/100**; Phase G still blocked on ctx
 
 ---
 
@@ -29,7 +31,9 @@ Scope: GraphRAG-Bench medical Acc + L2 + fair-cold latency + product TTFT/UX. No
 
 | Surface | n | EQ Acc | LR Acc | Acc Δ CI | EQ ctx | Fact ER |
 |---------|---|--------|--------|----------|--------|---------|
-| Acc headline P0 mid | 200 | 0.706 | 0.774 | LR [−0.107, −0.033] | 0.396 | 0.790 |
+| Acc headline 086 mid (**SSOT now**) | 200 | 0.792 | 0.786 | tie [−0.022, +0.034] | 0.471 | 0.847 |
+| Acc-law 086 full | 2062 | 0.786 | 0.786 | tie [−0.160, +0.047] | 0.427 | 0.914 |
+| Acc headline P0 mid (Jul-22) | 200 | 0.706 | 0.774 | LR [−0.107, −0.033] | 0.396 | 0.790 |
 | Gap-close E2 occ mid | 200 | 0.765 | 0.760 | tie [−0.031, +0.040] | 0.491 | 0.917 |
 | D1 unify mid (**REJECT**) | 200 | 0.734 | 0.787 | LR [−0.084, −0.022] | 0.503 | 0.903 |
 | D2 intent-w mid (**REJECT**) | 200 | 0.718 | 0.764 | LR [−0.082, −0.014] | 0.477 | 0.913 |
@@ -37,7 +41,7 @@ Scope: GraphRAG-Bench medical Acc + L2 + fair-cold latency + product TTFT/UX. No
 | E2 full | 2062 | 0.739 | 0.784 | LR [−0.069, −0.017] | 0.472 | 0.918 |
 | P0 full | 2062 | 0.724 | 0.784 | LR [−0.107, −0.042] | 0.394 | 0.905 |
 
-**Law:** Acc follows admitted context. Mid E2 Acc tie does **not** hold at full-N. Residual = Fact ER, ctx&lt;0.50, full-N Acc.
+**Law:** Acc follows admitted context. Jul-22 mid E2 Acc tie did **not** hold at full-N; Acc-law 086 full (chunk **1200/100**) **closed** that Acc scale gap (point tie) but ctx remains the Beat blocker. Residual = ctx&lt;0.50 (full 0.427).
 
 ### Do not retry
 
@@ -56,7 +60,7 @@ NF `naive_first` · dense `BM25_RETRIEVAL=0` · R3 `post_truncate` · Soft Mix /
 | **D4** | Ingest ge2 / source_id ceiling (labeled WS) | **Done (label)** — B5 Acc WS ge2=0%; B6 WS ge2=12.5% ([audit](../e2e/artifacts/ingest-audit/20260723T013324Z/)). E2 mid on B6 [`T013716Z`](../e2e/artifacts/history/medical-mid-20260723T013716Z/): Fact ER **0.930** (≥LR−0.03) but Acc/ctx below E2-B5 keep. Warm restored to B5; labeled peers no longer hijack warm. |
 | **D5** | Empty-answer reliability (R5) | Code: retry + extractive fallback |
 | **L** | TTFT + opt-in answer cache + c1cold ≤1.5× | **Done** in [064](./064-product-ttft-cache-batch-embed.md) |
-| **G** | Promote Acc latest | **Blocked** until medical-full Beat gates |
+| **G** | Promote Acc latest | **Blocked** — Acc-law full **ran** (`T012004Z`) but Beat gates unmet (ctx 0.427) |
 
 ```bash
 # D0
@@ -90,8 +94,9 @@ make bench001-medical-full-lr-unify-fact-l2
 ## 5. Promote checklist (Phase G)
 
 - [ ] Winner pack medical-mid: Beat CI + ctx≥0.50 + ER gates  
+- [x] Acc-law 086 medical-full n=2062 **ran** ([`T012004Z`](../e2e/artifacts/history/medical-full-20260816T012004Z/), chunk **1200/100**) — Acc point tie; ctx FAIL — **not** Beat  
 - [ ] Same pack medical-full n=2062: Beat CI + ctx + ER  
 - [ ] Acc `publish/latest` → new archive; `peers.json` + [019](../019-business-eq-vs-lightrag-and-rag.md)  
-- [ ] Gap-close / latency peers stay labeled  
+- [x] Gap-close / latency / Acc-law full peers stay labeled  
 
 Until then: **do not claim EQ beats LightRAG.**

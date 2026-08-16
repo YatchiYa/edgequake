@@ -2,9 +2,9 @@
 
 use crate::langfuse_attrs::{
     is_forbidden_cost_attr, COST_ATTR_DENYLIST, GEN_AI_CONVERSATION_ID, GEN_AI_USAGE_INPUT_TOKENS,
-    GEN_AI_USAGE_OUTPUT_TOKENS, LANGFUSE_OBSERVATION_INPUT, LANGFUSE_OBSERVATION_OUTPUT,
-    LANGFUSE_OBSERVATION_TYPE, LANGFUSE_SESSION_ID, OBSERVATION_TYPE_GENERATION,
-    OBSERVATION_TYPE_RETRIEVER,
+    GEN_AI_USAGE_OUTPUT_TOKENS, LANGFUSE_OBSERVATION_INPUT, LANGFUSE_OBSERVATION_METADATA_PREFIX,
+    LANGFUSE_OBSERVATION_OUTPUT, LANGFUSE_OBSERVATION_TYPE, LANGFUSE_SESSION_ID,
+    OBSERVATION_TYPE_GENERATION, OBSERVATION_TYPE_RETRIEVER,
 };
 use crate::langfuse_context::bind_langfuse_identity;
 use crate::rag_span::{
@@ -309,6 +309,46 @@ fn inmemory_with_llm_generation_usage_and_io() {
 }
 
 #[test]
+fn inmemory_llm_generation_records_provider_cache_tokens() {
+    let exporter = InMemorySpanExporterBuilder::new().build();
+    let provider = SdkTracerProvider::builder()
+        .with_simple_exporter(exporter.clone())
+        .build();
+    let tracer = provider.tracer("edgequake-spec126-cache");
+    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    let subscriber = tracing_subscriber::registry().with(otel_layer);
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+
+    tracing::subscriber::with_default(subscriber, || {
+        rt.block_on(async {
+            let ok: Result<&str, &str> = with_llm_generation("extract-entities", "m", "p", async {
+                Ok((
+                    "done",
+                    LlmGenerationRecord::from_response(Some("chunk"), "ents", 100, 20)
+                        .with_provider_cache(Some(80), Some(20)),
+                ))
+            })
+            .await;
+            assert_eq!(ok, Ok("done"));
+        });
+    });
+
+    provider.force_flush().expect("flush");
+    let spans = exporter.get_finished_spans().expect("spans");
+    assert!(!spans.is_empty());
+    let attrs = attr_map(&spans[0]);
+    let hit_key = format!("{LANGFUSE_OBSERVATION_METADATA_PREFIX}cache_hit_tokens");
+    let write_key = format!("{LANGFUSE_OBSERVATION_METADATA_PREFIX}cache_write_tokens");
+    assert_eq!(attrs.get(&hit_key).map(String::as_str), Some("80"));
+    assert_eq!(attrs.get(&write_key).map(String::as_str), Some("20"));
+    assert_no_cost_keys(&attrs);
+}
+
+#[test]
 fn inmemory_slugs_additive_to_guids() {
     let exporter = InMemorySpanExporterBuilder::new().build();
     let provider = SdkTracerProvider::builder()
@@ -476,5 +516,64 @@ fn inmemory_ingest_parse_meta_on_span() {
             .map(String::as_str),
         Some("12")
     );
+    assert_no_cost_keys(&attrs);
+}
+
+#[test]
+fn inmemory_ingest_chunking_token_distribution() {
+    let exporter = InMemorySpanExporterBuilder::new().build();
+    let provider = SdkTracerProvider::builder()
+        .with_simple_exporter(exporter.clone())
+        .build();
+    let tracer = provider.tracer("edgequake-spec125-chunk-dist");
+
+    let chunks = 2usize;
+    let token_min = 5usize;
+    let token_p50 = 40usize;
+    let token_max = 80usize;
+    let orphans = 0usize;
+    let output = format!(
+        "{{\"chunks\":{chunks},\"token_min\":{token_min},\"token_p50\":{token_p50},\"token_max\":{token_max},\"orphan_heading_chunks\":{orphans}}}"
+    );
+
+    tracer.in_span("ingest.chunking", |_cx| {
+        record_observation_io(Some("{\"chars\":100}"), Some(&output));
+        crate::record_ingest_kg_meta(crate::IngestKgMeta {
+            chunk_strategy: Some("markdown".into()),
+            chunk_size: Some(1200),
+            overlap: Some(100),
+            token_min: Some(token_min),
+            token_p50: Some(token_p50),
+            token_max: Some(token_max),
+            orphan_heading_chunks: Some(orphans),
+            ..Default::default()
+        });
+    });
+
+    provider.force_flush().expect("flush");
+    let spans = exporter.get_finished_spans().expect("spans");
+    let attrs = attr_map(&spans[0]);
+    let out = attrs
+        .get(LANGFUSE_OBSERVATION_OUTPUT)
+        .map(String::as_str)
+        .unwrap_or("");
+    assert_eq!(
+        out, output,
+        "output must be the recorded JSON, not a rewrite"
+    );
+    let min_s = token_min.to_string();
+    assert_eq!(
+        attrs
+            .get("langfuse.observation.metadata.token_min")
+            .map(String::as_str),
+        Some(min_s.as_str())
+    );
+    assert_eq!(
+        attrs
+            .get("langfuse.observation.metadata.orphan_heading_chunks")
+            .map(String::as_str),
+        Some("0")
+    );
+    assert!(!out.contains("## "), "must not dump chunk text");
     assert_no_cost_keys(&attrs);
 }

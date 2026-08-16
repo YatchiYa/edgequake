@@ -1,12 +1,12 @@
-# bench001 LIVE — `medical-mid`
+# bench001 LIVE — `medical-full`
 
-- **updated:** `2026-08-12T00:42:16Z`
-- **started:** `2026-08-12T00:41:47Z`
-- **run elapsed:** `15m01s`
+- **updated:** `2026-08-16T01:20:05Z`
+- **started:** `2026-08-16T01:19:36Z`
+- **run elapsed:** `44m49s`
 - **phase:** `report` (done)
-- **progress:** `50/50`
+- **progress:** `1098/1098`
 - **ETA (phase):** `0s`
-- **detail:** valid=True archive=medical-mid-20260812T004216Z
+- **detail:** valid=True archive=medical-full-20260816T012004Z
 
 ## Corpus / chunking
 
@@ -24,14 +24,14 @@
 
 | at (UTC) | phase | status | detail | eta | run |
 |----------|-------|--------|--------|-----|-----|
-| 2026-08-12T00:42:16Z | score_parallel | running | EQ=done LR=done eval∥=24 | — | 15m01s |
-| 2026-08-12T00:42:16Z | score_parallel | done | elapsed=45s | — | 15m01s |
-| 2026-08-12T00:42:16Z | report | done | valid=True archive=medical-mid-20260812T004216Z | — | 15m01s |
+| 2026-08-16T01:20:04Z | score_parallel | running | EQ=done LR=done eval∥=24 | — | 44m49s |
+| 2026-08-16T01:20:04Z | score_parallel | done | elapsed=9m46s | — | 44m49s |
+| 2026-08-16T01:20:05Z | report | done | valid=True archive=medical-full-20260816T012004Z | — | 44m49s |
 
 ## Monitor
 
 ```bash
-make bench001-watch STAGE=medical-mid
-# or:  watch -n 2 cat /Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/medical-mid/LIVE.md
-# or:  tail -f /Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/medical-mid/logs/progress.jsonl
+make bench001-watch STAGE=medical-full
+# or:  watch -n 2 cat /Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/medical-full/LIVE.md
+# or:  tail -f /Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/medical-full/logs/progress.jsonl
 ```

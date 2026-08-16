@@ -131,6 +131,7 @@ impl GleaningExtractor {
     }
 
     /// Build the gleaning prompt.
+    #[allow(dead_code)]
     fn build_gleaning_prompt(
         &self,
         chunk: &TextChunk,
@@ -266,16 +267,17 @@ impl EntityExtractor for GleaningExtractor {
             let entity_names: Vec<String> =
                 result.entities.iter().map(|e| e.name.clone()).collect();
 
-            // Build and execute gleaning prompt
-            let gleaning_prompt =
-                self.build_gleaning_prompt(chunk, &entity_names, after_caps_truncate);
-
             // C-17: share extraction CompletionOptions (temp=0, provider-aware think-off).
             let options = extraction_completion_options_with_effort(
                 self.llm_provider.model(),
                 16_384,
                 self.reasoning_effort.as_deref(),
                 self.llm_provider.name(),
+            )
+            .with_provider_prompt_cache(
+                "glean",
+                self.llm_provider.name(),
+                self.llm_provider.model(),
             );
             let model = self.llm_provider.model().to_string();
             let provider_name = self.llm_provider.name().to_string();
@@ -284,9 +286,27 @@ impl EntityExtractor for GleaningExtractor {
                 &model,
                 &provider_name,
                 async {
+                    let text = crate::prompts::text_with_section_context(
+                        &chunk.content,
+                        chunk.section.as_ref(),
+                    );
+                    let caps = self.resolved_caps();
+                    let messages = vec![
+                        edgequake_llm::traits::ChatMessage::system(
+                            crate::prompts::json_gleaning_system_prompt_with_caps(
+                                &self.entity_schema,
+                                &self.language,
+                                caps,
+                                after_caps_truncate,
+                            ),
+                        ),
+                        edgequake_llm::traits::ChatMessage::user(
+                            crate::prompts::json_gleaning_user_prompt(&text, &entity_names),
+                        ),
+                    ];
                     let resp = self
                         .llm_provider
-                        .complete_with_options(&gleaning_prompt, &options)
+                        .chat(&messages, Some(&options))
                         .await
                         .map_err(|e| {
                             PipelineError::ExtractionError(format!("Gleaning LLM error: {}", e))
@@ -300,7 +320,8 @@ impl EntityExtractor for GleaningExtractor {
                         &resp.content,
                         resp.prompt_tokens as u64,
                         resp.completion_tokens as u64,
-                    );
+                    )
+                    .with_provider_cache(resp.cache_hit_tokens, resp.cache_write_tokens);
                     Ok::<_, PipelineError>((resp, rec))
                 },
             )

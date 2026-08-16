@@ -57,6 +57,20 @@ pub fn build_faithfulness_judge_prompt(answer: &str, context: &QueryContext) -> 
     )
 }
 
+/// Stable judge instructions vs dynamic evidence+answer (SPEC-126).
+pub fn split_faithfulness_chat_parts(answer: &str, context: &QueryContext) -> (String, String) {
+    let prompt = build_faithfulness_judge_prompt(answer, context);
+    const MARKER: &str = "EVIDENCE:";
+    if let Some((sys, rest)) = prompt.split_once(MARKER) {
+        return (sys.trim().to_string(), format!("{MARKER}{rest}"));
+    }
+    (
+        "You are a faithfulness judge for RAG answers. Reply with ONLY a float in [0,1]."
+            .to_string(),
+        prompt,
+    )
+}
+
 fn truncate_chars(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();
@@ -126,8 +140,13 @@ pub async fn score_faithfulness_llm(
     if significant_tokens(answer).is_empty() {
         return Some(1.0);
     }
-    let prompt = build_faithfulness_judge_prompt(answer, context);
-    match llm.complete(&prompt).await {
+    let (system, user) = split_faithfulness_chat_parts(answer, context);
+    let opts = edgequake_llm::CompletionOptions::default().with_role_cache("judge", llm);
+    let messages = vec![
+        edgequake_llm::traits::ChatMessage::system(system),
+        edgequake_llm::traits::ChatMessage::user(user),
+    ];
+    match llm.chat(&messages, Some(&opts)).await {
         Ok(resp) => {
             let score = parse_judge_score(&resp.content);
             if score.is_none() {

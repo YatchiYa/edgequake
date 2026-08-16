@@ -6,6 +6,7 @@ Smoke → core Acc history (newest last). Each row is an archived `scorecard.jso
 |-----|-------|-------|---|--------|--------|---|-------|----|-------|--------------|--------------|
 | medical-full-20260722T171906Z | medical-full | True | 2062 | 0.7391 | 0.7845 | -0.0454 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | medical-full-20260722T204100Z | medical-full | True | 2062 | 0.7244 | 0.7842 | -0.0598 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-full-20260816T012004Z | medical-full | True | 2062 | 0.7857 | 0.7855 | +0.0001 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | medical-mid-20260722T104918Z | medical-mid | True | 200 | 0.7064 | 0.7740 | -0.0675 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | medical-mid-20260722T125400Z | medical-mid | True | 200 | 0.7456 | 0.7680 | -0.0223 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | medical-mid-20260722T130356Z | medical-mid | True | 200 | 0.7423 | 0.7852 | -0.0429 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
@@ -32,6 +33,21 @@ Smoke → core Acc history (newest last). Each row is an archived `scorecard.jso
 | medical-mid-20260807T070449Z | medical-mid | False | 200 | 0.5103 | 0.7820 | -0.2718 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | medical-mid-20260807T081848Z | medical-mid | True | 200 | 0.7784 | 0.7881 | -0.0097 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | medical-mid-20260812T004216Z | medical-mid | True | 200 | 0.7827 | 0.7737 | +0.0089 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T090820Z | medical-mid | True | 200 | 0.8053 | 0.7983 | +0.0070 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T110218Z | medical-mid | True | 200 | 0.7915 | 0.7859 | +0.0057 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T112333Z | medical-mid | True | 200 | 0.8136 | 0.7853 | +0.0283 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T113139Z | medical-mid | True | 200 | 0.8105 | 0.7869 | +0.0236 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T120324Z | medical-mid | True | 200 | 0.7971 | 0.7866 | +0.0105 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T131616Z | medical-mid | True | 200 | 0.7847 | 0.8113 | -0.0267 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T132034Z | medical-mid | True | 200 | 0.7919 | 0.7729 | +0.0190 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T133601Z | medical-mid | True | 200 | 0.7632 | 0.7916 | -0.0284 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T134547Z | medical-mid | True | 200 | 0.8221 | 0.7724 | +0.0497 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T135129Z | medical-mid | True | 200 | 0.7755 | 0.7728 | +0.0027 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T135805Z | medical-mid | True | 200 | 0.7763 | 0.7720 | +0.0043 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T141834Z | medical-mid | True | 200 | 0.7678 | 0.7819 | -0.0142 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T142806Z | medical-mid | True | 200 | 0.7941 | 0.7858 | +0.0084 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T143947Z | medical-mid | True | 200 | 0.7824 | 0.7645 | +0.0179 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260815T152904Z | medical-mid | False | 200 | 0.4977 | 0.7699 | -0.2722 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | smoke-20260719T011512Z | smoke | False | 40 | 0.2289 | 0.2311 | -0.0023 | generation_eval | 8 | 8 | 1.0000 | 1.0000 |
 | smoke-20260719T011516Z | smoke | False | 8 | 1.0000 | 1.0000 | +0.0000 | rouge_proxy | 4 | 4 | 0.0000 | 0.0000 |
 | smoke-20260719T011554Z | smoke | False | 40 | 0.2289 | 0.2311 | -0.0023 | generation_eval | 8 | 8 | 1.0000 | 1.0000 |

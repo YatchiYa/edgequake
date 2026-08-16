@@ -92,6 +92,8 @@ PUBLICATION_ENV: dict[str, str] = {
     "EDGEQUAKE_L2_BM25_UNION": "1",
     "EDGEQUAKE_L2_BM25_MODE": "fact_replace",
     "EDGEQUAKE_L2_BM25_MIX_TOP_K": "30",
+    "EDGEQUAKE_L2_FACT_BM25_POOL": "mix",
+    "EDGEQUAKE_L2_FACT_BM25_POOL_PRE_COMPRESS": "0",
     # SPEC-103 LAW-C7: Acc cold peer — warm LLM cache is never a Beat claim.
     "EDGEQUAKE_LLM_CACHE": "0",
     # SPEC-001 Phase 1 relevancy prune — OFF for Acc headline (gate not met).
@@ -114,6 +116,7 @@ PUBLICATION_ENV: dict[str, str] = {
     "EDGEQUAKE_POPULAR_NODE_FALLBACK": "0",
     # 022 P1: graph-walk compress off for Acc headline (labeled gw_compress_v1).
     "EDGEQUAKE_GRAPH_WALK_COMPRESS": "0",
+    "EDGEQUAKE_GRAPH_WALK_COMPRESS_NAIVE_PROTECT": "8",
 }
 
 
@@ -227,6 +230,9 @@ def apply_acc_publication_pins(
     # Relevancy-prune ablation keys: preserve non-empty shell overrides so
     # labeled Acc runs (e.g. SCORE=cosine) stay visible in scorecard.pins.
     _preserve_if_set = {
+        # 088 re-ingest peer: chunk granularity override (Acc law default stays 1200).
+        "EDGEQUAKE_CHUNK_SIZE",
+        "EDGEQUAKE_CHUNK_OVERLAP",
         "EDGEQUAKE_MIX_RELEVANCY_PRUNE",
         "EDGEQUAKE_MIX_RELEVANCY_SCORE",
         "EDGEQUAKE_MIX_RELEVANCY_KEEP",
@@ -256,6 +262,7 @@ def apply_acc_publication_pins(
         "EDGEQUAKE_PPR_MAX_ITERS",
         "EDGEQUAKE_GRAPH_WALK",
         "EDGEQUAKE_GRAPH_WALK_COMPRESS",
+        "EDGEQUAKE_GRAPH_WALK_COMPRESS_NAIVE_PROTECT",
         "EDGEQUAKE_POPULAR_NODE_FALLBACK",
         "EDGEQUAKE_CONTENT_HEADINGS",
         "EDGEQUAKE_KEYWORD_LEXICAL_BOOST",
@@ -284,6 +291,8 @@ def apply_acc_publication_pins(
         "EDGEQUAKE_L2_BM25_UNION",
         "EDGEQUAKE_L2_BM25_MIX_TOP_K",
         "EDGEQUAKE_L2_BM25_MODE",
+        "EDGEQUAKE_L2_FACT_BM25_POOL",
+        "EDGEQUAKE_L2_FACT_BM25_POOL_PRE_COMPRESS",
         "EDGEQUAKE_MIX_FUSION",
         "EDGEQUAKE_RR_ORDER",
         "EDGEQUAKE_MIX_INTENT_WEIGHTS",
@@ -292,6 +301,10 @@ def apply_acc_publication_pins(
         "EDGEQUAKE_ANSWER_PROMPT",
         "EDGEQUAKE_ANSWER_SPECIFIC_TYPES",
         "BENCH001_EQ_RERANK_TOP_K",
+        # SPEC-103 labeled warm peer — Acc default remains 0.
+        "EDGEQUAKE_LLM_CACHE",
+        "EDGEQUAKE_KEYWORD_CACHE",
+        "EDGEQUAKE_QUERY_ANSWER_CACHE",
     }
     for key, value in PUBLICATION_ENV.items():
         if key in _preserve_if_set and (os.environ.get(key) or "").strip():

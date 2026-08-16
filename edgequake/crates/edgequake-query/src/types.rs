@@ -742,6 +742,7 @@ mod tests {
         let src = include_str!("engine_impl/query_entry/query_pipeline.rs");
         assert!(src.contains("D-38"));
         assert!(src.contains("embed_one(&request.query)"));
+        assert!(src.contains("peek_cached"));
         assert!(
             !src.contains("embed_one(&keyword_query)") && !src.contains("embed_one(&conversation"),
             "must not embed conversation/keyword blob as query_vec"

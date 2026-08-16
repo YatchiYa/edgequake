@@ -116,6 +116,7 @@ ACC_EXPORTS = {
     "EDGEQUAKE_QUERY_ARM_CONCURRENCY": "16",
     # 022 P1/P3 — labeled compress / Acc disables popular-node hub fallback.
     "EDGEQUAKE_GRAPH_WALK_COMPRESS": "0",
+    "EDGEQUAKE_GRAPH_WALK_COMPRESS_NAIVE_PROTECT": "8",
     "EDGEQUAKE_POPULAR_NODE_FALLBACK": "0",
     "EDGEQUAKE_CONTENT_HEADINGS": "0",
     "EDGEQUAKE_KEYWORD_LEXICAL_BOOST": "0",
@@ -154,6 +155,10 @@ ACC_EXPORTS = {
     "EDGEQUAKE_L2_BM25_UNION": "1",
     "EDGEQUAKE_L2_BM25_MIX_TOP_K": "30",
     "EDGEQUAKE_L2_BM25_MODE": "fact_replace",
+    # 088 W3: mix (Acc default) | acc (Fact L2 BM25 over Acc-admitted chunks).
+    "EDGEQUAKE_L2_FACT_BM25_POOL": "mix",
+    # 088 Mid: with GWC=1, keep Fact citation BM25 pool pre-compress (judge honesty).
+    "EDGEQUAKE_L2_FACT_BM25_POOL_PRE_COMPRESS": "0",
     # 080 D2 — type-aware Mix arm weights (off until lr-intent-w-fact-l2).
     "EDGEQUAKE_MIX_INTENT_WEIGHTS": "0",
     # 035 Fact CE∩BM25 protect — off until a1fp Acc promote.
@@ -263,6 +268,9 @@ def write_start_sh(*, port: int) -> None:
     )
     # Allow shell overrides for labeled Acc ablations (cosine prune / CE / PathRAG).
     _override_keys = {
+        # 088 re-ingest peer: chunk granularity (Acc law default stays 1200 above).
+        "EDGEQUAKE_CHUNK_SIZE",
+        "EDGEQUAKE_CHUNK_OVERLAP",
         "EDGEQUAKE_MIX_RELEVANCY_PRUNE",
         "EDGEQUAKE_MIX_RELEVANCY_SCORE",
         "EDGEQUAKE_MIX_RELEVANCY_KEEP",
@@ -296,6 +304,7 @@ def write_start_sh(*, port: int) -> None:
         "EDGEQUAKE_PPR_DAMPING",
         "EDGEQUAKE_PPR_MAX_ITERS",
         "EDGEQUAKE_GRAPH_WALK_COMPRESS",
+        "EDGEQUAKE_GRAPH_WALK_COMPRESS_NAIVE_PROTECT",
         "EDGEQUAKE_POPULAR_NODE_FALLBACK",
         "EDGEQUAKE_CONTENT_HEADINGS",
         "EDGEQUAKE_KEYWORD_LEXICAL_BOOST",
@@ -328,6 +337,8 @@ def write_start_sh(*, port: int) -> None:
         "EDGEQUAKE_L2_BM25_UNION",
         "EDGEQUAKE_L2_BM25_MIX_TOP_K",
         "EDGEQUAKE_L2_BM25_MODE",
+        "EDGEQUAKE_L2_FACT_BM25_POOL",
+        "EDGEQUAKE_L2_FACT_BM25_POOL_PRE_COMPRESS",
         "EDGEQUAKE_MIX_INTENT_WEIGHTS",
         "EDGEQUAKE_MIX_FUSION",
         "EDGEQUAKE_RR_ORDER",
@@ -336,6 +347,10 @@ def write_start_sh(*, port: int) -> None:
         "EDGEQUAKE_ANSWER_SPECIFIC_TYPES",
         "EDGEQUAKE_STRUCTURE_INDUCE",
         "BENCH001_EQ_RERANK_TOP_K",
+        # SPEC-103 labeled warm peer (Acc default remains 0; override for latency peers).
+        "EDGEQUAKE_LLM_CACHE",
+        "EDGEQUAKE_KEYWORD_CACHE",
+        "EDGEQUAKE_QUERY_ANSWER_CACHE",
     }
     for k, v in ACC_EXPORTS.items():
         if k == "PORT":

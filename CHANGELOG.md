@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **SPEC-126 provider KV / prompt cache** — default-on prefix reuse per LLM vendor (`EDGEQUAKE_PROMPT_CACHE`). Distinct from SPEC-103 (does not skip generation; Acc leaves this on). Native OpenAI/Azure send GPT-5.6 explicit breakpoints and learn from structured `error.param` 400s (not host/model heuristics). Compatible/Mistral/NVIDIA send `prompt_cache_key` only. Anthropic `cache_control`; OpenRouter `session_id` + `cache_control`; Bedrock Converse `cachePoint`. Extract/glean/keyword/summarize/judge keep a stable system prefix. Mix KV is small unless Mix instructions exceed vendor min tokens. E2E: `e2e_spec126_prompt_cache`.
+
+### Changed
+- **SPEC-001 Acc publish refresh** — medical-mid n=200 Acc **statistical tie** (EQ **0.792** / LR **0.786**; Δ CI **[-0.022, +0.034]**); archive [`medical-mid-20260815T110218Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T110218Z/). Acc-law **medical-full n=2062** (chunk **1200/100**) labeled peer [`ACC_E2OCC_086_MEDICAL_FULL_v1`](specs/001-benchmark/e2e/artifacts/publish/peers/ACC_E2OCC_086_MEDICAL_FULL_v1/): Acc **point tie** 0.786/0.786 (closed P0-full 6pp gap); ctx 0.427 — **not Beat**; does not replace `publish/latest`. Scorecard: [`docs/comparisons/eq-vs-lightrag-acc-bench.md`](docs/comparisons/eq-vs-lightrag-acc-bench.md) · [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/).
+- **064 Mix embed LRU on workspace inject** — Acc `/query` always passes a fresh workspace embedder; Mix now reuses the engine embedding cache when `(name, model, dim)` match so warm repeats skip the embed RTT. Labeled peer [`EQ_LLM_CACHE_WARM_v1`](specs/001-benchmark/e2e/artifacts/publish/peers/EQ_LLM_CACHE_WARM_v1/): EQ p50 **82 ms** vs LR **993 ms** (0.083×); Acc `publish/latest` unchanged. E2E: `e2e_workspace_role_llms_reuses_engine_embed_cache`.
+
 ## [0.24.4] — 2026-08-11
 
 Patch: partner ingest/delete reliability (#370/#374/#375/#376), env/config cascade (SPEC-123),

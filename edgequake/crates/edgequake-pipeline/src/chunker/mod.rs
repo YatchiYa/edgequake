@@ -40,6 +40,7 @@
 
 mod atomic_blocks;
 mod markdown_chunking;
+mod markdown_pack;
 mod page_aware;
 mod page_marker;
 mod recursive;
@@ -68,6 +69,10 @@ pub use atomic_blocks::{
     is_mm_chunk_header, split_preserving_atomic_regions, AtomicKind, ContentRegion,
 };
 pub use markdown_chunking::MarkdownChunking;
+pub use markdown_pack::{
+    ingest_chunking_observation, markdown_chunk, markdown_pack_enabled, ChunkTokenStats,
+    MARKDOWN_PACK_ENV,
+};
 pub use page_aware::{split_into_page_segments, PageAwareChunking};
 pub use recursive::{default_recursive_separators, RecursiveCharacterChunking};
 pub use semantic::{

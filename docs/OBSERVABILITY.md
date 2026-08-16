@@ -23,6 +23,7 @@ See [SPEC-018](../specs/018-observability/README.md) for the full audit and proo
 | `LANGFUSE_SECRET_KEY` | Langfuse secret key (`sk-lf-…`) — never logged | (disabled) |
 | `LANGFUSE_BASE_URL` | Langfuse UI + OTLP base (alias `LANGFUSE_HOST`) | `https://cloud.langfuse.com` |
 | `EDGEQUAKE_LANGFUSE_ENABLED` | Force on (`1`) / off (`0`); default = both keys set | auto |
+| `EDGEQUAKE_PROMPT_CACHE` | Provider KV/prompt-cache (SPEC-126); observation meta `cache_hit_tokens` | on |
 | `EDGEQUAKE_ENVIRONMENT` | `deployment.environment` on traces | `development` |
 | `EDGEQUAKE_QUEUE_PENDING_WARN` | Pending depth → elevated queue pressure | `100` |
 | `EDGEQUAKE_QUEUE_PENDING_CRITICAL` | Pending depth → critical; `/health` degraded | `500` (or 5× warn) |
@@ -125,6 +126,7 @@ make kill-app && make backend-bg   # or: make dev
 - **Sessions:** chat turns bind durable `conversation_id` as Langfuse session / `gen_ai.conversation.id` (see [specs/124-langfuse-support/12-sessions-and-genai.md](../specs/124-langfuse-support/12-sessions-and-genai.md)). After two turns in the same conversation, open Langfuse → Observability → Sessions. Optional `/query` and `/query/stream` field `session_id` for API clients; never invent a session when omitted.
 - **Tokens yes / cost never:** generation and embedding spans record `gen_ai.usage.input_tokens` / `output_tokens` when the LLM returns counts. EdgeQuake **never** emits `gen_ai.usage.cost` or `langfuse.observation.cost_details`. Observation types: `generation`, `retriever`, `embedding`, `chain` (ingest root). See [13-metadata-tokens-and-coverage.md](../specs/124-langfuse-support/13-metadata-tokens-and-coverage.md).
 - **Observation Input/Output:** Langfuse UI reads `langfuse.observation.input` / `output` (not `gen_ai.retrieval.query.text`). Retriever, generation, embedding, ingest roots, and `pipeline_chunk_extraction` set truncated I/O. See [14-observation-io-and-full-observe.md](../specs/124-langfuse-support/14-observation-io-and-full-observe.md).
+- **SPEC-125 `ingest.chunking` distribution:** output JSON is counts only (`chunks`, `token_min`, `token_p50`, `token_max`, `orphan_heading_chunks`) — never chunk text. Same keys are observation metadata. See [specs/125-better-chunking](../specs/125-better-chunking/).
 
 Jaeger gRPC (`OTEL_EXPORTER_OTLP_ENDPOINT`) remains independent — both exporters can be active.
 

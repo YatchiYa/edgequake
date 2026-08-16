@@ -81,6 +81,7 @@ pub fn extraction_completion_options_with_effort(
         reasoning_effort,
         ..Default::default()
     }
+    .with_provider_prompt_cache("extract", provider, model)
 }
 
 /// Adaptive chunk size recommendation based on document size (bytes).
@@ -193,5 +194,23 @@ mod tests {
         // Callers must pass the real provider ("ollama").
         let opts = extraction_completion_options("qwen3.6:35b-a3b", 1024);
         assert!(opts.reasoning_effort.is_none());
+    }
+
+    #[test]
+    fn extract_options_set_provider_prompt_cache_key_by_default() {
+        let opts = extraction_completion_options_with_effort(
+            "mistral-small-latest",
+            1024,
+            None,
+            "mistral",
+        );
+        if edgequake_llm::provider_prompt_cache_enabled() {
+            assert_eq!(
+                opts.prompt_cache_key.as_deref(),
+                Some("eq:extract:mistral:mistral-small-latest")
+            );
+        } else {
+            assert!(opts.prompt_cache_key.is_none());
+        }
     }
 }

@@ -52,8 +52,10 @@ pub use extract_caps::{
 };
 pub use json_extract::extract_json_from_response;
 pub use json_prompts::{
-    json_extraction_prompt, json_extraction_prompt_with_caps, json_gleaning_prompt,
-    json_gleaning_prompt_with_caps, JSON_OUTPUT_FORMAT_SECTION,
+    json_extraction_prompt, json_extraction_prompt_with_caps,
+    json_extraction_system_prompt_with_caps, json_extraction_user_prompt, json_gleaning_prompt,
+    json_gleaning_prompt_with_caps, json_gleaning_system_prompt_with_caps,
+    json_gleaning_user_prompt, JSON_OUTPUT_FORMAT_SECTION,
 };
 pub use language::{
     canonicalize_extraction_language, extraction_language_from_metadata,

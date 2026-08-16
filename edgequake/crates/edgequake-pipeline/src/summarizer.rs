@@ -17,6 +17,29 @@ use std::sync::Arc;
 use crate::error::{PipelineError, Result};
 use crate::prompts::SummarizationPrompts;
 
+/// Split a summarization blob so instructions stay in the system prefix (SPEC-126).
+fn split_summary_chat_parts(prompt: &str) -> (String, String) {
+    for marker in [
+        "#######",
+        "---Text---",
+        "---Descriptions---",
+        "---Source Entity---",
+        "---Entities---",
+    ] {
+        if let Some((sys, rest)) = prompt.split_once(marker) {
+            let sys = sys.trim();
+            if !sys.is_empty() {
+                return (sys.to_string(), format!("{marker}{rest}"));
+            }
+        }
+    }
+    (
+        "Summarize the following content. Keep all important facts. Do not add information."
+            .to_string(),
+        prompt.to_string(),
+    )
+}
+
 /// Configuration for the summarizer.
 #[derive(Debug, Clone)]
 /// @implements FEAT0010
@@ -151,10 +174,17 @@ impl LLMSummarizer {
     ) -> Result<String> {
         let model = self.llm_provider.model().to_string();
         let provider_name = self.llm_provider.name().to_string();
+        let (system, user) = split_summary_chat_parts(prompt);
+        let opts = edgequake_llm::CompletionOptions::default()
+            .with_role_cache("summarize", self.llm_provider.as_ref());
+        let messages = vec![
+            edgequake_llm::traits::ChatMessage::system(system),
+            edgequake_llm::traits::ChatMessage::user(user),
+        ];
         edgequake_observability::with_llm_generation(operation, &model, &provider_name, async {
             let response = self
                 .llm_provider
-                .complete(prompt)
+                .chat(&messages, Some(&opts))
                 .await
                 .map_err(|e| PipelineError::ExtractionError(format!("LLM error: {}", e)))?;
             let content = response.content.trim().to_string();
@@ -417,6 +447,16 @@ pub async fn summarize_entity_description<S: DescriptionSummarizer>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn summary_prompt_keeps_instructions_in_system() {
+        let prompt = SummarizationPrompts.simple_summary_prompt("chunk text here");
+        let (system, user) = split_summary_chat_parts(&prompt);
+        assert!(system.contains("Summarize"));
+        assert!(!system.contains("chunk text here"));
+        assert!(user.contains("chunk text here"));
+        assert!(user.contains("---Text---"));
+    }
 
     #[tokio::test]
     async fn test_simple_summarizer_short_text() {
