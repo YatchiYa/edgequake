@@ -151,8 +151,14 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
   -F "file=@document.txt" \
   -F "title=Document Title"
 
-# Batch upload (new capability)
+# Batch upload — text/markdown/images only (PDFs → /documents/pdf/batch)
 curl -X POST http://localhost:8080/api/v1/documents/upload/batch \
+  -H "X-Workspace-ID: your-workspace-id" \
+  -F "files=@doc1.txt" \
+  -F "files=@doc2.md"
+
+# Multi-PDF batch
+curl -X POST http://localhost:8080/api/v1/documents/pdf/batch \
   -H "X-Workspace-ID: your-workspace-id" \
   -F "files=@doc1.pdf" \
   -F "files=@doc2.pdf"

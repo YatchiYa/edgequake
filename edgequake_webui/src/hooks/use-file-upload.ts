@@ -32,6 +32,7 @@ import {
   createUploadId,
   fileUploadFingerprint,
   MAX_CONCURRENT_FILE_UPLOADS,
+  perFileUploadErrorMessage,
   updateByUploadId,
 } from "@/lib/upload/bounded-file-upload";
 import {
@@ -520,10 +521,11 @@ export function useFileUpload(
 
               successCount++;
             } catch (error) {
-              const errorMessage =
-                error instanceof Error
-                  ? error.message
-                  : t("documents.upload.uploadFailed", "Upload failed");
+              // SPEC-132 LAW-132-3: per-file terminal error; executor finally frees the slot.
+              const errorMessage = perFileUploadErrorMessage(
+                error,
+                t("documents.upload.uploadFailed", "Upload failed"),
+              );
               updateUploadingFile(uploadId, {
                 status: "error" as const,
                 progress: 100,

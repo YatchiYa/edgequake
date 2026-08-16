@@ -92,7 +92,8 @@ curl -X POST http://localhost:8080/api/v1/documents/pdf \
 | Text/JSON   | `/api/v1/documents`              | `application/json`    | `-d '{...}'`   |
 | Text/images | `/api/v1/documents/upload`       | `multipart/form-data` | `-F "file=@"`  |
 | PDF         | `/api/v1/documents/pdf`          | `multipart/form-data` | `-F "file=@"`  |
-| Batch Files | `/api/v1/documents/upload/batch` | `multipart/form-data` | `-F "files=@"` |
+| Multi-PDF   | `/api/v1/documents/pdf/batch`    | `multipart/form-data` | `-F "files=@"` |
+| Batch text  | `/api/v1/documents/upload/batch` | `multipart/form-data` | `-F "files=@"` (no PDFs) |
 
 **Examples**:
 
@@ -101,8 +102,8 @@ curl -X POST http://localhost:8080/api/v1/documents/pdf \
 curl -X POST http://localhost:8080/api/v1/documents \
   -F "file=@doc.pdf"
 
-# ❌ WRONG - PDF on text/image upload endpoint (Unsupported file type: .pdf)
-curl -X POST http://localhost:8080/api/v1/documents/pdf \
+# ❌ WRONG - PDF on text/image upload or /upload/batch (SPEC-123)
+curl -X POST http://localhost:8080/api/v1/documents/upload \
   -F "file=@doc.pdf"
 
 # ✅ CORRECT - PDF endpoint

@@ -161,17 +161,18 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
 
 ---
 
-## Method 3: Batch File Upload
+## Method 3: Batch File Upload (text / images)
 
 **Endpoint**: `POST /api/v1/documents/upload/batch`  
 **Content-Type**: `multipart/form-data`  
-**Use When**: Uploading multiple files at once
+**Use When**: Uploading multiple **non-PDF** files at once (TXT/MD/JSON/images).  
+**PDFs:** use `POST /api/v1/documents/pdf/batch` (or N× `/documents/pdf`). PDF parts on `/upload/batch` fail per-file with a SPEC-123 message (SPEC-132).
 
 ### Example: Multiple Files
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/documents/upload/batch \
-  -F "files=@doc1.pdf" \
+  -F "files=@doc1.txt" \
   -F "files=@doc2.txt" \
   -F "files=@doc3.md"
 ```

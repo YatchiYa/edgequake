@@ -674,25 +674,26 @@ Cancel in flight: `POST /api/v1/tasks/{track_id}/cancel` (see [Ingestion cancel 
 
 ## Step 7: Batch Upload
 
-For large document sets, use batch upload:
+For large document sets, use the correct batch endpoint per type (SPEC-123 / SPEC-132):
 
 ```bash
-# Multi-file text/markdown/PDF upload
+# Multi-file text/markdown/images — NOT for PDFs (PDFs are rejected on this route)
 curl -X POST "http://localhost:8080/api/v1/documents/upload/batch" \
   -H "X-Workspace-ID: $WORKSPACE_ID" \
-  -F "files=@report_jan.pdf" \
   -F "files=@report_feb.txt" \
   -F "files=@report_mar.md"
 
-# Multi-PDF upload with PDF-specific options
+# Multi-PDF upload (required for PDFs)
 curl -X POST "http://localhost:8080/api/v1/documents/pdf/batch" \
   -H "X-Workspace-ID: $WORKSPACE_ID" \
   -F "files=@q1-overview.pdf" \
   -F "files=@q1-appendix.pdf" \
   -F "enable_vision=true"
+
+# WebUI multi-select uses N× POST /documents/pdf (concurrency 3), not /pdf/batch.
 ```
 
-Both endpoints return per-file results with processed/duplicate/failed counters.
+Both batch endpoints return per-file results with processed/duplicate/failed counters.
 
 ---
 

@@ -27,8 +27,15 @@ use tracing::debug;
 /// Trait for task queue implementations
 #[async_trait]
 pub trait TaskQueue: Send + Sync {
-    /// Send a task to the queue
+    /// Send a task to the queue (may await when capacity is full).
+    ///
+    /// Prefer [`Self::try_send`] on the HTTP admit path (SPEC-132 / LAW-132-2):
+    /// durable storage is the SSOT; wake must not hang handlers.
     async fn send(&self, task: Task) -> TaskResult<()>;
+
+    /// Non-blocking wake send. Returns [`crate::error::TaskError::QueueFull`]
+    /// when the channel is at capacity (SPEC-132 EC-3 / F-091-19).
+    async fn try_send(&self, task: Task) -> TaskResult<()>;
 
     /// Receive a task from the queue (blocking)
     async fn receive(&self) -> TaskResult<Task>;
@@ -91,6 +98,19 @@ impl TaskQueue for ChannelTaskQueue {
         self.depth.fetch_add(1, Ordering::Relaxed);
 
         Ok(())
+    }
+
+    async fn try_send(&self, task: Task) -> TaskResult<()> {
+        debug!("try_send task to queue: {}", task.track_id);
+
+        match self.sender.try_send(task) {
+            Ok(()) => {
+                self.depth.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            }
+            Err(mpsc::error::TrySendError::Full(_)) => Err(crate::error::TaskError::QueueFull),
+            Err(mpsc::error::TrySendError::Closed(_)) => Err(crate::error::TaskError::QueueClosed),
+        }
     }
 
     async fn receive(&self) -> TaskResult<Task> {
@@ -170,6 +190,10 @@ impl TaskQueue for UnboundedChannelTaskQueue {
             .map_err(|_| crate::error::TaskError::QueueClosed)?;
 
         Ok(())
+    }
+
+    async fn try_send(&self, task: Task) -> TaskResult<()> {
+        self.send(task).await
     }
 
     async fn receive(&self) -> TaskResult<Task> {
@@ -256,8 +280,32 @@ mod tests {
         queue.send(task2).await.unwrap();
 
         // Queue is now full (capacity=2)
-        // Third send should block, so we use try_send approach in real code
         assert_eq!(queue.capacity(), 2);
+    }
+
+    /// SPEC-132 EC-3 / F-091-19: try_send must return QueueFull, never hang.
+    #[tokio::test]
+    async fn test_try_send_returns_queue_full_when_at_capacity() {
+        let queue = ChannelTaskQueue::new(1);
+        let task1 = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"n": 1}),
+        );
+        let task2 = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"n": 2}),
+        );
+
+        queue.try_send(task1).await.unwrap();
+        let err = queue.try_send(task2).await.unwrap_err();
+        assert!(
+            matches!(err, crate::error::TaskError::QueueFull),
+            "expected QueueFull, got {err:?}"
+        );
     }
 
     #[tokio::test]

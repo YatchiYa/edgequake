@@ -48,6 +48,12 @@ impl TaskQueue for StorageHydratingTaskQueue {
         ))
     }
 
+    async fn try_send(&self, _task: Task) -> TaskResult<()> {
+        Err(TaskError::UnsupportedOperation(
+            "StorageHydratingTaskQueue is receive-only".into(),
+        ))
+    }
+
     async fn receive(&self) -> TaskResult<Task> {
         // broadcast::Receiver is not Sync — clone storage and resubscribe per call
         Err(TaskError::UnsupportedOperation(

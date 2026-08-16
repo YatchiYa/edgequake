@@ -4,6 +4,7 @@ import {
   createBoundedExecutor,
   createUploadId,
   fileUploadFingerprint,
+  perFileUploadErrorMessage,
   updateByUploadId,
 } from "../bounded-file-upload";
 
@@ -84,5 +85,37 @@ describe("bounded file upload coordinator", () => {
 
   it("creates a distinct client identity for every accepted row", () => {
     expect(createUploadId()).not.toBe(createUploadId());
+  });
+
+  it("SPEC-132: timeout/error releases the slot so queued files still run", async () => {
+    const executor = createBoundedExecutor(1);
+    const order: string[] = [];
+
+    const hung = executor.run(async () => {
+      order.push("hung-start");
+      await new Promise<void>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Upload timed out after 50ms")),
+          30,
+        ),
+      );
+    });
+
+    const next = executor.run(async () => {
+      order.push("next");
+      return "ok";
+    });
+
+    await expect(hung).rejects.toThrow(/timed out/i);
+    await expect(next).resolves.toBe("ok");
+    expect(order).toEqual(["hung-start", "next"]);
+  });
+
+  it("SPEC-132: per-file timeout copy mentions siblings continue", () => {
+    expect(
+      perFileUploadErrorMessage(
+        new Error("Upload timed out after 60000ms"),
+      ),
+    ).toMatch(/other selected files continue/i);
   });
 });

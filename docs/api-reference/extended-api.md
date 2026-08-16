@@ -674,22 +674,34 @@ List workspaces in tenant.
 
 ### POST /api/v1/documents/upload
 
-File upload via multipart form.
+File upload via multipart form (text/images). **PDFs** must use `/documents/pdf` (SPEC-123 / SPEC-132).
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/documents/upload \
   -H "X-Workspace-ID: workspace-uuid" \
-  -F "file=@document.pdf" \
+  -F "file=@document.txt" \
   -F "title=My Document" \
   -F "metadata={\"category\":\"research\"}"
 ```
 
 ### POST /api/v1/documents/upload/batch
 
-Batch file upload.
+Batch **non-PDF** file upload (text/markdown/images). PDFs must use `/documents/pdf` or `/documents/pdf/batch` (SPEC-123 / SPEC-132).
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/documents/upload/batch \
+  -H "X-Workspace-ID: workspace-uuid" \
+  -F "files=@doc1.txt" \
+  -F "files=@doc2.md" \
+  -F "files=@doc3.md"
+```
+
+### POST /api/v1/documents/pdf/batch
+
+Batch PDF upload.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/documents/pdf/batch \
   -H "X-Workspace-ID: workspace-uuid" \
   -F "files=@doc1.pdf" \
   -F "files=@doc2.pdf" \

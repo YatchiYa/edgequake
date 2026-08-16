@@ -26,6 +26,12 @@ impl TaskQueue for BridgedTaskQueue {
         self.inner.send(task).await
     }
 
+    async fn try_send(&self, task: Task) -> TaskResult<()> {
+        // Notify first so external workers wake even if the local channel is full.
+        self.notifier.notify(&task.track_id).await?;
+        self.inner.try_send(task).await
+    }
+
     async fn receive(&self) -> TaskResult<Task> {
         self.inner.receive().await
     }

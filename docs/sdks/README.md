@@ -51,8 +51,8 @@ Configure these on the client **once**; every resource reuses the same transport
 1. **Health** — `GET /health` (unversioned) before anything else.
 2. **List documents** — `GET /api/v1/documents` with optional `page`, `page_size`, `date_from`, `date_to`, `document_pattern`. Document responses expose `display_status` (badge key from `IngestionStatusMapper`) and `ui_phase` (`idle | running | stopping | terminal`) — prefer those over raw `status`/`stage` for UI (SPEC-057 P4).
 3. **Batch ingestion** — SDKs expose:
-   - `POST /api/v1/documents/upload/batch`
-   - `POST /api/v1/documents/pdf/batch`
+   - `POST /api/v1/documents/upload/batch` (text/images — **not** PDFs)
+   - `POST /api/v1/documents/pdf/batch` (PDFs; WebUI uses N× `/documents/pdf`)
 4. **Progress / cancel (v0.23)** — WebSocket `/ws/progress/{track_id}` or `POST /api/v1/tasks/{track_id}/cancel`; see [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md). Tier 1 SDKs lead; Tier 2 may need raw HTTP.
 5. **Stateless parse (v0.23 / SPEC-094)** — `POST /api/v1/parse` converts a PDF to Markdown **without** ingestion residue. Tier 1 SDKs (Rust, Python, TypeScript) ship a typed `parse` resource: `parse()`, `backends()`, `job()`. Sync is default (≤ 15 pages / 20 MiB); pass `async: true` (or `Prefer: respond-async`) for jobs up to 1000 pages, polled via `GET /api/v1/parse/jobs/{id}`. Tier 2 SDKs: use raw HTTP until parity lands.
 6. **Conversations** — list uses cursor filters (`filter[folder_id]`, etc.); bulk delete body uses **`conversation_ids`**; response uses **`affected`**.

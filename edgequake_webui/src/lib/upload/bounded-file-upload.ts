@@ -4,6 +4,10 @@
  * Transfer concurrency is intentionally separate from worker/task fairness.
  * Three requests overlap network/admission latency without consuming every
  * browser connection or flooding the backend.
+ *
+ * SPEC-132 LAW-132-3: each `run` always releases its slot in `finally`, so one
+ * hung/failed admit cannot freeze siblings forever once the task settles
+ * (XHR timeout / network error).
  */
 export const MAX_CONCURRENT_FILE_UPLOADS = 3;
 
@@ -81,4 +85,24 @@ export async function mapWithConcurrency<T, R>(
   return Promise.all(
     items.map((item, index) => executor.run(() => worker(item, index))),
   );
+}
+
+/** SPEC-132: classify admit/transfer failures for per-file UI copy. */
+export function isUploadTimeoutMessage(message: string): boolean {
+  return /timed out/i.test(message);
+}
+
+/** Honest per-file failure copy (LAW-132-3) — siblings keep running. */
+export function perFileUploadErrorMessage(
+  error: unknown,
+  fallback = "Upload failed",
+): string {
+  const raw =
+    error instanceof Error && error.message.trim().length > 0
+      ? error.message
+      : fallback;
+  if (isUploadTimeoutMessage(raw)) {
+    return `${raw}. This file failed; other selected files continue.`;
+  }
+  return raw;
 }
