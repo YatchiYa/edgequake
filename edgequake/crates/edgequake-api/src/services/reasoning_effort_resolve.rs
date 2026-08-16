@@ -94,5 +94,5 @@ fn resolve_role_effort(
         defaults.reasoning_effort.as_deref(),
         server_by_role,
     );
-    resolved.effective
+    edgequake_llm::apply_omit_reasoning_effort(resolved.effective)
 }

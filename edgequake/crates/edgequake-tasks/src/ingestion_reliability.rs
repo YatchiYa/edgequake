@@ -20,6 +20,9 @@ pub enum IngestionFailureClass {
     /// Distinct from transient `ProviderUnavailable` (network blip, local server
     /// momentarily down).
     ProviderMisconfigured,
+    /// SPEC-131: model rejected a request parameter (e.g. temperature unsupported_value).
+    /// Permanent until operator sets omit env / switches API format / changes model.
+    LlmUnsupportedParam,
     /// User/system cancel — terminal, never retry.
     Cancelled,
     Unknown,
@@ -36,6 +39,7 @@ impl IngestionFailureClass {
             Self::GraphMerge => "graph_merge",
             Self::ProviderUnavailable => "provider_unavailable",
             Self::ProviderMisconfigured => "provider_misconfigured",
+            Self::LlmUnsupportedParam => "llm_unsupported_param",
             Self::Cancelled => "cancelled",
             Self::Unknown => "unknown",
         }
@@ -54,6 +58,7 @@ impl IngestionFailureClass {
             "graph_merge" => Some(Self::GraphMerge),
             "provider_unavailable" | "rate_limited" => Some(Self::ProviderUnavailable),
             "provider_misconfigured" => Some(Self::ProviderMisconfigured),
+            "llm_unsupported_param" => Some(Self::LlmUnsupportedParam),
             "cancelled" => Some(Self::Cancelled),
             "unknown" => Some(Self::Unknown),
             _ => None,
@@ -70,6 +75,7 @@ impl IngestionFailureClass {
             Self::GraphMerge => "reprocess_full",
             Self::ProviderUnavailable => "reduce_concurrency_or_check_provider",
             Self::ProviderMisconfigured => "configure_provider_credentials",
+            Self::LlmUnsupportedParam => "omit_llm_temperature_or_switch_api_format",
             Self::Cancelled => "none",
             Self::Unknown => "retry",
         }
@@ -84,6 +90,7 @@ impl IngestionFailureClass {
                 | Self::EmbeddingLimit
                 | Self::GraphMerge
                 | Self::ProviderMisconfigured
+                | Self::LlmUnsupportedParam
                 | Self::Cancelled
         )
     }
@@ -245,7 +252,24 @@ pub fn classify_ingestion_failure(error_msg: &str) -> IngestionFailureClass {
     {
         return IngestionFailureClass::ProviderUnavailable;
     }
+    // SPEC-131: temperature / unsupported_value param rejections (#379).
+    if is_llm_unsupported_param_message(error_msg) {
+        return IngestionFailureClass::LlmUnsupportedParam;
+    }
     IngestionFailureClass::Unknown
+}
+
+/// True when upstream rejected an LLM sampling/effort parameter (SPEC-131).
+pub fn is_llm_unsupported_param_message(error_msg: &str) -> bool {
+    let lower = error_msg.to_ascii_lowercase();
+    let has_unsupported = lower.contains("unsupported_value")
+        || lower.contains("unsupported_parameter")
+        || lower.contains("does not support");
+    let has_temperature = lower.contains("temperature")
+        || lower.contains("param: temperature")
+        || lower.contains("'temperature'");
+    (has_unsupported && has_temperature)
+        || (lower.contains("unsupported_value") && lower.contains("param:"))
 }
 
 /// True when the error will not resolve by retrying the same request.
@@ -268,6 +292,7 @@ pub fn failure_step(class: IngestionFailureClass) -> &'static str {
         IngestionFailureClass::DocumentTooLarge => "admission",
         IngestionFailureClass::ProviderUnavailable => "extraction",
         IngestionFailureClass::ProviderMisconfigured => "provider_config",
+        IngestionFailureClass::LlmUnsupportedParam => "extraction",
         IngestionFailureClass::Cancelled => "cancelled",
         IngestionFailureClass::Unknown => "processing",
     }
@@ -514,5 +539,22 @@ mod tests {
             embeddings.contains("retry_strategy()"),
             "pipeline embeddings must use typed retry_strategy()"
         );
+    }
+
+    /// SPEC-131 U-131-05 / E2E-131-06: #379 temperature unsupported_value.
+    #[test]
+    fn u131_05_temperature_unsupported_value_is_permanent() {
+        let msg = "Unsupported value: 'temperature' does not support 0 with this model.\n\
+                   Only the default (1) value is supported.\n\
+                   (param: temperature) (code: unsupported_value)";
+        let class = classify_ingestion_failure(msg);
+        assert_eq!(class, IngestionFailureClass::LlmUnsupportedParam);
+        assert!(class.is_permanent());
+        assert_eq!(
+            class.recommended_action(),
+            "omit_llm_temperature_or_switch_api_format"
+        );
+        assert_eq!(class.as_str(), "llm_unsupported_param");
+        assert!(is_llm_unsupported_param_message(msg));
     }
 }

@@ -679,6 +679,9 @@ make backend-bg
 | `EDGEQUAKE_QUERY_ANSWER_CACHE` | Optional | Answer cache override (SPEC-103; unset follows master) | `0` / `1` |
 | `EDGEQUAKE_REASONING_EFFORT`   | Optional | Fleet default reasoning effort (SPEC-109); role env overrides | `none`, `minimal`, `low`, … |
 | `EDGEQUAKE_EXTRACT_REASONING_EFFORT` | Optional | Extract-role effort override (SPEC-109) | `minimal` |
+| `EDGEQUAKE_LLM_OMIT_TEMPERATURE` | Optional | Never send `temperature` upstream (SPEC-131 / #379; Mantle Gemma/Grok) | `true` / `1` |
+| `EDGEQUAKE_LLM_OMIT_REASONING_EFFORT` | Optional | Never send `reasoning_effort` (SPEC-131) | `true` / `1` |
+| `EDGEQUAKE_LLM_API_FORMAT` | Optional | Upstream transport: Chat Completions or Responses (SPEC-131; default chat) | `chat_completions`, `responses` |
 | `EDGEQUAKE_EXTRACTION_LANGUAGE`| Optional | Fleet default KG extraction NL language (SPEC-096); workspace metadata overrides | `English`, `Chinese`, `French`, … |
 | `EDGEQUAKE_MAX_EXTRACTION_ENTITIES` | Optional | Per-response entity cap (SPEC-117; default **40**) | `40` |
 | `EDGEQUAKE_MAX_EXTRACTION_RECORDS` | Optional | Per-response total rows cap (SPEC-117; default **100**) | `100` |

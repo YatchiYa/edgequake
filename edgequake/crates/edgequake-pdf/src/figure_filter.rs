@@ -40,7 +40,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use base64::Engine as _;
-use edgequake_llm::{ChatMessage, CompletionOptions, ImageData, LLMProvider};
+use edgequake_llm::{
+    resolve_effective_temperature, ChatMessage, CompletionOptions, ImageData, LLMProvider,
+};
 use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
@@ -307,7 +309,7 @@ async fn pass1_classify(
     let image = load_image_data(png_path)?;
     let opts = CompletionOptions {
         max_tokens: Some(80),
-        temperature: Some(0.0),
+        temperature: resolve_effective_temperature(provider.model(), 0.0),
         ..Default::default()
     }
     .with_role_cache("figure-filter", provider);
@@ -330,7 +332,7 @@ async fn pass2_describe(
     let image = load_image_data(png_path)?;
     let opts = CompletionOptions {
         max_tokens: Some(600),
-        temperature: Some(0.0),
+        temperature: resolve_effective_temperature(provider.model(), 0.0),
         ..Default::default()
     }
     .with_role_cache("figure-filter", provider);

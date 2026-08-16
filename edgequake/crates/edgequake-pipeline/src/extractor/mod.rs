@@ -46,7 +46,7 @@ pub use completion_options::{
     structured_extract_effort_floor,
 };
 pub use schema::ConfigurableEntitySchema;
-pub use temperature::effective_temperature_for_model;
+pub use temperature::{effective_temperature_for_model, resolve_effective_temperature};
 pub use types::{ExtractedEntity, ExtractedRelationship, ExtractionResult};
 
 pub use gleaning::{GleaningConfig, GleaningExtractor};

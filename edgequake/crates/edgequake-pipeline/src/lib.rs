@@ -111,9 +111,10 @@ pub use error::{
 pub use extractor::{
     assign_token_usage, effective_temperature_for_model, extraction_completion_options,
     extraction_completion_options_with_effort, recommended_chunk_size_for_bytes,
-    resolve_extraction_reasoning_effort, structured_extract_effort_floor, ConfigurableEntitySchema,
-    EntityExtractor, ExtractedEntity, ExtractedRelationship, ExtractionResult, GleaningConfig,
-    GleaningExtractor, LLMExtractor, SOTAExtractor, SimpleExtractor,
+    resolve_effective_temperature, resolve_extraction_reasoning_effort,
+    structured_extract_effort_floor, ConfigurableEntitySchema, EntityExtractor, ExtractedEntity,
+    ExtractedRelationship, ExtractionResult, GleaningConfig, GleaningExtractor, LLMExtractor,
+    SOTAExtractor, SimpleExtractor,
 };
 pub use ingestion_pipeline::{
     build_chunker_config, build_chunker_config_with_policy, build_ingestion_pipeline,

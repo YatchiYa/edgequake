@@ -11,7 +11,9 @@
 use edgequake_llm::traits::CompletionOptions;
 use edgequake_llm::{clamp_reasoning_effort, lowest_for_structured_output};
 
-use super::temperature::effective_temperature_for_model;
+use edgequake_llm::apply_omit_reasoning_effort;
+use edgequake_llm::resolve_effective_temperature;
+
 use super::types::ExtractionResult;
 use crate::pipeline::is_local_extraction_provider;
 
@@ -74,10 +76,11 @@ pub fn extraction_completion_options_with_effort(
     desired: Option<&str>,
     provider: &str,
 ) -> CompletionOptions {
-    let reasoning_effort = resolve_extraction_reasoning_effort(provider, model, desired);
+    let reasoning_effort =
+        apply_omit_reasoning_effort(resolve_extraction_reasoning_effort(provider, model, desired));
     CompletionOptions {
         max_tokens: Some(max_tokens),
-        temperature: effective_temperature_for_model(model, 0.0),
+        temperature: resolve_effective_temperature(model, 0.0),
         reasoning_effort,
         ..Default::default()
     }

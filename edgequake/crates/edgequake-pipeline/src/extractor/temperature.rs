@@ -1,31 +1,59 @@
-//! LLM temperature gating for extraction providers.
+//! LLM temperature gating — re-exports edgequake-llm SSOT (SPEC-131).
+//!
+//! Product call sites may import from this module for historical paths;
+//! the implementation lives in `edgequake_llm::temperature`.
 
-/// Returns the effective temperature override to send for a model.
-///
-/// WHY: Some OpenAI model families only accept their built-in default temperature
-/// and reject any explicit override with an API error. Omitting the field is the
-/// most compatible behavior for those models while preserving overrides for models
-/// that still support them.
-pub fn effective_temperature_for_model(model: &str, preferred_temperature: f32) -> Option<f32> {
-    if model_requires_default_temperature(model) {
-        None
-    } else {
-        Some(preferred_temperature)
+pub use edgequake_llm::{effective_temperature_for_model, resolve_effective_temperature};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use edgequake_llm::ENV_OMIT_TEMPERATURE;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn clear_omit() {
+        std::env::remove_var(ENV_OMIT_TEMPERATURE);
     }
-}
 
-fn model_requires_default_temperature(model: &str) -> bool {
-    let normalized = model
-        .trim()
-        .rsplit('/')
-        .next()
-        .unwrap_or(model)
-        .to_ascii_lowercase();
+    #[test]
+    fn u131_01_omit_env_forces_none_for_gemma() {
+        let _g = ENV_LOCK.lock().unwrap();
+        clear_omit();
+        std::env::set_var(ENV_OMIT_TEMPERATURE, "true");
+        assert_eq!(
+            resolve_effective_temperature("google.gemma-4-31b", 0.0),
+            None
+        );
+        clear_omit();
+    }
 
-    normalized.contains("gpt-5")
-        || normalized.contains("gpt-4.1-nano")
-        || normalized.contains("gpt-4.1-mini")
-        || normalized.starts_with("o1")
-        || normalized.starts_with("o3")
-        || normalized.starts_with("o4")
+    #[test]
+    fn u131_02_gemma_without_omit_sends_preferred() {
+        let _g = ENV_LOCK.lock().unwrap();
+        clear_omit();
+        assert_eq!(
+            resolve_effective_temperature("google.gemma-4-31b", 0.0),
+            Some(0.0)
+        );
+        assert_eq!(
+            resolve_effective_temperature("xai.grok-4.3", 0.0),
+            Some(0.0)
+        );
+    }
+
+    #[test]
+    fn u131_03_gpt5_gate_still_omits_without_env() {
+        let _g = ENV_LOCK.lock().unwrap();
+        clear_omit();
+        assert_eq!(resolve_effective_temperature("gpt-5-nano", 0.0), None);
+    }
+
+    #[test]
+    fn u131_04_gpt4o_keeps_override_without_env() {
+        let _g = ENV_LOCK.lock().unwrap();
+        clear_omit();
+        assert_eq!(resolve_effective_temperature("gpt-4o", 0.0), Some(0.0));
+    }
 }
