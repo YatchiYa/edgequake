@@ -82,6 +82,7 @@ async fn contract_spec091_fleet_mirror_bare_and_scoped_names() {
                 json!({ "workspace_id": workspace.to_string() }),
             )],
             true,
+            None,
         )
         .await
         .expect("bare mirror");
@@ -96,6 +97,7 @@ async fn contract_spec091_fleet_mirror_bare_and_scoped_names() {
                 json!({ "workspace_id": ws2.to_string() }),
             )],
             true,
+            None,
         )
         .await
         .expect("scoped mirror");
@@ -186,6 +188,7 @@ async fn contract_spec091_fleet_mirror_arrow_in_source_name() {
                 json!({ "workspace_id": workspace.to_string() }),
             )],
             false,
+            None,
         )
         .await
         .expect("rel mirror");
@@ -250,6 +253,7 @@ async fn contract_spec091_fleet_mirror_legacy_id_ws_scoped() {
                     json!({ "workspace_id": ws.to_string() }),
                 )],
                 true,
+                None,
             )
             .await
             .expect("mirror must not hit global legacy_vector_id unique");

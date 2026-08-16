@@ -82,6 +82,7 @@ async fn e2e_spec098_relation_type_case() {
                 json!({ "workspace_id": workspace.to_string() }),
             )],
             false,
+            None,
         )
         .await
         .expect("mirror");

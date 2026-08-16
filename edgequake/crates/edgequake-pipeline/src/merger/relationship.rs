@@ -74,8 +74,12 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 continue;
             };
             // SPEC-098 LAW-098-3: vector id relation_type matches sink uppercase SSOT.
-            let rel_type = edgequake_storage::normalize_relation_type_str(&rel.relation_type);
-            let rel_id = format!("{}->{}:{}", source_bare, target_bare, rel_type);
+            // SPEC-130: legacy key formatter SSOT shared with sink report.
+            let rel_id = edgequake_storage::format_relationship_legacy_key(
+                source_bare,
+                target_bare,
+                &rel.relation_type,
+            );
             let scope = metadata::TenantScope {
                 tenant_id: &self.tenant_id,
                 workspace_id: &self.workspace_id,
@@ -102,9 +106,9 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         relationships: Vec<ExtractedRelationship>,
         stats: &mut MergeStats,
         progress: Option<MergeProgressCtx<'_>>,
-    ) -> Result<()> {
+    ) -> Result<crate::merger::RelationshipSinkReport> {
         if relationships.is_empty() {
-            return Ok(());
+            return Ok(crate::merger::RelationshipSinkReport::default());
         }
 
         let mut valid = Vec::new();
@@ -143,7 +147,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         }
 
         if valid.is_empty() {
-            return Ok(());
+            return Ok(crate::merger::RelationshipSinkReport::default());
         }
 
         // Domain dedup: one ExtractedRelationship per (source, target, rel_type).
@@ -434,21 +438,25 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 }
             })
             .collect();
+        let mut sink_report = crate::merger::RelationshipSinkReport::default();
         if !rel_sink_rows.is_empty() {
-            if let Err(e) = self
+            match self
                 .relational_sink
                 .upsert_relationships_batch(&rel_sink_rows)
                 .await
             {
-                tracing::warn!(
-                    count = rel_sink_rows.len(),
-                    error = %e,
-                    "Relational relationship sink batch failed"
-                );
-                if edgequake_storage::vector_backend_reads_typed(
-                    edgequake_storage::vector_backend_from_env(),
-                ) {
-                    return Err(e);
+                Ok(report) => sink_report = report,
+                Err(e) => {
+                    tracing::warn!(
+                        count = rel_sink_rows.len(),
+                        error = %e,
+                        "Relational relationship sink batch failed"
+                    );
+                    if edgequake_storage::vector_backend_reads_typed(
+                        edgequake_storage::vector_backend_from_env(),
+                    ) {
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -461,7 +469,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             );
         }
 
-        Ok(())
+        Ok(sink_report)
     }
 
     /// Embed + upsert entities_vdb for newly created AGE placeholders (050 B7).

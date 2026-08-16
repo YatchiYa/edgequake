@@ -56,8 +56,8 @@ async fn e2e_spec120_concurrent_mirror_alias_entities_absorb() {
     // Concurrent mirrors: each loads EntityNameIndex independently.
     // Neither must return Err (LAW-120-1); exactly one lid owner.
     let (a, b) = tokio::join!(
-        index.mirror_legacy_batch(&batch_a, true),
-        index.mirror_legacy_batch(&batch_b, true),
+        index.mirror_legacy_batch(&batch_a, true, None),
+        index.mirror_legacy_batch(&batch_b, true, None),
     );
     let a = a.expect("mirror A must not fail on legacy unique");
     let b = b.expect("mirror B must not fail on legacy unique");
@@ -130,6 +130,7 @@ async fn e2e_spec120_mirror_then_losing_fk_absorb() {
                 json!({ "workspace_id": workspace.to_string() }),
             )],
             true,
+            None,
         )
         .await
         .expect("mirror winner");

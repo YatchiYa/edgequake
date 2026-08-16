@@ -72,6 +72,16 @@ pub fn entity_name_from_legacy_id(id: &str) -> Option<&str> {
     id.strip_prefix("entity:").filter(|s| !s.is_empty())
 }
 
+/// Format `{source}->{target}:{relation_type}` legacy relationship vector id.
+///
+/// SPEC-130 / LAW-130: SSOT shared by vector batch collect, relational sink
+/// report keys, and fleet mirror lookups. Relation type is uppercased via
+/// [`crate::normalize_relation_type_str`].
+pub fn format_relationship_legacy_key(src: &str, tgt: &str, rel_type: &str) -> String {
+    let rt = crate::graph_batch_dedupe::normalize_relation_type_str(rel_type);
+    format!("{src}->{tgt}:{rt}")
+}
+
 /// Parse `{source}->{target}:{relation_type}` legacy relationship vector id.
 ///
 /// Uses the **last** `->` as the source/target separator so entity names that
@@ -126,6 +136,17 @@ mod tests {
         assert_eq!(
             parse_relationship_legacy_key("A->B:TYPE"),
             Some(("A".into(), "B".into(), "TYPE".into()))
+        );
+    }
+
+    /// SPEC-130: format ↔ parse round-trip (uppercase SSOT).
+    #[test]
+    fn contract_spec130_format_relationship_legacy_key() {
+        let key = format_relationship_legacy_key("ALPHA", "BETA", "works_at");
+        assert_eq!(key, "ALPHA->BETA:WORKS_AT");
+        assert_eq!(
+            parse_relationship_legacy_key(&key),
+            Some(("ALPHA".into(), "BETA".into(), "WORKS_AT".into()))
         );
     }
 

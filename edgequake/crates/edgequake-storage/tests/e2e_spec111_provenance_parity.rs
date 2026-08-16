@@ -330,6 +330,7 @@ async fn e2e_spec111_12_mirror_stamps_provenance() {
                 serde_json::json!({"workspace_id": ws.to_string()}),
             )],
             true,
+            None,
         )
         .await
         .expect("mirror");

@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use edgequake_pipeline::{
-    EntitySinkRow, NoopEntitySink, RelationalEntitySink, RelationshipSinkRow,
+    EntitySinkRow, NoopEntitySink, RelationalEntitySink, RelationshipSinkReport,
+    RelationshipSinkRow,
 };
 use edgequake_storage::EntityId;
 use sqlx::PgPool;
@@ -352,12 +353,13 @@ impl RelationalEntitySink for PostgresEntitySink {
     }
 
     /// SPEC-091 IP1: resolve endpoints once, then one UNNEST relationship upsert.
+    /// SPEC-130: RETURNING ids keyed by legacy `SRC->TGT:TYPE` for RelVectors mirror.
     async fn upsert_relationships_batch(
         &self,
         rows: &[RelationshipSinkRow],
-    ) -> edgequake_pipeline::Result<()> {
+    ) -> edgequake_pipeline::Result<RelationshipSinkReport> {
         if rows.is_empty() {
-            return Ok(());
+            return Ok(RelationshipSinkReport::default());
         }
 
         // LAW-098-8: collapse duplicate arbiter keys before ON CONFLICT DO UPDATE
@@ -406,7 +408,7 @@ impl RelationalEntitySink for PostgresEntitySink {
                 });
         }
         if by_key.is_empty() {
-            return Ok(());
+            return Ok(RelationshipSinkReport::default());
         }
         let rows: Vec<RelationshipSinkRow> = by_key.into_values().collect();
 
@@ -461,7 +463,7 @@ impl RelationalEntitySink for PostgresEntitySink {
         let mut rel_types: Vec<String> = Vec::new();
         let mut descs: Vec<String> = Vec::new();
         let mut weights: Vec<f32> = Vec::new();
-        let mut missing = 0usize;
+        let mut missing = 0u64;
 
         for row in &rows {
             let src = EntityId::bare_name_from_graph_node_id(&row.source_name);
@@ -507,11 +509,15 @@ impl RelationalEntitySink for PostgresEntitySink {
         }
 
         if source_ids.is_empty() {
-            return Ok(());
+            return Ok(RelationshipSinkReport {
+                ids: HashMap::new(),
+                missing_fk: missing,
+            });
         }
 
-        let result = sqlx::query(
-            r#"
+        let returned: Result<Vec<(uuid::Uuid, uuid::Uuid, uuid::Uuid, String)>, sqlx::Error> =
+            sqlx::query_as(
+                r#"
             INSERT INTO relationships
                 (source_id, target_id, tenant_id, workspace_id, relation_type,
                  description, weight, created_at, updated_at)
@@ -530,19 +536,73 @@ impl RelationalEntitySink for PostgresEntitySink {
                 description = EXCLUDED.description,
                 weight = EXCLUDED.weight,
                 updated_at = NOW()
+            RETURNING id, source_id, target_id, relation_type
             "#,
-        )
-        .bind(&source_ids)
-        .bind(&target_ids)
-        .bind(&tenants)
-        .bind(&workspaces)
-        .bind(&rel_types)
-        .bind(&descs)
-        .bind(&weights)
-        .execute(self.pool.as_ref())
-        .await;
+            )
+            .bind(&source_ids)
+            .bind(&target_ids)
+            .bind(&tenants)
+            .bind(&workspaces)
+            .bind(&rel_types)
+            .bind(&descs)
+            .bind(&weights)
+            .fetch_all(self.pool.as_ref())
+            .await;
 
-        self.map_sql_result("relationships_batch", result)
+        let returned = match returned {
+            Ok(rows) => {
+                debug!(
+                    target = "relationships_batch",
+                    n = rows.len(),
+                    "Relational sink OK"
+                );
+                rows
+            }
+            Err(e) => {
+                if self.fail_closed {
+                    return Err(edgequake_pipeline::PipelineError::StorageError(
+                        edgequake_storage::error::StorageError::Database(format!(
+                            "relational sink failed (relationships_batch): {e}"
+                        )),
+                    ));
+                }
+                warn!(
+                    target = "relationships_batch",
+                    error = %e,
+                    "Relational sink failed (best-effort)"
+                );
+                return Ok(RelationshipSinkReport {
+                    ids: HashMap::new(),
+                    missing_fk: missing,
+                });
+            }
+        };
+
+        let mut id_to_name: HashMap<uuid::Uuid, String> = HashMap::new();
+        for (name, id) in &by_name {
+            id_to_name.insert(*id, name.clone());
+        }
+
+        let mut ids = HashMap::new();
+        for (rel_id, source_id, target_id, relation_type) in returned {
+            let Some(src_name) = id_to_name.get(&source_id) else {
+                continue;
+            };
+            let Some(tgt_name) = id_to_name.get(&target_id) else {
+                continue;
+            };
+            let key = edgequake_storage::format_relationship_legacy_key(
+                src_name,
+                tgt_name,
+                &relation_type,
+            );
+            ids.insert(key, rel_id);
+        }
+
+        Ok(RelationshipSinkReport {
+            ids,
+            missing_fk: missing,
+        })
     }
 
     async fn remove_entity_sources(

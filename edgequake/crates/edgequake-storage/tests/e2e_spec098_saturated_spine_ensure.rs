@@ -46,7 +46,7 @@ async fn e2e_spec098_saturated_spine_ensure() {
 
     // Simulate saturated KEEP with AGE present but no relational spine.
     let before = index
-        .mirror_legacy_batch(&legacy, true)
+        .mirror_legacy_batch(&legacy, true, None)
         .await
         .expect("mirror before");
     assert_eq!(before.resolved, 0);
@@ -65,7 +65,7 @@ async fn e2e_spec098_saturated_spine_ensure() {
     .expect("spine ensure");
 
     let after = index
-        .mirror_legacy_batch(&legacy, true)
+        .mirror_legacy_batch(&legacy, true, None)
         .await
         .expect("mirror after");
     assert_eq!(after.resolved, 1, "spine ensure must unlock fleet FK");

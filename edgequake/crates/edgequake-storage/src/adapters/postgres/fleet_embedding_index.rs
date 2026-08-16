@@ -290,6 +290,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
         &self,
         rows: &[(String, Vec<f32>, Value)],
         count_as_entities: bool,
+        known_relationship_ids: Option<&HashMap<String, Uuid>>,
     ) -> Result<MirrorLegacyReport, StorageError> {
         let mut entity_rows: Vec<FleetEmbeddingRow> = Vec::new();
         let mut rel_rows: Vec<FleetEmbeddingRow> = Vec::new();
@@ -341,11 +342,23 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                         continue;
                     };
                     report.eligible += 1;
-                    let rel_type = normalize_relation_type_str(&rel_type);
-                    let Some(rid) =
-                        resolve_relationship_id_pool(&self.pool, ws, &src, &tgt, &rel_type, index)
+                    // SPEC-130: prefer sink-returned UUID (same-session identity).
+                    let rid = if let Some(known) = known_relationship_ids {
+                        known.get(id).copied()
+                    } else {
+                        None
+                    };
+                    let rid = match rid {
+                        Some(rid) => Some(rid),
+                        None => {
+                            let rel_type = normalize_relation_type_str(&rel_type);
+                            resolve_relationship_id_pool(
+                                &self.pool, ws, &src, &tgt, &rel_type, index,
+                            )
                             .await?
-                    else {
+                        }
+                    };
+                    let Some(rid) = rid else {
                         report.push_miss(id);
                         continue;
                     };

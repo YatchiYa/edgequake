@@ -50,6 +50,7 @@ async fn contract_spec098_fleet_mirror_miss_sample() {
                 json!({ "workspace_id": workspace.to_string() }),
             )],
             true,
+            None,
         )
         .await
         .expect("mirror");
@@ -80,6 +81,7 @@ async fn contract_spec098_invalid_workspace_loud() {
                 json!({ "workspace_id": "not-a-uuid" }),
             )],
             true,
+            None,
         )
         .await
         .expect("mirror");
@@ -147,6 +149,7 @@ async fn contract_spec098_relation_type_uppercase_resolve() {
                 json!({ "workspace_id": workspace.to_string() }),
             )],
             false,
+            None,
         )
         .await
         .expect("rel mirror");

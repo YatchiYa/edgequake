@@ -285,6 +285,16 @@ pub struct RelationshipSinkRow {
     pub workspace_id: Option<String>,
 }
 
+/// SPEC-130: identity produced by relational relationship sink for in-session fleet mirror.
+///
+/// `ids` keys are legacy vector ids (`SRC->TGT:TYPE`) matching
+/// [`edgequake_storage::format_relationship_legacy_key`].
+#[derive(Debug, Clone, Default)]
+pub struct RelationshipSinkReport {
+    pub ids: std::collections::HashMap<String, uuid::Uuid>,
+    pub missing_fk: u64,
+}
+
 #[async_trait]
 #[allow(clippy::too_many_arguments)]
 pub trait RelationalEntitySink: Send + Sync {
@@ -335,8 +345,14 @@ pub trait RelationalEntitySink: Send + Sync {
         Ok(())
     }
 
-    /// SPEC-091 IP1 / LAW-IP2: batch relationship upsert (default loops single-row).
-    async fn upsert_relationships_batch(&self, rows: &[RelationshipSinkRow]) -> Result<()> {
+    /// SPEC-091 IP1 / LAW-IP2 / SPEC-130: batch relationship upsert.
+    ///
+    /// Default loops single-row and returns an empty id map (Noop/Spy). Production
+    /// Postgres sink overrides to `RETURNING` relationship UUIDs for RelVectors.
+    async fn upsert_relationships_batch(
+        &self,
+        rows: &[RelationshipSinkRow],
+    ) -> Result<RelationshipSinkReport> {
         for row in rows {
             self.upsert_relationship(
                 &row.source_name,
@@ -349,7 +365,7 @@ pub trait RelationalEntitySink: Send + Sync {
             )
             .await?;
         }
-        Ok(())
+        Ok(RelationshipSinkReport::default())
     }
 
     /// Remove or update source references when a document is deleted.
@@ -559,6 +575,9 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
     /// SPEC-059: only IDs returned by [`VectorStorage::upsert_report_created`]
     /// (atomic insert detection) are recorded in [`MergeArtifacts`] so compensate
     /// never deletes shared entity/rel vectors — no preflight TOCTOU.
+    ///
+    /// SPEC-130: `known_relationship_ids` passes sink-returned UUIDs into fleet
+    /// mirror for relationship chunks (`count_as_entities == false`).
     #[allow(clippy::too_many_arguments)]
     async fn upsert_vectors_chunked(
         &self,
@@ -571,6 +590,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
         entities_updated: usize,
         count_as_entities: bool,
         artifacts: &mut MergeArtifacts,
+        known_relationship_ids: Option<&std::collections::HashMap<String, uuid::Uuid>>,
     ) -> Result<()> {
         let chunk = edgequake_storage::vector_upsert_chunk_size();
         let mut done = 0usize;
@@ -598,8 +618,13 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                 }
             }
             if let Some(ref fleet_index) = self.fleet_embedding_index {
+                let known = if count_as_entities {
+                    None
+                } else {
+                    known_relationship_ids
+                };
                 match fleet_index
-                    .mirror_legacy_batch(slice, count_as_entities)
+                    .mirror_legacy_batch(slice, count_as_entities, known)
                     .await
                 {
                     Ok(report) => {
@@ -619,13 +644,20 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                                 ));
                             }
                             if !report.is_complete() {
+                                let detail = if count_as_entities {
+                                    "relational entity FK miss or name mismatch — \
+                                     bare entities.name must match entity:NAME; ensure \
+                                     PostgresEntitySink wrote the entity spine before fleet mirror"
+                                        .to_string()
+                                } else {
+                                    "relationship UUID missing from sink map or unresolved legacy key — \
+                                     in-session RelVectors must use sink-returned relationships.id"
+                                        .to_string()
+                                };
                                 return Err(crate::error::PipelineError::StorageError(
                                     edgequake_storage::error::StorageError::Database(format!(
                                         "SPEC-091: typed fleet mirror resolved {}/{} rows \
-                                         (relational entity/rel FK miss or name mismatch — \
-                                         bare entities.name must match entity:NAME; ensure \
-                                         PostgresEntitySink wrote the spine before fleet mirror; \
-                                         SPEC-098 misses: {:?})",
+                                         ({detail}; SPEC-098 misses: {:?})",
                                         report.resolved, report.eligible, report.misses
                                     )),
                                 ));
@@ -867,6 +899,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
 
         // Legacy order: EntityVectors → EntityGraph → RelVectors → RelGraph.
         // Typed order:  EntityGraph → EntityVectors → RelGraph → RelVectors.
+        // SPEC-130: capture sink relationship UUID map for typed RelVectors.
+        let mut rel_sink_report = RelationshipSinkReport::default();
         if !typed_authority && !entity_vector_batch.is_empty() {
             let stage_start = Instant::now();
             let entity_vec_result = self
@@ -880,6 +914,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                     0,
                     true,
                     &mut stats.artifacts,
+                    None,
                 )
                 .await;
             record_ingest_stage_duration(
@@ -957,6 +992,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                     0,
                     true,
                     &mut stats.artifacts,
+                    None,
                 )
                 .await;
             record_ingest_stage_duration(
@@ -1008,6 +1044,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                     stats.entities_updated,
                     false,
                     &mut stats.artifacts,
+                    None,
                 )
                 .await;
             record_ingest_stage_duration("rel_vector_upsert", stage_start.elapsed().as_secs_f64());
@@ -1057,15 +1094,20 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                 .merge_relationships_batch(all_relationships, &mut stats, progress_ctx)
                 .await;
             record_ingest_stage_duration("age_edge_upsert", stage_start.elapsed().as_secs_f64());
-            if let Err(e) = rel_graph_result {
-                stats.record_error(e.to_string());
-                tracing::warn!(
-                    error.source = "pipeline_merger",
-                    error.action = "merge_relationships_batch_global",
-                    error.message = %e,
-                    "Failed to merge global relationship batch; aborting finalize"
-                );
-                return Ok(stats);
+            match rel_graph_result {
+                Ok(report) => {
+                    rel_sink_report = report;
+                }
+                Err(e) => {
+                    stats.record_error(e.to_string());
+                    tracing::warn!(
+                        error.source = "pipeline_merger",
+                        error.action = "merge_relationships_batch_global",
+                        error.message = %e,
+                        "Failed to merge global relationship batch; aborting finalize"
+                    );
+                    return Ok(stats);
+                }
             }
         }
 
@@ -1085,6 +1127,11 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                 },
             );
             let stage_start = Instant::now();
+            let known_ids = if rel_sink_report.ids.is_empty() {
+                None
+            } else {
+                Some(&rel_sink_report.ids)
+            };
             let rel_vec_result = self
                 .upsert_vectors_chunked(
                     &all_rel_vectors,
@@ -1096,6 +1143,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                     stats.entities_updated,
                     false,
                     &mut stats.artifacts,
+                    known_ids,
                 )
                 .await;
             record_ingest_stage_duration("rel_vector_upsert", stage_start.elapsed().as_secs_f64());
@@ -2131,6 +2179,39 @@ mod tests {
         assert!(
             second.is_empty(),
             "update must not report as created: {second:?}"
+        );
+    }
+
+    /// SPEC-130 T4: relationship fail-closed hint names sink-returned identity.
+    #[test]
+    fn contract_spec130_rel_mirror_hint_names_sink_id() {
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/merger/mod.rs"));
+        assert!(
+            src.contains("sink-returned relationships.id"),
+            "RelVectors fail-closed hint must name sink-returned relationships.id"
+        );
+        assert!(
+            src.contains("PostgresEntitySink wrote the entity spine before fleet mirror"),
+            "EntityVectors hint must keep entity-spine language"
+        );
+    }
+
+    /// SPEC-130 T1: typed path sequences RelGraph before RelVectors in source.
+    #[test]
+    fn contract_spec130_typed_relgraph_before_relvectors() {
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/merger/mod.rs"));
+        let typed_comment = src
+            .find("Typed order:  EntityGraph → EntityVectors → RelGraph → RelVectors")
+            .expect("typed order comment");
+        let rel_graph = src[typed_comment..]
+            .find("merge_relationships_batch")
+            .expect("RelGraph call");
+        let rel_vectors = src[typed_comment..]
+            .find("if typed_authority && !all_rel_vectors.is_empty()")
+            .expect("typed RelVectors gate");
+        assert!(
+            rel_graph < rel_vectors,
+            "RelGraph must appear before typed RelVectors in merge_with_progress"
         );
     }
 }

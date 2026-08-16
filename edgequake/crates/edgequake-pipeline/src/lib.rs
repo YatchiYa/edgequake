@@ -156,9 +156,9 @@ pub use merger::{
     DescriptionMergePolicy, EntityLineageLink, EntitySinkRow, KnowledgeGraphMerger, LineageSink,
     MergeArtifacts, MergePhase, MergeProgress, MergeProgressCallback, MergeStats, MergerConfig,
     NoopEntitySink, NoopLineageSink, RelationLineageLink, RelationalEntitySink,
-    RelationshipSinkRow, SourceIdsLimitMethod, DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE,
-    DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC, DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP,
-    LOCAL_MERGE_MAX_ASYNC,
+    RelationshipSinkReport, RelationshipSinkRow, SourceIdsLimitMethod,
+    DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE, DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC,
+    DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP, LOCAL_MERGE_MAX_ASYNC,
 };
 pub use multimodal::{
     bare_entity_id, inject_modality_relations, map_image_type_to_retrieval_modality,

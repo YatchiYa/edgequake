@@ -74,12 +74,17 @@ pub trait FleetEmbeddingIndex: Send + Sync {
 
     /// Dual-write hook: mirror freshly upserted legacy vector rows into typed
     /// fleet tables. Default no-op for non-Postgres adapters.
+    ///
+    /// SPEC-130: `known_relationship_ids` maps legacy `SRC->TGT:TYPE` →
+    /// `relationships.id` from the same-session sink; when present, skips name
+    /// re-resolve for those keys.
     async fn mirror_legacy_batch(
         &self,
         rows: &[(String, Vec<f32>, serde_json::Value)],
         count_as_entities: bool,
+        known_relationship_ids: Option<&std::collections::HashMap<String, uuid::Uuid>>,
     ) -> Result<MirrorLegacyReport, StorageError> {
-        let _ = (rows, count_as_entities);
+        let _ = (rows, count_as_entities, known_relationship_ids);
         Ok(MirrorLegacyReport::default())
     }
 }
