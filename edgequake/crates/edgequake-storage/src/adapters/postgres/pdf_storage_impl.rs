@@ -75,6 +75,8 @@ impl PostgresPdfStorage {
         let chunk_count = stats.chunk_count.max(0);
         let entity_count = stats.entity_count.max(0);
         let relationship_count = stats.relationship_count.max(0);
+        // SPEC-129: legacy fallback must also project CHECK-safe status.
+        let pg_status = crate::relational_documents_status_for_write(stats.status);
 
         // Prefer writing relationship_count into the column when present (M041+).
         // Fall back to metadata-only if that column is still missing on older DBs.
@@ -94,7 +96,7 @@ impl PostgresPdfStorage {
         .bind(chunk_count)
         .bind(entity_count)
         .bind(relationship_count)
-        .bind(stats.status)
+        .bind(&pg_status)
         .bind(metadata_patch.clone())
         .execute(&self.pool)
         .await;
@@ -117,7 +119,7 @@ impl PostgresPdfStorage {
                 .bind(stats.document_id)
                 .bind(chunk_count)
                 .bind(entity_count)
-                .bind(stats.status)
+                .bind(&pg_status)
                 .bind(metadata_patch)
                 .execute(&self.pool)
                 .await
@@ -144,7 +146,7 @@ impl PostgresPdfStorage {
                 chunk_count = chunk_count,
                 entity_count = entity_count,
                 relationship_count = relationship_count,
-                status = stats.status,
+                status = %pg_status,
                 "Updated document stats via legacy/metadata fallback"
             );
         }
@@ -592,6 +594,8 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         // INVARIANT: never shrink `content` — a shorter payload (e.g. legacy 500-char
         // summary mistaken for body) must not clobber a longer stored body.
         // @implements FIX-ISSUE-74: Ensure document record exists before FK link
+        // SPEC-129: storage owns CHECK projection — never bind raw KV stages.
+        let pg_status = crate::relational_documents_status_for_write(status);
         sqlx::query(
             r#"
             INSERT INTO public.documents (id, tenant_id, workspace_id, title, content, status, updated_at)
@@ -612,7 +616,7 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         .bind(workspace_id)
         .bind(title)
         .bind(content)
-        .bind(status)
+        .bind(&pg_status)
         .execute(&self.pool)
         .await
         .map_err(|e| StorageError::Database(format!("Failed to ensure document record: {}", e)))?;
@@ -643,6 +647,9 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         let entity_count = stats.entity_count.max(0);
         let relationship_count = stats.relationship_count.max(0);
 
+        // SPEC-129: defense-in-depth — never bind a raw KV stage to the column.
+        let pg_status = crate::relational_documents_status_for_write(stats.status);
+
         let result = sqlx::query(
             r#"
             UPDATE public.documents SET
@@ -668,7 +675,7 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         .bind(stats.output_tokens)
         .bind(stats.total_tokens)
         .bind(stats.error_message)
-        .bind(stats.status)
+        .bind(&pg_status)
         .execute(&self.pool)
         .await;
 
@@ -702,7 +709,7 @@ impl PdfDocumentStorage for PostgresPdfStorage {
                 chunk_count = chunk_count,
                 entity_count = entity_count,
                 relationship_count = relationship_count,
-                status = stats.status,
+                status = %pg_status,
                 "Updated document stats (SPEC-021 P-A1)"
             );
         }
@@ -712,11 +719,9 @@ impl PdfDocumentStorage for PostgresPdfStorage {
 
     async fn touch_document_status(&self, document_id: &Uuid, status: &str) -> Result<()> {
         // SPEC-047 P1: status + updated_at only — never clobber entity_count.
-        let pg_status = if status == "completed" {
-            "indexed"
-        } else {
-            status
-        };
+        // SPEC-129: project via SSOT so KV stages like `re_embedding` never
+        // violate `documents_valid_status`.
+        let pg_status = crate::relational_documents_status_for_write(status);
         let result = sqlx::query(
             r#"
             UPDATE public.documents SET
@@ -726,7 +731,7 @@ impl PdfDocumentStorage for PostgresPdfStorage {
             "#,
         )
         .bind(document_id)
-        .bind(pg_status)
+        .bind(&pg_status)
         .execute(&self.pool)
         .await
         .map_err(|e| StorageError::Database(format!("Failed to touch document status: {e}")))?;

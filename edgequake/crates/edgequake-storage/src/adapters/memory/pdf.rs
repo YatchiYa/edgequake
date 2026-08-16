@@ -284,6 +284,8 @@ impl PdfDocumentStorage for MemoryPdfStorage {
             Some(existing) if existing.content.len() > content.len() => existing.content.clone(),
             _ => content.to_string(),
         };
+        // SPEC-129: memory parity — CHECK-safe column projection.
+        let pg_status = crate::relational_documents_status_for_write(status);
         documents.insert(
             *document_id,
             DocumentRecord {
@@ -291,7 +293,7 @@ impl PdfDocumentStorage for MemoryPdfStorage {
                 tenant_id: tenant_id.copied(),
                 title: title.to_string(),
                 content,
-                status: status.to_string(),
+                status: pg_status,
                 ..Default::default()
             },
         );
@@ -322,7 +324,8 @@ impl PdfDocumentStorage for MemoryPdfStorage {
                 if stats.error_message.is_some() {
                     rec.error_message = stats.error_message.map(|s| s.to_string());
                 }
-                rec.status = stats.status.to_string();
+                // SPEC-129: memory parity with postgres CHECK projection.
+                rec.status = crate::relational_documents_status_for_write(stats.status);
             }
             None => {
                 // Mirror the postgres race warning so tests can assert on it.
@@ -336,15 +339,12 @@ impl PdfDocumentStorage for MemoryPdfStorage {
     }
 
     async fn touch_document_status(&self, document_id: &Uuid, status: &str) -> Result<()> {
-        let pg_status = if status == "completed" {
-            "indexed"
-        } else {
-            status
-        };
+        // SPEC-129: same SSOT as postgres touch — CHECK-safe column projection.
+        let pg_status = crate::relational_documents_status_for_write(status);
         let mut documents = self.documents.write().map_err(map_lock_err)?;
         match documents.get_mut(document_id) {
             Some(rec) => {
-                rec.status = pg_status.to_string();
+                rec.status = pg_status;
             }
             None => {
                 tracing::warn!(

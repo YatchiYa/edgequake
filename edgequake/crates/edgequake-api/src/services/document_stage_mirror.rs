@@ -65,11 +65,8 @@ pub async fn mirror_document_stage_to_relational_with_counts(
         return false;
     };
 
-    let pg_status = if status == "completed" {
-        "indexed"
-    } else {
-        status
-    };
+    // SPEC-129: project KV stages onto documents_valid_status (not completed→indexed only).
+    let pg_status = edgequake_storage::relational_documents_status_for_write(status);
 
     let mut meta = json!({
         "current_stage": current_stage,
@@ -139,7 +136,7 @@ pub async fn mirror_document_stage_to_relational_with_counts(
         "#,
     )
     .bind(uuid)
-    .bind(pg_status)
+    .bind(&pg_status)
     .bind(meta)
     .bind(held_epoch.0)
     .bind(expected_track_id)

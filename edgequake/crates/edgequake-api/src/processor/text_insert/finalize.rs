@@ -91,11 +91,9 @@ impl DocumentTaskProcessor {
                     let tenant_uuid = tenant_id
                         .as_ref()
                         .and_then(|t| uuid::Uuid::parse_str(t).ok());
-                    let pg_status = if final_status == "completed" {
-                        "indexed"
-                    } else {
-                        final_status.as_str()
-                    };
+                    // SPEC-129: CHECK-safe column status (SSOT; ensure_document_record also projects).
+                    let pg_status =
+                        edgequake_storage::relational_documents_status_for_write(&final_status);
                     let title = data
                         .metadata
                         .as_ref()
@@ -112,7 +110,7 @@ impl DocumentTaskProcessor {
                             tenant_uuid.as_ref(),
                             title,
                             &text_content,
-                            pg_status,
+                            &pg_status,
                         )
                         .await
                     {

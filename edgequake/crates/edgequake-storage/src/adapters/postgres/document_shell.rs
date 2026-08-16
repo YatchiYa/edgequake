@@ -59,31 +59,11 @@ fn legacy_content_value(text: String) -> Value {
     json!({ "content": text })
 }
 
-/// Map KV / pipeline status strings onto `documents_valid_status` (migration 141).
-///
-/// Richer stage vocabulary stays in `metadata->>'status'`; the column must only
-/// hold CHECK-allowlisted values or shell INSERT/UPDATE fails closed.
-///
-/// SPEC-098 LAW-098-11: lifecycle statuses `deleting` / `delete_failed` pass
-/// through unchanged — never collapse to cancelled/failed.
-pub fn normalize_documents_column_status(raw: &str) -> String {
-    let s = raw.trim();
-    if s.is_empty() {
-        return "processing".to_string();
-    }
-    let lower = s.to_ascii_lowercase();
-    match lower.as_str() {
-        "pending" | "processing" | "chunking" | "extracting" | "embedding" | "indexing"
-        | "completed" | "indexed" | "failed" | "partial_failure" | "cancelled" | "deleting"
-        | "delete_failed" => lower,
-        "queued" => "pending".to_string(),
-        "partial_success" => "partial_failure".to_string(),
-        // Pipeline stage slugs and anything else → generic processing.
-        "uploading" | "converting" | "preprocessing" | "gleaning" | "merging" | "summarizing"
-        | "storing" | "re_embedding" => "processing".to_string(),
-        _ => "processing".to_string(),
-    }
-}
+// SPEC-129: SSOT lives in crate-root `documents_column_status` so memory +
+// postgres dual-writes share one mapper (no feature-gated drift).
+pub use crate::documents_column_status::{
+    normalize_documents_column_status, relational_documents_status_for_write,
+};
 
 fn status_from_metadata(value: &Value) -> String {
     value
@@ -541,28 +521,5 @@ mod tests {
         );
     }
 
-    #[test]
-    fn normalize_documents_column_status_maps_kv_vocabulary() {
-        assert_eq!(normalize_documents_column_status("queued"), "pending");
-        // SPEC-098 LAW-098-11: lifecycle pass-through.
-        assert_eq!(normalize_documents_column_status("deleting"), "deleting");
-        assert_eq!(
-            normalize_documents_column_status("delete_failed"),
-            "delete_failed"
-        );
-        assert_eq!(
-            normalize_documents_column_status("partial_success"),
-            "partial_failure"
-        );
-        assert_eq!(
-            normalize_documents_column_status("converting"),
-            "processing"
-        );
-        assert_eq!(normalize_documents_column_status("cancelled"), "cancelled");
-        assert_eq!(
-            normalize_documents_column_status("extracting"),
-            "extracting"
-        );
-        assert_eq!(normalize_documents_column_status(""), "processing");
-    }
+    // SPEC-129: vocabulary matrix lives in `documents_column_status` unit tests.
 }

@@ -718,15 +718,12 @@ impl DocumentTaskProcessor {
         };
 
         // WHY: KV uses `completed`; relational CHECK + UI prefer `indexed`.
-        let pg_status = if status == "completed" {
-            "indexed"
-        } else {
-            status
-        };
+        // SPEC-129: also project rich stages (e.g. re_embedding) onto CHECK-safe values.
+        let pg_status = edgequake_storage::relational_documents_status_for_write(status);
 
         let update = edgequake_storage::DocumentStatsUpdate {
             document_id: doc_uuid,
-            status: pg_status,
+            status: &pg_status,
             chunk_count: stats.chunk_count as i32,
             entity_count: stats.entity_count as i32,
             relationship_count: stats.relationship_count as i32,

@@ -138,11 +138,8 @@ pub async fn touch_relational_document_track_status_best_effort(
         let Ok(doc_uuid) = Uuid::parse_str(document_id) else {
             return;
         };
-        let pg_status = if status == "completed" {
-            "indexed"
-        } else {
-            status
-        };
+        // SPEC-129: project KV stages onto documents_valid_status before UPDATE.
+        let pg_status = edgequake_storage::relational_documents_status_for_write(status);
         let result = if let Some(tid) = track_id {
             sqlx::query(
                 "UPDATE public.documents \
@@ -151,7 +148,7 @@ pub async fn touch_relational_document_track_status_best_effort(
             )
             .bind(doc_uuid)
             .bind(tid)
-            .bind(pg_status)
+            .bind(&pg_status)
             .execute(pool)
             .await
         } else {
@@ -161,7 +158,7 @@ pub async fn touch_relational_document_track_status_best_effort(
                  WHERE id = $1",
             )
             .bind(doc_uuid)
-            .bind(pg_status)
+            .bind(&pg_status)
             .execute(pool)
             .await
         };

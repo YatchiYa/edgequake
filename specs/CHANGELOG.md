@@ -6,6 +6,13 @@ All notable changes to the EdgeQuake specs directory are tracked here. See the r
 
 ### Added
 
+- **SPEC-129 / touch_document_status CHECK (#381) (2026-08-16):** Dual-write
+  SSOT gap — slim-checkpoint resume writes KV `re_embedding` while
+  `touch_document_status` bypassed `normalize_documents_column_status`,
+  violating `documents_valid_status`. Fix: `relational_documents_status_for_write`
+  (normalize + `completed`→`indexed`) on all relational status writers; no CHECK
+  widen. Pack: `specs/129-touchd_document_faill/`.
+
 - **SPEC-128 / PDF precision + layout overlay (2026-08-16):** Close the
   figure-filter control loop (classify → prune `figure_map`), tighten Image/Form
   area+aspect gates in pdf2md, persist `document_pages` / `page_layout_regions`

@@ -77,6 +77,10 @@ pub use dimension_policy::{
     decide_dimension_action, DimensionAction, DimensionEnsureOutcome, DimensionReconcilePolicy,
 };
 pub mod document_metadata_integrity;
+pub mod documents_column_status;
+pub use documents_column_status::{
+    normalize_documents_column_status, relational_documents_status_for_write,
+};
 pub mod entity_fuzzy;
 pub mod entity_id;
 pub mod entity_reconcile;
