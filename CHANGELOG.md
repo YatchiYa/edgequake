@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **SPEC-133 — relationship fleet-mirror target-arrow parse** — Legacy id `{src}->{tgt}:{rel}` was still ambiguous when the **target** name contained `->` (e.g. `FLOW_DIRECTION->ARROW_1_(SHADED_BOX_->CIRCULAR_TARGET):RELATED_TO`), causing typed fleet mirror near-misses (`995/1000`) and fail-closed KG persist on diagram/handwriting PDFs. Index-guided both-resolve parse (`EntityNameIndex::parse_relationship_legacy_key` / `parse_relationship_legacy_key_with_resolver`) closes the residual after the v0.24.2 source-arrow `rsplit` fix. Wired through fleet mirror, iw2 backfill, stamp, and coverage. E2E: `e2e_spec133_target_arrow_map_miss`. Spec: [`specs/133-kv-error/`](specs/133-kv-error/).
+
 ### Added
 - **SPEC-126 provider KV / prompt cache** — default-on prefix reuse per LLM vendor (`EDGEQUAKE_PROMPT_CACHE`). Distinct from SPEC-103 (does not skip generation; Acc leaves this on). Native OpenAI/Azure send GPT-5.6 explicit breakpoints and learn from structured `error.param` 400s (not host/model heuristics). Compatible/Mistral/NVIDIA send `prompt_cache_key` only. Anthropic `cache_control`; OpenRouter `session_id` + `cache_control`; Bedrock Converse `cachePoint`. Extract/glean/keyword/summarize/judge keep a stable system prefix. Mix KV is small unless Mix instructions exceed vendor min tokens. E2E: `e2e_spec126_prompt_cache`.
 

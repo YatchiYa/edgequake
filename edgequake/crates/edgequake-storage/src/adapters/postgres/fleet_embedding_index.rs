@@ -10,8 +10,7 @@ use crate::adapters::postgres::typed_embedding_dims::{
     validate_ann_dimensions, validate_typed_embedding_batch_dims,
 };
 use crate::embedding_family::{
-    classify_legacy_vector_id, entity_name_from_legacy_id, parse_relationship_legacy_key,
-    EmbeddingFamily,
+    classify_legacy_vector_id, entity_name_from_legacy_id, EmbeddingFamily,
 };
 use crate::error::StorageError;
 use crate::graph_batch_dedupe::normalize_relation_type_str;
@@ -338,9 +337,6 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                     report_rows.push(row_template(FleetEmbeddingKey::Report(id.clone())));
                 }
                 Some(EmbeddingFamily::Relationship) => {
-                    let Some((src, tgt, rel_type)) = parse_relationship_legacy_key(id) else {
-                        continue;
-                    };
                     report.eligible += 1;
                     // SPEC-130: prefer sink-returned UUID (same-session identity).
                     let rid = if let Some(known) = known_relationship_ids {
@@ -351,6 +347,13 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                     let rid = match rid {
                         Some(rid) => Some(rid),
                         None => {
+                            // SPEC-133: index-guided parse when names contain `->`.
+                            let Some((src, tgt, rel_type)) =
+                                index.parse_relationship_legacy_key(id)
+                            else {
+                                report.push_miss(id);
+                                continue;
+                            };
                             let rel_type = normalize_relation_type_str(&rel_type);
                             resolve_relationship_id_pool(
                                 &self.pool, ws, &src, &tgt, &rel_type, index,

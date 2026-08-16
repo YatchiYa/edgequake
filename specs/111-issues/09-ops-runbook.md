@@ -46,10 +46,13 @@ Upgrade SSOT: [`docs/operations/upgrade-to-0.24.2.md`](../../docs/operations/upg
 ## KG persist near-miss (`999/1000` / arrow in entity name)
 
 If fail-closed mirror reports SPEC-098 misses like
-`27_->_25_STRENGTHENING->CLAIM_FRONTIER:STRENGTHENS`, upgrade to **v0.24.2+**
-(last-`->` parse) and **reprocess** the document. Do not treat as missing spine /
-re-run 139–140 solely for this class. See
-[`docs/operations/spec098-entity-spine-ensure.md`](../../docs/operations/spec098-entity-spine-ensure.md).
+`27_->_25_STRENGTHENING->CLAIM_FRONTIER:STRENGTHENS` **or** target-arrow keys like
+`FLOW_DIRECTION->ARROW_1_(SHADED_BOX_->CIRCULAR_TARGET):RELATED_TO`, upgrade to a
+build with **SPEC-133** index-guided parse (and v0.24.2+ last-`->` baseline) and
+**reprocess** the document. Do not treat as missing spine / re-run 139–140 solely
+for this class. See
+[`docs/operations/spec098-entity-spine-ensure.md`](../../docs/operations/spec098-entity-spine-ensure.md)
+and [`specs/133-kv-error/`](../133-kv-error/).
 
 ## Provenance-stamp / iw2 verify noise
 

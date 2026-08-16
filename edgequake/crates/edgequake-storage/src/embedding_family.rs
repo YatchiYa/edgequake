@@ -86,8 +86,12 @@ pub fn format_relationship_legacy_key(src: &str, tgt: &str, rel_type: &str) -> S
 ///
 /// Uses the **last** `->` as the source/target separator so entity names that
 /// themselves contain `->` (e.g. LLM-extracted `27_->_25_STRENGTHENING`) still
-/// resolve. Rel type is taken from the last `:`. Residual ambiguity remains if
-/// the **target** name also contains `->`.
+/// resolve when only the **source** side has arrows. Rel type is taken from the
+/// last `:`.
+///
+/// When the **target** also contains `->`, this naive split is ambiguous —
+/// prefer [`parse_relationship_legacy_key_with_resolver`] (SPEC-133) whenever an
+/// entity-name existence check is available.
 pub fn parse_relationship_legacy_key(id: &str) -> Option<(String, String, String)> {
     if id.starts_with("entity:") || id.starts_with("community_report:") {
         return None;
@@ -101,6 +105,52 @@ pub fn parse_relationship_legacy_key(id: &str) -> Option<(String, String, String
         return None;
     }
     Some((source.to_string(), target.to_string(), rel_type.to_string()))
+}
+
+/// SPEC-133: disambiguate legacy relationship keys when entity names contain `->`.
+///
+/// Tries every `->` split of the `source->target` pair. Prefer splits where
+/// **both** endpoints satisfy `exists`. Exactly one both-resolve → that split.
+/// Multiple both-resolve → rightmost (preserves source-arrow preference when both
+/// pairs somehow exist). Zero both-resolve → naive [`parse_relationship_legacy_key`].
+pub fn parse_relationship_legacy_key_with_resolver<F>(
+    id: &str,
+    exists: F,
+) -> Option<(String, String, String)>
+where
+    F: Fn(&str) -> bool,
+{
+    if id.starts_with("entity:") || id.starts_with("community_report:") {
+        return None;
+    }
+    let (pair, rel_type) = id.rsplit_once(':')?;
+    if rel_type.is_empty() {
+        return None;
+    }
+
+    let mut both_ok: Vec<(String, String)> = Vec::new();
+    let bytes = pair.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'-' && bytes[i + 1] == b'>' {
+            let source = &pair[..i];
+            let target = &pair[i + 2..];
+            if !source.is_empty() && !target.is_empty() && exists(source) && exists(target) {
+                both_ok.push((source.to_string(), target.to_string()));
+            }
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+
+    match both_ok.len() {
+        0 => parse_relationship_legacy_key(id),
+        n => {
+            let (source, target) = both_ok.swap_remove(n - 1);
+            Some((source, target, rel_type.to_string()))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -166,6 +216,96 @@ mod tests {
             classify_legacy_vector_id(miss),
             Some(EmbeddingFamily::Relationship)
         );
+    }
+
+    /// SPEC-133: target (and multi-arrow) names — naive rsplit invents wrong endpoints.
+    #[test]
+    fn contract_spec133_parse_target_arrow_naive_is_wrong() {
+        let key = format_relationship_legacy_key(
+            "FLOW_DIRECTION",
+            "ARROW_1_(SHADED_BOX_->CIRCULAR_TARGET)",
+            "RELATED_TO",
+        );
+        assert_eq!(
+            parse_relationship_legacy_key(&key),
+            Some((
+                "FLOW_DIRECTION->ARROW_1_(SHADED_BOX_".into(),
+                "CIRCULAR_TARGET)".into(),
+                "RELATED_TO".into()
+            ))
+        );
+    }
+
+    /// SPEC-133: index-guided parse recovers zz-raw / UI miss keys.
+    #[test]
+    fn contract_spec133_parse_target_arrow_with_resolver() {
+        let cases = [
+            (
+                "LEFT_MARGIN",
+                "LEFT_MARGIN_VALUE_1->_00_->_+",
+                "RELATED_TO",
+            ),
+            (
+                "SMALL_BOXED_LABEL_T.",
+                "LEFT_MARGIN_LABEL_1->_00_->_+",
+                "RELATED_TO",
+            ),
+            (
+                "FLOW_DIRECTION",
+                "ARROW_1_(SHADED_BOX_->CIRCULAR_TARGET)",
+                "RELATED_TO",
+            ),
+            (
+                "FLOW_DIRECTION",
+                "ARROW_2_(CIRCULAR_TARGET_->VERTICAL_PANEL)",
+                "RELATED_TO",
+            ),
+            (
+                "LEFT_MARGIN_SEQUENCE",
+                "SEQUENCE_1->_00_->_+",
+                "RELATED_TO",
+            ),
+        ];
+        for (src, tgt, rel) in cases {
+            let key = format_relationship_legacy_key(src, tgt, rel);
+            let parsed = parse_relationship_legacy_key_with_resolver(&key, |n| {
+                n == src || n == tgt
+            });
+            assert_eq!(
+                parsed,
+                Some((src.into(), tgt.into(), rel.into())),
+                "key={key}"
+            );
+        }
+    }
+
+    /// SPEC-133 / LAW-133-7: source-arrow still unique both-resolve under resolver.
+    #[test]
+    fn contract_spec133_parse_source_arrow_with_resolver() {
+        let miss = "27_->_25_STRENGTHENING->CLAIM_FRONTIER:STRENGTHENS";
+        let parsed = parse_relationship_legacy_key_with_resolver(miss, |n| {
+            n == "27_->_25_STRENGTHENING" || n == "CLAIM_FRONTIER"
+        });
+        assert_eq!(
+            parsed,
+            Some((
+                "27_->_25_STRENGTHENING".into(),
+                "CLAIM_FRONTIER".into(),
+                "STRENGTHENS".into()
+            ))
+        );
+    }
+
+    /// SPEC-133: empty existence check falls back to naive rsplit.
+    #[test]
+    fn contract_spec133_parse_resolver_empty_falls_back() {
+        let key = format_relationship_legacy_key(
+            "FLOW_DIRECTION",
+            "ARROW_1_(SHADED_BOX_->CIRCULAR_TARGET)",
+            "RELATED_TO",
+        );
+        let parsed = parse_relationship_legacy_key_with_resolver(&key, |_| false);
+        assert_eq!(parsed, parse_relationship_legacy_key(&key));
     }
 
     #[test]

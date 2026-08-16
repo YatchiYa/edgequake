@@ -74,22 +74,10 @@ impl LangfuseConfig {
                 t == "0" || t.eq_ignore_ascii_case("false") || t.eq_ignore_ascii_case("off")
             })
             .unwrap_or(false);
-        let force_on = force
-            .as_deref()
-            .map(|v| {
-                let t = v.trim();
-                t == "1" || t.eq_ignore_ascii_case("true") || t.eq_ignore_ascii_case("on")
-            })
-            .unwrap_or(false);
 
         let keys_ok = public_key_configured && secret_key_configured;
-        let enabled = if force_off {
-            false
-        } else if force_on {
-            keys_ok
-        } else {
-            keys_ok
-        };
+        // force_on (1/true/on) is informational only: enablement still requires keys.
+        let enabled = if force_off { false } else { keys_ok };
 
         Self {
             enabled,
@@ -241,7 +229,7 @@ pub fn langfuse_otlp_headers(public_key: &str, secret_key: &str) -> HashMap<Stri
 /// Minimal Base64 (RFC 4648) encoder — avoids a new workspace dep for one header.
 fn base64_encode(input: &[u8]) -> String {
     const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(((input.len() + 2) / 3) * 4);
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     let mut i = 0;
     while i + 3 <= input.len() {
         let n = ((input[i] as u32) << 16) | ((input[i + 1] as u32) << 8) | (input[i + 2] as u32);

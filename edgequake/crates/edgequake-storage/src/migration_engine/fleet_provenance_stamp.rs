@@ -10,9 +10,7 @@ use sha2::{Digest, Sha384};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-use crate::embedding_family::{
-    entity_name_from_legacy_id, parse_relationship_legacy_key, EmbeddingFamily,
-};
+use crate::embedding_family::{entity_name_from_legacy_id, EmbeddingFamily};
 use crate::error::StorageError;
 use crate::graph_batch_dedupe::normalize_relation_type_str;
 
@@ -325,7 +323,8 @@ async fn stamp_relationship(
     ws: Uuid,
     index: &EntityNameIndex,
 ) -> Result<StampOutcome, StorageError> {
-    let Some((src, tgt, rel_type)) = parse_relationship_legacy_key(legacy_id) else {
+    // SPEC-133: index-guided parse when endpoint names contain `->`.
+    let Some((src, tgt, rel_type)) = index.parse_relationship_legacy_key(legacy_id) else {
         return Ok(StampOutcome::Failed);
     };
     let rel_type = normalize_relation_type_str(&rel_type);

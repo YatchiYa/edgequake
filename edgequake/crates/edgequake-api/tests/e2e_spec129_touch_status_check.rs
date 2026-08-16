@@ -220,10 +220,9 @@ fn contract_spec129_writers_reference_helper() {
         );
     }
 
-    let pg_impl = std::fs::read_to_string(
-        storage_root.join("adapters/postgres/pdf_storage_impl.rs"),
-    )
-    .expect("pdf_storage_impl");
+    let pg_impl =
+        std::fs::read_to_string(storage_root.join("adapters/postgres/pdf_storage_impl.rs"))
+            .expect("pdf_storage_impl");
     let ensure_idx = pg_impl
         .find("async fn ensure_document_record")
         .expect("ensure_document_record present");

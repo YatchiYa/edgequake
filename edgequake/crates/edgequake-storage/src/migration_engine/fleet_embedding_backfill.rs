@@ -11,8 +11,7 @@ use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::embedding_family::{
-    classify_legacy_vector_id, entity_name_from_legacy_id, parse_relationship_legacy_key,
-    EmbeddingFamily,
+    classify_legacy_vector_id, entity_name_from_legacy_id, EmbeddingFamily,
 };
 use crate::error::StorageError;
 use crate::graph_batch_dedupe::normalize_relation_type_str;
@@ -632,11 +631,6 @@ impl FleetEmbeddingBackfillJob {
                 .try_get("embedding")
                 .map_err(|e| StorageError::Database(e.to_string()))?;
             let meta: Value = row.try_get("metadata").unwrap_or(json!({}));
-            let Some((src, tgt, rel_type_raw)) = parse_relationship_legacy_key(&id) else {
-                failed += 1;
-                continue;
-            };
-            let rel_type = normalize_relation_type_str(&rel_type_raw);
             let Some(ws) = workspace_from_row(row, &meta) else {
                 failed += 1;
                 continue;
@@ -650,6 +644,12 @@ impl FleetEmbeddingBackfillJob {
                 e.insert(load_entity_name_index(tx, ws).await?);
             }
             let index = index_cache.get(&ws).expect("just inserted");
+            // SPEC-133: index-guided parse when endpoint names contain `->`.
+            let Some((src, tgt, rel_type_raw)) = index.parse_relationship_legacy_key(&id) else {
+                failed += 1;
+                continue;
+            };
+            let rel_type = normalize_relation_type_str(&rel_type_raw);
             let rid = match resolve_relationship_id(tx, ws, &src, &tgt, &rel_type, index).await? {
                 Some(rid) => rid,
                 None => {

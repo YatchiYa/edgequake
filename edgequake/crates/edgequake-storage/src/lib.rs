@@ -97,7 +97,7 @@ pub mod drain_claim;
 pub mod embedding_family;
 pub use embedding_family::{
     classify_legacy_vector_id, entity_name_from_legacy_id, format_relationship_legacy_key,
-    parse_relationship_legacy_key, EmbeddingFamily,
+    parse_relationship_legacy_key, parse_relationship_legacy_key_with_resolver, EmbeddingFamily,
 };
 pub mod graph_batch_dedupe;
 pub mod graph_metrics;

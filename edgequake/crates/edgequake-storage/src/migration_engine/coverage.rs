@@ -11,7 +11,7 @@ use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::embedding_family::{
-    entity_name_from_legacy_id, parse_relationship_legacy_key, EmbeddingFamily,
+    entity_name_from_legacy_id, parse_relationship_legacy_key_with_resolver, EmbeddingFamily,
 };
 use crate::entity_id::normalize_entity_name;
 use crate::error::StorageError;
@@ -66,6 +66,17 @@ impl EntityNameIndex {
             return None;
         }
         self.by_key.get(&norm).copied()
+    }
+
+    /// SPEC-133 DRY: parse `SRC->TGT:TYPE` using this index as the existence check.
+    ///
+    /// Prefer this over calling [`parse_relationship_legacy_key_with_resolver`]
+    /// with a hand-rolled closure at every call site.
+    pub fn parse_relationship_legacy_key(
+        &self,
+        legacy_id: &str,
+    ) -> Option<(String, String, String)> {
+        parse_relationship_legacy_key_with_resolver(legacy_id, |n| self.resolve(n).is_some())
     }
 }
 
@@ -386,13 +397,14 @@ pub async fn fleet_row_join_resolvable(
             Ok(n)
         }
         EmbeddingFamily::Relationship => {
-            let Some((src, tgt, rel_type)) = parse_relationship_legacy_key(legacy_id) else {
-                return Ok(false);
-            };
             let Some(ws) = workspace_id else {
                 return Ok(false);
             };
             let index = load_entity_name_index_pool(pool, ws).await?;
+            // SPEC-133: index-guided parse when endpoint names contain `->`.
+            let Some((src, tgt, rel_type)) = index.parse_relationship_legacy_key(legacy_id) else {
+                return Ok(false);
+            };
             let n = resolve_relationship_id_pool(pool, ws, &src, &tgt, &rel_type, &index)
                 .await?
                 .is_some();
@@ -553,7 +565,8 @@ pub async fn sample_provenance_stall_ids(
                 e.insert(load_entity_name_index_pool(pool, ws).await?);
             }
             let index = index_cache.get(&ws).expect("just inserted");
-            let Some((src, tgt, rel_type)) = parse_relationship_legacy_key(&id) else {
+            // SPEC-133: index-guided parse when endpoint names contain `->`.
+            let Some((src, tgt, rel_type)) = index.parse_relationship_legacy_key(&id) else {
                 continue;
             };
             let Some(rid) =
@@ -792,5 +805,23 @@ mod tests {
         let index = EntityNameIndex::from_rows([(id, format!("{ws}::Acme Corp Ltd"))]);
         assert_eq!(index.resolve("ACME_CORP_LTD"), Some(id));
         assert_eq!(index.resolve("Acme Corp Ltd"), Some(id));
+    }
+
+    /// SPEC-133 DRY: index wrapper disambiguates target-arrow keys.
+    #[test]
+    fn contract_spec133_index_parse_relationship_legacy_key() {
+        let src_id = Uuid::new_v4();
+        let tgt_id = Uuid::new_v4();
+        let src = "FLOW_DIRECTION";
+        let tgt = "ARROW_1_(SHADED_BOX_->CIRCULAR_TARGET)";
+        let index = EntityNameIndex::from_rows([
+            (src_id, src.into()),
+            (tgt_id, tgt.into()),
+        ]);
+        let key = crate::format_relationship_legacy_key(src, tgt, "RELATED_TO");
+        assert_eq!(
+            index.parse_relationship_legacy_key(&key),
+            Some((src.into(), tgt.into(), "RELATED_TO".into()))
+        );
     }
 }

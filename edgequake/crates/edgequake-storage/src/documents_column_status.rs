@@ -107,9 +107,6 @@ mod tests {
             relational_documents_status_for_write("extracting"),
             "extracting"
         );
-        assert_eq!(
-            relational_documents_status_for_write(""),
-            "processing"
-        );
+        assert_eq!(relational_documents_status_for_write(""), "processing");
     }
 }
