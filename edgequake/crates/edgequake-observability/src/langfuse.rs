@@ -100,6 +100,15 @@ impl LangfuseConfig {
         }
     }
 
+    /// Optional `LANGFUSE_PROJECT_ID` (non-secret). When unset, the API resolves
+    /// it from `GET /api/public/projects` so UI deep-links can include `/project/{id}`.
+    pub fn project_id_from_env() -> Option<String> {
+        std::env::var("LANGFUSE_PROJECT_ID")
+            .ok()
+            .map(|v| unquote_env_value(&v))
+            .filter(|v| !v.is_empty())
+    }
+
     /// Full OTLP/HTTP traces URL for programmatic `with_endpoint`.
     ///
     /// opentelemetry-otlp 0.32 does **not** append `/v1/traces` when the endpoint is set
@@ -114,18 +123,35 @@ impl LangfuseConfig {
 
     /// Deep link to a single trace in the Langfuse UI.
     ///
-    /// Prefer [`session_ui_url`] for operator deep-links until API `trace_id`
-    /// is unified with the OTEL TraceId (SPEC-124 residual).
-    pub fn trace_ui_url(&self, trace_id: &str) -> String {
-        format!("{}/trace/{}", self.base_url.trim_end_matches('/'), trace_id)
+    /// Langfuse Cloud requires `/project/{projectId}/traces/{traceId}` (legacy
+    /// `/trace/{id}` is a 404).
+    pub fn trace_ui_url(&self, project_id: &str, trace_id: &str) -> String {
+        format!(
+            "{}/project/{}/traces/{}",
+            self.base_url.trim_end_matches('/'),
+            percent_encode_path_segment(project_id),
+            percent_encode_path_segment(trace_id)
+        )
     }
 
     /// Deep link to a Langfuse Session (honest operator link for SPEC-124).
-    pub fn session_ui_url(&self, session_id: &str) -> String {
+    ///
+    /// Requires the project id: `/sessions/{id}` without `/project/{id}` 404s.
+    pub fn session_ui_url(&self, project_id: &str, session_id: &str) -> String {
         format!(
-            "{}/sessions/{}",
+            "{}/project/{}/sessions/{}",
             self.base_url.trim_end_matches('/'),
+            percent_encode_path_segment(project_id),
             percent_encode_path_segment(session_id)
+        )
+    }
+
+    /// Project home in the Langfuse UI (`Open in Langfuse` when export is on).
+    pub fn project_ui_url(&self, project_id: &str) -> String {
+        format!(
+            "{}/project/{}",
+            self.base_url.trim_end_matches('/'),
+            percent_encode_path_segment(project_id)
         )
     }
 
@@ -331,16 +357,31 @@ mod tests {
             "https://cloud.langfuse.com/api/public/otel/v1/traces"
         );
         assert_eq!(
-            cfg.trace_ui_url("abc123"),
-            "https://cloud.langfuse.com/trace/abc123"
+            cfg.trace_ui_url("proj_1", "abc123"),
+            "https://cloud.langfuse.com/project/proj_1/traces/abc123"
         );
         assert_eq!(
-            cfg.session_ui_url("conv-1"),
-            "https://cloud.langfuse.com/sessions/conv-1"
+            cfg.session_ui_url("proj_1", "conv-1"),
+            "https://cloud.langfuse.com/project/proj_1/sessions/conv-1"
         );
         assert_eq!(
-            cfg.session_ui_url("a/b"),
-            "https://cloud.langfuse.com/sessions/a%2Fb"
+            cfg.session_ui_url("proj_1", "a/b"),
+            "https://cloud.langfuse.com/project/proj_1/sessions/a%2Fb"
+        );
+        assert_eq!(
+            cfg.project_ui_url("proj_1"),
+            "https://cloud.langfuse.com/project/proj_1"
+        );
+        let us = LangfuseConfig {
+            enabled: true,
+            base_url: "https://us.cloud.langfuse.com".into(),
+            public_key_configured: true,
+            secret_key_configured: true,
+            ui_url: "https://us.cloud.langfuse.com".into(),
+        };
+        assert_eq!(
+            us.session_ui_url("proj_1", "conv-1"),
+            "https://us.cloud.langfuse.com/project/proj_1/sessions/conv-1"
         );
     }
 

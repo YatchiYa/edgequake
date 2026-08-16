@@ -138,6 +138,7 @@ impl PdfConverter for VisionPdfConverter {
         let mut figure_map = std::collections::HashMap::new();
         let mut table_map = std::collections::HashMap::new();
         let mut crop_coverage_comment: Option<String> = None;
+        let mut vision_filter_results: Vec<crate::figure_filter::FigureFilterResult> = Vec::new();
         if emit_viewer_images {
             if let Some(page_assets) = &config.page_drawing_assets {
                 let plan = page_assets.write_plan();
@@ -214,57 +215,6 @@ impl PdfConverter for VisionPdfConverter {
                         }
                         Err(e) => {
                             warn!(error = %e, "Caption region extract failed");
-                        }
-                    }
-
-                    // 1c) SPEC-049 two-pass VLM figure filter — runs after all figure PNGs are
-                    //     on disk.  Optional: only when figure_filter_provider is set.
-                    if let Some(ref provider) = page_assets.figure_filter_provider {
-                        let candidates: Vec<crate::figure_filter::FigureCandidate> = figure_map
-                            .values()
-                            .flatten()
-                            .map(|fig| crate::figure_filter::FigureCandidate {
-                                rel_path: fig.rel_path.clone(),
-                                full_path: page_assets.assets_root.join(&fig.rel_path),
-                                page_num: fig.page_num,
-                                label: String::new(),
-                            })
-                            .collect();
-                        if !candidates.is_empty() {
-                            if let Some(hook) = status_hook {
-                                hook(
-                                    &format!(
-                                        "Running two-pass figure filter on {} crops…",
-                                        candidates.len()
-                                    ),
-                                    0.935,
-                                );
-                            }
-                            let filter =
-                                crate::figure_filter::FigureFilter::new(Arc::clone(provider));
-                            match filter.run(&candidates).await {
-                                Ok(results) => {
-                                    let kept = results.iter().filter(|r| r.is_figure).count();
-                                    info!(
-                                        total = results.len(),
-                                        kept,
-                                        discarded = results.len() - kept,
-                                        "SPEC-049 two-pass figure filter complete"
-                                    );
-                                    if let Err(e) = crate::figure_filter::write_manifest(
-                                        &page_assets.assets_root,
-                                        &results,
-                                    ) {
-                                        warn!(error = %e, "Failed to write figure filter manifest");
-                                    }
-                                }
-                                Err(e) => {
-                                    warn!(
-                                        error = %e,
-                                        "SPEC-049 figure filter failed; keeping all crops"
-                                    );
-                                }
-                            }
                         }
                     }
                 }
@@ -389,6 +339,71 @@ impl PdfConverter for VisionPdfConverter {
                     "SPEC-047 crop coverage telemetry"
                 );
                 crop_coverage_comment = Some(coverage.to_html_comment());
+
+                // 1c) SPEC-049/128 two-pass VLM filter — after figures AND chart crops.
+                // Default-on when figure_filter_provider is attached (LAW-128-14).
+                if let Some(ref provider) = page_assets.figure_filter_provider {
+                    let candidates = crate::figure_filter::collect_filter_candidates(
+                        &page_assets.assets_root,
+                        &figure_map,
+                        &chart_crop_paths,
+                    );
+                    if !candidates.is_empty() {
+                        if let Some(hook) = status_hook {
+                            hook(
+                                &format!(
+                                    "Running two-pass figure filter on {} crops…",
+                                    candidates.len()
+                                ),
+                                0.965,
+                            );
+                        }
+                        let filter = crate::figure_filter::FigureFilter::new(Arc::clone(provider));
+                        let run = filter.run(&candidates).await;
+                        if let Ok(ref results) = run {
+                            let kept = results.iter().filter(|r| r.is_figure).count();
+                            info!(
+                                total = results.len(),
+                                kept,
+                                discarded = results.len() - kept,
+                                "SPEC-049 two-pass figure filter complete"
+                            );
+                            if let Err(e) = crate::figure_filter::write_manifest(
+                                &page_assets.assets_root,
+                                results,
+                            ) {
+                                warn!(error = %e, "Failed to write figure filter manifest");
+                            }
+                            crate::page_layout::write_sidecar_from_assets(
+                                &page_assets.assets_root,
+                                pdf_bytes,
+                                &figure_map,
+                                &table_map,
+                                Some(results),
+                            );
+                            vision_filter_results = results.clone();
+                        }
+                        figure_map = crate::figure_filter::apply_filter_result_or_keep(
+                            figure_map,
+                            run,
+                            &page_assets.assets_root,
+                            true,
+                        );
+                        chart_crop_paths = crate::figure_filter::prune_chart_crop_paths(
+                            chart_crop_paths,
+                            &vision_filter_results,
+                        );
+                    }
+                }
+                if !crate::page_layout::sidecar_exists(&page_assets.assets_root) {
+                    crate::page_layout::write_sidecar_from_assets(
+                        &page_assets.assets_root,
+                        pdf_bytes,
+                        &figure_map,
+                        &table_map,
+                        None,
+                    );
+                }
             }
         }
 
@@ -431,6 +446,10 @@ impl PdfConverter for VisionPdfConverter {
             figures,
             tables,
         );
+        if !vision_filter_results.is_empty() {
+            markdown =
+                crate::figure_filter::inject_kept_descriptions(&markdown, &vision_filter_results);
+        }
         if let Some(comment) = crop_coverage_comment {
             if !markdown.contains("edgequake-crop-coverage:") {
                 markdown.push('\n');

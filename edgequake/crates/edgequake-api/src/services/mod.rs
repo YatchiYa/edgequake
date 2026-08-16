@@ -32,6 +32,7 @@ pub mod document_metadata_scan;
 pub mod document_mm_asset_persist;
 #[cfg(feature = "postgres")]
 pub mod document_original_persist;
+pub mod document_page_layout_persist;
 pub mod document_quota;
 pub mod document_reingest;
 pub mod document_task_cleanup;
@@ -171,6 +172,9 @@ pub use document_mm_asset_persist::{
 };
 #[cfg(feature = "postgres")]
 pub use document_original_persist::{persist_uploaded_original, should_store_original};
+pub use document_page_layout_persist::{
+    persist_page_layout_best_effort, persist_page_layout_from_dir, persist_page_layout_with_storage,
+};
 pub use document_reingest::{
     delete_document_for_reingestion, resolve_workspace_duplicate_for_reingestion,
     DuplicateReingestAction,

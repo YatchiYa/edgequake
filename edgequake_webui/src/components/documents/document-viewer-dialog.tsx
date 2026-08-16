@@ -185,6 +185,7 @@ export function DocumentViewerDialog({
                       file={pdfUrl}
                       showToolbar={true}
                       className="h-full"
+                      documentId={pdfContent.document_id ?? pdfId}
                     />
                   }
                   rightPanel={
@@ -210,6 +211,7 @@ export function DocumentViewerDialog({
                       file={pdfUrl}
                       showToolbar={true}
                       className="h-full"
+                      documentId={pdfContent.document_id ?? pdfId}
                     />
                   }
                   rightPanel={

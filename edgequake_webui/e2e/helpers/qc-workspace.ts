@@ -55,6 +55,8 @@ async function createQcWorkspace(
       embedding_provider: "mock",
       embedding_model: "mock-embedding",
       embedding_dimension: 1536,
+      vision_llm_provider: "mock",
+      vision_llm_model: "mock-vision",
       entity_types: [...DEFAULT_ENTITY_TYPES],
     };
   } else {

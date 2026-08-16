@@ -82,15 +82,17 @@ Decide: is this image a REAL FIGURE with independent visual signal, or a FALSE P
 First-principles axiom: a crop has value only when plain text / Markdown CANNOT carry
 the same meaning (e.g. a bar chart, architecture diagram, photograph).
 
-Classify into exactly ONE kind:
-
-REAL FIGURES (is_figure: true):
+KEEP (is_figure: true) — these MUST be promoted to a specialised vision pass:
   bar_chart, line_chart, scatter_plot, heatmap, histogram, pie_chart, radar_chart,
   architecture_diagram, flowchart, diagram, illustration, photograph, system_demo,
   table_visual
 
-FALSE POSITIVES (is_figure: false):
-  logo, icon_logo, text_block, decorative_rule, empty
+DISCARD (is_figure: false) — artefacts, not RAG figures:
+  logo, icon_logo, text_block, decorative_rule, empty,
+  stamp, signature, scan_artefact, watermark
+
+If the crop is a publisher logo, stamp, watermark, signature, icon, decorative rule,
+or empty padding, you MUST set is_figure false even if kind is "other".
 
 Respond in JSON ONLY — no fences, no explanation:
 {"kind":"<one of above>","is_figure":<true|false>,"confidence":<0.0-1.0>}"#;
@@ -219,7 +221,7 @@ mod tests {
 
     #[test]
     fn filter_prompts_have_required_sections() {
-        assert!(FIGURE_FILTER_PASS1_SYSTEM.contains("is_figure"));
+        assert!(FIGURE_FILTER_PASS1_SYSTEM.contains("promoted to a specialised vision pass"));
         assert!(FIGURE_FILTER_PASS1_SYSTEM.contains("text_block"));
         assert!(FIGURE_FILTER_PASS2_SYSTEM.contains("Markdown"));
         // Every figure kind must have a non-empty pass-2 prompt

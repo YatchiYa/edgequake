@@ -36,6 +36,7 @@ test.describe("SPEC-124 Langfuse sessions", () => {
       export_active?: boolean;
       base_url?: string;
       ui_url?: string;
+      project_id?: string;
     };
 
     test.skip(
@@ -65,15 +66,18 @@ test.describe("SPEC-124 Langfuse sessions", () => {
 
     const pk = process.env.LANGFUSE_PUBLIC_KEY?.replace(/^["']|["']$/g, "");
     const sk = process.env.LANGFUSE_SECRET_KEY?.replace(/^["']|["']$/g, "");
-    const base =
-      process.env.LANGFUSE_BASE_URL?.replace(/^["']|["']$/g, "") ||
-      status.base_url ||
-      status.ui_url;
+    const base = String(status.base_url || status.ui_url || "")
+      .replace(/^["']|["']$/g, "")
+      .replace(/\/$/, "");
 
     test.skip(
       !pk || !sk || !base,
       "LANGFUSE_PUBLIC_KEY/SECRET_KEY not in Playwright env — spans exported; skip API poll",
     );
+
+    if (base.includes("localhost")) {
+      expect(base).not.toMatch(/cloud\.langfuse\.com/);
+    }
 
     const auth = Buffer.from(`${pk}:${sk}`).toString("base64");
     const filter = JSON.stringify([

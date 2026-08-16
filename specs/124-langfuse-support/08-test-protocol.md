@@ -21,6 +21,24 @@
 | Playwright | Settings card states + Open link visibility | `edgequake_webui` e2e |
 | Playwright | Sessions: two query turns → Langfuse session (when keys live) | `spec124-langfuse-sessions.spec.ts` |
 | Optional live | Export + CLI fetch when `LANGFUSE_*` set | skip if unset — **not** sole gate |
+| **Local Docker** | Isolated Langfuse v4 Compose (`langfuse:4`) | `make langfuse-up` — **not** started by `make dev` |
+| **Local Docker smoke** | Health + `GET /api/public/projects` (headless keys) | `make langfuse-smoke` |
+| **Local Docker E2E** | Settings DTO + Playwright vs `http://localhost:3310` | `make spec124-langfuse-e2e` — **not** in default CI |
+
+`spec124-proof` stays CI-safe (no Docker). Local Docker is a laptop/operator gate.
+
+```bash
+make langfuse-up
+# .env:
+#   LANGFUSE_PUBLIC_KEY=pk-lf-edgequake-local
+#   LANGFUSE_SECRET_KEY=sk-lf-edgequake-local-dev
+#   LANGFUSE_BASE_URL=http://localhost:3310
+#   LANGFUSE_PROJECT_ID=edgequake-local
+make kill-app && make backend-bg
+make spec124-langfuse-e2e
+```
+
+Open-link `href` must start with the configured `ui_url` (local or Cloud), never a hardcoded `cloud.langfuse.com`.
 
 ## Required cases (map to [10-edge-cases.md](10-edge-cases.md))
 

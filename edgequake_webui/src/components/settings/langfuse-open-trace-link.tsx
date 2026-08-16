@@ -1,10 +1,11 @@
 'use client';
 
 /**
- * SPEC-124: Open a Langfuse Session when configured + sessionId present.
+ * SPEC-124: Open a Langfuse Session when export is active + project id known.
  *
- * Per-trace `/trace/{api_trace_id}` is deferred until API `trace_id` matches
- * OTEL TraceId. Sessions are the honest operator deep-link today.
+ * Deep links must use the configured `LANGFUSE_BASE_URL` (`ui_url`) and the
+ * project-scoped path `/project/{id}/sessions/{sessionId}`. Bare `/sessions/{id}`
+ * is a Langfuse Cloud 404.
  */
 
 import { Button } from '@/components/ui/button';
@@ -19,10 +20,27 @@ type Props = {
   className?: string;
 };
 
-/** Build Langfuse session UI URL from settings base (shared with Rust `session_ui_url`). */
-export function langfuseSessionHref(uiUrl: string, sessionId: string): string {
+/**
+ * Build a valid Langfuse session URL from the configured host + project id.
+ * Returns null when Langfuse is not activated or the project id is unknown
+ * (never emit a 404 `/sessions/{id}` URL).
+ */
+export function langfuseSessionHref(
+  uiUrl: string,
+  sessionId: string,
+  projectId?: string | null,
+): string | null {
   const base = uiUrl.replace(/\/$/, '');
-  return `${base}/sessions/${encodeURIComponent(sessionId)}`;
+  const sid = sessionId.trim();
+  const pid = projectId?.trim();
+  if (!base || !sid || !pid) {
+    return null;
+  }
+  return `${base}/project/${encodeURIComponent(pid)}/sessions/${encodeURIComponent(sid)}`;
+}
+
+function langfuseIsActivated(cfg: LangfuseSettingsResponse): boolean {
+  return Boolean(cfg.export_active && (cfg.ui_url || cfg.base_url));
 }
 
 export function LangfuseOpenSessionLink({ sessionId, className }: Props) {
@@ -38,11 +56,12 @@ export function LangfuseOpenSessionLink({ sessionId, className }: Props) {
       try {
         const cfg = await apiClient<LangfuseSettingsResponse>('/settings/langfuse');
         if (cancelled) return;
-        if (cfg.export_active && cfg.ui_url) {
-          setHref(langfuseSessionHref(cfg.ui_url, sessionId));
-        } else {
+        const host = cfg.ui_url || cfg.base_url;
+        if (!langfuseIsActivated(cfg) || !cfg.project_id || !host) {
           setHref(null);
+          return;
         }
+        setHref(langfuseSessionHref(host, sessionId, cfg.project_id));
       } catch {
         if (!cancelled) setHref(null);
       }

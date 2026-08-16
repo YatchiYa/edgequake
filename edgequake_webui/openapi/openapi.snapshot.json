@@ -4067,6 +4067,110 @@
         ]
       }
     },
+    "/api/v1/documents/{document_id}/pages": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "GET `/api/v1/documents/{document_id}/pages`",
+        "operationId": "list_document_pages",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "Document UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page list (empty if layout not extracted yet)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPagesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid document id or missing workspace"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/{document_id}/pages/{page_number}/layout": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "GET `/api/v1/documents/{document_id}/pages/{page_number}/layout`",
+        "operationId": "get_document_page_layout",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "Document UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page_number",
+            "in": "path",
+            "description": "1-indexed page",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page layout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageLayoutResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Page not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/{document_id}/reanalyze": {
       "post": {
         "tags": [
@@ -7129,6 +7233,38 @@
         ]
       }
     },
+    "/api/v1/settings/langfuse": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "operationId": "get_langfuse_settings",
+        "responses": {
+          "200": {
+            "description": "Langfuse observability status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LangfuseSettingsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/settings/llm-defaults": {
       "get": {
         "tags": [
@@ -9128,8 +9264,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_all"
+        "x-edgequake-v2-job-type": "reprocess_all",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -9620,8 +9756,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     },
     "/ws/progress/{track_id}": {
@@ -9652,8 +9788,8 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     }
   },
@@ -14481,6 +14617,74 @@
           "total_tokens": {}
         }
       },
+      "DocumentPageSummary": {
+        "type": "object",
+        "required": [
+          "page_number",
+          "width_pt",
+          "height_pt",
+          "rotation",
+          "layout_status"
+        ],
+        "properties": {
+          "height_pt": {
+            "type": "number",
+            "format": "double"
+          },
+          "layout_status": {
+            "type": "string"
+          },
+          "page_number": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "region_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "rotation": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "width_pt": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "example": {
+          "height_pt": {},
+          "layout_status": {},
+          "page_number": {},
+          "region_count": {},
+          "rotation": {},
+          "width_pt": {}
+        }
+      },
+      "DocumentPagesResponse": {
+        "type": "object",
+        "required": [
+          "document_id",
+          "pages"
+        ],
+        "properties": {
+          "document_id": {
+            "type": "string"
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentPageSummary"
+            }
+          }
+        },
+        "example": {
+          "document_id": {},
+          "pages": []
+        }
+      },
       "DocumentSearchItem": {
         "type": "object",
         "description": "Minimal document projection for the scope picker.\n\nIntentionally slim — only the fields needed to render a picker row.\n@implements SPEC-031",
@@ -17812,6 +18016,164 @@
           "type": {}
         }
       },
+      "LangfuseRequirementDto": {
+        "type": "object",
+        "description": "One env requirement for Settings UI.",
+        "required": [
+          "name",
+          "satisfied"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "satisfied": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "name": {},
+          "satisfied": {}
+        }
+      },
+      "LangfuseSettingsResponse": {
+        "type": "object",
+        "description": "Public Langfuse status for Settings / operators.",
+        "required": [
+          "enabled",
+          "base_url",
+          "ui_url",
+          "public_key_configured",
+          "secret_key_configured",
+          "otel_feature_built",
+          "export_active",
+          "env_snippet",
+          "config_requirements"
+        ],
+        "properties": {
+          "base_url": {
+            "type": "string",
+            "description": "Non-secret base URL."
+          },
+          "config_requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LangfuseRequirementDto"
+            }
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "True when keys are present and not force-disabled (export may still need `otel` feature)."
+          },
+          "env_snippet": {
+            "type": "string",
+            "description": "Copyable operator snippet (placeholders only)."
+          },
+          "export_active": {
+            "type": "boolean",
+            "description": "Export is actually possible (enabled && otel feature)."
+          },
+          "otel_feature_built": {
+            "type": "boolean",
+            "description": "Whether this binary was built with `--features otel`."
+          },
+          "public_key_configured": {
+            "type": "boolean"
+          },
+          "secret_key_configured": {
+            "type": "boolean"
+          },
+          "ui_url": {
+            "type": "string",
+            "description": "Same as base_url — Langfuse Cloud region / self-hosted host."
+          },
+          "project_id": {
+            "type": "string",
+            "description": "Project id for `/project/{id}/…` UI routes. None when export is off or unresolved."
+          },
+          "project_ui_url": {
+            "type": "string",
+            "description": "`{configured_base}/project/{id}` when export is on and project id is known."
+          }
+        },
+        "example": {
+          "base_url": {},
+          "config_requirements": [],
+          "enabled": {},
+          "env_snippet": {},
+          "export_active": {},
+          "otel_feature_built": {},
+          "public_key_configured": {},
+          "secret_key_configured": {},
+          "ui_url": {}
+        }
+      },
+      "LayoutBBoxNormDto": {
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "properties": {
+          "h": {
+            "type": "number",
+            "format": "double"
+          },
+          "w": {
+            "type": "number",
+            "format": "double"
+          },
+          "x": {
+            "type": "number",
+            "format": "double"
+          },
+          "y": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "example": {
+          "h": {},
+          "w": {},
+          "x": {},
+          "y": {}
+        }
+      },
+      "LayoutBBoxPdfDto": {
+        "type": "object",
+        "required": [
+          "x0",
+          "y0",
+          "x1",
+          "y1"
+        ],
+        "properties": {
+          "x0": {
+            "type": "number",
+            "format": "double"
+          },
+          "x1": {
+            "type": "number",
+            "format": "double"
+          },
+          "y0": {
+            "type": "number",
+            "format": "double"
+          },
+          "y1": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "example": {
+          "x0": {},
+          "x1": {},
+          "y0": {},
+          "y1": {}
+        }
+      },
       "LineRangeInfo": {
         "type": "object",
         "description": "Line range information.",
@@ -19980,16 +20342,29 @@
           "otel_enabled"
         ],
         "properties": {
+          "langfuse_base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-124: non-secret Langfuse base URL."
+          },
+          "langfuse_enabled": {
+            "type": "boolean",
+            "description": "SPEC-124: Langfuse keys present and not force-disabled."
+          },
           "log_format": {
             "type": "string",
             "description": "Active log format: `\"plain\"` or `\"json\"` (`EDGEQUAKE_LOG_FORMAT`)."
           },
           "otel_enabled": {
             "type": "boolean",
-            "description": "Whether OTLP export is enabled at runtime."
+            "description": "Whether OTLP gRPC export is enabled at runtime."
           }
         },
         "example": {
+          "langfuse_base_url": {},
+          "langfuse_enabled": {},
           "log_format": {},
           "otel_enabled": {}
         }
@@ -20690,6 +21065,124 @@
           "read_model": {},
           "storage": {},
           "task_queue": {}
+        }
+      },
+      "PageLayoutRegionDto": {
+        "type": "object",
+        "required": [
+          "region_id",
+          "class",
+          "source",
+          "bbox_pdf",
+          "bbox_norm",
+          "extra"
+        ],
+        "properties": {
+          "asset_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bbox_norm": {
+            "$ref": "#/components/schemas/LayoutBBoxNormDto"
+          },
+          "bbox_pdf": {
+            "$ref": "#/components/schemas/LayoutBBoxPdfDto"
+          },
+          "class": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "extra": {},
+          "reading_order": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "region_id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "asset_path": {},
+          "bbox_norm": {},
+          "bbox_pdf": {},
+          "class": {},
+          "confidence": {},
+          "extra": {},
+          "reading_order": {},
+          "region_id": {},
+          "source": {}
+        }
+      },
+      "PageLayoutResponse": {
+        "type": "object",
+        "required": [
+          "document_id",
+          "page_number",
+          "width_pt",
+          "height_pt",
+          "rotation",
+          "layout_status",
+          "regions"
+        ],
+        "properties": {
+          "document_id": {
+            "type": "string"
+          },
+          "height_pt": {
+            "type": "number",
+            "format": "double"
+          },
+          "layout_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "layout_status": {
+            "type": "string"
+          },
+          "page_number": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PageLayoutRegionDto"
+            }
+          },
+          "rotation": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "width_pt": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "example": {
+          "document_id": {},
+          "height_pt": {},
+          "layout_model": {},
+          "layout_status": {},
+          "page_number": {},
+          "regions": [],
+          "rotation": {},
+          "width_pt": {}
         }
       },
       "PageTiming": {
@@ -23012,6 +23505,13 @@
             ],
             "description": "Answer formatting cue (LightRAG `response_type`). Default: Multiple Paragraphs."
           },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional Langfuse / GenAI session id (SPEC-124).\n\nWhen set, exported OTEL spans carry `langfuse.session.id` /\n`gen_ai.conversation.id`. Never invent — omit when no durable session exists.\nChat uses `conversation_id` instead; this is for direct `/query` clients."
+          },
           "system_prompt": {
             "type": [
               "string",
@@ -23087,6 +23587,13 @@
                 "description": "Query-matched knowledge graph (entities + relationships)."
               }
             ]
+          },
+          "trace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-124: W3C-style trace id derived from request correlation (Open in Langfuse)."
           }
         },
         "example": {
@@ -26682,6 +27189,13 @@
             ],
             "description": "Answer formatting cue (083 / LightRAG `response_type`)."
           },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional Langfuse / GenAI session id (SPEC-124). Mirrors `QueryRequest.session_id`."
+          },
           "stream_format": {
             "type": [
               "string",
@@ -26711,6 +27225,7 @@
           "question_type": {},
           "reasoning_effort": {},
           "response_type": {},
+          "session_id": {},
           "stream_format": {},
           "system_prompt": {}
         }

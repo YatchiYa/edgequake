@@ -624,6 +624,7 @@ export default function DocumentViewPage() {
                     file={getPdfDownloadUrl(pdfIdForViewer!)}
                     initialPage={initialPdfPage}
                     currentPage={pageFromUrl}
+                    documentId={documentId}
                   />
                 }
                 rightPanel={
@@ -751,6 +752,7 @@ export default function DocumentViewPage() {
                   file={getPdfDownloadUrl(pdfIdForViewer)}
                   initialPage={initialPdfPage}
                   currentPage={pageFromUrl}
+                  documentId={documentId}
                 />
               </TabsContent>
             )}

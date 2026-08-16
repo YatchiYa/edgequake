@@ -15,7 +15,7 @@ use crate::embedded_images::WrittenFigureAsset;
 use crate::error::PdfConversionError;
 
 /// Written table region under `{assets_root}/assets/page-NNNN-table-MM.png`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WrittenTableAsset {
     pub page_num: usize,
     pub index: usize,
@@ -23,6 +23,8 @@ pub struct WrittenTableAsset {
     pub width: u32,
     pub height: u32,
     pub label: String,
+    /// PDF-space bbox when known (SPEC-128 overlay persist).
+    pub bbox: Option<(f32, f32, f32, f32)>,
 }
 
 /// Extract caption-anchored regions; write figure gaps + table crops.
@@ -136,6 +138,7 @@ fn write_caption_region_assets_blocking(
                     width: region.width,
                     height: region.height,
                     label: region.label,
+                    bbox: Some(region.bbox),
                 });
             }
         }

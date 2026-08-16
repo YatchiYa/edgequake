@@ -343,7 +343,23 @@
       "reprocessSuccess": "{{count}} 个文档已加入重新处理队列",
       "reprocessFailed": "{{count}} 个文档重新处理失败"
     },
-    "viewStatus": "查看状态"
+    "viewStatus": "查看状态",
+    "viewer": {
+      "layout": {
+        "toggle": "版面",
+        "toggleHint": "版面叠加 (O)",
+        "empty": "此页没有区域",
+        "failed": "版面提取失败",
+        "skipped": "已跳过版面",
+        "pending": "版面尚未就绪",
+        "chipFigures": "插图",
+        "chipCharts": "图表",
+        "chipTables": "表格",
+        "chipParagraphs": "段落",
+        "chipColumns": "栏",
+        "chipNoise": "噪点"
+      }
+    }
   },
   "graph": {
     "title": "知识图谱",

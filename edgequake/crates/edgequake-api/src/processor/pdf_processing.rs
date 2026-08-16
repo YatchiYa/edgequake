@@ -953,7 +953,7 @@ impl DocumentTaskProcessor {
             .clamp(96, safe_dpi.max(96));
         let checkpoint_dir =
             crate::services::durable_vision_checkpoint_dir(&data.pdf_id.to_string());
-        let page_drawing_assets = match extraction_method {
+        let mut page_drawing_assets = match extraction_method {
             ExtractionMethod::Vision => {
                 Some(crate::services::page_drawing_assets_config_for_vision(
                     &early_doc_id,
@@ -966,6 +966,32 @@ impl DocumentTaskProcessor {
                 data.multimodal_process_options.as_deref(),
             ),
         };
+        if matches!(extraction_method, ExtractionMethod::Vision) {
+            if let Some(ref mut cfg) = page_drawing_assets {
+                let model = vision_model.clone().filter(|s| !s.is_empty());
+                match model {
+                    Some(model) => {
+                        match edgequake_llm::ProviderFactory::create_llm_provider(
+                            &data.vision_provider,
+                            &model,
+                        ) {
+                            Ok(provider) => {
+                                cfg.attach_figure_filter_if_enabled(Some(provider));
+                            }
+                            Err(e) => tracing::warn!(
+                                error = %e,
+                                provider = %data.vision_provider,
+                                model = %model,
+                                "SPEC-128 figure filter: could not create vision LLM provider"
+                            ),
+                        }
+                    }
+                    None => tracing::warn!(
+                        "SPEC-128 figure filter skipped: no vision model (artefacts will not be pruned)"
+                    ),
+                }
+            }
+        }
         // Stall-watchdog heartbeat: resets on every page/status progress signal so
         // slow-but-progressing Vision conversions are not killed by a fixed wall clock.
         let vision_heartbeat = crate::services::VisionProgressHeartbeat::new();
@@ -1224,6 +1250,29 @@ impl DocumentTaskProcessor {
         );
 
         let markdown = strip_nul_bytes(markdown);
+
+        // SPEC-128: layout sidecar + DB persist are independent of mm PNG persist
+        // (text/EdgeParse ingest still needs overlay rows; LAW-128-7 fail-open).
+        #[cfg(feature = "postgres")]
+        {
+            let assets_root = crate::services::document_mm_assets_root(&early_doc_id);
+            if !edgequake_pdf::sidecar_exists(&assets_root) {
+                edgequake_pdf::write_sidecar_from_assets(
+                    &assets_root,
+                    &pdf_data,
+                    &Default::default(),
+                    &Default::default(),
+                    None,
+                );
+            }
+            crate::services::persist_page_layout_best_effort(
+                self.page_layout_storage.as_ref(),
+                &early_doc_id,
+                data.workspace_id,
+                &assets_root,
+            )
+            .await;
+        }
         drop(pdf_data);
 
         // SPEC-047: durable mm-assets in DB (lineage: document_id + page_num + asset_id).

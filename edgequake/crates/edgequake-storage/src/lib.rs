@@ -104,6 +104,7 @@ pub mod original_storage;
 pub mod outbox;
 #[cfg(feature = "postgres")]
 pub mod outbox_drain;
+pub mod page_layout_storage;
 pub mod pdf_storage;
 pub mod scorecard;
 pub mod serving_fence;
@@ -192,6 +193,11 @@ pub use mm_asset_storage::{
 pub use original_storage::{
     validate_original_data, DocumentOriginal, DocumentOriginalStorage, StoreOriginalRequest,
 };
+pub use page_layout_storage::{
+    bbox_norm_from_pdf, bbox_norm_iou, DocumentPage, DocumentPageLayoutStorage, LayoutBBoxNorm,
+    LayoutBBoxPdf, PageLayoutBundle, PageLayoutRegion, ReplaceDocumentPagesRequest,
+    UpsertDocumentPage, UpsertPageLayoutRegion,
+};
 pub use pdf_storage::{
     calculate_pdf_checksum, validate_pdf_data, CreatePdfRequest, DocumentStatsUpdate,
     ExtractionMethod, ListPdfFilter, PdfDocument, PdfDocumentStorage, PdfList, PdfProcessingStatus,
@@ -251,8 +257,8 @@ pub use traits::{
 // Re-export adapters
 pub use adapters::memory::{
     MemoryChunkRepository, MemoryConversationStorage, MemoryGraphStorage, MemoryKVStorage,
-    MemoryMmAssetStorage, MemoryOriginalStorage, MemoryPdfStorage, MemoryVectorStorage,
-    MemoryWorkspaceVectorRegistry,
+    MemoryMmAssetStorage, MemoryOriginalStorage, MemoryPageLayoutStorage, MemoryPdfStorage,
+    MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
 };
 
 // Conditionally export PostgreSQL adapters
@@ -274,11 +280,11 @@ pub use adapters::postgres::{
     PgPoolBundle, PgQuarantineSink, PgVectorStorage, PgWorkspaceVectorRegistry, PoolBudgetReport,
     PoolRole, PostgresAGEGraphStorage, PostgresChunkRepository, PostgresConfig,
     PostgresConversationStorage, PostgresKVStorage, PostgresMmAssetStorage,
-    PostgresOriginalStorage, PostgresPdfStorage, PostgresPool, ScaleGateEvidence, VectorIndexType,
-    VectorStorageMode, WorkspaceLabelMap, DEFAULT_ANN_REORDER_CANDIDATE_K,
-    DEFAULT_BINARY_CANDIDATE_K, DISKANN_OPTIN_RESCORE, DISKANN_OPTIN_SEARCH_LIST,
-    LAST_SOURCE_PREFIX_COUNT_LEN, MAX_WORKSPACE_LABELS, SOURCE_COUNT_STATEMENT_TIMEOUT_MS,
-    SOURCE_PREFIX_BATCH_LIMIT, SOURCE_PREFIX_DISCOVERY_CALLS,
+    PostgresOriginalStorage, PostgresPageLayoutStorage, PostgresPdfStorage, PostgresPool,
+    ScaleGateEvidence, VectorIndexType, VectorStorageMode, WorkspaceLabelMap,
+    DEFAULT_ANN_REORDER_CANDIDATE_K, DEFAULT_BINARY_CANDIDATE_K, DISKANN_OPTIN_RESCORE,
+    DISKANN_OPTIN_SEARCH_LIST, LAST_SOURCE_PREFIX_COUNT_LEN, MAX_WORKSPACE_LABELS,
+    SOURCE_COUNT_STATEMENT_TIMEOUT_MS, SOURCE_PREFIX_BATCH_LIMIT, SOURCE_PREFIX_DISCOVERY_CALLS,
 };
 
 // SPEC-091 W3 dual-read counters.

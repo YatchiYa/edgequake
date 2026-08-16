@@ -45,6 +45,7 @@ fn candidate(rel: &str, full: PathBuf, page: usize) -> FigureCandidate {
         full_path: full,
         page_num: page,
         label: "Figure".to_string(),
+        area_px: 100,
     }
 }
 
@@ -121,7 +122,11 @@ async fn contract_spec049_filter_mixed_batch() {
         .await; // P1 diag
     mock.add_response("Diagram description").await; // P2 diag
 
-    let filter = FigureFilter::new(Arc::clone(&mock) as Arc<dyn edgequake_llm::LLMProvider>);
+    let filter = FigureFilter::with_limits(
+        Arc::clone(&mock) as Arc<dyn edgequake_llm::LLMProvider>,
+        1,
+        12,
+    );
     let results = filter
         .run(&[
             candidate("assets/chart.png", png_chart, 1),
@@ -250,9 +255,198 @@ fn contract_spec049_kind_is_figure_semantics() {
         FigureKind::TextBlock,
         FigureKind::DecorativeRule,
         FigureKind::Empty,
+        FigureKind::Stamp,
+        FigureKind::Signature,
+        FigureKind::ScanArtefact,
+        FigureKind::Watermark,
     ] {
         assert!(!kind.is_figure(), "{kind:?} should be discarded");
     }
+}
+
+// ── G-prune: discarded crops must not appear in assembled markdown ───────────
+
+#[test]
+fn contract_spec128_g_prune_assemble_omits_discarded() {
+    use edgequake_pdf::figure_filter::{prune_figure_map, FigureFilterResult};
+    use edgequake_pdf::vision_markdown::{assemble_vision_markdown_with_figures, VisionPageSlice};
+    use edgequake_pdf::WrittenFigureAsset;
+    use std::collections::HashMap;
+
+    let fig = |rel: &str, idx: usize| WrittenFigureAsset {
+        page_num: 1,
+        index: idx,
+        rel_path: rel.into(),
+        width: 40,
+        height: 40,
+        bbox: Some((0.0, 0.0, 40.0, 40.0)),
+    };
+    let mut map = HashMap::new();
+    map.insert(
+        1usize,
+        vec![
+            fig("assets/keep-a.png", 1),
+            fig("assets/drop-b.png", 2),
+            fig("assets/keep-c.png", 3),
+            fig("assets/drop-d.png", 4),
+            fig("assets/keep-e.png", 5),
+        ],
+    );
+    let results = vec![
+        FigureFilterResult {
+            rel_path: "assets/keep-a.png".into(),
+            page_num: 1,
+            label: String::new(),
+            kind: FigureKind::BarChart,
+            is_figure: true,
+            description: "a".into(),
+        },
+        FigureFilterResult {
+            rel_path: "assets/drop-b.png".into(),
+            page_num: 1,
+            label: String::new(),
+            kind: FigureKind::Logo,
+            is_figure: false,
+            description: String::new(),
+        },
+        FigureFilterResult {
+            rel_path: "assets/keep-c.png".into(),
+            page_num: 1,
+            label: String::new(),
+            kind: FigureKind::Diagram,
+            is_figure: true,
+            description: "c".into(),
+        },
+        FigureFilterResult {
+            rel_path: "assets/drop-d.png".into(),
+            page_num: 1,
+            label: String::new(),
+            kind: FigureKind::Stamp,
+            is_figure: false,
+            description: String::new(),
+        },
+        FigureFilterResult {
+            rel_path: "assets/keep-e.png".into(),
+            page_num: 1,
+            label: String::new(),
+            kind: FigureKind::Photograph,
+            is_figure: true,
+            description: "e".into(),
+        },
+    ];
+    let pruned = prune_figure_map(map, &results);
+    assert_eq!(pruned.get(&1).map(|v| v.len()), Some(3));
+    let pages = vec![VisionPageSlice {
+        page_num: 1,
+        markdown: "## Figure 1\n\n## Figure 2\n\n## Figure 3\n\n## Figure 4\n\n## Figure 5".into(),
+    }];
+    let md = assemble_vision_markdown_with_figures(
+        &pages,
+        true,
+        false,
+        Some("doc"),
+        None,
+        Some(&pruned),
+        None,
+    );
+    assert!(md.contains("keep-a.png"));
+    assert!(md.contains("keep-c.png"));
+    assert!(md.contains("keep-e.png"));
+    assert!(!md.contains("drop-b.png"));
+    assert!(!md.contains("drop-d.png"));
+    let hrefs = md.matches("](assets/").count();
+    assert_eq!(
+        hrefs, 3,
+        "assemble must emit exactly 3 figure hrefs after prune"
+    );
+}
+
+#[test]
+fn contract_spec128_g_prune_charts_and_inject_pass2() {
+    use edgequake_pdf::figure_filter::{
+        inject_kept_descriptions, prune_chart_crop_paths, prune_figure_map, FigureFilterResult,
+    };
+    use edgequake_pdf::vision_markdown::{assemble_vision_markdown_with_figures, VisionPageSlice};
+    use edgequake_pdf::WrittenFigureAsset;
+    use std::collections::HashMap;
+
+    let mut map = HashMap::new();
+    map.insert(
+        1usize,
+        vec![WrittenFigureAsset {
+            page_num: 1,
+            index: 1,
+            rel_path: "assets/page-0001-fig-01.png".into(),
+            width: 40,
+            height: 40,
+            bbox: Some((0.0, 0.0, 40.0, 40.0)),
+        }],
+    );
+    let mut charts = HashMap::new();
+    charts.insert(1usize, "assets/page-0001-chart.png".into());
+    charts.insert(2usize, "assets/page-0002-chart.png".into());
+    let results = vec![
+        FigureFilterResult {
+            rel_path: "assets/page-0001-fig-01.png".into(),
+            page_num: 1,
+            label: String::new(),
+            kind: FigureKind::ArchitectureDiagram,
+            is_figure: true,
+            description: "Pipeline: ingest → index → query.".into(),
+        },
+        FigureFilterResult {
+            rel_path: "assets/page-0001-chart.png".into(),
+            page_num: 1,
+            label: "Chart".into(),
+            kind: FigureKind::BarChart,
+            is_figure: true,
+            description: "| X | Y |\n|---|---|\n| A | 10 |".into(),
+        },
+        FigureFilterResult {
+            rel_path: "assets/page-0002-chart.png".into(),
+            page_num: 2,
+            label: "Chart".into(),
+            kind: FigureKind::Logo,
+            is_figure: false,
+            description: String::new(),
+        },
+    ];
+    let pruned = prune_figure_map(map, &results);
+    let charts = prune_chart_crop_paths(charts, &results);
+    assert!(charts.contains_key(&1));
+    assert!(
+        !charts.contains_key(&2),
+        "artefact chart must not reach vision"
+    );
+    let pages = vec![
+        VisionPageSlice {
+            page_num: 1,
+            markdown: "## Figure 1\n\nArchitecture.".into(),
+        },
+        VisionPageSlice {
+            page_num: 2,
+            markdown: "Publisher mark.".into(),
+        },
+    ];
+    let md = assemble_vision_markdown_with_figures(
+        &pages,
+        true,
+        true,
+        Some("doc"),
+        Some(&charts),
+        Some(&pruned),
+        None,
+    );
+    let md = inject_kept_descriptions(&md, &results);
+    assert!(md.contains("assets/page-0001-fig-01.png"));
+    assert!(md.contains("assets/page-0001-chart.png"));
+    assert!(!md.contains("assets/page-0002-chart.png"));
+    assert!(md.contains("Pipeline: ingest → index → query."));
+    assert!(md.contains("| A | 10 |"));
+    assert!(
+        md.contains("<drawing"),
+        "kept crops must stay drawing/vision targets"
+    );
 }
 
 // ── Live LLM test (gated on OPENAI_API_KEY) ───────────────────────────────────
@@ -293,6 +487,7 @@ async fn e2e_spec049_figure_filter_with_real_provider() {
             full_path: spec_png,
             page_num: 3,
             label: "Figure 1".into(),
+            area_px: 10_000,
         }])
         .await
         .expect("filter run");

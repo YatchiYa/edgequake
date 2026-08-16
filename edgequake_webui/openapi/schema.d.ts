@@ -1588,6 +1588,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET `/api/v1/documents/{document_id}/pages` */
+        get: operations["list_document_pages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/pages/{page_number}/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET `/api/v1/documents/{document_id}/pages/{page_number}/layout` */
+        get: operations["get_document_page_layout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/reanalyze": {
         parameters: {
             query?: never;
@@ -2588,6 +2622,22 @@ export interface paths {
          *     may send to override attribution per request.
          */
         get: operations["get_attribution_settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/langfuse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_langfuse_settings"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5901,6 +5951,39 @@ export interface components {
             total_tokens?: number | null;
         };
         /**
+         * @example {
+         *       "height_pt": {},
+         *       "layout_status": {},
+         *       "page_number": {},
+         *       "region_count": {},
+         *       "rotation": {},
+         *       "width_pt": {}
+         *     }
+         */
+        DocumentPageSummary: {
+            /** Format: double */
+            height_pt: number;
+            layout_status: string;
+            /** Format: int32 */
+            page_number: number;
+            /** Format: int32 */
+            region_count?: number | null;
+            /** Format: int32 */
+            rotation: number;
+            /** Format: double */
+            width_pt: number;
+        };
+        /**
+         * @example {
+         *       "document_id": {},
+         *       "pages": []
+         *     }
+         */
+        DocumentPagesResponse: {
+            document_id: string;
+            pages: components["schemas"]["DocumentPageSummary"][];
+        };
+        /**
          * @description Minimal document projection for the scope picker.
          *
          *     Intentionally slim — only the fields needed to render a picker row.
@@ -7569,6 +7652,88 @@ export interface components {
             type: string;
         };
         /**
+         * @description One env requirement for Settings UI.
+         * @example {
+         *       "name": {},
+         *       "satisfied": {}
+         *     }
+         */
+        LangfuseRequirementDto: {
+            name: string;
+            satisfied: boolean;
+        };
+        /**
+         * @description Public Langfuse status for Settings / operators.
+         * @example {
+         *       "base_url": {},
+         *       "config_requirements": [],
+         *       "enabled": {},
+         *       "env_snippet": {},
+         *       "export_active": {},
+         *       "otel_feature_built": {},
+         *       "public_key_configured": {},
+         *       "secret_key_configured": {},
+         *       "ui_url": {}
+         *     }
+         */
+        LangfuseSettingsResponse: {
+            /** @description Non-secret base URL (`LANGFUSE_BASE_URL` / `LANGFUSE_HOST`). */
+            base_url: string;
+            config_requirements: components["schemas"]["LangfuseRequirementDto"][];
+            /** @description True when keys are present and not force-disabled (export may still need `otel` feature). */
+            enabled: boolean;
+            /** @description Copyable operator snippet (placeholders only). */
+            env_snippet: string;
+            /** @description Export is actually possible (enabled && otel feature). */
+            export_active: boolean;
+            /** @description Whether this binary was built with `--features otel`. */
+            otel_feature_built: boolean;
+            /** @description Project id for `/project/{id}/…` UI routes. None when export is off or unresolved. */
+            project_id?: string;
+            /** @description `{configured_base}/project/{id}` when export is on and project id is known. */
+            project_ui_url?: string;
+            public_key_configured: boolean;
+            secret_key_configured: boolean;
+            /** @description Same as base_url — Langfuse Cloud region / self-hosted host. */
+            ui_url: string;
+        };
+        /**
+         * @example {
+         *       "h": {},
+         *       "w": {},
+         *       "x": {},
+         *       "y": {}
+         *     }
+         */
+        LayoutBBoxNormDto: {
+            /** Format: double */
+            h: number;
+            /** Format: double */
+            w: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+        };
+        /**
+         * @example {
+         *       "x0": {},
+         *       "x1": {},
+         *       "y0": {},
+         *       "y1": {}
+         *     }
+         */
+        LayoutBBoxPdfDto: {
+            /** Format: double */
+            x0: number;
+            /** Format: double */
+            x1: number;
+            /** Format: double */
+            y0: number;
+            /** Format: double */
+            y1: number;
+        };
+        /**
          * @description Line range information.
          * @example {
          *       "end_line": {},
@@ -8716,14 +8881,20 @@ export interface components {
         };
         /**
          * @example {
+         *       "langfuse_base_url": {},
+         *       "langfuse_enabled": {},
          *       "log_format": {},
          *       "otel_enabled": {}
          *     }
          */
         ObservabilityHealthSnapshot: {
+            /** @description SPEC-124: non-secret Langfuse base URL. */
+            langfuse_base_url?: string | null;
+            /** @description SPEC-124: Langfuse keys present and not force-disabled. */
+            langfuse_enabled?: boolean;
             /** @description Active log format: `"plain"` or `"json"` (`EDGEQUAKE_LOG_FORMAT`). */
             log_format: string;
-            /** @description Whether OTLP export is enabled at runtime. */
+            /** @description Whether OTLP gRPC export is enabled at runtime. */
             otel_enabled: boolean;
         };
         /**
@@ -9108,6 +9279,58 @@ export interface components {
             /** @description Chunk storage layout (SPEC-024 pass 12 — storage efficiency). */
             storage: components["schemas"]["StorageHealthSnapshot"];
             task_queue: components["schemas"]["TaskQueueHealthSnapshot"];
+        };
+        /**
+         * @example {
+         *       "asset_path": {},
+         *       "bbox_norm": {},
+         *       "bbox_pdf": {},
+         *       "class": {},
+         *       "confidence": {},
+         *       "extra": {},
+         *       "reading_order": {},
+         *       "region_id": {},
+         *       "source": {}
+         *     }
+         */
+        PageLayoutRegionDto: {
+            asset_path?: string | null;
+            bbox_norm: components["schemas"]["LayoutBBoxNormDto"];
+            bbox_pdf: components["schemas"]["LayoutBBoxPdfDto"];
+            class: string;
+            /** Format: float */
+            confidence?: number | null;
+            extra: unknown;
+            /** Format: int32 */
+            reading_order?: number | null;
+            region_id: string;
+            source: string;
+        };
+        /**
+         * @example {
+         *       "document_id": {},
+         *       "height_pt": {},
+         *       "layout_model": {},
+         *       "layout_status": {},
+         *       "page_number": {},
+         *       "regions": [],
+         *       "rotation": {},
+         *       "width_pt": {}
+         *     }
+         */
+        PageLayoutResponse: {
+            document_id: string;
+            /** Format: double */
+            height_pt: number;
+            layout_model?: string | null;
+            layout_status: string;
+            /** Format: int32 */
+            page_number: number;
+            regions: components["schemas"]["PageLayoutRegionDto"][];
+            /** Format: int32 */
+            rotation: number;
+            /** Format: double */
+            width_pt: number;
         };
         /**
          * @description Per-page timing row.
@@ -10348,6 +10571,14 @@ export interface components {
             /** @description Answer formatting cue (LightRAG `response_type`). Default: Multiple Paragraphs. */
             response_type?: string | null;
             /**
+             * @description Optional Langfuse / GenAI session id (SPEC-124).
+             *
+             *     When set, exported OTEL spans carry `langfuse.session.id` /
+             *     `gen_ai.conversation.id`. Never invent — omit when no durable session exists.
+             *     Chat uses `conversation_id` instead; this is for direct `/query` clients.
+             */
+            session_id?: string | null;
+            /**
              * @description Optional system prompt extension injected into the LLM prompt.
              *     Extends (not replaces) the base RAG prompt with additional instructions.
              *     @implements SPEC-004: System prompt extension point
@@ -10380,6 +10611,8 @@ export interface components {
             /** @description Query statistics. */
             stats: components["schemas"]["QueryStats"];
             subgraph?: null | components["schemas"]["SubgraphBundle"];
+            /** @description SPEC-124: W3C-style trace id derived from request correlation (Open in Langfuse). */
+            trace_id?: string | null;
         };
         /**
          * @description Query statistics.
@@ -12256,6 +12489,7 @@ export interface components {
          *       "question_type": {},
          *       "reasoning_effort": {},
          *       "response_type": {},
+         *       "session_id": {},
          *       "stream_format": {},
          *       "system_prompt": {}
          *     }
@@ -12303,6 +12537,8 @@ export interface components {
             reasoning_effort?: string | null;
             /** @description Answer formatting cue (083 / LightRAG `response_type`). */
             response_type?: string | null;
+            /** @description Optional Langfuse / GenAI session id (SPEC-124). Mirrors `QueryRequest.session_id`. */
+            session_id?: string | null;
             /**
              * @description Stream format version: "v1" (raw text) or "v2" (structured JSON events, default).
              *     @implements SPEC-006: Backward compatibility
@@ -16210,6 +16446,68 @@ export interface operations {
             };
         };
     };
+    list_document_pages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document UUID */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page list (empty if layout not extracted yet) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentPagesResponse"];
+                };
+            };
+            /** @description Invalid document id or missing workspace */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_document_page_layout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document UUID */
+                document_id: string;
+                /** @description 1-indexed page */
+                page_number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page layout */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageLayoutResponse"];
+                };
+            };
+            /** @description Page not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     reanalyze_multimodal: {
         parameters: {
             query?: never;
@@ -17946,6 +18244,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttributionSettingsResponse"];
+                };
+            };
+        };
+    };
+    get_langfuse_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Langfuse observability status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LangfuseSettingsResponse"];
                 };
             };
         };

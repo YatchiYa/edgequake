@@ -48,6 +48,8 @@ export function mistralWorkspacePayload(
     embedding_provider: 'mistral',
     embedding_model: MISTRAL_EMBEDDING_MODEL,
     embedding_dimension: MISTRAL_EMBEDDING_DIMENSION,
+    vision_llm_provider: 'mistral',
+    vision_llm_model: MISTRAL_LLM_MODEL,
     entity_types: entityTypes,
     entity_types_strict: options.entityTypesStrict ?? true,
     relation_types: relationTypes,

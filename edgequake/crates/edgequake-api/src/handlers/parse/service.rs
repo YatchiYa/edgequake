@@ -100,11 +100,21 @@ pub async fn run_parse(
     };
     let assets_root: Option<PathBuf> = assets_temp.as_ref().map(|t| t.path().to_path_buf());
 
-    let config = resolved.to_conversion_config(
+    let mut config = resolved.to_conversion_config(
         Some(page_count as usize).filter(|&n| n > 0),
         Some(progress),
         assets_root,
     );
+    if let Some(ref mut assets) = config.page_drawing_assets {
+        let model = resolved
+            .model
+            .clone()
+            .unwrap_or_else(|| "gemma3:latest".into());
+        match edgequake_llm::ProviderFactory::create_llm_provider(&resolved.provider, &model) {
+            Ok(provider) => assets.attach_figure_filter_if_enabled(Some(provider)),
+            Err(e) => warn!(error = %e, "SPEC-128 parse: figure filter provider unavailable"),
+        }
+    }
 
     let mut warnings = Vec::new();
     let mut fallback_applied = false;

@@ -627,6 +627,7 @@ mod tests {
                 width: 10,
                 height: 10,
                 label: "Table 1".into(),
+                bbox: None,
             }],
         );
         // W1-crop-expand: fig page 1 is a candidate; table page 2 is not.

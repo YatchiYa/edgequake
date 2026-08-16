@@ -3,12 +3,13 @@
 use std::collections::HashMap;
 
 use crate::drawing_tags::{
-    bind_figure_images_to_page_asset, caption_with_page_context, dedupe_markdown_asset_images,
-    finalize_page_asset_images, format_drawing_block, format_drawing_tag,
-    format_inline_asset_image, inject_figure_local_images, insert_drawing_tag_after_first_image,
-    is_drawing_eligible_asset_rel_path, markdown_has_durable_asset_image, page_chart_crop_rel_path,
-    page_chart_drawing_item_id, page_drawing_item_id, page_figure_asset_rel_path,
-    page_figure_drawing_item_id, EMPTY_VISION_PAGE_PLACEHOLDER,
+    bind_figure_images_to_page_asset, caption_with_page_context, count_markdown_images_for_asset,
+    dedupe_markdown_asset_images, finalize_page_asset_images, format_drawing_block,
+    format_drawing_tag, format_inline_asset_image, inject_figure_local_images,
+    insert_drawing_tag_after_first_image, is_drawing_eligible_asset_rel_path,
+    markdown_has_durable_asset_image, page_chart_crop_rel_path, page_chart_drawing_item_id,
+    page_drawing_item_id, page_figure_asset_rel_path, page_figure_drawing_item_id,
+    EMPTY_VISION_PAGE_PLACEHOLDER,
 };
 use crate::embedded_images::WrittenFigureAsset;
 use crate::page_marker::{PageMarkerWriter, PAGE_MARKER_PREFIX, PAGE_MARKER_SUFFIX};
@@ -176,6 +177,11 @@ pub fn inject_on_disk_region_assets(markdown: &str, assets_root: &std::path::Pat
     if markdown.trim().is_empty() {
         return markdown.to_string();
     }
+    let discarded = crate::figure_filter::discarded_rel_paths_from_manifest(assets_root);
+    let markdown = crate::figure_filter::strip_discarded_asset_lines(markdown, &discarded);
+    if markdown.trim().is_empty() {
+        return markdown;
+    }
     let markers: Vec<(usize, usize)> = {
         let mut out = Vec::new();
         let mut search_from = 0;
@@ -195,7 +201,7 @@ pub fn inject_on_disk_region_assets(markdown: &str, assets_root: &std::path::Pat
         out
     };
     if markers.is_empty() {
-        return inject_page_disk_assets(1, markdown, assets_root);
+        return inject_page_disk_assets(1, &markdown, assets_root, &discarded);
     }
 
     let mut out = String::with_capacity(markdown.len().saturating_add(256));
@@ -213,7 +219,7 @@ pub fn inject_on_disk_region_assets(markdown: &str, assets_root: &std::path::Pat
         let marker_line_end = chunk.find('\n').map(|n| n + 1).unwrap_or(chunk.len());
         let marker_part = &chunk[..marker_line_end];
         let body_raw = chunk[marker_line_end..].trim_end();
-        let body = inject_page_disk_assets(page, body_raw, assets_root);
+        let body = inject_page_disk_assets(page, body_raw, assets_root, &discarded);
         out.push_str(marker_part);
         out.push_str(body.trim_start());
         if i + 1 < markers.len() {
@@ -223,16 +229,21 @@ pub fn inject_on_disk_region_assets(markdown: &str, assets_root: &std::path::Pat
     out
 }
 
-fn inject_page_disk_assets(page: usize, body: &str, assets_root: &std::path::Path) -> String {
+fn inject_page_disk_assets(
+    page: usize,
+    body: &str,
+    assets_root: &std::path::Path,
+    discarded: &std::collections::HashSet<String>,
+) -> String {
     // First principle: never keep markdown image hrefs that do not exist on disk.
     let body = strip_missing_on_disk_asset_images(body, assets_root);
     let lower = body.to_ascii_lowercase();
     let table_rel = crate::drawing_tags::page_table_asset_rel_path(page, 1);
     let fig_rel = page_figure_asset_rel_path(page, 1);
     let chart_rel = page_chart_crop_rel_path(page);
-    let table_exists = assets_root.join(&table_rel).is_file();
-    let fig_exists = assets_root.join(&fig_rel).is_file();
-    let chart_exists = assets_root.join(&chart_rel).is_file();
+    let table_exists = assets_root.join(&table_rel).is_file() && !discarded.contains(&table_rel);
+    let fig_exists = assets_root.join(&fig_rel).is_file() && !discarded.contains(&fig_rel);
+    let chart_exists = assets_root.join(&chart_rel).is_file() && !discarded.contains(&chart_rel);
     let looks_like_table =
         lower.contains("table ") || body.lines().filter(|l| l.contains('|')).count() >= 3;
 
@@ -529,6 +540,31 @@ pub fn assemble_vision_markdown_with_figures(
                 if !markdown_has_durable_asset_image(&body) {
                     let alt = caption_with_page_context(page.page_num, &body, is_chart_crop);
                     body = format!("{}\n\n{}", format_inline_asset_image(&alt, rel), body);
+                }
+            }
+            // G-prune SSOT: every crop still in figure_map/table_map must appear as an href.
+            for fig in &page_figures {
+                if count_markdown_images_for_asset(&body, &fig.rel_path) == 0 {
+                    let alt = caption_with_page_context(page.page_num, &body, false);
+                    body = format!(
+                        "{}\n\n{}",
+                        body,
+                        format_inline_asset_image(&alt, &fig.rel_path)
+                    );
+                }
+            }
+            for table in &page_tables {
+                if count_markdown_images_for_asset(&body, &table.rel_path) == 0 {
+                    let alt = if table.label.is_empty() {
+                        caption_with_page_context(page.page_num, &body, false)
+                    } else {
+                        table.label.clone()
+                    };
+                    body = format!(
+                        "{}\n\n{}",
+                        body,
+                        format_inline_asset_image(&alt, &table.rel_path)
+                    );
                 }
             }
         }
@@ -1012,6 +1048,7 @@ Figure 1: COLLEAGUE.SKILL architecture for automated person-grounded skill gener
                 width: 800,
                 height: 200,
                 label: "Table 1".into(),
+                bbox: None,
             }],
         );
         let md = assemble_vision_markdown_with_figures(
@@ -1069,6 +1106,51 @@ Figure 1: COLLEAGUE.SKILL architecture for automated person-grounded skill gener
     }
 
     #[test]
+    fn inject_on_disk_strips_discarded_manifest_hrefs() {
+        let dir = tempfile::tempdir().unwrap();
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+        let png = {
+            use image::{ImageBuffer, ImageFormat, Rgba};
+            let img: ImageBuffer<Rgba<u8>, _> = ImageBuffer::from_pixel(1, 1, Rgba([0, 0, 0, 255]));
+            let mut buf = std::io::Cursor::new(Vec::new());
+            img.write_to(&mut buf, ImageFormat::Png).unwrap();
+            buf.into_inner()
+        };
+        std::fs::write(assets.join("page-0001-fig-01.png"), &png).unwrap();
+        std::fs::write(assets.join("page-0001-fig-02.png"), &png).unwrap();
+        crate::figure_filter::write_manifest(
+            dir.path(),
+            &[
+                crate::figure_filter::FigureFilterResult {
+                    rel_path: "assets/page-0001-fig-01.png".into(),
+                    page_num: 1,
+                    label: String::new(),
+                    kind: crate::figure_filter::FigureKind::Diagram,
+                    is_figure: true,
+                    description: "kept".into(),
+                },
+                crate::figure_filter::FigureFilterResult {
+                    rel_path: "assets/page-0001-fig-02.png".into(),
+                    page_num: 1,
+                    label: String::new(),
+                    kind: crate::figure_filter::FigureKind::Logo,
+                    is_figure: false,
+                    description: String::new(),
+                },
+            ],
+        )
+        .unwrap();
+        let md = "<!-- edgequake-page:1 -->\n![Figure](assets/page-0001-fig-01.png)\n![Logo](assets/page-0001-fig-02.png)\n";
+        let out = inject_on_disk_region_assets(md, dir.path());
+        assert!(out.contains("assets/page-0001-fig-01.png"));
+        assert!(
+            !out.contains("assets/page-0001-fig-02.png"),
+            "discarded logo must not be re-injected, got:\n{out}"
+        );
+    }
+
+    #[test]
     fn enrich_skips_text_only_pages() {
         let md = "<!-- edgequake-page:1 -->\n# Learning the ARTS\n\n15.3% relative improvement.\n";
         let out = enrich_markdown_with_viewer_assets(md);
@@ -1110,6 +1192,7 @@ Figure 1: COLLEAGUE.SKILL architecture for automated person-grounded skill gener
                 width: 80,
                 height: 40,
                 label: "Table 2".into(),
+                bbox: None,
             }],
         );
         let md = assemble_vision_markdown_with_figures(
@@ -1207,6 +1290,7 @@ Figure 1: COLLEAGUE.SKILL architecture for automated person-grounded skill gener
                 width: 80,
                 height: 40,
                 label: "Table 1".into(),
+                bbox: None,
             }],
         );
         let mut overrides = HashMap::new();

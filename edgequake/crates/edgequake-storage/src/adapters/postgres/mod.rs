@@ -54,6 +54,7 @@ mod kv_relation_state;
 pub mod llm_cache;
 mod mm_asset_storage_impl;
 mod original_storage_impl;
+mod page_layout_storage_impl;
 mod pdf_list_query;
 mod pdf_storage_impl;
 mod pool_budget;
@@ -124,6 +125,7 @@ pub use kv::PostgresKVStorage;
 pub use kv_relation_state::{KvRelationPresence, KvRelationState};
 pub use mm_asset_storage_impl::PostgresMmAssetStorage;
 pub use original_storage_impl::PostgresOriginalStorage;
+pub use page_layout_storage_impl::PostgresPageLayoutStorage;
 pub use pdf_storage_impl::PostgresPdfStorage;
 pub use pool_budget::{
     check_pool_budget, enforce_pool_budget, evaluate_pool_budget, pool_instance_count_from_env,

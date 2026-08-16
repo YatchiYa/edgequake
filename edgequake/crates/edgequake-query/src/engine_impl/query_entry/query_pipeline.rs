@@ -441,21 +441,20 @@ impl QueryEngine {
                         let pool = crate::l2_bm25_union::l2_fact_bm25_pool();
                         // 088: with GWC on, `context.chunks` is post-compress; for the
                         // judge-honest pool use the pre-compress Acc-admitted snapshot.
-                        let acc_pool: &Vec<crate::context::RetrievedChunk> =
-                            match (crate::l2_bm25_union::l2_fact_bm25_pool_pre_compress(), &pre_gwc_chunks) {
-                                (true, Some(pre)) => pre,
-                                _ => &context.chunks,
-                            };
+                        let acc_pool: &Vec<crate::context::RetrievedChunk> = match (
+                            crate::l2_bm25_union::l2_fact_bm25_pool_pre_compress(),
+                            &pre_gwc_chunks,
+                        ) {
+                            (true, Some(pre)) => pre,
+                            _ => &context.chunks,
+                        };
                         let pool_chunks = match pool {
                             crate::l2_bm25_union::L2FactBm25Pool::AccPrompt => acc_pool,
                             crate::l2_bm25_union::L2FactBm25Pool::MixPreCe => &mix,
                         };
-                        let bm25_mix = crate::l2_bm25_union::bm25_order_chunks(
-                            &request.query,
-                            pool_chunks,
-                            k,
-                        )
-                        .await;
+                        let bm25_mix =
+                            crate::l2_bm25_union::bm25_order_chunks(&request.query, pool_chunks, k)
+                                .await;
                         let citation = crate::l2_bm25_union::union_bm25_ce_chunks(
                             &bm25_mix,
                             &context.chunks,

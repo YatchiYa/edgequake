@@ -61,6 +61,9 @@ const LOCAL_GATE_WAIT_MS: &str = "edgequake_local_gate_wait_ms";
 const OLLAMA_NETWORK_ERRORS: &str = "edgequake_ollama_network_error_total";
 const EXTRACT_RETRY_TOTAL: &str = "edgequake_extract_retry_total";
 const EXTRACT_THINK_TOKENS: &str = "edgequake_extract_think_tokens_total";
+const PAGE_LAYOUT_PERSISTED: &str = "edgequake_page_layout_persisted_pages_total";
+const PAGE_LAYOUT_PERSIST_ERRORS: &str = "edgequake_page_layout_persist_errors_total";
+const PAGE_LAYOUT_PERSIST_SKIPPED: &str = "edgequake_page_layout_persist_skipped_total";
 
 /// Pre-register metric metadata so `/metrics` is never an empty body before first request.
 fn describe_http_metrics() {
@@ -261,6 +264,18 @@ fn describe_http_metrics() {
         EXTRACT_THINK_TOKENS,
         "Thinking/reasoning tokens observed during extract"
     );
+    describe_counter!(
+        PAGE_LAYOUT_PERSISTED,
+        "SPEC-128: page layout pages persisted (fail-open ingest)"
+    );
+    describe_counter!(
+        PAGE_LAYOUT_PERSIST_ERRORS,
+        "SPEC-128: page layout persist errors (warn only, ingest continues)"
+    );
+    describe_counter!(
+        PAGE_LAYOUT_PERSIST_SKIPPED,
+        "SPEC-128: page layout persist skipped (no sidecar or no storage)"
+    );
 }
 
 static PROMETHEUS: OnceLock<PrometheusHandle> = OnceLock::new();
@@ -347,6 +362,9 @@ pub fn init_metrics() {
             "workspace" => "bootstrap"
         )
         .increment(0);
+        counter!(PAGE_LAYOUT_PERSISTED).increment(0);
+        counter!(PAGE_LAYOUT_PERSIST_ERRORS).increment(0);
+        counter!(PAGE_LAYOUT_PERSIST_SKIPPED).increment(0);
         counter!(
             COMPENSATION_QUARANTINE,
             "kind" => "bootstrap"
@@ -539,10 +557,31 @@ pub fn record_vector_dim_mismatch_rejected() {
     counter!(VECTOR_DIM_MISMATCH_REJECTED).increment(1);
 }
 
-/// SPEC-060: record ingest persist stage duration (`kv`, `chunk_vector`, `merge`, `compensate`).
+/// SPEC-060: record ingest persist stage duration (`kv`, `chunk_vector`, `merge`, `compensate`, `page_layout_persist`).
 pub fn record_ingest_stage_duration(stage: &str, duration_secs: f64) {
     init_metrics();
     histogram!(INGEST_STAGE_DURATION, "stage" => stage.to_string()).record(duration_secs.max(0.0));
+}
+
+/// SPEC-128: pages written from `page_layout.json` (fail-open ingest).
+pub fn record_page_layout_persisted(pages: u64) {
+    if pages == 0 {
+        return;
+    }
+    init_metrics();
+    counter!(PAGE_LAYOUT_PERSISTED).increment(pages);
+}
+
+/// SPEC-128: persist failed; ingest continues (LAW-128-7). Do not call `record_ingestion_failure`.
+pub fn record_page_layout_persist_error() {
+    init_metrics();
+    counter!(PAGE_LAYOUT_PERSIST_ERRORS).increment(1);
+}
+
+/// SPEC-128: no sidecar / no storage (`Ok(0)`).
+pub fn record_page_layout_persist_skipped() {
+    init_metrics();
+    counter!(PAGE_LAYOUT_PERSIST_SKIPPED).increment(1);
 }
 
 /// SPEC-060: record Mix/Hybrid arm wall time (`local`, `global`, `naive`).
@@ -865,6 +904,31 @@ mod tests {
         assert!(
             body.contains(STORAGE_OP_DURATION),
             "storage op histogram missing: {body:?}"
+        );
+    }
+
+    #[test]
+    fn spec128_page_layout_persist_counters_record() {
+        record_page_layout_persisted(3);
+        record_page_layout_persist_error();
+        record_page_layout_persist_skipped();
+        record_ingest_stage_duration("page_layout_persist", 0.02);
+        let body = render_prometheus_metrics();
+        assert!(
+            body.contains(PAGE_LAYOUT_PERSISTED),
+            "persisted_pages counter missing: {body:?}"
+        );
+        assert!(
+            body.contains(PAGE_LAYOUT_PERSIST_ERRORS),
+            "persist_errors counter missing: {body:?}"
+        );
+        assert!(
+            body.contains(PAGE_LAYOUT_PERSIST_SKIPPED),
+            "persist_skipped counter missing: {body:?}"
+        );
+        assert!(
+            body.contains("page_layout_persist"),
+            "page_layout_persist stage missing: {body:?}"
         );
     }
 }

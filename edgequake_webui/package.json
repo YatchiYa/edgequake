@@ -3,7 +3,7 @@
   "version": "0.24.4",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/copy-pdf-worker.mjs && next dev",
     "build": "./scripts/safe-build.sh",
     "build:safe": "./scripts/safe-build.sh",
     "build:check": "./scripts/safe-build.sh --check",

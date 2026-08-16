@@ -20,6 +20,7 @@ pub struct StorageRuntime {
     pub original_storage: Option<Arc<dyn edgequake_storage::DocumentOriginalStorage>>,
     #[cfg(feature = "postgres")]
     pub mm_asset_storage: Option<Arc<dyn edgequake_storage::DocumentMmAssetStorage>>,
+    pub page_layout_storage: Option<Arc<dyn edgequake_storage::DocumentPageLayoutStorage>>,
     pub mode: StorageMode,
 }
 
@@ -52,6 +53,7 @@ impl StorageRuntime {
             original_storage: None,
             #[cfg(feature = "postgres")]
             mm_asset_storage: None,
+            page_layout_storage: Some(Arc::new(edgequake_storage::MemoryPageLayoutStorage::new())),
             mode: StorageMode::Memory,
         }
     }
@@ -73,6 +75,9 @@ impl StorageRuntime {
         if self.mm_asset_storage.is_none() {
             return Err("PostgreSQL mode requires PostgresMmAssetStorage adapter".into());
         }
+        if self.page_layout_storage.is_none() {
+            return Err("PostgreSQL mode requires PostgresPageLayoutStorage adapter".into());
+        }
         Ok(())
     }
 }
@@ -85,7 +90,7 @@ mod tests {
     };
     #[cfg(feature = "postgres")]
     use edgequake_storage::adapters::memory::{
-        MemoryMmAssetStorage, MemoryOriginalStorage, MemoryPdfStorage,
+        MemoryMmAssetStorage, MemoryOriginalStorage, MemoryPageLayoutStorage, MemoryPdfStorage,
     };
 
     #[test]
@@ -130,6 +135,7 @@ mod tests {
             pdf_storage: None,
             original_storage: None,
             mm_asset_storage: None,
+            page_layout_storage: None,
             mode: StorageMode::PostgreSQL,
         };
         assert!(missing_pdf.validate_postgres_adapters().is_err());
@@ -150,6 +156,8 @@ mod tests {
             Arc::new(MemoryOriginalStorage::new());
         let mm: Arc<dyn edgequake_storage::DocumentMmAssetStorage> =
             Arc::new(MemoryMmAssetStorage::new());
+        let layout: Arc<dyn edgequake_storage::DocumentPageLayoutStorage> =
+            Arc::new(MemoryPageLayoutStorage::new());
 
         let storage = StorageRuntime {
             kv_storage: Arc::clone(&kv) as Arc<dyn edgequake_storage::traits::KVStorage>,
@@ -161,6 +169,7 @@ mod tests {
             pdf_storage: Some(pdf),
             original_storage: Some(original),
             mm_asset_storage: Some(mm),
+            page_layout_storage: Some(layout),
             mode: StorageMode::Memory,
         };
 
@@ -168,6 +177,7 @@ mod tests {
         assert!(storage.pdf_storage.is_some());
         assert!(storage.original_storage.is_some());
         assert!(storage.mm_asset_storage.is_some());
+        assert!(storage.page_layout_storage.is_some());
         assert!(storage.validate_postgres_adapters().is_ok());
     }
 }

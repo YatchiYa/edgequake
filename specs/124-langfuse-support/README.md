@@ -55,6 +55,7 @@
 | I8 | Slugs additive + query/ingest pipeline observe | Done |
 | T1 | Unit + API + Playwright + edge matrix | Done |
 | T2 | CI-unfakable InMemory + stream/gleaning/pipeline contracts (`make spec124-proof`) | Done |
+| T3 | Optional local Langfuse v4 Docker (`make langfuse-up` / `spec124-langfuse-e2e`) | Done |
 
 ## Related
 

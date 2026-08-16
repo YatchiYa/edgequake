@@ -57,6 +57,7 @@ fn e4_fig_and_table_same_page_no_chart() {
             width: 80,
             height: 40,
             label: "Table 2".into(),
+            bbox: None,
         }],
     );
     let mut chart = HashMap::new();
@@ -143,6 +144,7 @@ fn e20_chart_residual_candidates_allow_fig_skip_table() {
             width: 10,
             height: 10,
             label: "Table 1".into(),
+            bbox: None,
         }],
     );
     assert_eq!(

@@ -467,6 +467,14 @@ fn api_v1_routes() -> Router<AppState> {
             get(handlers::download_document_markdown),
         )
         .route(
+            "/documents/{document_id}/pages/{page_number}/layout",
+            get(handlers::get_document_page_layout),
+        )
+        .route(
+            "/documents/{document_id}/pages",
+            get(handlers::list_document_pages),
+        )
+        .route(
             "/documents/{document_id}/assets/include-from-pdf",
             post(handlers::include_document_assets_from_pdf),
         )

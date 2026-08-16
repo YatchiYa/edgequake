@@ -2009,6 +2009,7 @@ dependencies = [
  "edgeparse-core",
  "edgequake-llm",
  "edgequake-pdf2md",
+ "futures",
  "image",
  "once_cell",
  "regex",
@@ -2024,8 +2025,6 @@ dependencies = [
 [[package]]
 name = "edgequake-pdf2md"
 version = "0.9.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f83c0701a8da9c8d7d4067332bf8ed3d8ea395befb6c65d052d8faa7f076b53c"
 dependencies = [
  "base64 0.22.1",
  "edgequake-llm",
@@ -4110,8 +4109,6 @@ dependencies = [
 [[package]]
 name = "pdfium-auto"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d438f971a66470a0d2ce1ee6ee5952d29433df6aa26a606885fc2fb552bc1a5"
 dependencies = [
  "dirs",
  "flate2",

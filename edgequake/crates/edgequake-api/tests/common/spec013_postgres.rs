@@ -389,6 +389,10 @@ pub async fn start_worker_pool(state: &mut AppState) {
     if let Some(ref mm_asset_storage) = state.storage.mm_asset_storage {
         processor = processor.with_mm_asset_storage(Arc::clone(mm_asset_storage));
     }
+    #[cfg(feature = "postgres")]
+    if let Some(ref page_layout_storage) = state.storage.page_layout_storage {
+        processor = processor.with_page_layout_storage(Arc::clone(page_layout_storage));
+    }
     // SPEC-091: typed vector persist needs pg_pool on the processor (same as main.rs).
     #[cfg(feature = "postgres")]
     if let (Some(pool), Some(caps)) = (state.pg_pool.clone(), state.postgres_capabilities.clone()) {

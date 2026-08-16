@@ -16,6 +16,9 @@
 /e2e/screenshots
 /audit_ui/screenshots
 
+# pdf.js worker (copied from pdfjs-dist; do not vendor 1MiB in git)
+/public/pdf.worker.min.mjs
+
 # next.js
 /.next/
 /out/

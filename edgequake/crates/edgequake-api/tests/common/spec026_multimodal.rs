@@ -102,6 +102,7 @@ pub fn vision_table_page_markdown(document_id: &str, page_num: usize, body: &str
             width: 80,
             height: 40,
             label: "Table 1".into(),
+            bbox: None,
         }],
     );
     assemble_vision_markdown_with_figures(

@@ -306,6 +306,66 @@ export function getPdfDownloadUrl(pdfId: string): string {
   return `${baseUrl}/api/v1/documents/pdf/${pdfId}/download`;
 }
 
+export interface LayoutBBoxNorm {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface DocumentPageLayoutRegion {
+  region_id: string;
+  class: string;
+  source: string;
+  bbox_norm: LayoutBBoxNorm;
+  confidence?: number | null;
+  reading_order?: number | null;
+  asset_path?: string | null;
+}
+
+export interface DocumentPageLayout {
+  document_id: string;
+  page_number: number;
+  width_pt: number;
+  height_pt: number;
+  rotation: number;
+  layout_model?: string | null;
+  layout_status: string;
+  regions: DocumentPageLayoutRegion[];
+}
+
+export interface DocumentPageSummary {
+  page_number: number;
+  width_pt: number;
+  height_pt: number;
+  rotation: number;
+  layout_status: string;
+  region_count?: number | null;
+}
+
+export interface DocumentPagesList {
+  document_id: string;
+  pages: DocumentPageSummary[];
+}
+
+/** LAW-128-12: list pages before fetching a single page layout. */
+export function listDocumentPages(documentId: string): Promise<DocumentPagesList> {
+  return api.get<DocumentPagesList>(`/documents/${documentId}/pages`, {
+    timeoutMs: DOCUMENTS_API_TIMEOUT_MS,
+  });
+}
+
+/** Lazy per-page layout overlay (SPEC-128). */
+export function getDocumentPageLayout(
+  documentId: string,
+  pageNumber: number,
+): Promise<DocumentPageLayout> {
+  return api.get<DocumentPageLayout>(
+    `/documents/${documentId}/pages/${pageNumber}/layout`,
+    { timeoutMs: DOCUMENTS_API_TIMEOUT_MS },
+  );
+}
+
 /**
  * Get the URL for downloading a non-PDF original file.
  *

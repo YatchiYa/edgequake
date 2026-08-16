@@ -146,6 +146,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         codegen-vision-prompts \
         db-start postgres-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
+        langfuse-up langfuse-down langfuse-logs langfuse-status langfuse-smoke langfuse-reset spec124-langfuse-e2e \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         spec091-upgrade-soak spec091-gates spec103-llm-cache-proof \
         spec109-reasoning-effort-proof \
@@ -197,6 +198,14 @@ ROOT_DIR := $(shell pwd)
 BACKEND_DIR := $(ROOT_DIR)/edgequake
 FRONTEND_DIR := $(ROOT_DIR)/edgequake_webui
 DOCKER_DIR := $(BACKEND_DIR)/docker
+LANGFUSE_COMPOSE := $(DOCKER_DIR)/docker-compose.langfuse.yml
+LANGFUSE_COMPOSE_PROJECT := edgequake-langfuse
+# 3100 is gps-mcp on this machine; 3310 is the EdgeQuake Langfuse UI default.
+LANGFUSE_PORT ?= 3310
+LANGFUSE_UI_URL := http://localhost:$(LANGFUSE_PORT)
+LANGFUSE_LOCAL_PK := pk-lf-edgequake-local
+LANGFUSE_LOCAL_SK := sk-lf-edgequake-local-dev
+LANGFUSE_LOCAL_PROJECT_ID := edgequake-local
 
 # SPEC-042: PostgreSQL major profile (pg16|pg17|pg18). PG18 is recommended for new dev installs.
 # Override via: make dev-pg17 | EQ_POSTGRES_PROFILE=pg16 make dev | .env EQ_POSTGRES_PROFILE=pg17
@@ -399,6 +408,7 @@ set -a; [ -f "$(ROOT_DIR)/.env" ] && . "$(ROOT_DIR)/.env"; set +a; \
 [ -z "$$LANGFUSE_SECRET_KEY" ] && [ -n "$(LANGFUSE_SECRET_KEY)" ] && export LANGFUSE_SECRET_KEY="$(LANGFUSE_SECRET_KEY)"; \
 [ -z "$$LANGFUSE_BASE_URL" ] && [ -n "$(LANGFUSE_BASE_URL)" ] && export LANGFUSE_BASE_URL="$(LANGFUSE_BASE_URL)"; \
 [ -z "$$LANGFUSE_HOST" ] && [ -n "$(LANGFUSE_HOST)" ] && export LANGFUSE_HOST="$(LANGFUSE_HOST)"; \
+[ -z "$$LANGFUSE_PROJECT_ID" ] && [ -n "$(LANGFUSE_PROJECT_ID)" ] && export LANGFUSE_PROJECT_ID="$(LANGFUSE_PROJECT_ID)"; \
 [ -z "$$EDGEQUAKE_LANGFUSE_ENABLED" ] && [ -n "$(EDGEQUAKE_LANGFUSE_ENABLED)" ] && export EDGEQUAKE_LANGFUSE_ENABLED="$(EDGEQUAKE_LANGFUSE_ENABLED)"; \
 _eq_unquote_env() { \
 	_v=$$1; \
@@ -412,6 +422,7 @@ _eq_unquote_env() { \
 [ -n "$$LANGFUSE_SECRET_KEY" ] && export LANGFUSE_SECRET_KEY="$$(_eq_unquote_env "$$LANGFUSE_SECRET_KEY")"; \
 [ -n "$$LANGFUSE_BASE_URL" ] && export LANGFUSE_BASE_URL="$$(_eq_unquote_env "$$LANGFUSE_BASE_URL")"; \
 [ -n "$$LANGFUSE_HOST" ] && export LANGFUSE_HOST="$$(_eq_unquote_env "$$LANGFUSE_HOST")"; \
+[ -n "$$LANGFUSE_PROJECT_ID" ] && export LANGFUSE_PROJECT_ID="$$(_eq_unquote_env "$$LANGFUSE_PROJECT_ID")"; \
 [ -n "$$EDGEQUAKE_LANGFUSE_ENABLED" ] && export EDGEQUAKE_LANGFUSE_ENABLED="$$(_eq_unquote_env "$$EDGEQUAKE_LANGFUSE_ENABLED")"; \
 if [ -n "$$LANGFUSE_PUBLIC_KEY" ] && [ -n "$$LANGFUSE_SECRET_KEY" ]; then \
 	echo "$(YELLOW)→ LANGFUSE_* keys detected — Langfuse OTLP export enabled (SPEC-124)$(RESET)"; \
@@ -482,6 +493,7 @@ printf '%s\n' "export EDGEQUAKE_MM_ANALYSIS_CACHE=\"true\"" >> /tmp/edgequake-st
 [ -n "$${LANGFUSE_SECRET_KEY}" ] && printf '%s\n' "export LANGFUSE_SECRET_KEY=\"$${LANGFUSE_SECRET_KEY}\"" >> /tmp/edgequake-start.sh; \
 [ -n "$${LANGFUSE_BASE_URL}" ] && printf '%s\n' "export LANGFUSE_BASE_URL=\"$${LANGFUSE_BASE_URL}\"" >> /tmp/edgequake-start.sh; \
 [ -n "$${LANGFUSE_HOST}" ] && printf '%s\n' "export LANGFUSE_HOST=\"$${LANGFUSE_HOST}\"" >> /tmp/edgequake-start.sh; \
+[ -n "$${LANGFUSE_PROJECT_ID}" ] && printf '%s\n' "export LANGFUSE_PROJECT_ID=\"$${LANGFUSE_PROJECT_ID}\"" >> /tmp/edgequake-start.sh; \
 [ -n "$${EDGEQUAKE_LANGFUSE_ENABLED}" ] && printf '%s\n' "export EDGEQUAKE_LANGFUSE_ENABLED=\"$${EDGEQUAKE_LANGFUSE_ENABLED}\"" >> /tmp/edgequake-start.sh; \
 if [ "$${WAVE2_GREENFIELD:-$(WAVE2_GREENFIELD)}" = "1" ]; then \
   printf '%s\n' "export EDGEQUAKE_VECTOR_STORAGE=halfvec" >> /tmp/edgequake-start.sh; \
@@ -582,6 +594,10 @@ help: ## Show this help message
 	@echo "  $(GREEN)make docker-build$(RESET)            Rebuild Docker images"
 	@echo "  $(GREEN)make docker-logs$(RESET)             View Docker logs"
 	@echo "  $(GREEN)make docker-ps$(RESET)               Show Docker container status"
+	@echo "  $(GREEN)make langfuse-up$(RESET)             Start local Langfuse v4 (UI :3310, optional)"
+	@echo "  $(GREEN)make langfuse-down$(RESET)           Stop local Langfuse (keeps volumes)"
+	@echo "  $(GREEN)make langfuse-smoke$(RESET)          Health + GET /api/public/projects"
+	@echo "  $(GREEN)make spec124-langfuse-e2e$(RESET)    Live Settings + sessions vs local Langfuse"
 	@echo ""
 	@echo "$(BOLD)$(BLUE)📦 SDKs$(RESET)"
 	@echo "  $(GREEN)make sdk-rust-build$(RESET)    Build Rust SDK (sdks/rust)"
@@ -1958,6 +1974,86 @@ docker-logs: ## View Docker logs
 docker-ps: ## Show Docker container status
 	@cd $(DOCKER_DIR) && docker compose ps
 
+# ============================================================================
+# SPEC-124 — optional local Langfuse v4 (isolated Compose project)
+# Does not start with make dev. make stop does not tear this down.
+# ============================================================================
+
+langfuse-up: ## Start local Langfuse v4 (UI http://localhost:3310)
+	@echo "$(BOLD)$(BLUE)Starting local Langfuse v4$(RESET)"
+	@if [ "$(LANGFUSE_PULL)" = "1" ]; then \
+		echo "$(YELLOW)→ Pulling langfuse:4 images$(RESET)"; \
+		cd $(DOCKER_DIR) && LANGFUSE_PORT="$(LANGFUSE_PORT)" NEXTAUTH_URL="$(LANGFUSE_UI_URL)" \
+			docker compose -f docker-compose.langfuse.yml --project-name $(LANGFUSE_COMPOSE_PROJECT) pull; \
+	fi
+	@cd $(DOCKER_DIR) && LANGFUSE_PORT="$(LANGFUSE_PORT)" NEXTAUTH_URL="$(LANGFUSE_UI_URL)" \
+		docker compose -f docker-compose.langfuse.yml --project-name $(LANGFUSE_COMPOSE_PROJECT) up -d
+	@echo "$(YELLOW)→ Waiting for Langfuse health/ready (up to 180s)...$(RESET)"
+	@ready=0; \
+	for i in $$(seq 1 90); do \
+		if curl -sf "$(LANGFUSE_UI_URL)/api/public/health" >/dev/null 2>&1 \
+			&& curl -sf "$(LANGFUSE_UI_URL)/api/public/ready" >/dev/null 2>&1; then \
+			ready=1; break; \
+		fi; \
+		printf "."; sleep 2; \
+	done; \
+	echo ""; \
+	if [ "$$ready" != "1" ]; then \
+		echo "$(RED)✗ Langfuse did not become ready at $(LANGFUSE_UI_URL)$(RESET)"; \
+		cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse.yml --project-name $(LANGFUSE_COMPOSE_PROJECT) ps; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ Langfuse UI $(LANGFUSE_UI_URL)$(RESET)"
+	@echo "  Point repo-root .env at local keys, then restart the backend:"
+	@echo "    LANGFUSE_PUBLIC_KEY=$(LANGFUSE_LOCAL_PK)"
+	@echo "    LANGFUSE_SECRET_KEY=$(LANGFUSE_LOCAL_SK)"
+	@echo "    LANGFUSE_BASE_URL=$(LANGFUSE_UI_URL)"
+	@echo "    LANGFUSE_PROJECT_ID=$(LANGFUSE_LOCAL_PROJECT_ID)"
+	@echo "  Login: dev@example.com / edgequake-local-dev"
+
+langfuse-down: ## Stop local Langfuse (volumes kept)
+	@echo "$(YELLOW)Stopping local Langfuse (volumes kept)$(RESET)"
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse.yml --project-name $(LANGFUSE_COMPOSE_PROJECT) down
+	@echo "$(GREEN)✓ Langfuse stopped$(RESET)"
+
+langfuse-logs: ## Tail local Langfuse logs
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse.yml --project-name $(LANGFUSE_COMPOSE_PROJECT) logs -f
+
+langfuse-status: ## Show local Langfuse container + health
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse.yml --project-name $(LANGFUSE_COMPOSE_PROJECT) ps
+	@if curl -sf "$(LANGFUSE_UI_URL)/api/public/health" >/dev/null 2>&1; then \
+		echo "$(GREEN)✓ health $(LANGFUSE_UI_URL)/api/public/health$(RESET)"; \
+	else \
+		echo "$(RED)Not healthy at $(LANGFUSE_UI_URL)$(RESET)"; \
+	fi
+
+langfuse-smoke: ## Health + GET /api/public/projects (headless init keys)
+	@chmod +x $(ROOT_DIR)/scripts/langfuse_local_smoke.sh
+	@LANGFUSE_PORT="$(LANGFUSE_PORT)" LANGFUSE_UI_URL="$(LANGFUSE_UI_URL)" \
+		LANGFUSE_LOCAL_PK="$(LANGFUSE_LOCAL_PK)" LANGFUSE_LOCAL_SK="$(LANGFUSE_LOCAL_SK)" \
+		LANGFUSE_LOCAL_PROJECT_ID="$(LANGFUSE_LOCAL_PROJECT_ID)" \
+		$(ROOT_DIR)/scripts/langfuse_local_smoke.sh
+
+langfuse-reset: ## Delete local Langfuse volumes (CONFIRM=yes required)
+	@if [ "$(CONFIRM)" != "yes" ]; then \
+		echo "$(RED)Refusing to wipe Langfuse volumes.$(RESET)"; \
+		echo "  This removes ClickHouse/Postgres/MinIO/Redis data for project $(LANGFUSE_COMPOSE_PROJECT)."; \
+		echo "  Re-run: $(GREEN)make langfuse-reset CONFIRM=yes$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)→ Removing Langfuse containers and volumes$(RESET)"
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse.yml --project-name $(LANGFUSE_COMPOSE_PROJECT) down -v
+	@echo "$(GREEN)✓ Langfuse volumes removed$(RESET)"
+
+spec124-langfuse-e2e: langfuse-up ## Live Settings + sessions E2E vs local Langfuse Docker
+	@chmod +x $(ROOT_DIR)/scripts/spec124_langfuse_local_e2e.sh
+	@$(APPLY_LANGFUSE_ENV); \
+	LANGFUSE_PORT="$(LANGFUSE_PORT)" LANGFUSE_UI_URL="$(LANGFUSE_UI_URL)" \
+		LANGFUSE_LOCAL_PK="$(LANGFUSE_LOCAL_PK)" LANGFUSE_LOCAL_SK="$(LANGFUSE_LOCAL_SK)" \
+		LANGFUSE_LOCAL_PROJECT_ID="$(LANGFUSE_LOCAL_PROJECT_ID)" \
+		BACKEND_URL="$(BACKEND_URL)" FRONTEND_URL="$(FRONTEND_URL)" \
+		$(ROOT_DIR)/scripts/spec124_langfuse_local_e2e.sh
+
 docker-prebuilt: ## Start full stack (API + Web UI + DB) from latest published GHCR images — no build needed
 	@echo ""
 	@echo "$(BOLD)$(BLUE)🐳 Starting EdgeQuake Full Stack (latest published GHCR images)$(RESET)"
@@ -2860,7 +2956,7 @@ logs: ## Show recent logs from all services
 	@echo "$(BOLD)Docker Container Status:$(RESET)"
 	@cd $(DOCKER_DIR) && docker compose ps 2>/dev/null || echo "Docker not running"
 
-.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates spec124-proof spec125-proof
+.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates spec124-proof spec124-langfuse-e2e spec125-proof spec128-proof
 
 resource-proof: ## Run SPEC-006 resource safety proof suite (mock; no Postgres required)
 	@chmod +x specifications/006-ensure-perf/e2e/run_resource_proof.sh scripts/spec006_no_get_all_api.sh scripts/spec006_budget_catalog_sync.sh scripts/spec006_source_ids_migration.sh scripts/spec006_no_unguarded_community_api.sh scripts/spec006_no_adhoc_resource_budget.sh scripts/spec006_apply_migration_038.sh edgequake/scripts/migrations/apply_038.sh
@@ -2936,6 +3032,51 @@ spec125-proof: ## SPEC-125 markdown pack proofs (heading-dense fixture + Acc geo
 	@cd $(BACKEND_DIR) && cargo test -p edgequake-observability --lib inmemory_ingest_chunking
 	@echo "$(GREEN)✓ SPEC-125 proof passed$(RESET)"
 
+spec128-proof: ## SPEC-128 figure prune SSOT + layout overlay contracts (unfakable)
+	@echo "$(BOLD)SPEC-128 proof$(RESET)"
+	@rg -n "apply_filter_result_or_keep|apply_filter_to_figure_map" edgequake/crates/edgequake-pdf/src/backend/vision.rs >/dev/null \
+		|| { echo "$(RED)G-prune missing: vision.rs must prune figure_map after filter$(RESET)"; exit 1; }
+	@rg -n "attach_figure_filter_if_enabled" edgequake/crates/edgequake-api/src/processor/pdf_processing.rs >/dev/null \
+		|| { echo "$(RED)WP-1 missing: ingest must attach figure_filter_provider$(RESET)"; exit 1; }
+	@rg -n "PdfPageOverlay" edgequake_webui/src/components/documents/pdf-viewer.tsx >/dev/null \
+		|| { echo "$(RED)overlay missing: pdf-viewer.tsx must host PdfPageOverlay$(RESET)"; exit 1; }
+	@rg -n "pdf-layout-overlay" edgequake_webui/src/components/documents/pdf-page-overlay.tsx >/dev/null \
+		|| { echo "$(RED)overlay missing: pdf-page-overlay.tsx must render pdf-layout-overlay$(RESET)"; exit 1; }
+	@cd $(BACKEND_DIR) && cargo clippy -p edgequake-pdf --lib --no-deps -- -D warnings
+	@cd $(BACKEND_DIR) && cargo clippy -p edgequake-storage --lib --no-deps -- -D warnings
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-pdf --lib figure_filter::
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-pdf --lib page_layout::
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-storage --lib page_layout_storage::
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-api --lib document_page_layout_persist::
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-observability --lib spec128_page_layout
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-api --lib attach_figure_filter_honors_env
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-api --test contract_spec049_figure_filter
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-api --features postgres --test contract_spec128_page_layout
+	@if [ -f "$(ROOT_DIR)/../edgequake-pdf2md/src/pipeline/visual/text_blocks.rs" ]; then \
+		cargo test --manifest-path "$(ROOT_DIR)/../edgequake-pdf2md/Cargo.toml" --lib text_blocks:: ; \
+	else \
+		echo "$(YELLOW)skip pdf2md text_blocks (sibling crate missing)$(RESET)"; \
+	fi
+	@node $(FRONTEND_DIR)/scripts/copy-pdf-worker.mjs
+	@if curl -fsS "$(FRONTEND_URL)" 2>/dev/null | grep -qi 'EdgeQuake'; then \
+		cd $(FRONTEND_DIR) && PLAYWRIGHT_SKIP_STACK_CHECK=1 PLAYWRIGHT_BASE_URL="$(FRONTEND_URL)" pnpm exec playwright test e2e/spec128-layout-overlay.spec.ts --project=chromium --grep-invert "live "; \
+	else \
+		cd $(FRONTEND_DIR) && PLAYWRIGHT_SKIP_STACK_CHECK=1 pnpm exec playwright test e2e/spec128-layout-overlay.spec.ts --project=chromium --grep-invert "live "; \
+	fi
+	@if curl -fsS "$(BACKEND_URL)/health" >/dev/null 2>&1 && curl -fsS "$(FRONTEND_URL)" 2>/dev/null | grep -qi 'EdgeQuake'; then \
+		echo "$(YELLOW)→ SPEC-128 live overlay (persisted layout)$(RESET)"; \
+		cd $(FRONTEND_DIR) && E2E_LIVE_STACK=1 EQ_BACKEND_URL="$(BACKEND_URL)" EDGEQUAKE_API_URL="$(BACKEND_URL)" PLAYWRIGHT_BASE_URL="$(FRONTEND_URL)" pnpm exec playwright test e2e/spec128-layout-overlay.spec.ts --project=chromium --grep "live overlay on persisted"; \
+		if [ -n "$$MISTRAL_API_KEY" ]; then \
+			echo "$(YELLOW)→ SPEC-128 live mistral-small on pdf_data$(RESET)"; \
+			cd $(FRONTEND_DIR) && E2E_LIVE_STACK=1 EQ_BACKEND_URL="$(BACKEND_URL)" EDGEQUAKE_API_URL="$(BACKEND_URL)" PLAYWRIGHT_BASE_URL="$(FRONTEND_URL)" pnpm exec playwright test e2e/spec128-layout-overlay.spec.ts --project=chromium --grep "live mistral"; \
+		else \
+			echo "$(YELLOW)skip SPEC-128 live mistral (MISTRAL_API_KEY unset)$(RESET)"; \
+		fi; \
+	else \
+		echo "$(YELLOW)skip SPEC-128 live overlay (stack not up)$(RESET)"; \
+	fi
+	@echo "$(GREEN)✓ SPEC-128 proof passed$(RESET)"
+
 observability-jaeger: ## Docker stack with Jaeger OTLP + JSON logs (SPEC-018)
 	@cd $(DOCKER_DIR) && docker compose -f docker-compose.yml -f docker-compose.observability.yml --profile observability up --build
 
@@ -2985,6 +3126,13 @@ status: ## Show status of all services
 		echo "  $(YELLOW)Port 5432 reachable but not edgequake credentials — check /tmp/edgequake-db-url$(RESET)"; \
 	else \
 		echo "  $(RED)Not running$(RESET)"; \
+	fi
+	@echo ""
+	@echo "$(BOLD)Langfuse (optional local Docker):$(RESET)"
+	@if curl -sf "$(LANGFUSE_UI_URL)/api/public/health" >/dev/null 2>&1; then \
+		echo "  $(GREEN)Running at $(LANGFUSE_UI_URL)$(RESET)"; \
+	else \
+		echo "  $(YELLOW)Not running — make langfuse-up (UI $(LANGFUSE_UI_URL))$(RESET)"; \
 	fi
 	@echo ""
 

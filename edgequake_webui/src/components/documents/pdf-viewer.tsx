@@ -15,9 +15,23 @@
  */
 'use client';
 
+import {
+  getDocumentPageLayout,
+  listDocumentPages,
+} from '@/lib/api/edgequake/documents';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import {
+  PdfPageOverlay,
+  type OverlayChips,
+} from '@/components/documents/pdf-page-overlay';
 import {
     ChevronLeft,
     ChevronRight,
@@ -30,7 +44,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import type { DocumentProps } from 'react-pdf';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -49,10 +63,12 @@ const Page = dynamic(() => import('react-pdf').then(mod => mod.Page), {
   ssr: false,
 });
 
-// Configure PDF.js worker - must be done at module level
+// Configure PDF.js worker from the same origin (no CDN). File is copied to
+// `public/pdf.worker.min.mjs` from pdfjs-dist so Playwright and air-gapped
+// deploys do not depend on unpkg.
 if (typeof window !== 'undefined') {
   import('react-pdf').then(({ pdfjs }) => {
-    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
   });
 }
 
@@ -82,6 +98,8 @@ interface PDFViewerProps {
   onLoadSuccess?: (numPages: number) => void;
   /** Called when PDF load fails */
   onLoadError?: (error: Error) => void;
+  /** Document id for SPEC-128 layout overlay (lazy GET …/pages/{n}/layout). */
+  documentId?: string;
 }
 
 function PDFLoadingSkeleton() {
@@ -129,6 +147,43 @@ function PDFErrorState({ error, onRetry }: { error: string; onRetry?: () => void
   );
 }
 
+function layoutToggleDisabled(
+  summary:
+    | { layout_status: string; region_count?: number | null }
+    | undefined,
+  pagesLoaded: boolean,
+  pagesError: boolean,
+): boolean {
+  if (pagesError) return false;
+  if (!pagesLoaded) return true;
+  if (!summary) return true;
+  const status = summary.layout_status;
+  const count = summary.region_count ?? 0;
+  if (status === 'failed' || status === 'pending') return true;
+  if (status === 'skipped' && count === 0) return true;
+  return false;
+}
+
+function layoutToggleHint(
+  summary:
+    | { layout_status: string; region_count?: number | null }
+    | undefined,
+  disabled: boolean,
+  t: (key: string, fallback: string) => string,
+): string {
+  const status = summary?.layout_status;
+  if (!disabled) {
+    return t('documents.viewer.layout.toggleHint', 'Layout overlay (O)');
+  }
+  if (status === 'failed') {
+    return t('documents.viewer.layout.failed', 'Layout failed');
+  }
+  if (status === 'skipped') {
+    return t('documents.viewer.layout.skipped', 'Layout skipped');
+  }
+  return t('documents.viewer.layout.pending', 'Layout not ready');
+}
+
 /**
  * PDFViewer component for displaying PDF documents.
  *
@@ -146,6 +201,7 @@ export function PDFViewer({
   height,
   onLoadSuccess,
   onLoadError,
+  documentId,
 }: PDFViewerProps) {
   const { t } = useTranslation();
   const [numPages, setNumPages] = useState<number>(0);
@@ -154,6 +210,68 @@ export function PDFViewer({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isFullWidth, setIsFullWidth] = useState<boolean>(false);
+  const [overlayOn, setOverlayOn] = useState(false);
+  const [pageBox, setPageBox] = useState<{ width: number; height: number } | null>(null);
+  const pageWrapRef = useRef<HTMLDivElement>(null);
+  const [chips, setChips] = useState<OverlayChips>({
+    figures: true,
+    charts: true,
+    tables: true,
+    paragraphs: false,
+    columns: false,
+    noise: false,
+  });
+
+  const pagesQuery = useQuery({
+    queryKey: ['document-pages', documentId],
+    queryFn: () => listDocumentPages(documentId!),
+    enabled: Boolean(documentId),
+  });
+  const pageSummary = pagesQuery.data?.pages.find((p) => p.page_number === pageNumber);
+  const overlayDisabled = layoutToggleDisabled(
+    pageSummary,
+    pagesQuery.isSuccess,
+    pagesQuery.isError,
+  );
+  const overlayHint = layoutToggleHint(pageSummary, overlayDisabled, t);
+
+  const layoutQuery = useQuery({
+    queryKey: ['document-page-layout', documentId, pageNumber],
+    queryFn: () => getDocumentPageLayout(documentId!, pageNumber),
+    enabled: Boolean(documentId) && overlayOn && pageNumber > 0 && !overlayDisabled,
+  });
+
+  const remeasurePageBox = useCallback(() => {
+    const el = pageWrapRef.current?.querySelector('.react-pdf__Page') as HTMLElement | null;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      setPageBox({ width: r.width, height: r.height });
+    }
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'o' || e.key === 'O') {
+        if ((e.target as HTMLElement | null)?.closest?.('input,textarea,[contenteditable]')) {
+          return;
+        }
+        if (overlayDisabled) return;
+        setOverlayOn((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [overlayDisabled]);
+
+  useEffect(() => {
+    window.addEventListener('resize', remeasurePageBox);
+    return () => window.removeEventListener('resize', remeasurePageBox);
+  }, [remeasurePageBox]);
+
+  useEffect(() => {
+    setPageBox(null);
+  }, [pageNumber, scale]);
 
   // SPEC-033: Sync pageNumber with the controlled `currentPage` prop.
   // WHY: `initialPage` is a one-shot seed; `currentPage` drives the viewer
@@ -287,7 +405,7 @@ export function PDFViewer({
   const documentFile: DocumentProps['file'] = file;
 
   return (
-    <div className={cn('flex flex-col h-full min-h-0', className)}>
+    <div data-testid="pdf-viewer" className={cn('flex flex-col h-full min-h-0', className)}>
       {/* Toolbar */}
       {showToolbar && (
         <div className="flex items-center justify-between gap-2 p-2 border-b bg-muted/30">
@@ -352,9 +470,58 @@ export function PDFViewer({
             >
               {isFullWidth ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
+            {documentId ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      variant={overlayOn ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className="h-8 px-2 text-xs"
+                      data-testid="pdf-layout-toggle"
+                      aria-pressed={overlayOn}
+                      disabled={overlayDisabled}
+                      onClick={() => {
+                        if (overlayDisabled) return;
+                        setOverlayOn((v) => !v);
+                      }}
+                      title={overlayHint}
+                    >
+                      {t('documents.viewer.layout.toggle', 'Layout')}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{overlayHint}</TooltipContent>
+              </Tooltip>
+            ) : null}
           </div>
         </div>
       )}
+      {overlayOn && documentId && !overlayDisabled ? (
+        <div className="flex flex-wrap items-center gap-1 px-2 py-1 border-b bg-muted/20 text-xs">
+          {(
+            [
+              ['figures', t('documents.viewer.layout.chipFigures', 'Figures')],
+              ['charts', t('documents.viewer.layout.chipCharts', 'Charts')],
+              ['tables', t('documents.viewer.layout.chipTables', 'Tables')],
+              ['paragraphs', t('documents.viewer.layout.chipParagraphs', 'Paragraphs')],
+              ['columns', t('documents.viewer.layout.chipColumns', 'Columns')],
+              ['noise', t('documents.viewer.layout.chipNoise', 'Noise')],
+            ] as const
+          ).map(([key, label]) => (
+            <Button
+              key={key}
+              variant={chips[key] ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              data-testid={`pdf-layout-chip-${key}`}
+              onClick={() => setChips((c) => ({ ...c, [key]: !c[key] }))}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      ) : null}
 
       {/* PDF Content - mousewheel scrollable
          WHY: flex-1 + min-h-0 lets the scroll area shrink to fit the parent.
@@ -378,6 +545,15 @@ export function PDFViewer({
             loading={<PDFLoadingSkeleton />}
             className="pdf-document"
           >
+            <div
+              ref={pageWrapRef}
+              className="relative shadow-md"
+              style={
+                pageBox
+                  ? { width: pageBox.width, height: pageBox.height }
+                  : undefined
+              }
+            >
             <Page
               pageNumber={pageNumber}
               scale={scale}
@@ -385,12 +561,26 @@ export function PDFViewer({
               className="shadow-md"
               renderTextLayer={true}
               renderAnnotationLayer={true}
+              onRenderSuccess={(page) => {
+                setPageBox({ width: page.width, height: page.height });
+              }}
               loading={
                 <div className="flex items-center justify-center p-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               }
             />
+            {overlayOn && pageBox && !overlayDisabled ? (
+              <PdfPageOverlay
+                regions={layoutQuery.data?.regions ?? []}
+                chips={chips}
+                empty={
+                  layoutQuery.data?.layout_status === 'extracted' &&
+                  (layoutQuery.data.regions?.length ?? 0) === 0
+                }
+              />
+            ) : null}
+            </div>
           </Document>
         </div>
       </div>

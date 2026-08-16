@@ -111,10 +111,22 @@ Langfuse accepts **OTLP/HTTP only** (not gRPC). When `LANGFUSE_PUBLIC_KEY` and `
 # (Make `-include` otherwise keeps quotes and OTLP Basic auth gets HTTP 401).
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_BASE_URL=https://cloud.langfuse.com   # or US / self-hosted
+LANGFUSE_BASE_URL=https://cloud.langfuse.com   # or US / self-hosted / http://localhost:3310
 # Same shell alternative: export the three vars, then restart
 make kill-app && make backend-bg   # or: make dev
 # Docker stack: LANGFUSE_* is mapped in compose (quickstart / docker / api-only / prebuilt)
+#
+# Local Langfuse v4 (optional, not started by make dev):
+#   make langfuse-up          # UI http://localhost:3310  (isolated Compose project)
+#   make langfuse-smoke       # GET /api/public/projects with headless init keys
+#   make spec124-langfuse-e2e # Settings + sessions vs localhost (backend must use local keys)
+# Headless keys (must match edgequake/docker/docker-compose.langfuse.yml):
+#   LANGFUSE_PUBLIC_KEY=pk-lf-edgequake-local
+#   LANGFUSE_SECRET_KEY=sk-lf-edgequake-local-dev
+#   LANGFUSE_BASE_URL=http://localhost:3310
+#   LANGFUSE_PROJECT_ID=edgequake-local
+# Login: dev@example.com / edgequake-local-dev
+# make langfuse-down keeps volumes; make langfuse-reset CONFIRM=yes wipes them.
 ```
 
 `make dev` / `backend-bg` / `backend-dev` call `APPLY_LANGFUSE_ENV`: source repo-root `.env`, apply Make/CLI overrides only when the shell var is empty (so bash-sourced values are not clobbered by Make-quoted includes), strip matching quotes, and never force `LANGFUSE_*=""`. Look for `LANGFUSE_* keys detected` in the make output.
@@ -122,7 +134,7 @@ make kill-app && make backend-bg   # or: make dev
 - Settings → **Langfuse Observability** card shows status + **Open in Langfuse** (no secrets in UI).
 - `GET /api/v1/settings/langfuse` returns the same status DTO.
 - `/health.operational.observability.langfuse_enabled` + `langfuse_base_url`.
-- Query responses may include `trace_id` for deep links (`{base}/trace/{id}`).
+- Query responses may include `trace_id`. Deep links use `{LANGFUSE_BASE_URL}/project/{projectId}/traces/{traceId}` (and sessions `{base}/project/{id}/sessions/{sessionId}`). Bare `/sessions/{id}` is a Cloud 404.
 - **Sessions:** chat turns bind durable `conversation_id` as Langfuse session / `gen_ai.conversation.id` (see [specs/124-langfuse-support/12-sessions-and-genai.md](../specs/124-langfuse-support/12-sessions-and-genai.md)). After two turns in the same conversation, open Langfuse → Observability → Sessions. Optional `/query` and `/query/stream` field `session_id` for API clients; never invent a session when omitted.
 - **Tokens yes / cost never:** generation and embedding spans record `gen_ai.usage.input_tokens` / `output_tokens` when the LLM returns counts. EdgeQuake **never** emits `gen_ai.usage.cost` or `langfuse.observation.cost_details`. Observation types: `generation`, `retriever`, `embedding`, `chain` (ingest root). See [13-metadata-tokens-and-coverage.md](../specs/124-langfuse-support/13-metadata-tokens-and-coverage.md).
 - **Observation Input/Output:** Langfuse UI reads `langfuse.observation.input` / `output` (not `gen_ai.retrieval.query.text`). Retriever, generation, embedding, ingest roots, and `pipeline_chunk_extraction` set truncated I/O. See [14-observation-io-and-full-observe.md](../specs/124-langfuse-support/14-observation-io-and-full-observe.md).

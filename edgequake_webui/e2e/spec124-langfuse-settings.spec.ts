@@ -41,7 +41,14 @@ test.describe("SPEC-124 Langfuse settings", () => {
     if (body.export_active) {
       await expect(page.getByTestId("langfuse-open-link")).toBeVisible();
       const href = await page.getByTestId("langfuse-open-link").getAttribute("href");
-      expect(href).toBe(body.ui_url);
+      const expected = body.project_ui_url || body.ui_url;
+      expect(href).toBe(expected);
+      const host = String(body.ui_url).replace(/\/$/, "");
+      expect(href?.startsWith(host)).toBeTruthy();
+      if (host.includes("localhost")) {
+        expect(href).toContain("/project/");
+        expect(href).not.toMatch(/cloud\.langfuse\.com/);
+      }
     } else {
       await expect(page.getByTestId("langfuse-open-link")).toHaveCount(0);
     }

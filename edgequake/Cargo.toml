@@ -215,6 +215,8 @@ opt-level = 3
 
 # Unify pdf2md / other crates.io dependents onto the local llm crate (SPEC-126).
 # After publishing edgequake-llm 0.10.8, bump the workspace pin and drop this patch.
+# SPEC-128: path-patch pdf2md so L0/L1 geometry gates land without a crates.io publish.
 [patch.crates-io]
 edgequake-llm = { path = "../../edgequake-llm" }
+edgequake-pdf2md = { path = "../../edgequake-pdf2md" }
 

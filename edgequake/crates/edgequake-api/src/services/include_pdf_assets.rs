@@ -158,7 +158,7 @@ pub async fn include_extracted_pdf_assets(
                 tracing::warn!(%document_id, error = %e, "Embedded figure extract skipped");
                 Vec::new()
             });
-        let figure_map = figures_by_page(&figures);
+        let mut figure_map = figures_by_page(&figures);
         let (region_figs, region_tables) =
             write_caption_region_assets(&pdf.pdf_data, &assets_root, &figure_map)
                 .await
@@ -166,6 +166,14 @@ pub async fn include_extracted_pdf_assets(
                     tracing::warn!(%document_id, error = %e, "Caption region extract skipped");
                     (Vec::new(), Vec::new())
                 });
+        for fig in &region_figs {
+            figure_map
+                .entry(fig.page_num)
+                .or_default()
+                .push(fig.clone());
+        }
+        // LAW-128-13: prune after every writer so include cannot resurrect logos.
+        figure_map = edgequake_pdf::prune_figure_map_using_manifest(figure_map, &assets_root, true);
         let written = write_page_png_assets(
             &pdf.pdf_data,
             &assets_root,
@@ -226,6 +234,13 @@ pub async fn include_extracted_pdf_assets(
             &assets_root,
         )
         .await?;
+        crate::services::persist_page_layout_best_effort(
+            state.storage.page_layout_storage.as_ref(),
+            document_id,
+            workspace_id,
+            &assets_root,
+        )
+        .await;
 
         // Inject real on-disk fig/table assets into markdown (never invent missing paths).
         let mut enriched = inject_on_disk_region_assets(&body.markdown, &assets_root);

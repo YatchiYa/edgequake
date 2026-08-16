@@ -10,7 +10,9 @@
  */
 'use client';
 
+import { layoutAssetStem } from '@/components/documents/layout-asset';
 import { buildHeaders } from '@/lib/api/client';
+import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 
 interface AuthenticatedMarkdownImageProps {
@@ -76,9 +78,14 @@ export function AuthenticatedMarkdownImage({
     };
   }, [src]);
 
+  const layoutAsset = layoutAssetStem(src);
+
   if (!resolvedSrc) {
     return (
-      <span className="text-muted-foreground text-sm italic my-2 inline-block">
+      <span
+        data-layout-asset={layoutAsset}
+        className="text-muted-foreground text-sm italic my-2 inline-block"
+      >
         Loading image…
       </span>
     );
@@ -90,7 +97,11 @@ export function AuthenticatedMarkdownImage({
       src={resolvedSrc}
       alt={alt ?? ''}
       title={title}
-      className={className}
+      data-layout-asset={layoutAsset}
+      className={cn(
+        className,
+        'data-[layout-asset-focused=true]:ring-2 data-[layout-asset-focused=true]:ring-primary',
+      )}
       loading="lazy"
     />
   );

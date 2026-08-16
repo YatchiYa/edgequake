@@ -34,6 +34,7 @@ sdks/**/bin/
 !specs/017-dry-and-solid-audit/006-edgequake-query/e2e/screenshots/*.png
 !specs/017-dry-and-solid-audit/007-edgequake-storage/e2e/screenshots/*.png
 !specs/096-multi-language-extraction/e2e/screenshots/*.png
+!specs/128-improve-pdf-parsing/e2e/screenshots/*.png
 
 # Environment files
 .env

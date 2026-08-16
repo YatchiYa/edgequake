@@ -143,6 +143,14 @@ export function spec096Screenshot(fileName: string): string {
   );
 }
 
+/** `specs/128-improve-pdf-parsing/e2e/screenshots/<fileName>` */
+export function spec128Screenshot(fileName: string): string {
+  return path.join(
+    ensureDir(path.join(REPO_ROOT, "specs/128-improve-pdf-parsing/e2e/screenshots")),
+    fileName,
+  );
+}
+
 /**
  * SPEC-101 evidence QC — writes to `specs/101-…/evidence/<fileName>`
  * and mirrors under `e2e/screenshots/spec101/<fileName>`.

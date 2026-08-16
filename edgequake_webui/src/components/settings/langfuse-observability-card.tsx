@@ -23,6 +23,8 @@ export type LangfuseSettingsResponse = {
   enabled: boolean;
   base_url: string;
   ui_url: string;
+  project_id?: string | null;
+  project_ui_url?: string | null;
   public_key_configured: boolean;
   secret_key_configured: boolean;
   otel_feature_built: boolean;
@@ -166,10 +168,10 @@ export function LangfuseObservabilityCard() {
                 <Copy className="h-3.5 w-3.5 mr-1.5" />
                 Copy env snippet
               </Button>
-              {data?.export_active && data.ui_url ? (
+              {data?.export_active && (data.project_ui_url || data.ui_url) ? (
                 <Button type="button" size="sm" asChild>
                   <a
-                    href={data.ui_url}
+                    href={data.project_ui_url || data.ui_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     data-testid="langfuse-open-link"

@@ -8,6 +8,7 @@ pub mod figure_filter;
 pub mod inline_images;
 pub mod page_assets;
 pub mod page_count;
+pub mod page_layout;
 pub mod page_marker;
 pub mod page_selection;
 pub mod pdfium_ready;
@@ -45,14 +46,21 @@ pub use fallback::{
     build_edgeparse_fallback_message, should_fallback_to_edgeparse, VisionFailureKind,
 };
 pub use figure_filter::{
-    load_manifest, write_manifest, FigureCandidate, FigureFilter, FigureFilterResult, FigureKind,
-    FIGURE_FILTER_MANIFEST,
+    apply_filter_result_or_keep, apply_filter_to_figure_map, collect_filter_candidates,
+    delete_discarded_pngs, discarded_rel_paths, discarded_rel_paths_from_manifest,
+    figure_filter_env_enabled, inject_kept_descriptions, load_manifest, prune_chart_crop_paths,
+    prune_figure_map, prune_figure_map_using_manifest, strip_discarded_asset_lines, write_manifest,
+    FigureCandidate, FigureFilter, FigureFilterResult, FigureKind, FIGURE_FILTER_MANIFEST,
 };
 pub use inline_images::{
     scan_inline_image_refs, InlineImageAnalysis, InlineImageAnalyzer, NoopInlineImageAnalyzer,
 };
 pub use page_assets::{write_page_png_assets, PageAssetRenderConfig};
 pub use page_count::{count_pdf_pages, resolve_pdf_page_count};
+pub use page_layout::{
+    load_page_layout_sidecar, sidecar_exists, write_sidecar_from_assets, BBoxPdf,
+    PageLayoutPageSidecar, PageLayoutRegionSidecar, PageLayoutSidecar, PAGE_LAYOUT_SIDECAR,
+};
 pub use page_marker::{PageMarkerWriter, PAGE_MARKER_PREFIX, PAGE_MARKER_SUFFIX};
 pub use page_selection::parse_page_selection;
 pub use pdfium_ready::{prime_pdfium, PdfPrimeError};

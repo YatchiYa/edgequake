@@ -358,6 +358,22 @@
       "actions": "Actions",
       "technicalDetails": "Technical details",
       "retryable": "Retryable"
+    },
+    "viewer": {
+      "layout": {
+        "toggle": "Layout",
+        "toggleHint": "Layout overlay (O)",
+        "empty": "No regions on this page",
+        "failed": "Layout failed",
+        "skipped": "Layout skipped",
+        "pending": "Layout not ready",
+        "chipFigures": "Figures",
+        "chipCharts": "Charts",
+        "chipTables": "Tables",
+        "chipParagraphs": "Paragraphs",
+        "chipColumns": "Columns",
+        "chipNoise": "Noise"
+      }
     }
   },
   "graph": {

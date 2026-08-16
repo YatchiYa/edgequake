@@ -344,7 +344,23 @@
       "reprocessSuccess": "{{count}} document(s) mis en file d'attente",
       "reprocessFailed": "Échec du retraitement de {{count}} document(s)"
     },
-    "viewStatus": "Voir le statut"
+    "viewStatus": "Voir le statut",
+    "viewer": {
+      "layout": {
+        "toggle": "Disposition",
+        "toggleHint": "Calque de disposition (O)",
+        "empty": "Aucune région sur cette page",
+        "failed": "Disposition en échec",
+        "skipped": "Disposition ignorée",
+        "pending": "Disposition non prête",
+        "chipFigures": "Figures",
+        "chipCharts": "Graphiques",
+        "chipTables": "Tableaux",
+        "chipParagraphs": "Paragraphes",
+        "chipColumns": "Colonnes",
+        "chipNoise": "Bruit"
+      }
+    }
   },
   "graph": {
     "title": "Graphe de connaissances",

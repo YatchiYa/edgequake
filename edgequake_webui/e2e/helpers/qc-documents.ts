@@ -13,6 +13,35 @@ export const SIMPLE_PDF_FIXTURE = path.resolve(
   "../../../legacy/edgequake-pdf/test-data/001_simple_text.pdf",
 );
 
+/** Smallest SPEC-049 corpus paper (real ICLR PDF, 12 pages). */
+export const SPEC049_HIPO_PDF = path.resolve(
+  __dirname,
+  "../../../specs/049-improve-figure-extraction/data/hipo_2607.02303v1.pdf",
+);
+
+/** LightRAG arXiv PDF used across EdgeQuake demos. */
+export const SPEC049_LIGHTRAG_PDF = path.resolve(
+  __dirname,
+  "../../../specs/049-improve-figure-extraction/data/lighrad_2410.05779v3.pdf",
+);
+
+export const SPEC128_PDF_DATA_DIR = path.resolve(
+  __dirname,
+  "../../../specs/128-improve-pdf-parsing/pdf_data",
+);
+
+/** All `*.pdf` under spec 128 `pdf_data/`, smallest first (primary live paper). */
+export function listSpec128PdfData(): string[] {
+  if (!fs.existsSync(SPEC128_PDF_DATA_DIR)) {
+    return [];
+  }
+  return fs
+    .readdirSync(SPEC128_PDF_DATA_DIR)
+    .filter((name) => name.toLowerCase().endsWith(".pdf"))
+    .map((name) => path.join(SPEC128_PDF_DATA_DIR, name))
+    .sort((a, b) => fs.statSync(a).size - fs.statSync(b).size);
+}
+
 export async function pollDocumentStatus(
   request: import("@playwright/test").APIRequestContext,
   docId: string,
@@ -111,7 +140,123 @@ export type PdfUploadOptions = {
   title?: string;
   enableVision?: boolean;
   parserBackend?: "text" | "vision";
+  filePath?: string;
+  fileName?: string;
+  /** Form field `vision_provider` (e.g. mock) so ingest does not inherit a geo-blocked cloud VLM. */
+  visionProvider?: string;
+  /** Form field `vision_model` (upload wins SPEC-123). */
+  visionModel?: string;
+  /** Wall clock for PDF job + document terminal status. */
+  timeoutMs?: number;
 };
+
+export type PageLayoutBody = {
+  document_id?: string;
+  page_number?: number;
+  layout_status?: string;
+  error_message?: string;
+  regions?: Array<{
+    class?: string;
+    asset_path?: string | null;
+    extra?: Record<string, unknown>;
+    bbox_norm?: { x: number; y: number; w: number; h: number };
+  }>;
+};
+
+/** Poll GET .../pages/{n}/layout until at least one region exists (convert-time persist). */
+export async function pollDocumentPageLayout(
+  request: import("@playwright/test").APIRequestContext,
+  docId: string,
+  tenantId: string,
+  workspaceId: string,
+  pageNumber = 1,
+  maxMs = 300_000,
+): Promise<PageLayoutBody> {
+  const deadline = Date.now() + maxMs;
+  let lastStatus = 0;
+  while (Date.now() < deadline) {
+    const res = await request.get(
+      `${BACKEND_URL}/api/v1/documents/${docId}/pages/${pageNumber}/layout`,
+      { headers: tenantHeaders(tenantId, workspaceId) },
+    );
+    lastStatus = res.status();
+    if (res.ok()) {
+      const body = (await res.json()) as PageLayoutBody;
+      if ((body.regions?.length ?? 0) >= 1) {
+        return body;
+      }
+    }
+    const docRes = await request.get(`${BACKEND_URL}/api/v1/documents/${docId}`, {
+      headers: tenantHeaders(tenantId, workspaceId),
+    });
+    if (docRes.ok()) {
+      const doc = (await docRes.json()) as { status?: string; error_message?: string };
+      const st = (doc.status ?? "").toLowerCase();
+      if (st.includes("fail")) {
+        throw new Error(
+          `document ${docId} failed before layout persist: ${doc.error_message ?? st}`,
+        );
+      }
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  throw new Error(
+    `layout for ${docId} page ${pageNumber} not persisted within ${maxMs}ms (last HTTP ${lastStatus})`,
+  );
+}
+
+/** Admit a PDF (queued). Does not wait for convert or KG extract. */
+export async function admitPdfViaApi(
+  request: import("@playwright/test").APIRequestContext,
+  ctx: QcWorkspaceContext,
+  options: PdfUploadOptions = {},
+): Promise<{ pdfId: string; documentId: string; enableVision: boolean }> {
+  const filePath = options.filePath ?? SIMPLE_PDF_FIXTURE;
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`PDF fixture missing: ${filePath}`);
+  }
+  const pdfBytes = fs.readFileSync(filePath);
+  const fileName = options.fileName ?? path.basename(filePath);
+  const docTitle = options.title ?? `spec020-pdf-${Date.now()}`;
+  const trackId = `spec020-pdf-${Date.now()}`;
+  const enableVision = options.enableVision ?? false;
+  const fields: Record<string, string> = {
+    title: docTitle,
+    enable_vision: enableVision ? "true" : "false",
+    pdf_parser_backend: options.parserBackend ?? "text",
+    force_reindex: "true",
+    track_id: trackId,
+  };
+  if (options.visionProvider) {
+    fields.vision_provider = options.visionProvider;
+  }
+  if (options.visionModel) {
+    fields.vision_model = options.visionModel;
+  }
+  const { boundary, body } = pdfMultipartBody(fileName, pdfBytes, fields);
+
+  const upload = await request.fetch(`${BACKEND_URL}/api/v1/documents/pdf`, {
+    method: "POST",
+    headers: {
+      ...tenantHeaders(ctx.tenantId, ctx.workspaceId),
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    },
+    data: body,
+    timeout: 120_000,
+  });
+  expect([200, 201, 202]).toContain(upload.status());
+  const uploadBody = (await upload.json()) as {
+    pdf_id?: string;
+    document_id?: string | null;
+  };
+  expect(uploadBody.pdf_id).toBeTruthy();
+  expect(uploadBody.document_id).toBeTruthy();
+  return {
+    pdfId: uploadBody.pdf_id!,
+    documentId: uploadBody.document_id!,
+    enableVision,
+  };
+}
 
 /** Upload small PDF via API (text parser default; vision flag optional). */
 export async function uploadPdfViaApi(
@@ -125,56 +270,32 @@ export async function uploadPdfViaApi(
   status: string;
   enableVision: boolean;
 }> {
-  if (!fs.existsSync(SIMPLE_PDF_FIXTURE)) {
-    throw new Error(`PDF fixture missing: ${SIMPLE_PDF_FIXTURE}`);
-  }
-  const pdfBytes = fs.readFileSync(SIMPLE_PDF_FIXTURE);
-  const docTitle = options.title ?? `spec020-pdf-${Date.now()}`;
-  const trackId = `spec020-pdf-${Date.now()}`;
-  const enableVision = options.enableVision ?? false;
-  const { boundary, body } = pdfMultipartBody("001_simple_text.pdf", pdfBytes, {
-    title: docTitle,
-    enable_vision: enableVision ? "true" : "false",
-    pdf_parser_backend: options.parserBackend ?? "text",
-    force_reindex: "true",
-    track_id: trackId,
-  });
-
-  const upload = await request.fetch(`${BACKEND_URL}/api/v1/documents/pdf`, {
-    method: "POST",
-    headers: {
-      ...tenantHeaders(ctx.tenantId, ctx.workspaceId),
-      "Content-Type": `multipart/form-data; boundary=${boundary}`,
-    },
-    data: body,
-    timeout: 120_000,
-  });
-  expect([200, 201, 202]).toContain(upload.status());
-  const uploadBody = (await upload.json()) as { pdf_id?: string };
-  expect(uploadBody.pdf_id).toBeTruthy();
+  const timeoutMs = options.timeoutMs ?? 300_000;
+  const admitted = await admitPdfViaApi(request, ctx, options);
 
   const completed = await pollPdfCompleted(
     request,
-    uploadBody.pdf_id!,
+    admitted.pdfId,
     ctx.tenantId,
     ctx.workspaceId,
-    300_000,
+    timeoutMs,
   );
-  expect(completed.document_id).toBeTruthy();
+  const documentId = completed.document_id ?? admitted.documentId;
+  expect(documentId).toBeTruthy();
 
   const meta = await pollDocumentStatus(
     request,
-    completed.document_id!,
+    documentId!,
     ctx.tenantId,
     ctx.workspaceId,
-    180_000,
+    timeoutMs,
   );
   return {
-    pdfId: uploadBody.pdf_id!,
-    documentId: completed.document_id!,
+    pdfId: admitted.pdfId,
+    documentId: documentId!,
     chunkCount: meta.chunk_count ?? 0,
     status: meta.status ?? "unknown",
-    enableVision,
+    enableVision: admitted.enableVision,
   };
 }
 

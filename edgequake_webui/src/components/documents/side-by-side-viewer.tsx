@@ -123,7 +123,7 @@ export function SideBySideViewer({
   }, [handleMouseMove, handleMouseUp, isDragging]);
 
   return (
-    <div className={cn('flex flex-col min-h-0', className)}>
+    <div data-testid="side-by-side-viewer" className={cn('flex flex-col min-h-0', className)}>
       {/* Minimal View Mode Toggle */}
       <div className="flex items-center justify-end gap-1 px-2 py-1 border-b bg-muted/20">
         <TooltipProvider>

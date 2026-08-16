@@ -239,6 +239,34 @@ impl PageDrawingAssetsConfig {
             self.extract_figures,
         )
     }
+
+    /// Attach the SPEC-049/128 VLM figure filter when figures or charts are
+    /// extracted and `EDGEQUAKE_FIGURE_FILTER` is not `0`/`false`/`off`/`no`.
+    /// Default is **on** whenever a vision LLM `provider` is supplied (LAW-128-14).
+    pub fn attach_figure_filter_if_enabled(
+        &mut self,
+        provider: Option<Arc<dyn edgequake_llm::LLMProvider>>,
+    ) {
+        if !self.extract_figures && !self.extract_charts {
+            return;
+        }
+        if !crate::figure_filter::figure_filter_env_enabled() {
+            tracing::info!("SPEC-128 figure filter disabled via EDGEQUAKE_FIGURE_FILTER");
+            return;
+        }
+        match provider {
+            Some(p) => {
+                tracing::info!(
+                    provider = p.name(),
+                    "SPEC-128 figure filter attached (default on)"
+                );
+                self.figure_filter_provider = Some(p);
+            }
+            None => tracing::warn!(
+                "SPEC-128 figure filter skipped: no vision LLM provider (artefacts will not be pruned)"
+            ),
+        }
+    }
 }
 
 impl std::fmt::Debug for PageDrawingAssetsConfig {

@@ -157,4 +157,65 @@ mod tests {
         assert!(root.ends_with("abc-123"));
         assert!(root.starts_with(mm_assets_base_dir()));
     }
+
+    #[test]
+    #[serial_test::serial]
+    fn attach_figure_filter_honors_extract_flag() {
+        std::env::remove_var("EDGEQUAKE_FIGURE_FILTER");
+        let mock = std::sync::Arc::new(edgequake_llm::MockProvider::new());
+        let provider: std::sync::Arc<dyn edgequake_llm::LLMProvider> = mock;
+        let mut cfg = PageDrawingAssetsConfig::with_defaults(
+            std::path::PathBuf::from("/tmp/x"),
+            Some("abc".into()),
+        );
+        cfg.extract_figures = false;
+        cfg.extract_charts = false;
+        cfg.attach_figure_filter_if_enabled(Some(std::sync::Arc::clone(&provider)));
+        assert!(cfg.figure_filter_provider.is_none());
+        cfg.extract_charts = true;
+        cfg.attach_figure_filter_if_enabled(Some(std::sync::Arc::clone(&provider)));
+        assert!(
+            cfg.figure_filter_provider.is_some(),
+            "charts-only extract still attaches the filter"
+        );
+        cfg.figure_filter_provider = None;
+        cfg.extract_charts = false;
+        cfg.extract_figures = true;
+        cfg.attach_figure_filter_if_enabled(Some(provider));
+        assert!(cfg.figure_filter_provider.is_some());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn attach_figure_filter_default_on_when_env_unset() {
+        std::env::remove_var("EDGEQUAKE_FIGURE_FILTER");
+        let mock = std::sync::Arc::new(edgequake_llm::MockProvider::new());
+        let provider: std::sync::Arc<dyn edgequake_llm::LLMProvider> = mock;
+        let mut cfg = PageDrawingAssetsConfig::with_defaults(
+            std::path::PathBuf::from("/tmp/x"),
+            Some("abc".into()),
+        );
+        cfg.extract_figures = true;
+        cfg.attach_figure_filter_if_enabled(Some(provider));
+        assert!(
+            cfg.figure_filter_provider.is_some(),
+            "LAW-128-14: filter default-on when env unset"
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn attach_figure_filter_honors_env_off() {
+        std::env::set_var("EDGEQUAKE_FIGURE_FILTER", "0");
+        let mock = std::sync::Arc::new(edgequake_llm::MockProvider::new());
+        let provider: std::sync::Arc<dyn edgequake_llm::LLMProvider> = mock;
+        let mut cfg = PageDrawingAssetsConfig::with_defaults(
+            std::path::PathBuf::from("/tmp/x"),
+            Some("abc".into()),
+        );
+        cfg.extract_figures = true;
+        cfg.attach_figure_filter_if_enabled(Some(provider));
+        assert!(cfg.figure_filter_provider.is_none());
+        std::env::remove_var("EDGEQUAKE_FIGURE_FILTER");
+    }
 }

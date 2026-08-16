@@ -6,6 +6,16 @@ All notable changes to the EdgeQuake specs directory are tracked here. See the r
 
 ### Added
 
+- **SPEC-128 / PDF precision + layout overlay (2026-08-16):** Close the
+  figure-filter control loop (classify → prune `figure_map`), tighten Image/Form
+  area+aspect gates in pdf2md, persist `document_pages` / `page_layout_regions`
+  (migration 148), derive `bbox_norm` at read, overlay on `PDFViewer` (O + chips).
+  Text-page quads → `paragraph` + derived `column`. L2 ONNX is **out of this
+  slice**.   Proof: `make spec128-proof` (unit + HTTP/RLS/cascade contracts +
+  G-overlay fixture IoU ≥ 0.8 `S01–S05`; live real-PDF overlay `R01–R05` /
+  SPEC-049 ingest `I01–I05` when `make dev` is up); screenshots under
+  `specs/128-improve-pdf-parsing/e2e/screenshots/`.
+
 - **SPEC-108 / extraction density vs LightRAG (2026-08-04):** Partner
   ~12k entities/relations question — first-principles pack under
   `specs/108-extraction-compared-light-rag/` (LAW-X1..X5: M≠U count SSOT,

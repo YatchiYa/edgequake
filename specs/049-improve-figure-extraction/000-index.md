@@ -3,7 +3,8 @@
 > **Status:** Active  
 > **Date:** 2026-07-12  
 > **Depends on:** SPEC-047 multimodal assets, edgequake-pdf2md ≥ 0.9.5  
-> **Related:** [pdf-asset-first-principles canvas](../../.cursor/projects/…), ISO 32000-1 §8.8–8.10 / §14.7
+> **Related:** [pdf-asset-first-principles canvas](../../.cursor/projects/…), ISO 32000-1 §8.8–8.10 / §14.7  
+> **Precision / overlay follow-on:** [SPEC-128](../128-improve-pdf-parsing/) — prune `figure_map`, wire FigureFilter, persist `document_pages` + overlay. SPEC-049 P2 “L2 only if L0+L1 empty” is **superseded** by SPEC-128 LAW-128-15 (L2 persists + gates L1; L0 always kept). Do not duplicate 128 work here.
 
 ## Goal
 
@@ -20,6 +21,7 @@ as primary detectors. Keep Pdfium as the single render SSOT. Obey DRY / SOLID.
 | [003-implementation-plan.md](./003-implementation-plan.md) | Phased delivery P0–P4 |
 | [004-acceptance-and-tests.md](./004-acceptance-and-tests.md) | Edge-case matrix + CI gates |
 | [005-non-flaky-improvement-brainstorm.md](./005-non-flaky-improvement-brainstorm.md) | First-principles levers without flaky heuristics |
+| **[SPEC-128](../128-improve-pdf-parsing/)** | Prune loop, L2 persist, page tables, PDF overlay |
 
 ## Non-goals (this spec)
 
