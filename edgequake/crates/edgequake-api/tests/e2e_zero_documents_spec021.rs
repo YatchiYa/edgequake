@@ -161,6 +161,14 @@ async fn test_entity_count_still_from_graph_in_hybrid_mode() {
 // Postgres mode — relational primary path
 // ============================================================================
 
+<<<<<<< HEAD
+=======
+// Route to the dedicated scratch test database (see common/test_db.rs).
+#[cfg(feature = "postgres")]
+#[path = "common/test_db.rs"]
+mod test_db;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 #[cfg(feature = "postgres")]
 mod postgres_tests {
     use super::*;
@@ -168,7 +176,13 @@ mod postgres_tests {
     use std::env;
 
     fn database_url() -> Option<String> {
+<<<<<<< HEAD
         env::var("DATABASE_URL").ok()
+=======
+        env::var("DATABASE_URL")
+            .ok()
+            .map(|base| crate::test_db::isolated_test_url(&base))
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     async fn postgres_pool() -> Option<sqlx::PgPool> {

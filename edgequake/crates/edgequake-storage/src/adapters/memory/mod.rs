@@ -24,6 +24,10 @@
 //! - [`BR0210`]: Thread-safe concurrent access via RwLock
 
 mod conversation;
+<<<<<<< HEAD
+=======
+mod domain;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 mod graph;
 mod kv;
 mod lock;
@@ -34,6 +38,10 @@ mod vector;
 mod workspace_vector;
 
 pub use conversation::MemoryConversationStorage;
+<<<<<<< HEAD
+=======
+pub use domain::MemoryChunkRepository;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use graph::MemoryGraphStorage;
 pub use kv::MemoryKVStorage;
 pub use mm_asset::MemoryMmAssetStorage;

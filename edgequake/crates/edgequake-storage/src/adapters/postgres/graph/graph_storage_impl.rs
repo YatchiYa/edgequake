@@ -196,6 +196,17 @@ impl GraphStorageMutateOps for PostgresAGEGraphStorage {
         self.pg_upsert_nodes_batch(nodes).await
     }
 
+<<<<<<< HEAD
+=======
+    async fn upsert_nodes_batch_with_mode(
+        &self,
+        nodes: &[(String, HashMap<String, serde_json::Value>)],
+        mode: crate::traits::GraphPropertyWriteMode,
+    ) -> Result<()> {
+        self.pg_upsert_nodes_batch_with_mode(nodes, mode).await
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     async fn delete_node(&self, node_id: &str) -> Result<()> {
         self.pg_delete_node(node_id).await
     }
@@ -230,11 +241,26 @@ impl GraphStorageMutateOps for PostgresAGEGraphStorage {
         self.pg_upsert_edges_batch(edges).await
     }
 
+<<<<<<< HEAD
+=======
+    async fn upsert_edges_batch_with_mode(
+        &self,
+        edges: &[(String, String, HashMap<String, serde_json::Value>)],
+        mode: crate::traits::GraphPropertyWriteMode,
+    ) -> Result<()> {
+        self.pg_upsert_edges_batch_with_mode(edges, mode).await
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     async fn delete_edge(&self, source: &str, target: &str) -> Result<()> {
         self.pg_delete_edge(source, target).await
     }
 
+<<<<<<< HEAD
     async fn delete_edges_batch(&self, edges: &[(String, String)]) -> Result<()> {
+=======
+    async fn delete_edges_batch(&self, edges: &[(String, String, String)]) -> Result<()> {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         self.pg_delete_edges_batch(edges).await
     }
 
@@ -306,6 +332,18 @@ impl GraphStorageAnalyticsOps for PostgresAGEGraphStorage {
     ) -> Result<std::collections::HashMap<String, usize>> {
         self.pg_node_counts_by_source_prefixes(prefixes).await
     }
+<<<<<<< HEAD
+=======
+
+    async fn node_counts_by_source_prefixes_capped(
+        &self,
+        prefixes: &[String],
+        probe_limit: usize,
+    ) -> Result<std::collections::HashMap<String, usize>> {
+        self.pg_node_counts_by_source_prefixes_capped(prefixes, probe_limit)
+            .await
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 #[async_trait]

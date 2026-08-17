@@ -1,6 +1,16 @@
 # Maven build output
 target/
 
+<<<<<<< HEAD
+=======
+# Eclipse / m2e output mirror (sources + .class) — never commit
+bin/
+*.class
+.settings/
+.project
+.classpath
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 # IDE
 .idea/
 *.iml

@@ -26,6 +26,18 @@ impl DocumentTaskProcessor {
             );
         }
 
+<<<<<<< HEAD
+=======
+        // ── CANCELLATION GATE: before promote + terminal stats ──
+        // WHY: Sync staging dismiss cancels the track then wipes staging. If we
+        // promote first, dismiss can return deleted:true while a ghost final
+        // row remains (SPEC-086 delete/promote race).
+        // Also: must run before update_document_status_with_stats so a reprocess
+        // race does not write "completed" stats then overwrite with "cancelled".
+        self.check_cancelled(&cancel_token, "pre-promote", &document_id)
+            .await?;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // SPEC-026 P-11: promote staging KV → final keys on successful processing
         if let (Some(hash), Some(ws)) = (
             persisted
@@ -51,6 +63,7 @@ impl DocumentTaskProcessor {
                     "Failed to promote staging KV (non-fatal if legacy path)"
                 );
             }
+<<<<<<< HEAD
         }
 
         // ── CANCELLATION GATE: before terminal stats / lineage ──
@@ -59,6 +72,26 @@ impl DocumentTaskProcessor {
         self.check_cancelled(&cancel_token, "pre-lineage", &document_id)
             .await?;
 
+=======
+            // SPEC-091 W2: typed ingestion_dedup promote (dual write).
+            #[cfg(feature = "postgres")]
+            crate::services::ingestion_dedup_store::dual_promote(
+                self.pg_pool.as_ref(),
+                &ws,
+                hash,
+                &document_id,
+                persisted
+                    .prepared
+                    .data
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("tenant_id"))
+                    .and_then(|v| v.as_str()),
+            )
+            .await;
+        }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // FIX-ISSUE-81 / reliability: ensure the relational row exists BEFORE
         // update_document_status_with_stats → refresh_relational_document_stats,
         // otherwise the stats UPDATE affects 0 rows and relationship_count stays 0.
@@ -83,14 +116,24 @@ impl DocumentTaskProcessor {
                         .and_then(|m| m.get("title"))
                         .and_then(|v| v.as_str())
                         .unwrap_or(&data.file_source);
+<<<<<<< HEAD
                     let content_summary: String = text_content.chars().take(500).collect();
+=======
+                    // WHY: Pass the full body — never a 500-char summary.
+                    // `ensure_document_record` writes `documents.content` (detail SSOT).
+                    // Truncating here blanked HTML/text detail views after finalize.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     if let Err(e) = pdf_storage
                         .ensure_document_record(
                             &doc_uuid,
                             &workspace_uuid,
                             tenant_uuid.as_ref(),
                             title,
+<<<<<<< HEAD
                             &content_summary,
+=======
+                            &text_content,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                             pg_status,
                         )
                         .await
@@ -122,7 +165,11 @@ impl DocumentTaskProcessor {
                 Ok(lineage_json) => {
                     if let Err(e) = self
                         .kv_storage
+<<<<<<< HEAD
                         .upsert(&[(lineage_key.clone(), lineage_json)])
+=======
+                        .upsert(&[(lineage_key.clone(), lineage_json.clone())])
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                         .await
                     {
                         warn!(
@@ -131,6 +178,16 @@ impl DocumentTaskProcessor {
                             "Failed to persist document lineage to KV storage"
                         );
                     } else {
+<<<<<<< HEAD
+=======
+                        // SPEC-091 Wave B5: typed artifact dual-write (warn-only).
+                        crate::services::relational_sidecar_store::typed_artifact_put(
+                            &document_id,
+                            crate::services::relational_sidecar_store::ARTIFACT_KIND_LINEAGE,
+                            &lineage_json,
+                        )
+                        .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                         info!(
                             document_id = %document_id,
                             chunks = lineage.total_chunks,

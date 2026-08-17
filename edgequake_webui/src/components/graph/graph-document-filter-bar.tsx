@@ -20,6 +20,7 @@ function DocumentScopePill({
   onClear: () => void;
 }) {
   const { t } = useTranslation();
+<<<<<<< HEAD
   const label = useScopeDocumentLabel(documentId);
   const display =
     label ??
@@ -29,6 +30,19 @@ function DocumentScopePill({
     <span className="inline-flex items-center gap-1 max-w-[220px] rounded-md bg-secondary/80 px-2 py-0.5 text-xs font-medium ring-1 ring-border/60">
       <FileText className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
       <span className="truncate" title={label ?? documentId}>
+=======
+  const { label, isLoading } = useScopeDocumentLabel(documentId);
+  // Never show a raw GUID — loading placeholder until the name resolves.
+  const display = label ?? (isLoading ? "…" : t("graph.documentFilter.unknown", "Unknown document"));
+
+  return (
+    <span
+      data-testid="graph-document-filter-pill"
+      className="inline-flex items-center gap-1 max-w-[220px] rounded-md bg-secondary/80 px-2 py-0.5 text-xs font-medium ring-1 ring-border/60"
+    >
+      <FileText className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+      <span className="truncate" title={label ?? undefined}>
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         {display}
       </span>
       <button

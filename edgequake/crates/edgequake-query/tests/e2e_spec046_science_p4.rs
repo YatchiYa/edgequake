@@ -66,7 +66,11 @@ fn e2e_science_p4_bipartite_pick_from_context() {
             .any(|c| c == "chunk_normandy" || c == "chunk_hinze_pact"),
         "expected mini-corpus chunks in bipartite pick: {ranked:?}"
     );
+<<<<<<< HEAD
     assert_eq!(parse_graph_walk_mode(""), GraphWalkMode::Ppr);
+=======
+    assert_eq!(parse_graph_walk_mode(""), GraphWalkMode::Bfs);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 fn mistral_key_present() -> bool {

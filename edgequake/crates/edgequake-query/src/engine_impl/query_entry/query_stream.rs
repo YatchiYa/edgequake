@@ -171,6 +171,7 @@ impl QueryEngine {
             "1" | "true" | "yes" | "on"
         );
 
+<<<<<<< HEAD
         // 064 product answer cache (opt-in): stream cached answer as one chunk.
         // Warm fills happen on the non-stream generate path (LR also skips
         // caching streaming responses).
@@ -182,10 +183,49 @@ impl QueryEngine {
                     mode,
                     futures::stream::once(async move { Ok(cached) }).boxed(),
                 ));
+=======
+        // SPEC-103 answer cache: stream cached answer as one chunk.
+        // Warm fills happen on the non-stream generate path (LR also skips
+        // caching streaming responses). Skip empty context / vision (no images here).
+        let mode_str = mode.as_str();
+        let cache_key = crate::cache::llm_cache_storage_key(
+            mode_str,
+            crate::cache::LlmCacheType::Query,
+            &crate::cache::hash_query_prompt(&prompt),
+        );
+        let answer_cache_on =
+            self.answer_cache.is_some() || crate::cache::answer_cache_enabled_from_env();
+        if answer_cache_on && !context.is_empty() {
+            if let Some(cache) = self.llm_response_cache.as_ref() {
+                if let Some(cached) = cache.get_return(&cache_key).await {
+                    return Ok((
+                        context,
+                        mode,
+                        futures::stream::once(async move { Ok(cached) }).boxed(),
+                    ));
+                }
+            } else if let Some(cache) = self.answer_cache.as_ref() {
+                let legacy_key = crate::cache::answer_cache_key(&prompt);
+                if let Some(cached) = cache.get(&legacy_key) {
+                    return Ok((
+                        context,
+                        mode,
+                        futures::stream::once(async move { Ok(cached) }).boxed(),
+                    ));
+                }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }
         }
 
         let llm = llm_override.unwrap_or_else(|| self.llm_provider.clone());
+<<<<<<< HEAD
+=======
+        let llm_cache = self.llm_response_cache.clone();
+        let answer_cache = self.answer_cache.clone();
+        let prompt_for_cache = prompt.clone();
+        let cache_key_for_write = cache_key.clone();
+        let context_nonempty = answer_cache_on && !context.is_empty();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         // 083: prefer system/user chat when not COMPLETE_BLOB (even for stream entry —
         // token stream API is one-blob; chat preserves LR roles as a one-shot stream).
@@ -197,9 +237,27 @@ impl QueryEngine {
             ];
             match llm.chat(&messages, None).await {
                 Ok(response) => {
+<<<<<<< HEAD
                     if let Some(cache) = self.answer_cache.as_ref() {
                         if !response.content.is_empty() {
                             cache.set(&crate::cache::answer_cache_key(&prompt), &response.content);
+=======
+                    if context_nonempty && !response.content.is_empty() {
+                        if let Some(cache) = llm_cache.as_ref() {
+                            cache
+                                .set_return(
+                                    &cache_key_for_write,
+                                    crate::cache::LlmCacheType::Query,
+                                    &response.content,
+                                    Some(&prompt_for_cache),
+                                )
+                                .await;
+                        } else if let Some(cache) = answer_cache.as_ref() {
+                            cache.set(
+                                &crate::cache::answer_cache_key(&prompt_for_cache),
+                                &response.content,
+                            );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                         }
                     }
                     futures::stream::once(async move { Ok(response.content) }).boxed()
@@ -231,9 +289,27 @@ impl QueryEngine {
                 "Provider doesn't support streaming, falling back to non-streaming mode"
             );
             let response = llm.complete(&prompt).await.map_err(QueryError::from)?;
+<<<<<<< HEAD
             if let Some(cache) = self.answer_cache.as_ref() {
                 if !response.content.is_empty() {
                     cache.set(&crate::cache::answer_cache_key(&prompt), &response.content);
+=======
+            if context_nonempty && !response.content.is_empty() {
+                if let Some(cache) = llm_cache.as_ref() {
+                    cache
+                        .set_return(
+                            &cache_key_for_write,
+                            crate::cache::LlmCacheType::Query,
+                            &response.content,
+                            Some(&prompt_for_cache),
+                        )
+                        .await;
+                } else if let Some(cache) = answer_cache.as_ref() {
+                    cache.set(
+                        &crate::cache::answer_cache_key(&prompt_for_cache),
+                        &response.content,
+                    );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 }
             }
             futures::stream::once(async move { Ok(response.content) }).boxed()

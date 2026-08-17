@@ -4,7 +4,11 @@ title: 'SQLx Offline Mode'
 
 # SQLx Offline Mode
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Related: [Migration checksum gate](#migration-checksum-gate-adjacency)
+=======
+> **Product: v0.23.0** · Related: [Migration checksum gate](#migration-checksum-gate-adjacency)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ## Overview
 

@@ -213,11 +213,30 @@ pub async fn list_users(
     )
     .await?
     .into_iter()
+<<<<<<< HEAD
+=======
+    .filter(|r| {
+        // SPEC-087: hide guest/anon system accounts unless include_anonymous=true
+        query.include_anonymous
+            || !crate::services::identity_storage::is_anonymous_identity(
+                &r.username,
+                &r.email,
+                &r.password_hash,
+            )
+    })
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     .map(|r| UserInfo::from(&r))
     .collect();
 
     #[cfg(not(feature = "postgres"))]
+<<<<<<< HEAD
     let mut users: Vec<UserInfo> = Vec::new();
+=======
+    let mut users: Vec<UserInfo> = {
+        let _ = query.include_anonymous;
+        Vec::new()
+    };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     if let Some(ref role_filter) = query.role {
         users.retain(|u| u.role.to_lowercase() == role_filter.to_lowercase());

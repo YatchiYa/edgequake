@@ -43,7 +43,14 @@ impl CredentialKind {
 /// Credential kind for a provider id.
 pub fn credential_kind_for(provider_name: &str) -> CredentialKind {
     match provider_name.to_ascii_lowercase().as_str() {
+<<<<<<< HEAD
         "mock" | "ollama" | "lmstudio" | "lm-studio" | "lm_studio" => CredentialKind::LocalNoAuth,
+=======
+        "mock" | "ollama" | "lmstudio" | "lm-studio" | "lm_studio" | "omlx" | "mtplx"
+        | "llamacpp" | "llama-server" | "vllm-mlx" | "vllm_mlx" | "mlx-lm" | "mlx_lm" => {
+            CredentialKind::LocalNoAuth
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         "vertexai" | "vertex" => CredentialKind::OAuth2Identity,
         "bedrock" | "aws-bedrock" => CredentialKind::AwsChain,
         "vscode-copilot" | "copilot" => CredentialKind::Passthrough,
@@ -61,7 +68,13 @@ pub fn credential_kind_for(provider_name: &str) -> CredentialKind {
 /// Invalid keys are handled at execution time via auth fallback.
 pub fn provider_credentials_configured(provider: &ProviderConfig) -> bool {
     match provider.name.as_str() {
+<<<<<<< HEAD
         "mock" | "ollama" | "lmstudio" => true,
+=======
+        "mock" | "ollama" | "lmstudio" | "omlx" | "mtplx" | "llamacpp" | "vllm-mlx" | "mlx-lm" => {
+            true
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         "vertexai" => vertex_auth_configured_sync(),
         _ => {
             if let Some(env) = provider.api_key_env.as_ref().filter(|s| !s.is_empty()) {
@@ -86,7 +99,13 @@ pub fn llm_provider_credentials_configured(config: &ModelsConfig, provider_name:
 /// Fallback when models.toml has no entry (tests, unknown ids).
 pub fn llm_provider_credentials_configured_by_name(provider_name: &str) -> bool {
     match provider_name.to_ascii_lowercase().as_str() {
+<<<<<<< HEAD
         "mock" | "ollama" | "lmstudio" => true,
+=======
+        "mock" | "ollama" | "lmstudio" | "omlx" | "mtplx" | "llamacpp" | "vllm-mlx" | "mlx-lm" => {
+            true
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         "openai" => env_non_empty("OPENAI_API_KEY"),
         "mistral" => env_non_empty("MISTRAL_API_KEY"),
         "anthropic" => env_non_empty("ANTHROPIC_API_KEY"),

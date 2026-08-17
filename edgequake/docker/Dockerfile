@@ -4,9 +4,16 @@
 # Build: docker buildx build --platform linux/amd64,linux/arm64 -t edgequake .
 # Or:    docker compose build  (uses DOCKER_DEFAULT_PLATFORM or host default)
 #
+<<<<<<< HEAD
 # SPEC-040 v0.4.1: pdfium is embedded at compile time via pdfium-auto — no external
 # libpdfium.dylib or PDFIUM_DYNAMIC_LIB_PATH is needed. The build downloads and
 # embeds pdfium for the target platform automatically.
+=======
+# SPEC-040 / SPEC-095: pdfium is embedded at compile time via pdfium-auto
+# (chromium/7961). No external libpdfium or legacy PDFIUM_DYNAMIC_LIB_PATH.
+# Runtime: atomic extract + size integrity under PDFIUM_AUTO_CACHE_DIR.
+# Hardened deploys may set PDFIUM_LIB_PATH to a pre-placed read-only library.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # ============================================
 # Stage 1: Build
@@ -80,9 +87,14 @@ RUN apt-get update && apt-get install -y \
     && mkdir -p /tmp/edgequake-pdfium-cache \
     && chmod 1777 /tmp/edgequake-pdfium-cache
 
+<<<<<<< HEAD
 # Tell pdfium-auto where to write its extracted shared library.  /tmp is always
 # writable by all users; the sticky-bit above prevents other processes from
 # removing files they do not own.  Users may override via PDFIUM_AUTO_CACHE_DIR.
+=======
+# pdfium-auto extract cache (SPEC-095: atomic publish + lock + size check).
+# Prefer PDFIUM_LIB_PATH=/path/to/libpdfium.so for hardened read-only mounts.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ENV PDFIUM_AUTO_CACHE_DIR=/tmp/edgequake-pdfium-cache
 
 # Copy binary from builder

@@ -1,3 +1,10 @@
+<<<<<<< HEAD
+=======
+---
+title: "EdgeQuake product limits"
+---
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 # EdgeQuake product limits
 
 **Who this is for:** operators sizing a deployment  

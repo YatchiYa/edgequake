@@ -9,7 +9,11 @@ import {
   getDocumentDisplayStatus,
   isProcessingStatus,
   type DocumentStatus,
+<<<<<<< HEAD
 } from '@/components/documents/status-badge';
+=======
+} from '@/lib/documents/status-domain';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import type { Document } from '@/types';
 import type { IngestionAlertMode } from './ingestion-alert-presenter';
 
@@ -34,6 +38,10 @@ export interface PipelineDocumentSummary {
 
 export function summarizePipelineDocuments(
   documents: Document[] | undefined,
+<<<<<<< HEAD
+=======
+  opts?: OrphanAdmissionOpts,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ): PipelineDocumentSummary {
   const activeDocs: Document[] = [];
   const waitingDocs: Document[] = [];
@@ -41,11 +49,23 @@ export function summarizePipelineDocuments(
 
   for (const doc of documents ?? []) {
     const status = getDocumentDisplayStatus(doc);
+<<<<<<< HEAD
+=======
+    // Orphan staging Uploading must not count as "Working" (SPEC-086 restart).
+    if (isOrphanAdmissionShell(doc, Date.now(), opts)) {
+      waitingDocs.push(doc);
+      continue;
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     if (isActiveProcessingStatus(status)) {
       activeDocs.push(doc);
     } else if (isWaitingStatus(status)) {
       waitingDocs.push(doc);
+<<<<<<< HEAD
       if (status === 'queued') {
+=======
+      if (status === "queued") {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         queuedCount += 1;
       }
     }
@@ -98,11 +118,25 @@ export function hasQueueCoverage(
  * normal Queued, not "Needs attention".
  *
  * Stuck requires: no queue coverage AND (aged past grace OR recovery signal).
+<<<<<<< HEAD
+=======
+ *
+ * SPEC-086 follow-up: staging admit shells can sit on `uploading` +
+ * "Document received…" across restarts (orphan recovery used to skip
+ * `staging:`). Those look "Working" because uploading is active — reclassify
+ * as waiting/stuck when aged past grace.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  */
 export const STUCK_GRACE_MS = 60_000;
 
 const RECOVERY_STUCK_RE =
+<<<<<<< HEAD
   /auto-recovered|no worker|needs?\s+reprocess|orphaned|server restart/i;
+=======
+  /auto-recovered|no worker|needs?\s+reprocess|orphaned|server restart|please re-upload|upload interrupted/i;
+
+const ADMISSION_SEED_RE = /document received,\s*starting processing/i;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 export function isRecoveryStuckSignal(doc: Document): boolean {
   const msg = `${doc.stage_message || ""} ${doc.error_message || ""}`;
@@ -118,24 +152,127 @@ export function documentWaitAgeMs(doc: Document, now = Date.now()): number {
   return Math.max(0, now - parsed);
 }
 
+<<<<<<< HEAD
+=======
+export type OrphanAdmissionOpts = {
+  /**
+   * When true, Insert may still be Pending behind busy workers — do not
+   * treat aged uploading seed as Needs attention (SPEC-086 ops).
+   */
+  hasQueueCoverage?: boolean;
+};
+
+/**
+ * Aged staging admit shell stuck on uploading with no real worker progress.
+ * Fresh uploads stay under STUCK_GRACE_MS and are not flagged.
+ *
+ * Must NOT flag slow multipart uploads: require server admission signals
+ * (`admission_staging` and/or seed copy), never progress alone.
+ *
+ * Must NOT false-orphan when `track_id` exists and the pipeline still has
+ * queue coverage (Queued behind PDF convert).
+ */
+export function isOrphanAdmissionShell(
+  doc: Document,
+  now = Date.now(),
+  opts?: OrphanAdmissionOpts,
+): boolean {
+  const status = getDocumentDisplayStatus(doc);
+  if (
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "completed" ||
+    status === "indexed" ||
+    status === "partial_failure" ||
+    status === "partial_success"
+  ) {
+    return false;
+  }
+  if (doc.failure_code === "server_restart_interrupted") {
+    return true;
+  }
+  const stage = (doc.current_stage || status || "").toLowerCase();
+  if (stage !== "uploading") {
+    return false;
+  }
+  if (documentWaitAgeMs(doc, now) < STUCK_GRACE_MS) {
+    return false;
+  }
+  const msg = `${doc.stage_message || ""} ${doc.error_message || ""}`;
+  // Server admission shell only — client optimistic "Queued…" / slow HTTP must not match.
+  const looksLikeAdmission =
+    Boolean(doc.admission_staging) || ADMISSION_SEED_RE.test(msg);
+  if (!looksLikeAdmission) {
+    return false;
+  }
+  // Queued-behind-busy: keep Working/Queued, not Needs attention.
+  if (doc.track_id && opts?.hasQueueCoverage) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Failed / interrupted staging shells need re-upload, not Retry Failed / reprocess.
+ */
+export function needsReuploadNotReprocess(doc: Document): boolean {
+  if (doc.failure_code === "server_restart_interrupted") {
+    return true;
+  }
+  const msg = `${doc.stage_message || ""} ${doc.error_message || ""}`;
+  if (/please re-upload|orphaned staging|upload interrupted/i.test(msg)) {
+    return true;
+  }
+  const status = getDocumentDisplayStatus(doc);
+  return Boolean(doc.admission_staging) && status === "failed";
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 export function detectStuckDocuments(
   summary: PipelineDocumentSummary,
   hasCoverage: boolean,
   now = Date.now(),
 ): Document[] {
+<<<<<<< HEAD
   if (summary.waitingCount === 0 || hasCoverage) {
     return [];
   }
   return summary.waitingDocs.filter((doc) => {
     // Explicit recovery / orphan copy → stuck even inside grace (server said so)
     if (isRecoveryStuckSignal(doc)) {
+=======
+  if (summary.waitingCount === 0) {
+    return [];
+  }
+  const orphanOpts: OrphanAdmissionOpts = { hasQueueCoverage: hasCoverage };
+  // Server-signaled orphans stay stuck even while other jobs run.
+  // Age+seed alone must NOT force stuck when hasCoverage (queued-behind-busy).
+  const forceStuck = summary.waitingDocs.filter(
+    (doc) =>
+      isRecoveryStuckSignal(doc) ||
+      isOrphanAdmissionShell(doc, now, orphanOpts),
+  );
+  if (hasCoverage) {
+    return forceStuck;
+  }
+  return summary.waitingDocs.filter((doc) => {
+    if (
+      isRecoveryStuckSignal(doc) ||
+      isOrphanAdmissionShell(doc, now, orphanOpts)
+    ) {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       return true;
     }
     // Fresh upload / just-queued: keep amber Queued, never red Needs attention
     if (documentWaitAgeMs(doc, now) < STUCK_GRACE_MS) {
       return false;
     }
+<<<<<<< HEAD
     // Still has an active track — pipeline admitted the work; prefer Queued
+=======
+    // SPEC-048: aged waiting with track_id still prefers Queued (task may lag
+    // counters). Orphan staging Uploading is handled above.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     if (doc.track_id) {
       return false;
     }
@@ -165,6 +302,7 @@ function resolveAlertMode(
   isActivelyProcessing: boolean,
   isStuck: boolean,
   isQueuedOnly: boolean,
+<<<<<<< HEAD
 ): IngestionAlertMode {
   if (isActivelyProcessing && summary.waitingCount > 0) {
     return 'mixed';
@@ -180,6 +318,28 @@ function resolveAlertMode(
   }
   // No active / stuck / queued signal — caller must hide the indicator.
   return 'queued';
+=======
+  stuckDocCount: number,
+): IngestionAlertMode {
+  // Real work + orphan staging shells → mixed (not pure Working).
+  if (isActivelyProcessing && stuckDocCount > 0) {
+    return "mixed";
+  }
+  if (isActivelyProcessing && summary.waitingCount > 0) {
+    return "mixed";
+  }
+  if (isActivelyProcessing) {
+    return "working";
+  }
+  if (isStuck) {
+    return "stuck";
+  }
+  if (isQueuedOnly) {
+    return "queued";
+  }
+  // No active / stuck / queued signal — caller must hide the indicator.
+  return "queued";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /**
@@ -190,11 +350,25 @@ export function resolvePipelineUiState(
   documents: Document[] | undefined,
   pipeline?: PipelineTaskStats,
 ): PipelineUiState {
+<<<<<<< HEAD
   const summary = summarizePipelineDocuments(documents);
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const pendingTaskCount =
     pipeline?.pending_tasks ?? pipeline?.queued_tasks ?? 0;
   const processingTaskCount =
     pipeline?.processing_tasks ?? pipeline?.running_tasks ?? 0;
+<<<<<<< HEAD
+=======
+  const queueCoverage = hasQueueCoverage(
+    pipeline,
+    pendingTaskCount,
+    processingTaskCount,
+  );
+  const orphanOpts: OrphanAdmissionOpts = { hasQueueCoverage: queueCoverage };
+  // Re-summarize with coverage so aged seed behind busy workers stays Working.
+  const summary = summarizePipelineDocuments(documents, orphanOpts);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   const orphanQueued = orphanQueuedTaskCount(
     pendingTaskCount,
@@ -203,12 +377,15 @@ export function resolvePipelineUiState(
   );
   const waitingDocCount = summary.waitingCount + orphanQueued;
 
+<<<<<<< HEAD
   const queueCoverage = hasQueueCoverage(
     pipeline,
     pendingTaskCount,
     processingTaskCount,
   );
 
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   // First principle: "Processing N document(s)" requires document evidence when
   // the list is loaded and fully terminal. Stale `processing_tasks` / `is_busy`
   // must NOT keep the working banner after every doc is ingested.
@@ -231,6 +408,10 @@ export function resolvePipelineUiState(
     isActivelyProcessing,
     isStuck,
     isQueuedOnly,
+<<<<<<< HEAD
+=======
+    stuckDocs.length,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   );
 
   // Prefer document count; fall back to running tasks when list lags the queue.

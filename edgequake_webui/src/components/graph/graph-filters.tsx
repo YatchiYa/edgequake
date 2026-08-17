@@ -31,7 +31,33 @@ export function GraphFilters({
   const setSearchQuery = useGraphStore((s) => s.setSearchQuery);
   const typeStats = useEntityTypeStats();
 
+<<<<<<< HEAD
   if (nodes.length === 0) return null;
+=======
+  // SPEC-100: keep filters panel mounted with empty state (never null→tall CLS)
+  if (nodes.length === 0) {
+    return (
+      <div
+        className={cn(
+          "flex flex-col gap-3 min-h-[8rem]",
+          fillHeight && "h-full",
+          className,
+        )}
+        data-testid="spec100-graph-filters-empty"
+      >
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {t("graph.filters.title", "Filters")}
+          </h4>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {t("graph.filters.empty", "Filters appear when the graph has entities.")}
+        </p>
+      </div>
+    );
+  }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   return (
     <div
@@ -40,6 +66,10 @@ export function GraphFilters({
         fillHeight && "h-full",
         className,
       )}
+<<<<<<< HEAD
+=======
+      data-testid="spec100-graph-filters"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     >
       <div className="flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">

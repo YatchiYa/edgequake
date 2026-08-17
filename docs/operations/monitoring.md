@@ -2,7 +2,11 @@
 title: 'Monitoring Guide'
 ---
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # Monitoring Guide
 
@@ -43,7 +47,11 @@ EdgeQuake provides built-in health endpoints:
 
 | Endpoint      | Purpose             | Response                  |
 | ------------- | ------------------- | ------------------------- |
+<<<<<<< HEAD
 | `GET /health` | Basic health        | `{ "status": "healthy", "version": "0.19.0", ... }` |
+=======
+| `GET /health` | Basic health        | `{ "status": "healthy", "version": "0.23.0", ... }` |
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 | `GET /ready`  | Readiness check     | JSON blockers; **503** when not ready |
 | `GET /live`   | Kubernetes liveness | Process check             |
 | `GET /api/v1/pipeline/queue-metrics` | Ingest backpressure + fairness | Pending depth, park waiters, store contention |
@@ -57,10 +65,25 @@ curl http://localhost:8080/health
 ```json
 {
   "status": "healthy",
+<<<<<<< HEAD
   "version": "0.19.0",
   "storage_mode": "postgresql"
+=======
+  "version": "0.23.0",
+  "storage_mode": "postgresql",
+  "workspace_id": "default",
+  "components": {
+    "kv_storage": true,
+    "vector_storage": true,
+    "graph_storage": true,
+    "llm_provider": true
+  },
+  "llm_provider_name": "ollama"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 ```
+
+`/health` is **liveness** (HTTP 200 while degraded, `status: "degraded"`). Use `/ready` for traffic gating. A `build_info` block (git hash, timestamp) is attached when the binary carries build metadata.
 
 ### Readiness Check
 
@@ -90,7 +113,11 @@ curl http://localhost:8080/ready
 }
 ```
 
+<<<<<<< HEAD
 Common `/ready` blockers (v0.19.0):
+=======
+Common `/ready` blockers (v0.23.0):
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 | Blocker prefix | Cause | Operator action |
 | -------------- | ----- | ----------------- |

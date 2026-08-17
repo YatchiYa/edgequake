@@ -3,7 +3,11 @@ title: Operations
 description: Deploy, monitor, and tune EdgeQuake in production.
 ---
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Contract: OpenAPI
+=======
+> **Product: v0.23.0** · Contract: OpenAPI
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 Production deployment and operations guides.
 

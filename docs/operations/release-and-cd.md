@@ -1,6 +1,16 @@
+<<<<<<< HEAD
 # Release & CD Cycle
 
 > **Product: v0.21.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+---
+title: "Release & CD Cycle"
+---
+
+# Release & CD Cycle
+
+> **Product: v0.24.1** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 This document describes how to cut a release, run quality gates, and verify the published Docker images.
 
@@ -15,6 +25,12 @@ make codegen-openapi-refresh # OpenAPI snapshot + schema.d.ts from ApiDoc
 cd edgequake && cargo test -p edgequake-api --test spec027_api_contract && cd ..
 make release-gates          # fmt + workspace clippy + SPEC-006/018 + WebUI + version/OpenAPI parity
 make test-e2e-lint          # Playwright flake anti-patterns
+<<<<<<< HEAD
+=======
+# SPEC-001 LightRAG Acc (local mandatory — see section below; not in release_gates.sh / CI):
+make bench001-doctor
+make bench                  # or: make bench-warm
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 # Optional deeper proofs:
 make spec020-qc-proof-strict # SPEC-020 E2E (migration-038 strict)
 make spec020-qc-proof-full    # SPEC-020 + require Ollama (0 skips)
@@ -62,8 +78,13 @@ done
 
 ```bash
 # Example (current cut)
+<<<<<<< HEAD
 git tag v0.21.0
 git push origin v0.21.0
+=======
+git tag v0.24.1
+git push origin v0.24.1
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ```
 
 This triggers `.github/workflows/release-docker.yml`, which:
@@ -73,6 +94,7 @@ This triggers `.github/workflows/release-docker.yml`, which:
 ## 4) Post-Publish Verification
 
 ```bash
+<<<<<<< HEAD
 gh release view v0.21.0
 docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.21.0
 docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.21.0
@@ -81,6 +103,55 @@ docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.21.0
 docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.21.0-pg17
 ```
 
+=======
+gh release view v0.24.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.24.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.24.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.24.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.24.0-pg16
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.24.0-pg17
+```
+
+## SPEC-001 LightRAG Acc (before tag)
+
+**Mandatory local gate** before tagging a product cut. Dual-SUT GraphRAG-Bench Acc (EdgeQuake `mix` vs LightRAG `mix`, medical-mid **n=200**) is **not** part of `make release-gates` or GitHub Actions — it needs Mistral keys, Postgres, LightRAG, and ~1–3h+ wall time. Same class as SPEC-042 battle tests: required at cut time, not CI.
+
+**Not substitutes:** `make spec046-acc` (deterministic Hybrid ACC, no LightRAG) · `make bench001-smoke-acc` (n=40 daily only — **not** the release Acc score) · Acc Beat / “EQ beats LightRAG” (promote checklist STOP unless CI excludes 0).
+
+### Prerequisites
+
+- `MISTRAL_API_KEY` (SUT + judge; also export `LLM_API_KEY=$MISTRAL_API_KEY` if needed)
+- Postgres up; Acc-pinned backend (`make bench` starts it via `bench001-acc-backend`)
+- LightRAG importable (`pip` package or `BENCH001_LIGHTRAG_REPO=/path/to/LightRAG`)
+- Optional warm reuse: `BENCH001_EQ_WORKSPACE_ID=<full-corpus-uuid>`
+
+Protocol: [SPEC-001 index](../../specs/001-benchmark/000-index.md) · runbook [010](../../specs/001-benchmark/010-smoke-then-core-runbook.md) · public SSOT [eq-vs-lightrag-acc-bench](../comparisons/eq-vs-lightrag-acc-bench.md).
+
+### Commands
+
+```bash
+export MISTRAL_API_KEY=...
+make bench001-doctor          # EQ /health, keys, LightRAG, fixture preflight
+make bench                    # Acc backend → doctor → medical-mid n=200 → publish/latest/
+# Warm query-only (full-corpus workspace already ingested):
+# export BENCH001_EQ_WORKSPACE_ID=<uuid>   # or omit for auto-resolve
+# make bench-warm
+```
+
+Optional early fail (does **not** replace `make bench`): `make bench001-smoke-acc` (n=40).
+
+### Pass criteria (fail-closed)
+
+| Check | Requirement |
+|-------|-------------|
+| Validity | `specs/001-benchmark/e2e/artifacts/publish/latest/scorecard.json` → `valid: true` (dual-SUT + official judge + L2 + empty-answer/context ≤5%) |
+| Pins | Fair Acc profile (`P0_mistral_small_mix_chunk1200_*`), EQ/LR `mix`, chunk 1200/100, retrieve top-k **30** |
+| Artifacts | `publish/latest/`: `BUSINESS_REPORT.md`, `EXEC_SUMMARY.txt`, `SUMMARY.md`, `scorecard.json` |
+| Claims | Peer / statistical-tie language only unless [080 promote checklist](../../specs/001-benchmark/001-edgquake-improvements/080-phase-g-promote-checklist.md) is green |
+
+After a successful run, refresh [docs/comparisons/eq-vs-lightrag-acc-bench.md](../comparisons/eq-vs-lightrag-acc-bench.md) if Acc or archive pointers moved. Do **not** tag until this gate is green (or an explicitly attested current `valid: true` pack for the cut).
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ## SPEC-042 Verification (before tag)
 
 ```bash
@@ -95,10 +166,17 @@ Docker images are built and published automatically via GitHub Actions (`.github
 
 ```bash
 # Tag a release — triggers multi-arch docker build + publish to ghcr.io
+<<<<<<< HEAD
 git tag v0.21.0 && git push origin v0.21.0
 ```
 
 Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.21.0`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+=======
+git tag v0.24.0 && git push origin v0.24.0
+```
+
+Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.24.0`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 You can also trigger a manual Docker build + publish without a tag via the `workflow_dispatch` input on GitHub Actions (`Actions -> Release -- Docker (GHCR) -> Run workflow`).
 
@@ -144,6 +222,19 @@ See [AGENTS.md](../../AGENTS.md) for the full developer workflow, including:
 
 See [PostgreSQL migration guide](../../edgequake/docs/migrations/postgres-triple-track-spec042.md) for tier details.
 
+<<<<<<< HEAD
+=======
+## SPEC-091 upgrade (v0.22.0 → v0.23.0 with migrations 106–141)
+
+Published **v0.22.0** stops at migration **105**. **v0.23.0** adds migrations **106–141**, including irreversible drops (`125` KV, `126` chunk-vector, `131` fleet-vector). Do **not** treat a routine image bump as safe until the soak gate is green.
+
+- Short guide: [migrate-to-0.23.md](./migrate-to-0.23.md)
+- Operator runbook: [spec091-upgrade-from-v0.22.0.md](./spec091-upgrade-from-v0.22.0.md)
+- Automated multi-tenant soak: `make spec93-migration-assessment` (PG16/17/18 realism; see [`specs/93-migration-assessment/`](../../specs/93-migration-assessment/)); smoke: `make spec091-upgrade-soak`
+- Spec status: [`specs/091-simplify-data-layer/README.md`](../../specs/091-simplify-data-layer/README.md)
+- **Boot migration gating (LD-15, behavior change)**: images built from HEAD never auto-migrate at container start — boot exits **78** with a dry-run/migrate hint when schema is behind or newer. Release notes must call this out: deploys need a one-shot migrate step (compose service / K8s Job — examples in the runbook) before new replicas can start. Spec: [`specs/091-simplify-data-layer/17-boot-migration-gating.md`](../../specs/091-simplify-data-layer/17-boot-migration-gating.md)
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ## Lessons from 0.21.0 cut
 
 - **OpenAPI refresh is mandatory** after `version-bump` — `openapi.snapshot.json` `info.version` must equal `VERSION` or release-gates fail.

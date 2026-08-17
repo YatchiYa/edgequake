@@ -18,11 +18,25 @@ impl WorkspaceServiceImpl {
 
     pub(super) async fn pg_create_tenant(&self, tenant: Tenant) -> Result<Tenant> {
         let metadata = Self::build_tenant_metadata(&tenant);
+<<<<<<< HEAD
 
         sqlx::query(
             r#"
             INSERT INTO tenants (tenant_id, name, slug, is_active, metadata, settings, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, $6, $7)
+=======
+        let requested_id = tenant.tenant_id;
+
+        // SPEC-104 harden LAW-I3: atomic get-or-create via no-op UPDATE so
+        // RETURNING always yields a row (closes EC-17 DO NOTHING + SELECT race).
+        let row: TenantRow = sqlx::query_as(
+            r#"
+            INSERT INTO tenants (tenant_id, name, slug, is_active, metadata, settings, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, $6, $7)
+            ON CONFLICT (slug) DO UPDATE
+              SET name = tenants.name
+            RETURNING tenant_id, name, slug, is_active, metadata, created_at, updated_at
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             "#,
         )
         .bind(tenant.tenant_id)
@@ -32,6 +46,7 @@ impl WorkspaceServiceImpl {
         .bind(metadata)
         .bind(tenant.created_at)
         .bind(tenant.updated_at)
+<<<<<<< HEAD
         .execute(&self.pool)
         .await
         .map_err(|e| {
@@ -44,6 +59,33 @@ impl WorkspaceServiceImpl {
 
         tracing::info!(tenant_id = %tenant.tenant_id, slug = %tenant.slug, "Created tenant in PostgreSQL");
         Ok(tenant)
+=======
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("Failed to create tenant: {}", e)))?;
+
+        let created = row.into_tenant();
+        if created.tenant_id == requested_id {
+            tracing::info!(tenant_id = %created.tenant_id, slug = %created.slug, "Created tenant in PostgreSQL");
+            return Ok(created);
+        }
+
+        // SPEC-104 A+: identity conflict at the service layer (SRP) — not only HTTP.
+        // Same slug + different display name ⇒ Conflict (EC-11). Same name ⇒ idempotent.
+        if created.name.trim() != tenant.name.trim() {
+            return Err(Error::conflict(format!(
+                "Tenant slug '{}' already exists (tenant_id={})",
+                created.slug, created.tenant_id
+            )));
+        }
+
+        tracing::info!(
+            tenant_id = %created.tenant_id,
+            slug = %created.slug,
+            "Tenant slug already existed — returning existing (SPEC-104 atomic upsert)"
+        );
+        Ok(created)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     pub(super) async fn pg_get_tenant(&self, tenant_id: Uuid) -> Result<Option<Tenant>> {

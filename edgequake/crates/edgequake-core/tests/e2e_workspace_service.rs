@@ -73,7 +73,27 @@ mod tenant_crud_tests {
         let result = service.create_tenant(tenant2).await;
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("already exists"));
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("already exists"), "{err}");
+        assert!(
+            err.contains("Conflict") || err.starts_with("Conflict"),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_tenant_same_slug_same_name_idempotent() {
+        let service = InMemoryWorkspaceService::new();
+        let t1 = Tenant::new("Acme", "acme-idem");
+        let id1 = t1.tenant_id;
+        let created = service.create_tenant(t1).await.unwrap();
+        assert_eq!(created.tenant_id, id1);
+
+        let again = service
+            .create_tenant(Tenant::new("Acme", "acme-idem"))
+            .await
+            .unwrap();
+        assert_eq!(again.tenant_id, id1);
     }
 
     #[tokio::test]

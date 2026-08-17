@@ -4,7 +4,11 @@ use axum::{extract::State, Json};
 
 use crate::error::ApiResult;
 use crate::middleware::TenantContext;
+<<<<<<< HEAD
 use crate::services::document_metadata_scan::load_scoped_document_metadata;
+=======
+use crate::services::document_metadata_scan::load_scoped_document_metadata_for_progress;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use crate::services::tenant_guard::{
     empty_track_status, has_full_tenant_context, warn_missing_tenant_context,
 };
@@ -38,9 +42,16 @@ pub async fn get_track_status(
         return Ok(Json(empty_track_status(track_id)));
     }
 
+<<<<<<< HEAD
     // SPEC-027: scoped metadata scan SSOT (no global keys_like; chunk_count from metadata).
     let metadata_values =
         load_scoped_document_metadata(storage.kv_storage.as_ref(), &tenant_ctx).await?;
+=======
+    // SPEC-027 + SPEC-086: include staging in-flight docs (same SSOT as progress).
+    let metadata_values =
+        load_scoped_document_metadata_for_progress(storage.kv_storage.as_ref(), &tenant_ctx)
+            .await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     let mut track_docs: Vec<DocumentSummary> = Vec::new();
     let mut created_times: Vec<String> = Vec::new();
@@ -48,8 +59,18 @@ pub async fn get_track_status(
     for value in metadata_values {
         if let Some(obj) = value.as_object() {
             let doc_track_id = obj.get("track_id").and_then(|v| v.as_str()).unwrap_or("");
+<<<<<<< HEAD
 
             if doc_track_id == track_id {
+=======
+            let client_track_id = obj
+                .get("client_track_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // SPEC-084 / GH-318: match insert task id OR client batch correlation id.
+            if doc_track_id == track_id || client_track_id == track_id {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 let id = obj
                     .get("id")
                     .and_then(|v| v.as_str())
@@ -141,6 +162,25 @@ pub async fn get_track_status(
                     pdf_id: obj.get("pdf_id").and_then(|v| v.as_str()).map(String::from),
                     display_status: None,
                     ui_phase: None,
+<<<<<<< HEAD
+=======
+                    progress_counts: obj
+                        .get("progress_counts")
+                        .and_then(crate::services::progress_counts_from_value)
+                        .or_else(|| {
+                            obj.get("stage_message")
+                                .and_then(|v| v.as_str())
+                                .and_then(crate::services::parse_counts_from_message)
+                        }),
+                    queue_position: None,
+                    eta_seconds: None,
+                    eta_basis: None,
+                    query_ready: None,
+                    cancelled_from_stage: obj
+                        .get("cancelled_from_stage")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 });
             }
         }
@@ -150,6 +190,17 @@ pub async fn get_track_status(
     crate::services::ingestion_status_mapper::enrich_document_summaries_with_cancel(
         &mut track_docs,
         &tasks.cancellation_registry,
+<<<<<<< HEAD
+=======
+        tasks.storage.as_ref(),
+    )
+    .await;
+
+    // SPEC-091 IS2: queue chrome on track status docs (same projection as list).
+    crate::services::list_run_enrich::enrich_page_queue_estimates(
+        tasks.storage.as_ref(),
+        &mut track_docs,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     )
     .await;
 
@@ -207,6 +258,7 @@ pub async fn get_track_status(
     created_times.sort();
     let created_at = created_times.first().cloned();
 
+<<<<<<< HEAD
     // Check if complete (no pending or processing)
     let is_complete = status_summary.pending == 0 && status_summary.processing == 0;
 
@@ -216,6 +268,32 @@ pub async fn get_track_status(
             "Processing {}/{} documents...",
             status_summary.completed + status_summary.failed,
             track_docs.len()
+=======
+    let registered_count = track_docs.len();
+    // SPEC-084 / GH-318: expected batch size from KV meta (client-declared).
+    let expected_count = storage
+        .kv_storage
+        .get_by_id(&format!("track_expected:{track_id}"))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|v| v.get("expected_count").and_then(|n| n.as_u64()))
+        .map(|n| n as usize);
+
+    let no_active = status_summary.pending == 0 && status_summary.processing == 0;
+    let registered_enough = expected_count
+        .map(|exp| registered_count >= exp)
+        .unwrap_or(true);
+    let is_complete = no_active && registered_enough;
+
+    // Build latest message
+    let denom = expected_count.unwrap_or(registered_count).max(1);
+    let latest_message = if !is_complete {
+        Some(format!(
+            "Processing {}/{} documents...",
+            status_summary.completed + status_summary.failed + status_summary.partial_failure,
+            denom
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         ))
     } else if status_summary.failed > 0 {
         Some(format!("Completed with {} errors", status_summary.failed))
@@ -230,6 +308,11 @@ pub async fn get_track_status(
         total_count: track_docs.len(),
         status_summary,
         is_complete,
+<<<<<<< HEAD
+=======
+        expected_count,
+        registered_count,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         latest_message,
     }))
 }

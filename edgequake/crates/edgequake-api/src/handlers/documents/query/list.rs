@@ -29,6 +29,17 @@ use crate::handlers::documents_types::*;
     get,
     path = "/api/v1/documents",
     tag = "Documents",
+<<<<<<< HEAD
+=======
+    params(
+        ("page" = Option<usize>, Query, description = "Page number (default 1)"),
+        ("page_size" = Option<usize>, Query, description = "Page size (default 20, max 100)"),
+        ("date_from" = Option<String>, Query, description = "Inclusive start date (ISO 8601)"),
+        ("date_to" = Option<String>, Query, description = "Inclusive end date (ISO 8601)"),
+        ("document_pattern" = Option<String>, Query, description = "Case-insensitive title substring (comma = OR)"),
+        ("status" = Option<String>, Query, description = "Filter by status before pagination (e.g. failed, completed). status_counts remain global (SPEC-084 / GH-319)"),
+    ),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     responses(
         (status = 200, description = "Documents retrieved", body = ListDocumentsResponse),
         (status = 503, description = "Read path busy under ingest load")
@@ -74,6 +85,10 @@ async fn list_documents_inner(
 
     // SPEC-027: scoped metadata scan SSOT — cap keys *before* value fetch so
     // large workspaces never pay unbounded get_by_ids under ingest load.
+<<<<<<< HEAD
+=======
+    // SPEC-086: merge staging in-flight rows (O(L+S)) so MD ActiveRuns is visible.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let scoped =
         crate::services::document_metadata_scan::load_scoped_document_metadata_entries_limited(
             storage.kv_storage.as_ref(),
@@ -81,7 +96,16 @@ async fn list_documents_inner(
             MAX_LIST_METADATA_ENTRIES,
         )
         .await?;
+<<<<<<< HEAD
     let metadata_entries = scoped.entries;
+=======
+    let metadata_entries = crate::services::document_metadata_scan::merge_staging_metadata_entries(
+        storage.kv_storage.as_ref(),
+        &tenant_ctx,
+        scoped.entries,
+    )
+    .await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let truncated = scoped.truncated;
     if truncated {
         tracing::warn!(
@@ -121,8 +145,15 @@ async fn list_documents_inner(
         current_stage: Option<String>,
         stage_progress: Option<f32>,
         stage_message: Option<String>,
+<<<<<<< HEAD
         pdf_id: Option<String>,
         chunk_count: Option<usize>,
+=======
+        progress_counts: Option<crate::handlers::ingestion_types::IngestionProgressCounts>,
+        pdf_id: Option<String>,
+        chunk_count: Option<usize>,
+        cancelled_from_stage: Option<String>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     impl DocMetadata {
@@ -289,12 +320,33 @@ async fn list_documents_inner(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
+<<<<<<< HEAD
+=======
+            // LAW-IS1: structured progress_counts (prefer over message regex on FE).
+            meta.progress_counts = obj
+                .get("progress_counts")
+                .and_then(crate::services::progress_counts_from_value)
+                .or_else(|| {
+                    meta.stage_message
+                        .as_deref()
+                        .and_then(crate::services::parse_counts_from_message)
+                });
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             // SPEC-002: Get pdf_id (linked PDF document for viewing)
             meta.pdf_id = obj
                 .get("pdf_id")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
+<<<<<<< HEAD
+=======
+            meta.cancelled_from_stage = obj
+                .get("cancelled_from_stage")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             meta.chunk_count = obj
                 .get("chunk_count")
                 .and_then(|v| v.as_u64())
@@ -349,6 +401,15 @@ async fn list_documents_inner(
                 pdf_id: meta.pdf_id,
                 display_status: None,
                 ui_phase: None,
+<<<<<<< HEAD
+=======
+                progress_counts: meta.progress_counts,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
+                cancelled_from_stage: meta.cancelled_from_stage,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }
         })
         .collect();
@@ -392,12 +453,19 @@ async fn list_documents_inner(
         }
     }
 
+<<<<<<< HEAD
     if should_skip_entity_reconcile(&tasks.storage).await {
         // Serve KV/relational counts under queue/storage pressure — never hang on AGE.
     } else {
         crate::document_read_model::reconcile_entity_counts_with_graph(&storage, &mut documents)
             .await;
     }
+=======
+    // SPEC-089 / GH-336 / LAW-H1: do NOT reconcile entity counts here.
+    // Pre-pagination reconcile built prefixes×256 GIN probes over the full corpus
+    // and exhausted the pool (health/task claim collateral). Heal runs after
+    // paginate_vec on the visible page only.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     // SPEC-005: Apply optional date range and title pattern filters
     if params.date_from.is_some() || params.date_to.is_some() || params.document_pattern.is_some() {
@@ -442,7 +510,12 @@ async fn list_documents_inner(
         );
     }
 
+<<<<<<< HEAD
     // Calculate status counts for all documents
+=======
+    // Calculate status counts for all documents (after date/pattern, before status filter).
+    // SPEC-084 / GH-319 LAW-10: counts stay global; list items honor optional status.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let status_counts = StatusCounts {
         pending: documents
             .iter()
@@ -454,7 +527,12 @@ async fn list_documents_inner(
         processing: documents
             .iter()
             .filter(|d| {
+<<<<<<< HEAD
                 matches!(d.status.as_deref(), Some("processing"))
+=======
+                // SPEC-098: deleting is lifecycle in-flight — count with processing.
+                matches!(d.status.as_deref(), Some("processing" | "deleting"))
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     || matches!(
                         d.current_stage.as_deref(),
                         Some(
@@ -468,6 +546,10 @@ async fn list_documents_inner(
                                 | "embedding"
                                 | "storing"
                                 | "indexing"
+<<<<<<< HEAD
+=======
+                                | "deleting"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                         )
                     )
             })
@@ -486,7 +568,15 @@ async fn list_documents_inner(
             .count(),
         failed: documents
             .iter()
+<<<<<<< HEAD
             .filter(|d| d.status.as_deref() == Some("failed"))
+=======
+            .filter(|d| {
+                // SPEC-098 LAW-098-11: Retry Failed is pipeline-only.
+                // Lifecycle `delete_failed` must not inflate this bucket.
+                matches!(d.status.as_deref(), Some("failed"))
+            })
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             .count(),
         cancelled: documents
             .iter()
@@ -508,16 +598,80 @@ async fn list_documents_inner(
                                 | "partial_failure"
                                 | "failed"
                                 | "cancelled"
+<<<<<<< HEAD
+=======
+                                | "deleting"
+                                | "delete_failed"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                         )
                     )
             })
             .count(),
     };
 
+<<<<<<< HEAD
+=======
+    // SPEC-084 / GH-319: filter by status before pagination so Failed chip rows match counts.
+    if let Some(ref status_raw) = params.status {
+        let status_filter = status_raw.trim().to_lowercase();
+        if !status_filter.is_empty() && status_filter != "all" {
+            documents.retain(|doc| {
+                let doc_status = doc.status.as_deref().unwrap_or("").to_lowercase();
+                match status_filter.as_str() {
+                    "pending" => {
+                        matches!(doc_status.as_str(), "pending" | "queued")
+                            || doc.current_stage.as_deref() == Some("queued")
+                    }
+                    "processing" => {
+                        doc_status == "processing"
+                            || matches!(
+                                doc.current_stage.as_deref(),
+                                Some(
+                                    "converting"
+                                        | "preprocessing"
+                                        | "chunking"
+                                        | "extracting"
+                                        | "gleaning"
+                                        | "merging"
+                                        | "summarizing"
+                                        | "embedding"
+                                        | "storing"
+                                        | "indexing"
+                                )
+                            )
+                    }
+                    "completed" => matches!(doc_status.as_str(), "completed" | "indexed"),
+                    "unknown" => {
+                        doc.status.is_none()
+                            || !matches!(
+                                doc_status.as_str(),
+                                "pending"
+                                    | "queued"
+                                    | "processing"
+                                    | "completed"
+                                    | "indexed"
+                                    | "partial_failure"
+                                    | "failed"
+                                    | "cancelled"
+                            )
+                    }
+                    other => doc_status == other,
+                }
+            });
+            debug!(
+                status = %status_filter,
+                filtered_count = documents.len(),
+                "Applied SPEC-084 document status filter before pagination"
+            );
+        }
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     // SPEC-057 P4: project display_status / ui_phase SSOT before pagination.
     crate::services::ingestion_status_mapper::enrich_document_summaries_with_cancel(
         &mut documents,
         &tasks.cancellation_registry,
+<<<<<<< HEAD
     )
     .await;
 
@@ -525,6 +679,40 @@ async fn list_documents_inner(
     let page_size = budget.clamp_page_size(params.page_size.min(u32::MAX as usize) as u32) as usize;
     let page = params.page.max(1);
     let (documents, pagination) = paginate_vec(documents, page, page_size);
+=======
+        tasks.storage.as_ref(),
+    )
+    .await;
+
+    // SPEC-027 IMP-020: honor query pagination (status_counts remain over full pre-status set).
+    let page_size = budget.clamp_page_size(params.page_size.min(u32::MAX as usize) as u32) as usize;
+    let page = params.page.max(1);
+    let (mut documents, pagination) = paginate_vec(documents, page, page_size);
+
+    // SPEC-089 / GH-336 / LAW-H1: AGE entity_count heal for the returned page only.
+    // Status counts / total already computed over the full filtered set above.
+    if should_skip_entity_reconcile(&tasks.storage).await {
+        // Serve KV/relational counts under queue/storage pressure — never hang on AGE.
+    } else {
+        crate::document_read_model::reconcile_entity_counts_with_graph(&storage, &mut documents)
+            .await;
+    }
+
+    // SPEC-091 IS2: queue position + ETA on the visible page (LAW-IS4).
+    crate::services::list_run_enrich::enrich_page_queue_estimates(
+        tasks.storage.as_ref(),
+        &mut documents,
+    )
+    .await;
+
+    // SPEC-091 IS3 / LD-09: query_ready when serving fence is on.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = _pg_runtime.pool.as_ref() {
+        let fence_on = edgequake_storage::serving_fence::serving_fence_enabled_from_env();
+        crate::services::list_run_enrich::enrich_page_query_ready(pool, fence_on, &mut documents)
+            .await;
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     Ok(Json(ListDocumentsResponse {
         total: pagination.total,

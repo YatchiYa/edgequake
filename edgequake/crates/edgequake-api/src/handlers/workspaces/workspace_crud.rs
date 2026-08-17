@@ -116,6 +116,13 @@ pub async fn create_workspace(
         // SPEC-085: Pass entity_types from HTTP request body if provided
         entity_types: request.entity_types.clone(),
         entity_types_strict: request.entity_types_strict,
+<<<<<<< HEAD
+=======
+        // SPEC-096: Extraction language for future ingestions
+        extraction_language: request.extraction_language.clone(),
+        // SPEC-102: entity type colors for graph visualization
+        entity_type_colors: request.entity_type_colors.clone(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     };
 
     // Store workspace via workspace service
@@ -319,13 +326,26 @@ pub async fn update_workspace(
         pdf_parser_backend: request.pdf_parser_backend,
         entity_types: request.entity_types,
         entity_types_strict: request.entity_types_strict,
+<<<<<<< HEAD
+=======
+        extraction_language: request.extraction_language,
+        entity_type_colors: request.entity_type_colors,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     };
 
     let workspace = state
         .workspace_service
         .update_workspace(workspace_id, update_request)
         .await
+<<<<<<< HEAD
         .map_err(|e| ApiError::NotFound(e.to_string()))?;
+=======
+        .map_err(|e| match &e {
+            edgequake_core::Error::Validation(msg) => ApiError::BadRequest(msg.clone()),
+            edgequake_core::Error::NotFound(msg) => ApiError::NotFound(msg.clone()),
+            _ => ApiError::BadRequest(e.to_string()),
+        })?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     let response = workspace_to_response(&workspace);
 

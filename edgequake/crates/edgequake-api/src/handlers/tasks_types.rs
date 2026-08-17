@@ -36,6 +36,12 @@ pub struct ListTasksQuery {
 
     /// Sort order (asc, desc).
     pub order: Option<String>,
+
+    /// SPEC-090 F-090-14: keyset cursor — ISO-8601 `created_at` after which to continue.
+    pub after_created_at: Option<String>,
+
+    /// SPEC-090 F-090-14: keyset cursor — `track_id` tie-break with `after_created_at`.
+    pub after_track_id: Option<String>,
 }
 
 // ============================================================================
@@ -93,6 +99,19 @@ pub struct TaskResponse {
 
     /// Task metadata.
     pub metadata: Option<serde_json::Value>,
+
+    /// Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position.
+    /// Only populated for `pending` tasks on single-task reads.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_position: Option<u64>,
+
+    /// Estimated seconds until claim (measured drain; clamped when unknown).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_seconds: Option<u64>,
+
+    /// ETA basis: `measured` or `no_history` (honest uncertainty, R-15).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_basis: Option<String>,
 }
 
 /// Detailed error response for failed tasks.
@@ -191,6 +210,9 @@ impl From<edgequake_tasks::Task> for TaskResponse {
             progress: task.progress.and_then(|p| serde_json::to_value(p).ok()),
             result: task.result,
             metadata: task.metadata,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
         }
     }
 }
@@ -219,7 +241,9 @@ mod tests {
             "page": 2,
             "page_size": 50,
             "sort": "created_at",
-            "order": "desc"
+            "order": "desc",
+            "after_created_at": "2026-07-26T00:00:00Z",
+            "after_track_id": "track-abc"
         }"#;
         let query: ListTasksQuery = serde_json::from_str(json).unwrap();
         assert_eq!(query.status, Some("pending".to_string()));
@@ -228,6 +252,11 @@ mod tests {
         assert_eq!(query.page_size, Some(50));
         assert_eq!(query.sort, Some("created_at".to_string()));
         assert_eq!(query.order, Some("desc".to_string()));
+        assert_eq!(
+            query.after_created_at.as_deref(),
+            Some("2026-07-26T00:00:00Z")
+        );
+        assert_eq!(query.after_track_id.as_deref(), Some("track-abc"));
     }
 
     #[test]
@@ -249,6 +278,9 @@ mod tests {
             progress: None,
             result: None,
             metadata: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["track_id"], "task_123");
@@ -351,6 +383,9 @@ mod tests {
             progress: None,
             result: None,
             metadata: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["status"], "failed");

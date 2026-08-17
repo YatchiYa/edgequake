@@ -7,6 +7,11 @@ use crate::traits::{GraphEdge, GraphNode};
 use super::super::PostgresAGEGraphStorage;
 
 impl PostgresAGEGraphStorage {
+<<<<<<< HEAD
+=======
+    /// Cypher agtype vertex decode (fallback path when native reads are not used).
+    #[allow(dead_code)]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub(in crate::adapters::postgres::graph) fn parse_vertex(
         agtype_str: &str,
     ) -> Option<GraphNode> {
@@ -29,6 +34,11 @@ impl PostgresAGEGraphStorage {
         })
     }
 
+<<<<<<< HEAD
+=======
+    /// Cypher agtype edge decode (fallback path when native reads are not used).
+    #[allow(dead_code)]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub(in crate::adapters::postgres::graph) fn parse_edge(agtype_str: &str) -> Option<GraphEdge> {
         let json_str = agtype_str.trim_end_matches("::edge");
         let value: serde_json::Value = serde_json::from_str(json_str).ok()?;

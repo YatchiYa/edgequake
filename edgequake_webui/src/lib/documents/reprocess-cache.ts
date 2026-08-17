@@ -67,7 +67,11 @@ export function isReprocessBatchTrackId(
 }
 
 /**
+<<<<<<< HEAD
  * True when the key is safe to pass to PdfUploadProgress / IngestionProgressPanel.
+=======
+ * True when the key is safe to pass to ProgressPanelRow / IngestionRunCard.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  * Provisional client keys and batch `reprocess_*` ids have no progress seed.
  */
 export function isPollableReprocessProgressTrackId(
@@ -277,6 +281,27 @@ function isTerminalStatus(status: string | undefined): boolean {
   return TERMINAL_STATUSES.has((status || "").toLowerCase());
 }
 
+<<<<<<< HEAD
+=======
+/** Strip `staging:` so pin/list identity matches admit document_id. */
+export function bareDocumentId(id: string): string {
+  return id.startsWith("staging:") ? id.slice("staging:".length) : id;
+}
+
+/** True when a server list row already represents this pinned upload shell. */
+export function serverRowCoversPinnedShell(
+  doc: Document,
+  pinnedId: string,
+  shell: Document,
+): boolean {
+  if (doc.id === pinnedId) return true;
+  if (doc.id === `staging:${pinnedId}`) return true;
+  if (bareDocumentId(doc.id) === pinnedId) return true;
+  const pinTrack = shell.track_id;
+  return Boolean(pinTrack && doc.track_id === pinTrack);
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 type DocumentsQueryData = { items?: Document[] } | undefined;
 
 /**
@@ -316,18 +341,37 @@ export function protectPinnedDocumentsInQueryData<T extends DocumentsQueryData>(
     changed = true;
     return {
       ...doc,
+<<<<<<< HEAD
       status: pin.status,
+=======
+      status: pin.status as Document["status"],
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       current_stage: pin.current_stage,
       stage_message: pin.stage_message,
       stage_progress: pin.stage_progress,
       track_id: pin.track_id,
       error_message: pin.error_message,
+<<<<<<< HEAD
     };
   });
 
   // Re-inject upload/reprocess shells dropped by a stale poll.
   for (const [id, shell] of pinnedDocumentShells) {
     if (items.some((d) => d.id === id)) continue;
+=======
+    } satisfies Document;
+  });
+
+  // Re-inject upload/reprocess shells dropped by a stale poll.
+  // Match bare id, staging:{id} alias, or same track_id (SPEC-086 dual-run).
+  for (const [id, shell] of [...pinnedDocumentShells.entries()]) {
+    if (items.some((d) => serverRowCoversPinnedShell(d, id, shell))) {
+      pinnedDocumentShells.delete(id);
+      reprocessPins.delete(id);
+      changed = true;
+      continue;
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     const pin = reprocessPins.get(id);
     const reinjected: Document = pin
       ? {

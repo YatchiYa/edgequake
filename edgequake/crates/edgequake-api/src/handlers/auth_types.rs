@@ -55,10 +55,22 @@ pub struct UserInfo {
     pub updated_at: String,
     /// Last login timestamp (RFC 3339), if any.
     pub last_login_at: Option<String>,
+<<<<<<< HEAD
+=======
+
+    /// True for shared guest / legacy anon_* system accounts (SPEC-087).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_anonymous: bool,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 impl From<&User> for UserInfo {
     fn from(user: &User) -> Self {
+        let is_anonymous = crate::services::identity_storage::is_anonymous_identity(
+            &user.username,
+            &user.email,
+            &user.password_hash,
+        );
         Self {
             user_id: user.user_id.clone(),
             username: user.username.clone(),
@@ -68,6 +80,10 @@ impl From<&User> for UserInfo {
             created_at: user.created_at.to_rfc3339(),
             updated_at: user.updated_at.to_rfc3339(),
             last_login_at: user.last_login_at.map(|t| t.to_rfc3339()),
+<<<<<<< HEAD
+=======
+            is_anonymous,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
     }
 }
@@ -133,6 +149,10 @@ pub struct ListUsersQuery {
 
     /// Filter by role.
     pub role: Option<String>,
+
+    /// Include anonymous/guest system accounts (SPEC-087). Default `false`.
+    #[serde(default)]
+    pub include_anonymous: bool,
 }
 
 fn default_page() -> u32 {
@@ -310,6 +330,10 @@ mod tests {
                 created_at: "2024-01-01T00:00:00Z".to_string(),
                 updated_at: "2024-01-01T00:00:00Z".to_string(),
                 last_login_at: None,
+<<<<<<< HEAD
+=======
+                is_anonymous: false,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             },
         };
         let json = serde_json::to_value(&resp).unwrap();
@@ -328,6 +352,10 @@ mod tests {
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
             last_login_at: None,
+<<<<<<< HEAD
+=======
+            is_anonymous: false,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         };
         let json = serde_json::to_value(&info).unwrap();
         assert_eq!(json["user_id"], "u123");

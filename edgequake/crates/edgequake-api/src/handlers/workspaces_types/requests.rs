@@ -184,6 +184,20 @@ pub struct CreateWorkspaceApiRequest {
     /// When true (default), limit extraction to listed types; unknown → OTHER.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity_types_strict: Option<bool>,
+<<<<<<< HEAD
+=======
+
+    /// Natural-language output language for entity/relationship values (SPEC-096).
+    /// Allowlisted names: English, Chinese, Japanese, Korean, Spanish, French,
+    /// German, Portuguese, Italian, Russian. Omit to inherit env/default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extraction_language: Option<String>,
+
+    /// Custom entity-type → hex color map for graph visualization (SPEC-102).
+    /// Keys UPPERCASE; values `#RGB` / `#RRGGBB`. Empty object clears.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// Request to update a workspace.
@@ -249,4 +263,17 @@ pub struct UpdateWorkspaceApiRequest {
     /// Strict entity type limit (default true). Set false to allow free-form types.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity_types_strict: Option<bool>,
+<<<<<<< HEAD
+=======
+
+    /// Extraction output language (SPEC-096). Omit = leave unchanged;
+    /// empty string or `"none"` clears the workspace override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extraction_language: Option<String>,
+
+    /// Custom entity-type → hex color map (SPEC-102). Omit = leave unchanged;
+    /// empty object clears the workspace override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

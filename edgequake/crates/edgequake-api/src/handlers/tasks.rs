@@ -26,7 +26,7 @@ use axum::{
     Json,
 };
 use chrono::Utc;
-use edgequake_tasks::{Pagination, SortField, SortOrder, TaskFilter, TaskStatus, TaskType};
+use edgequake_tasks::{Pagination, SortField, SortOrder, TaskStatus, TaskType};
 use serde_json::json;
 use std::sync::Arc;
 use tracing;
@@ -35,7 +35,11 @@ use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
 use crate::services::cancel_track_with_doc_and_pdf_chain;
 use crate::services::document_metadata_scan::load_scoped_document_metadata_entries;
+<<<<<<< HEAD
 use crate::services::task_scope::get_task_for_context;
+=======
+use crate::services::task_scope::{get_task_for_context, task_filter_for_scope};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use crate::state::AppState;
 
 // Re-export DTOs for backward compatibility
@@ -59,7 +63,26 @@ pub async fn get_task(
     Path(track_id): Path<String>,
 ) -> ApiResult<Json<TaskResponse>> {
     let task = get_task_for_context(&state, &track_id, &tenant_ctx).await?;
+<<<<<<< HEAD
     Ok(Json(TaskResponse::from(task)))
+=======
+    let pending_created_at =
+        (task.status == edgequake_tasks::TaskStatus::Pending).then_some(task.created_at);
+    let mut response = TaskResponse::from(task);
+
+    // SPEC-091 QW2 (LAW-Q4): live queue projection for pending tasks (best-effort).
+    if let Some(created_at) = pending_created_at {
+        if let Ok(estimate) =
+            edgequake_tasks::estimate_queue(state.tasks.storage.as_ref(), created_at).await
+        {
+            response.queue_position = Some(estimate.position);
+            response.eta_seconds = Some(estimate.eta_seconds);
+            response.eta_basis = Some(estimate.basis.as_str().to_string());
+        }
+    }
+
+    Ok(Json(response))
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// List tasks with filters and pagination
@@ -88,6 +111,7 @@ pub async fn list_tasks(
         list_tasks_response(&state, &tenant_ctx, params).await?,
     ))
 }
+<<<<<<< HEAD
 
 /// Shared task listing logic for v1 and v2 job APIs (DRY).
 pub(crate) async fn list_tasks_response(
@@ -151,7 +175,69 @@ pub(crate) async fn list_tasks_response(
             .as_deref()
             .and_then(|t| parse_task_type(t).ok()),
     };
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
+/// Shared task listing logic for v1 and v2 job APIs (DRY).
+pub(crate) async fn list_tasks_response(
+    state: &AppState,
+    tenant_ctx: &TenantContext,
+    params: ListTasksQuery,
+) -> ApiResult<TaskListResponse> {
+    // SECURITY: Merge TenantContext headers with query params for workspace isolation
+    // Priority: query params (explicit) > TenantContext headers (automatic) > None
+    // WHY: The frontend API client always sends X-Tenant-ID/X-Workspace-ID headers.
+    // Query params allow explicit override for admin/debugging scenarios.
+    // This matches the pattern used by get_queue_metrics.
+    let mut filter = task_filter_for_scope(
+        tenant_ctx,
+        params.tenant_id.as_deref(),
+        params.workspace_id.as_deref(),
+    );
+
+    // SECURITY: Enforce strict tenant context requirement — NO EXCEPTIONS
+    // WHY: Same enforcement as list_documents (commit d11edba8) — without filtering,
+    // pipeline status leaks across workspaces ("Processing 2 documents" from other workspaces).
+    if filter.tenant_id.is_none() || filter.workspace_id.is_none() {
+        tracing::warn!(
+            tenant_id = ?filter.tenant_id,
+            workspace_id = ?filter.workspace_id,
+            "list_tasks: Missing tenant context — returning empty for security"
+        );
+        return Ok(TaskListResponse {
+            tasks: vec![],
+            pagination: PaginationInfo {
+                total: 0,
+                page: 1,
+                page_size: params.page_size.unwrap_or(20).min(100),
+                total_pages: 0,
+            },
+            statistics: StatisticsInfo {
+                pending: 0,
+                processing: 0,
+                indexed: 0,
+                failed: 0,
+                cancelled: 0,
+            },
+        });
+    }
+
+    filter.status = params
+        .status
+        .as_deref()
+        .and_then(|s| parse_task_status(s).ok());
+    filter.task_type = params
+        .task_type
+        .as_deref()
+        .and_then(|t| parse_task_type(t).ok());
+
+    // SPEC-090 F-090-14: prefer keyset cursors when both after_* params present.
+    let after_created_at = params
+        .after_created_at
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc));
+    let after_track_id = params.after_track_id.clone().filter(|s| !s.is_empty());
     let pagination = Pagination {
         page: params.page.unwrap_or(1),
         page_size: params.page_size.unwrap_or(20).min(100),
@@ -165,6 +251,8 @@ pub(crate) async fn list_tasks_response(
             .as_deref()
             .and_then(|o| parse_sort_order(o).ok())
             .unwrap_or(SortOrder::Desc),
+        after_created_at,
+        after_track_id,
     };
 
     let task_list = state
@@ -336,6 +424,12 @@ pub async fn cancel_task(
             "document_updated": true,
             "reason": "Task not found but document status was updated to cancelled"
         })),
+<<<<<<< HEAD
+=======
+        queue_position: None,
+        eta_seconds: None,
+        eta_basis: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }))
 }
 

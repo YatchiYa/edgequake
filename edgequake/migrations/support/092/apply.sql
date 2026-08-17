@@ -253,6 +253,7 @@ BEGIN
       );
     END IF;
 
+<<<<<<< HEAD
     -- Always refresh EDGE sync fn so eq_rel_type stays aligned (D-30).
     EXECUTE format(
       'CREATE OR REPLACE FUNCTION %I() RETURNS trigger AS $fn$
@@ -260,6 +261,23 @@ BEGIN
          NEW.eq_source_id := ag_catalog.agtype_to_json(NEW.properties)->>''source_id'';
          NEW.eq_target_id := ag_catalog.agtype_to_json(NEW.properties)->>''target_id'';
          NEW.eq_rel_type := UPPER(COALESCE(
+=======
+    -- Always refresh EDGE sync fn so eq_rel_type stays aligned (D-30 / SPEC-098).
+    -- Prefer column values (native INSERT), then properties.
+    EXECUTE format(
+      'CREATE OR REPLACE FUNCTION %I() RETURNS trigger AS $fn$
+       BEGIN
+         NEW.eq_source_id := COALESCE(
+           NULLIF(TRIM(NEW.eq_source_id), ''''),
+           ag_catalog.agtype_to_json(NEW.properties)->>''source_id''
+         );
+         NEW.eq_target_id := COALESCE(
+           NULLIF(TRIM(NEW.eq_target_id), ''''),
+           ag_catalog.agtype_to_json(NEW.properties)->>''target_id''
+         );
+         NEW.eq_rel_type := UPPER(COALESCE(
+           NULLIF(TRIM(NEW.eq_rel_type), ''''),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
            NULLIF(TRIM(ag_catalog.agtype_to_json(NEW.properties)->>''relation_type''), ''''),
            ''RELATED_TO''
          ));

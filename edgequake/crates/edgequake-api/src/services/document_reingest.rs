@@ -17,6 +17,7 @@ pub enum DuplicateReingestAction {
 }
 
 /// Resolve workspace duplicate content hash (ingestion uniformity SSOT).
+<<<<<<< HEAD
 pub async fn resolve_workspace_duplicate_for_reingestion(
     state: &AppState,
     tenant_ctx: &TenantContext,
@@ -43,14 +44,55 @@ pub async fn resolve_workspace_duplicate_for_reingestion(
             existing_document_id: doc_id_str.to_string(),
         }),
         Err(e) => {
+=======
+///
+/// SPEC-091 W2: the durable lookup routes through `ingestion_dedup_store`
+/// (KV `doc:hash:` or typed `public.ingestion_dedup` per family flag).
+pub async fn resolve_workspace_duplicate_for_reingestion(
+    state: &AppState,
+    tenant_ctx: &TenantContext,
+    content_hash: &str,
+    workspace_id: &str,
+) -> Result<DuplicateReingestAction, ApiError> {
+    let hash_key = crate::services::ContentHasher::workspace_hash_key(workspace_id, content_hash);
+    let Some(doc_id_str) =
+        crate::services::ingestion_dedup_store::lookup_durable(state, workspace_id, content_hash)
+            .await?
+    else {
+        return Ok(DuplicateReingestAction::NoDuplicate);
+    };
+
+    if !workspace_has_visible_document_for_hash(state, &doc_id_str, tenant_ctx).await? {
+        recycle_orphan_workspace_hash(state, &hash_key, workspace_id, &doc_id_str).await?;
+        return Ok(DuplicateReingestAction::NoDuplicate);
+    }
+
+    match delete_document_for_reingestion(&doc_id_str, state, workspace_id).await {
+        Ok(true) => Ok(DuplicateReingestAction::ClearedForReingestion {
+            old_document_id: doc_id_str.clone(),
+        }),
+        Ok(false) => Ok(DuplicateReingestAction::StillProcessing {
+            existing_document_id: doc_id_str.clone(),
+        }),
+        Err(e) => {
+            // SPEC-086 ops: fail closed — never allocate a second admit while the
+            // prior document may still be visible (duplicate completed rows).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             tracing::warn!(
                 old_doc_id = %doc_id_str,
                 workspace_id = %workspace_id,
                 error = %e,
+<<<<<<< HEAD
                 "Failed to delete old document data — proceeding with re-ingestion"
             );
             Ok(DuplicateReingestAction::ClearedForReingestion {
                 old_document_id: doc_id_str.to_string(),
+=======
+                "Failed to delete old document data — blocking re-ingestion"
+            );
+            Ok(DuplicateReingestAction::StillProcessing {
+                existing_document_id: doc_id_str,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             })
         }
     }
@@ -162,6 +204,29 @@ pub async fn delete_document_for_reingestion(
 
     state.storage.kv_storage.delete(&keys_to_delete).await?;
 
+<<<<<<< HEAD
+=======
+    // SSOT: list surfaces (wsdoc + SQL documents) must leave with the KV wipe,
+    // otherwise re-ingest admits a second row while the UI still shows the old one.
+    let tenant_ctx = TenantContext {
+        tenant_id: None,
+        workspace_id: Some(workspace_id.to_string()),
+        user_id: None,
+    };
+    crate::services::purge_document_list_surfaces(
+        state,
+        document_id,
+        workspace_id,
+        &tenant_ctx,
+        crate::services::ListSurfacePurgeOpts {
+            key_prefix: Some(document_id),
+            content_hash: None,
+            pdf_id: None,
+        },
+    )
+    .await?;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     tracing::info!(
         document_id = %document_id,
         chunks_deleted = keys_to_delete.len(),

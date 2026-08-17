@@ -147,6 +147,12 @@ def test_progress_archive_and_ledger(tmp_path, monkeypatch):
     assert hist.exists()
     assert (hist / "scorecard.json").exists()
     assert (hist / "LIVE.md").exists()
+<<<<<<< HEAD
+=======
+    local_only = hist / "LOCAL_ONLY.md"
+    assert local_only.exists()
+    assert "SPEC-097" in local_only.read_text(encoding="utf-8")
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     prog = write_progress_md()
     text = prog.read_text(encoding="utf-8")
     assert "SPEC-001 progression ladder" in text

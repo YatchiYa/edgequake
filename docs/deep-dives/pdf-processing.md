@@ -2,7 +2,11 @@
 title: 'PDF Processing Deep Dive'
 ---
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # PDF Processing Deep Dive
 
@@ -10,7 +14,11 @@ title: 'PDF Processing Deep Dive'
 
 ---
 
+<<<<<<< HEAD
 ## Current path (v0.19.0)
+=======
+## Current path (v0.23.0)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 PDF ingestion is a **two-phase pipeline** separated at the task layer. Vision conversion and KG ingest run under different leases, timeouts, and cancel semantics.
 
@@ -1206,4 +1214,8 @@ assert!(result.markdown.is_empty()); // Empty!
 
 ---
 
+<<<<<<< HEAD
 **Product:** v0.19.0 · **Last updated:** 2026-07-18
+=======
+**Product:** v0.23.0 · **Last updated:** 2026-07-18
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042

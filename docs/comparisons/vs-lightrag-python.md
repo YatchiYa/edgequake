@@ -4,7 +4,11 @@ title: 'EdgeQuake vs LightRAG (Python)'
 
 # EdgeQuake vs LightRAG (Python)
 
+<<<<<<< HEAD
 > **Product: v0.19.0**
+=======
+> **Product: v0.23.0**
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 > **A Rust reimplementation with production-grade enhancements**
 

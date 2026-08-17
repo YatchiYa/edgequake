@@ -2,8 +2,16 @@
 //!
 //! Uses GIN-indexed `content_tsv` + `ts_rank_cd` (cover-density ranking — **not**
 //! Okapi BM25; see SPEC-083 X-05) instead of re-scoring vector candidates in
+<<<<<<< HEAD
 //! application memory. Chunk text SSOT is the shared default KV table
 //! (SPEC-024 2.5); workspace vector tables only hold embeddings.
+=======
+//! application memory.
+//!
+//! SPEC-105 / LAW-L3: KV LEFT JOIN is **era-aware** — only when
+//! `chunk_kv_table_exists` (≤0.22 mid-upgrade). Post-125 census, content comes
+//! from `content_tsv` / metadata only (typed chunks SSOT via serving path).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 //!
 //! Text search language is configurable via `EDGEQUAKE_FTS_LANGUAGE`
 //! (default `english`).

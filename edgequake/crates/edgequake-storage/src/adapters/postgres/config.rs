@@ -93,25 +93,77 @@ impl Default for PostgresConfig {
             ssl_mode: SslMode::Prefer,
             vector_index_type: VectorIndexType::HNSW,
             hnsw_m: 16,
+<<<<<<< HEAD
             // Default 64 = pgvector HNSW default (SPEC-058). Production: set
             // EDGEQUAKE_HNSW_EF_CONSTRUCTION=128. Never REINDEX on boot —
             // operator-driven only.
+=======
+            // Default 128 (SPEC-090 F-090-24/25). Override via EDGEQUAKE_HNSW_EF_CONSTRUCTION.
+            // Never REINDEX on boot — operator-driven only.
+            // SPEC-091 IW1 LD-06 (GAP-091-25): 128 is the single converged value for new builds.
+            // Migration 071 (ef=32) is checksum-locked historical; init.sql matches 128.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             hnsw_ef_construction: hnsw_ef_construction_from_env(),
             ivfflat_lists: 100,
         }
     }
 }
 
+<<<<<<< HEAD
 /// HNSW `ef_construction` from env (default **64** = pgvector upstream default).
 ///
 /// Production recommendation (July 2026): **128**. Changing this only affects
 /// **new** index builds — existing HNSW requires operator `REINDEX CONCURRENTLY`.
+=======
+/// HNSW `ef_construction` from env (default **128**, SPEC-090 F-090-24/25).
+///
+/// Changing this only affects **new** index builds — existing HNSW requires
+/// operator `REINDEX CONCURRENTLY`.
+///
+/// SPEC-091 IW1 LD-06 (GAP-091-25): **128 is the converged SSOT for new builds.**
+/// Migration 071 historically set ef_construction=32 (checksum-locked, do not
+/// edit). `docker/init.sql` and typed-index migrations (129+) use 128. Existing
+/// legacy HNSW built at 32 requires operator `REINDEX CONCURRENTLY` to converge.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub fn hnsw_ef_construction_from_env() -> u32 {
     std::env::var("EDGEQUAKE_HNSW_EF_CONSTRUCTION")
         .ok()
         .and_then(|v| v.parse::<u32>().ok())
         .map(|v| v.clamp(4, 1000))
+<<<<<<< HEAD
         .unwrap_or(64)
+=======
+        .unwrap_or(128)
+}
+
+/// Optional single-process role label (legacy). Prefer [`crate::PgPoolBundle`].
+///
+/// `EDGEQUAKE_DB_POOL_ROLE=query|ingest|queue|admin` — when set with a matching
+/// `EDGEQUAKE_DB_POOL_SIZE_{ROLE}` override, adjusts `max_connections` for
+/// a single-pool process. In-server multi-pool uses `PgPoolBundle` instead.
+pub fn db_pool_role_from_env() -> Option<String> {
+    std::env::var("EDGEQUAKE_DB_POOL_ROLE")
+        .ok()
+        .map(|r| r.to_ascii_lowercase())
+        .filter(|r| matches!(r.as_str(), "query" | "ingest" | "queue" | "admin"))
+}
+
+/// Resolve pool size: role-specific override, else configured default.
+pub fn resolve_pool_max_connections(default: u32) -> u32 {
+    let override_env = db_pool_role_from_env().and_then(|role| {
+        let key = match role.as_str() {
+            "query" => "EDGEQUAKE_DB_POOL_SIZE_QUERY",
+            "ingest" => "EDGEQUAKE_DB_POOL_SIZE_INGEST",
+            "queue" => "EDGEQUAKE_DB_POOL_SIZE_QUEUE",
+            "admin" => "EDGEQUAKE_DB_POOL_SIZE_ADMIN",
+            _ => return None,
+        };
+        std::env::var(key).ok()
+    });
+    override_env
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(default)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 #[cfg(test)]
@@ -125,11 +177,19 @@ mod hnsw_ef_construction_tests {
     }
 
     #[test]
+<<<<<<< HEAD
     fn default_is_64_when_unset() {
         let _g = env_lock().lock().unwrap();
         let prev = std::env::var("EDGEQUAKE_HNSW_EF_CONSTRUCTION").ok();
         std::env::remove_var("EDGEQUAKE_HNSW_EF_CONSTRUCTION");
         assert_eq!(hnsw_ef_construction_from_env(), 64);
+=======
+    fn default_is_128_when_unset() {
+        let _g = env_lock().lock().unwrap();
+        let prev = std::env::var("EDGEQUAKE_HNSW_EF_CONSTRUCTION").ok();
+        std::env::remove_var("EDGEQUAKE_HNSW_EF_CONSTRUCTION");
+        assert_eq!(hnsw_ef_construction_from_env(), 128);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         match prev {
             Some(v) => std::env::set_var("EDGEQUAKE_HNSW_EF_CONSTRUCTION", v),
             None => std::env::remove_var("EDGEQUAKE_HNSW_EF_CONSTRUCTION"),
@@ -202,6 +262,7 @@ impl PostgresConfig {
     /// (security S2) we map any character outside `[A-Za-z0-9_]` to `_`. Hyphens
     /// keep their historical mapping to `_` so existing deployments are unaffected.
     pub fn table_prefix(&self) -> String {
+<<<<<<< HEAD
         let sanitized: String = self
             .namespace
             .chars()
@@ -216,6 +277,28 @@ impl PostgresConfig {
         format!("eq_{}", sanitized)
     }
 
+=======
+        crate::namespace_tables::table_prefix_for_namespace(&self.namespace)
+    }
+
+    /// AGE graph catalog name (SPEC-104 LAW-I1 SSOT).
+    ///
+    /// `namespace = "default"` → prefix `eq_default` → `eq_eq_default_graph`.
+    pub fn age_graph_name(&self) -> String {
+        crate::namespace_tables::age_graph_name_for_namespace(&self.namespace)
+    }
+
+    /// Unqualified KV table name (`eq_{prefix}_kv`) — SPEC-104 LAW-I1.
+    pub fn bare_kv_table(&self) -> String {
+        crate::namespace_tables::bare_kv_table_for_namespace(&self.namespace)
+    }
+
+    /// Unqualified vectors table name (`eq_{prefix}_vectors`) — SPEC-104 LAW-I1.
+    pub fn bare_vectors_table(&self) -> String {
+        crate::namespace_tables::bare_vectors_table_for_namespace(&self.namespace)
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Qualified KV table for this namespace (`public.eq_{prefix}_kv`).
     pub fn qualified_kv_table(&self) -> String {
         qualified_kv_table_name(&self.table_prefix())
@@ -232,7 +315,11 @@ pub(crate) fn split_qualified_table_name(qualified_name: &str) -> (&str, &str) {
 }
 
 /// Qualified KV table (`public.eq_{prefix}_kv`).
+<<<<<<< HEAD
 pub(crate) fn qualified_kv_table_name(prefix: &str) -> String {
+=======
+pub fn qualified_kv_table_name(prefix: &str) -> String {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     format!("public.eq_{prefix}_kv")
 }
 
@@ -310,6 +397,23 @@ mod tests {
     }
 
     #[test]
+<<<<<<< HEAD
+=======
+    fn e2e_104_06_age_graph_and_bare_relation_names() {
+        let default = PostgresConfig::default();
+        assert_eq!(default.age_graph_name(), "eq_eq_default_graph");
+        assert_eq!(default.bare_kv_table(), "eq_eq_default_kv");
+        assert_eq!(default.bare_vectors_table(), "eq_eq_default_vectors");
+
+        let ws = PostgresConfig::default().with_namespace("my-ws");
+        assert_eq!(ws.table_prefix(), "eq_my_ws");
+        assert_eq!(ws.age_graph_name(), "eq_eq_my_ws_graph");
+        assert_eq!(ws.bare_kv_table(), "eq_eq_my_ws_kv");
+        assert_eq!(ws.bare_vectors_table(), "eq_eq_my_ws_vectors");
+    }
+
+    #[test]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     fn test_table_prefix_sanitizes_injection_chars() {
         // Security S2: identifier-injection attempt must be neutralized.
         let config = PostgresConfig::default().with_namespace("a\"; DROP TABLE x;--");

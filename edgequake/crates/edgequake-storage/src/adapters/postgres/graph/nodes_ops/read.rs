@@ -9,20 +9,39 @@ use crate::error::{Result, StorageError};
 use crate::traits::{GraphEdge, GraphNode};
 
 impl PostgresAGEGraphStorage {
+<<<<<<< HEAD
+=======
+    /// IMP-031-01 / SPEC-088: native PK-style lookup — O(log N) via UNIQUE node_id expr.
+    /// Cypher property MATCH is not used on the request path (AGE#2348 / catalog anti-pattern).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub(in crate::adapters::postgres::graph) async fn pg_has_node(
         &self,
         node_id: &str,
     ) -> Result<bool> {
+<<<<<<< HEAD
         let cypher = "MATCH (n:Node {node_id: $node_id}) RETURN n LIMIT 1";
         let params = serde_json::json!({ "node_id": node_id });
         let rows = self.cypher_query_bound(cypher, &["n"], &params).await?;
         Ok(!rows.is_empty())
     }
 
+=======
+        Ok(self.pg_get_node(node_id).await?.is_some())
+    }
+
+    /**
+     * @dataop      DATA-AGE-GRAPH-GET-NODE-026
+     * @engine      apache_age (native SQL primary)
+     * @intent      Single-node fetch by node_id — O(log N) UNIQUE expression index.
+     * @complexity  time: O(log N); space: O(1)
+     * @docs        specs/088-data-layer/age.md#data-age-graph-get-node-026
+     */
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub(in crate::adapters::postgres::graph) async fn pg_get_node(
         &self,
         node_id: &str,
     ) -> Result<Option<GraphNode>> {
+<<<<<<< HEAD
         let cypher = "MATCH (n:Node {node_id: $node_id}) RETURN n";
         let params = serde_json::json!({ "node_id": node_id });
         let rows = self.cypher_query_bound(cypher, &["n"], &params).await?;
@@ -34,6 +53,10 @@ impl PostgresAGEGraphStorage {
         let json_value: serde_json::Value = rows[0].get("n");
         let agtype_str = json_value.to_string();
         Ok(Self::parse_vertex(&agtype_str))
+=======
+        let mut map = self.pg_get_nodes_batch(&[node_id.to_string()]).await?;
+        Ok(map.remove(node_id))
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     /// FAST OPTIMIZED: Get node degree using native SQL.
@@ -215,6 +238,7 @@ impl PostgresAGEGraphStorage {
         Ok(results)
     }
 
+<<<<<<< HEAD
     pub(in crate::adapters::postgres::graph) async fn pg_get_all_nodes(
         &self,
     ) -> Result<Vec<GraphNode>> {
@@ -233,10 +257,50 @@ impl PostgresAGEGraphStorage {
         Ok(nodes)
     }
 
+=======
+    /// ADMIN / dump path (FORBIDDEN on hot HTTP) — native scan, no Cypher.
+    /// Complexity: O(N) unavoidable; skips AGE planner overhead (IMP-031-07).
+    pub(in crate::adapters::postgres::graph) async fn pg_get_all_nodes(
+        &self,
+    ) -> Result<Vec<GraphNode>> {
+        let pool = self.pool.get().await?;
+        let sql = format!(
+            r#"/* DATA-AGE-GRAPH-GET-ALL-NODES */
+               SELECT ag_catalog.agtype_to_json(n.properties) AS props
+               FROM {}."Node" n"#,
+            self.graph_name
+        );
+        let rows = sqlx::query(&sql)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("get_all_nodes native failed: {e}")))?;
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                let props: serde_json::Value = row.get("props");
+                let node_id = props
+                    .get("node_id")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)?;
+                Self::parse_properties_to_node(&node_id, &props)
+            })
+            .collect())
+    }
+
+    /**
+     * @dataop      DATA-AGE-GRAPH-GET-NODES-BY-IDS-030
+     * @engine      apache_age (native SQL primary; IMP-031-01)
+     * @intent      Multi-id fetch preserving input order — one RT, O(K log N).
+     * @complexity  time: O(K log N); space: O(K)
+     * @limits      Never use Cypher IN on request path (planner may ignore property indexes).
+     * @docs        specs/088-data-layer/age.md#data-age-graph-get-nodes-by-ids-030
+     */
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub(in crate::adapters::postgres::graph) async fn pg_get_nodes_by_ids(
         &self,
         node_ids: &[String],
     ) -> Result<Vec<GraphNode>> {
+<<<<<<< HEAD
         if node_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -264,10 +328,36 @@ impl PostgresAGEGraphStorage {
             .collect();
 
         Ok(nodes)
+=======
+        // IMP-031-01: always native batch SQL (same path as get_nodes_batch).
+        // Returns only found nodes, order preserved for hits.
+        let map = self.pg_get_nodes_batch(node_ids).await?;
+        Ok(node_ids
+            .iter()
+            .filter_map(|id| map.get(id).cloned())
+            .collect())
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     /// OPTIMIZED: LightRAG-inspired batch node retrieval using UNNEST with ORDINALITY.
     ///
+<<<<<<< HEAD
+=======
+    /**
+     * @dataop      DATA-AGE-GRAPH-GET-NODES-BATCH-031
+     * @engine      apache_age (secondary: postgres native SQL)
+     * @intent      Batch fetch graph nodes by node_id in one round-trip (UNNEST + UNIQUE expr index).
+     * @tables      {graph}."Node"(properties agtype)
+     * @indexes     idx_node_prop_node_id_unique (expression UNIQUE on node_id)
+     * @complexity  time: O(K log N); space: O(K); io: K index lookups
+     * @limits      - Prefer over Cypher IN loops; K bounded by caller
+     *              - Cypher property MATCH may ignore GIN (AGE#2348) — this path uses SQL
+     * @scaling     Linear in K; verified e2e_spec061
+     * @tests       tests/data_layer/data_layer_limits.rs
+     * @pgversions  16: ok | 17: ok | 18: ok (AGE 1.7+/1.8)
+     * @docs        specs/088-data-layer/age.md#data-age-graph-get-nodes-batch-031
+     */
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// This method uses a single SQL query with array binding to fetch multiple nodes
     /// in O(1) database round-trips, matching LightRAG's performance pattern.
     ///
@@ -276,28 +366,54 @@ impl PostgresAGEGraphStorage {
         &self,
         node_ids: &[String],
     ) -> Result<HashMap<String, GraphNode>> {
+<<<<<<< HEAD
+=======
+        let _timer =
+            crate::TimedStorageOp::start_dataop(crate::dataop::DATA_AGE_GRAPH_GET_NODES_BATCH_031);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         if node_ids.is_empty() {
             return Ok(HashMap::new());
         }
 
         // Use direct SQL with UNNEST for batch parameter binding (LightRAG pattern)
+<<<<<<< HEAD
         let sql = format!(
             r#"
+=======
+        let sql = crate::dataop::sql_comment(
+            crate::dataop::DATA_AGE_GRAPH_GET_NODES_BATCH_031,
+            &format!(
+                r#"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             WITH input(v, ord) AS (
               SELECT v, ord FROM unnest($1::text[]) WITH ORDINALITY AS t(v, ord)
             ),
             ids(node_id, ord) AS (
+<<<<<<< HEAD
               SELECT (to_json(v)::text)::agtype AS node_id, ord FROM input
+=======
+              -- GH-350: qualify agtype so casts survive pool search_path=public
+              SELECT (to_json(v)::text)::ag_catalog.agtype AS node_id, ord FROM input
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             )
             SELECT i.node_id::text AS node_id,
                    ag_catalog.agtype_to_json(n.properties) AS properties
             FROM {}."Node" AS n
             JOIN ids i ON ag_catalog.agtype_access_operator(
+<<<<<<< HEAD
                 VARIADIC ARRAY[n.properties, '"node_id"'::agtype]
             ) = i.node_id
             ORDER BY i.ord
             "#,
             self.graph_name
+=======
+                VARIADIC ARRAY[n.properties, '"node_id"'::ag_catalog.agtype]
+            ) = i.node_id
+            ORDER BY i.ord
+            "#,
+                self.graph_name
+            ),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         );
 
         let rows = self.batch_sql_query(&sql, node_ids).await?;
@@ -331,13 +447,23 @@ impl PostgresAGEGraphStorage {
             return Ok(Vec::new());
         }
 
+<<<<<<< HEAD
         // Use direct SQL with UNNEST for batch parameter binding
+=======
+        // WHY (SPEC-106 / #356): All graphid comparisons must go via ::text —
+        // Apache AGE's graphid type has no registered = operator in the PostgreSQL
+        // type system. Direct graphid equality on EDGE start/end ids produced
+        // "operator does not exist: ag_catalog.graphid = ag_catalog.graphid" during
+        // KG relationship merge (get_edges_for_nodes_batch). Same LAW-G1 pattern as
+        // pg_get_nodes_with_degrees_batch / Issue #214.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         let sql = format!(
             r#"
             WITH input(v, ord) AS (
               SELECT v, ord FROM unnest($1::text[]) WITH ORDINALITY AS t(v, ord)
             ),
             ids(node_id, ord) AS (
+<<<<<<< HEAD
               SELECT (to_json(v)::text)::agtype AS node_id, ord FROM input
             ),
             vids AS (
@@ -345,14 +471,29 @@ impl PostgresAGEGraphStorage {
               FROM {}."Node" AS n
               JOIN ids i ON ag_catalog.agtype_access_operator(
                   VARIADIC ARRAY[n.properties, '"node_id"'::agtype]
+=======
+              -- GH-350: qualify agtype so casts survive pool search_path=public
+              SELECT (to_json(v)::text)::ag_catalog.agtype AS node_id, ord FROM input
+            ),
+            vids AS (
+              SELECT n.id::text AS vid_text, i.node_id
+              FROM {}."Node" AS n
+              JOIN ids i ON ag_catalog.agtype_access_operator(
+                  VARIADIC ARRAY[n.properties, '"node_id"'::ag_catalog.agtype]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
               ) = i.node_id
             )
             SELECT ag_catalog.agtype_to_json(e.properties) AS properties,
                    src.node_id::text AS source_id,
                    tgt.node_id::text AS target_id
             FROM {}."EDGE" AS e
+<<<<<<< HEAD
             JOIN vids src ON src.vid = e.start_id
             JOIN vids tgt ON tgt.vid = e.end_id
+=======
+            JOIN vids src ON src.vid_text = e.start_id::text
+            JOIN vids tgt ON tgt.vid_text = e.end_id::text
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             "#,
             self.graph_name, self.graph_name
         );
@@ -404,13 +545,22 @@ impl PostgresAGEGraphStorage {
               SELECT v, ord FROM unnest($1::text[]) WITH ORDINALITY AS t(v, ord)
             ),
             ids(node_id, ord) AS (
+<<<<<<< HEAD
               SELECT (to_json(v)::text)::agtype AS node_id, ord FROM input
+=======
+              -- GH-350: qualify agtype so casts survive pool search_path=public
+              SELECT (to_json(v)::text)::ag_catalog.agtype AS node_id, ord FROM input
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             ),
             vids AS (
               SELECT n.id::text AS vid_text, i.node_id, i.ord, n.properties
               FROM {}."Node" AS n
               JOIN ids i ON ag_catalog.agtype_access_operator(
+<<<<<<< HEAD
                   VARIADIC ARRAY[n.properties, '"node_id"'::agtype]
+=======
+                  VARIADIC ARRAY[n.properties, '"node_id"'::ag_catalog.agtype]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
               ) = i.node_id
             ),
             deg_out AS (

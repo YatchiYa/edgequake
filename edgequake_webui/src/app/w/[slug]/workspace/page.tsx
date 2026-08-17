@@ -3,6 +3,10 @@
  * @description Workspace configuration page accessible via /w/[slug]/workspace deeplink.
  *
  * @implements SPEC-032: Workspace configuration via deeplink
+<<<<<<< HEAD
+=======
+ * @implements SPEC-101 LAW-101-12: Same reconfigure wizard as /workspace (parity)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  * @implements FEAT0802: Workspace detail view with LLM/embedding configuration (deeplink route)
  * @implements UC0305: User views workspace configuration
  *
@@ -13,14 +17,26 @@
 
 import { useParams } from 'next/navigation';
 
+<<<<<<< HEAD
+=======
+import { ReconfigureWorkspaceWizard } from '@/components/onboarding/reconfigure-workspace-wizard';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import {
   WorkspaceLoading,
   WorkspaceNotFound,
 } from '@/components/workspace/workspace-deeplink-states';
 import { WorkspaceEntityTypesCard } from '@/components/workspace/workspace-entity-types-card';
+<<<<<<< HEAD
 import { WorkspacePageHeader } from '@/components/workspace/workspace-page-header';
 import { ProviderStatusHub } from '@/components/settings/provider-status-hub';
 import { WorkspaceActionsCard } from '@/components/workspace/workspace-actions-card';
+=======
+import { WorkspaceExtractionLanguageCard } from '@/components/workspace/workspace-extraction-language-card';
+import { WorkspacePageHeader } from '@/components/workspace/workspace-page-header';
+import { ProviderStatusHub } from '@/components/settings/provider-status-hub';
+import { WorkspaceActionsCard } from '@/components/workspace/workspace-actions-card';
+import { WorkspaceExtendedModelConfig } from '@/components/workspace/workspace-extended-model-config';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { WorkspaceModelConfigGrid } from '@/components/workspace/workspace-model-config-grid';
 import { WorkspaceStatusFooter } from '@/components/workspace/workspace-status-footer';
 import { WorkspaceStatsCards } from '@/components/workspace/workspace-stats-cards';
@@ -31,6 +47,7 @@ import { useWorkspaceSlugResolver } from '@/hooks/use-workspace-slug-resolver';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+<<<<<<< HEAD
 import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import { updateWorkspace } from '@/lib/api/edgequake';
@@ -41,6 +58,13 @@ import {
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+=======
+import type { WorkspaceRebuildHints } from '@/lib/onboarding/workspace-config-diff';
+import { getWorkspacePdfParserBackend } from '@/lib/workspace/drafts';
+import { useTenantStore } from '@/stores/use-tenant-store';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   AlertTriangle,
   FolderKanban,
 } from 'lucide-react';
@@ -48,7 +72,10 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 export default function WorkspacePage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -58,6 +85,7 @@ export default function WorkspacePage() {
     useWorkspaceSlugResolver(slug);
   const { selectedTenantId, selectedWorkspaceId } = useTenantStore();
 
+<<<<<<< HEAD
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
   const [selectedLLM, setSelectedLLM] = useState<LLMSelection | undefined>(undefined);
@@ -66,6 +94,10 @@ export default function WorkspacePage() {
     ...ENTITY_PRESETS.general.types,
   ]);
   const [selectedEntityTypesStrict, setSelectedEntityTypesStrict] = useState(true);
+=======
+  const [reconfigureOpen, setReconfigureOpen] = useState(false);
+  const [pendingRebuild, setPendingRebuild] = useState<WorkspaceRebuildHints | null>(null);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   const {
     workspace,
@@ -79,6 +111,7 @@ export default function WorkspacePage() {
     enabled: isReady,
   });
 
+<<<<<<< HEAD
   // Update workspace mutation
   const updateMutation = useMutation({
     mutationFn: (data: {
@@ -227,6 +260,79 @@ export default function WorkspacePage() {
     embeddings: boolean;
     extraction: boolean;
   } | null>(null);
+=======
+  const documentCount = stats?.document_count ?? workspace?.document_count ?? 0;
+
+  const handleReconfigureApplied = (result: {
+    pendingRebuild: WorkspaceRebuildHints | null;
+    extractionLanguageChanged: boolean;
+  }) => {
+    toast.success(t('workspace.updateSuccess', 'Workspace updated successfully'));
+    queryClient.invalidateQueries({
+      queryKey: ['workspace', selectedTenantId, selectedWorkspaceId],
+    });
+    if (result.extractionLanguageChanged) {
+      toast.info(
+        t(
+          'workspace.extractionLanguage.changedToast',
+          'Extraction language updated. Reprocess documents to refresh the graph.',
+        ),
+        { duration: 6000 },
+      );
+    }
+    if (result.pendingRebuild) {
+      setPendingRebuild(result.pendingRebuild);
+      const { embeddings, extraction, vision } = result.pendingRebuild;
+      if (embeddings && extraction) {
+        toast.info(t('workspace.rebuildRequired', 'Model changes detected'), {
+          description: t(
+            'workspace.rebuildBothHint',
+            'Both embedding and LLM models changed. Use "Rebuild Embeddings" to reprocess all documents.',
+          ),
+          duration: 8000,
+        });
+      } else if (embeddings) {
+        toast.info(t('workspace.embeddingRebuildRequired', 'Embedding model changed'), {
+          description: t(
+            'workspace.embeddingRebuildHint',
+            'Use "Rebuild Embeddings" to regenerate vector embeddings with the new model.',
+          ),
+          duration: 6000,
+        });
+      } else if (extraction) {
+        toast.info(t('workspace.llmRebuildRequired', 'LLM model changed'), {
+          description: t(
+            'workspace.llmRebuildHint',
+            'Use "Rebuild Knowledge Graph" to re-extract entities with the new LLM model.',
+          ),
+          duration: 6000,
+        });
+      } else if (vision) {
+        toast.info(t('workspace.visionRebuildRequired', 'Vision LLM model changed'), {
+          description: t(
+            'workspace.visionRebuildHint',
+            'Use "Rebuild Knowledge Graph" to re-extract PDF documents with the new vision model from original files.',
+          ),
+          duration: 6000,
+        });
+      }
+    }
+  };
+
+  if (resolvingSlug || !isReady) {
+    return <WorkspaceLoading context="workspace configuration" />;
+  }
+
+  if (slugError) {
+    return (
+      <WorkspaceNotFound
+        slug={slug}
+        fallbackHref="/workspace"
+        fallbackLabel={t('workspace.goToSettings', 'Go to Workspace Settings')}
+      />
+    );
+  }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   if (resolvingSlug || !isReady) {
     return <WorkspaceLoading context="workspace configuration" />;
@@ -252,7 +358,10 @@ export default function WorkspacePage() {
               {t('workspace.noWorkspaceSelected', 'No Workspace Selected')}
             </h2>
             <p className="text-sm text-muted-foreground mt-2">
-              {t('workspace.selectWorkspaceHint', 'Please select a workspace from the sidebar.')}
+              {t(
+                'workspace.selectWorkspaceHint',
+                'Please select a workspace from the sidebar.',
+              )}
             </p>
           </CardContent>
         </Card>
@@ -284,7 +393,10 @@ export default function WorkspacePage() {
               {t('workspace.notFound', 'Workspace Not Found')}
             </h2>
             <p className="text-sm text-muted-foreground mt-2">
-              {t('workspace.notFoundHint', 'The selected workspace could not be loaded.')}
+              {t(
+                'workspace.notFoundHint',
+                'The selected workspace could not be loaded.',
+              )}
             </p>
           </CardContent>
         </Card>
@@ -292,16 +404,25 @@ export default function WorkspacePage() {
     );
   }
 
+  const entityTypes = workspace.entity_types?.length
+    ? workspace.entity_types
+    : [...ENTITY_PRESETS.general.types];
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <WorkspacePageHeader
         workspace={workspace}
+<<<<<<< HEAD
         isEditing={isEditing}
         isSaving={updateMutation.isPending}
         onRefresh={() => refetchWorkspace()}
         onEditStart={handleEditStart}
         onCancel={handleCancel}
         onSave={handleSave}
+=======
+        onRefresh={() => refetchWorkspace()}
+        onEditStart={() => setReconfigureOpen(true)}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       />
 
       <Separator />
@@ -312,6 +433,7 @@ export default function WorkspacePage() {
         isLoadingStats={isLoadingStats}
       />
 
+<<<<<<< HEAD
       
       <WorkspaceModelConfigGrid
         workspace={workspace}
@@ -352,6 +474,77 @@ export default function WorkspacePage() {
       />
 
       <WorkspaceStatusFooter />
+=======
+      <WorkspaceModelConfigGrid
+        workspace={workspace}
+        isEditing={false}
+        selectedLLM={undefined}
+        selectedEmbedding={undefined}
+        onLlmChange={() => {}}
+        onEmbeddingChange={() => {}}
+        llmModelChanged={false}
+        embeddingModelChanged={false}
+      />
+
+      <WorkspaceExtendedModelConfig
+        workspace={workspace}
+        isEditing={false}
+        selectedVisionLLM={undefined}
+        selectedPdfParserBackend={getWorkspacePdfParserBackend(workspace)}
+        onVisionLlmChange={() => {}}
+        onPdfParserBackendChange={() => {}}
+        visionLLMChanged={false}
+      />
+
+      <WorkspaceExtractionLanguageCard
+        isEditing={false}
+        workspace={workspace}
+        selectedLanguage={workspace.extraction_language ?? null}
+        onLanguageChange={() => {}}
+      />
+
+      <WorkspaceEntityTypesCard
+        isEditing={false}
+        workspace={workspace}
+        selectedTypes={entityTypes}
+        onTypesChange={() => {}}
+        strictLimit={workspace.entity_types_strict ?? true}
+        onStrictLimitChange={() => {}}
+        extractionLanguage={workspace.extraction_language ?? null}
+      />
+
+      <ProviderStatusHub
+        providers={providerHealth}
+        isLoading={isLoadingHealth}
+        onRefresh={() => {
+          void refreshDynamicModels(queryClient);
+        }}
+      />
+
+      <WorkspaceActionsCard
+        workspace={workspace}
+        pendingRebuild={pendingRebuild}
+        includeVisionPending
+        onRebuildComplete={() => {
+          queryClient.invalidateQueries({
+            queryKey: ['workspaceStats', selectedWorkspaceId],
+          });
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
+          setPendingRebuild(null);
+        }}
+      />
+
+      <WorkspaceStatusFooter />
+
+      <ReconfigureWorkspaceWizard
+        open={reconfigureOpen}
+        onOpenChange={setReconfigureOpen}
+        tenantId={selectedTenantId}
+        workspace={workspace}
+        documentCount={documentCount}
+        onApplied={handleReconfigureApplied}
+      />
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     </div>
   );
 }

@@ -71,6 +71,11 @@ pub struct DocumentListQuery {
     pub date_from: Option<String>,
     pub date_to: Option<String>,
     pub document_pattern: Option<String>,
+<<<<<<< HEAD
+=======
+    /// SPEC-084 / GH-319: filter by status before pagination (`failed`, `completed`, …).
+    pub status: Option<String>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// Serialize document list filters to a query string (no leading `?`).
@@ -91,6 +96,12 @@ pub fn document_list_query_string(q: &DocumentListQuery) -> String {
     if let Some(ref pat) = q.document_pattern {
         parts.push(format!("document_pattern={}", urlencoding::encode(pat)));
     }
+<<<<<<< HEAD
+=======
+    if let Some(ref status) = q.status {
+        parts.push(format!("status={}", urlencoding::encode(status)));
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     parts.join("&")
 }
 

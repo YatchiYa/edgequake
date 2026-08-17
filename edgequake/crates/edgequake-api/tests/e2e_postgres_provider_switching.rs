@@ -22,9 +22,13 @@ use uuid::Uuid;
 
 use edgequake_llm::ProviderFactory;
 
-/// Get database URL from environment
+// Route to the dedicated scratch test database (see common/test_db.rs).
+#[path = "common/test_db.rs"]
+mod test_db;
+
+/// Get database URL from environment, redirected to the scratch test database.
 fn get_database_url() -> Option<String> {
-    env::var("DATABASE_URL").ok().or_else(|| {
+    let base = env::var("DATABASE_URL").ok().or_else(|| {
         let password = env::var("POSTGRES_PASSWORD").ok()?;
         let host = env::var("POSTGRES_HOST").unwrap_or_else(|_| "localhost".to_string());
         let port = env::var("POSTGRES_PORT").unwrap_or_else(|_| "5432".to_string());
@@ -34,7 +38,8 @@ fn get_database_url() -> Option<String> {
             "postgresql://{}:{}@{}:{}/{}",
             user, password, host, port, db
         ))
-    })
+    })?;
+    Some(test_db::isolated_test_url(&base))
 }
 
 /// Create test database pool

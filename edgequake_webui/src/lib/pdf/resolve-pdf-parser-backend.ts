@@ -39,6 +39,32 @@ export function getServerDefaultPdfParserBackend(): PdfParserBackend {
   return "vision";
 }
 
+<<<<<<< HEAD
+=======
+/** Human label for a concrete backend (never "Server Default"). */
+export function pdfParserBackendDisplayName(
+  backend: PdfParserBackend,
+): string {
+  return backend === "edgeparse" ? "EdgeParse" : "Vision";
+}
+
+/**
+ * LAW-101-2 / Wave 8 — never-silent server default for PDF parser.
+ * Example: `Server Default (Vision)`.
+ */
+export function formatServerDefaultPdfParserLabel(
+  t: (key: string, defaultValue: string, options?: { value: string }) => string,
+  serverBackend: PdfParserBackend = getServerDefaultPdfParserBackend(),
+): string {
+  const value = pdfParserBackendDisplayName(serverBackend);
+  return t(
+    "settings.pdfParser.serverDefaultWithValue",
+    `Server Default (${value})`,
+    { value },
+  );
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /**
  * Resolve effective PDF parser backend using the same chain as the upload API.
  */

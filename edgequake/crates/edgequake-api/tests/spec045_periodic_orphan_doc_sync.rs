@@ -54,6 +54,10 @@ async fn spec045_orphan_heartbeat_syncs_document_to_failed() {
         lease_owner: None,
         lease_token: None,
         lease_expires_at: None,
+<<<<<<< HEAD
+=======
+        fairness_hold_until: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     };
 
     let err_msg = "Task heartbeat lost (no update for 12 minutes). The worker may have crashed.";

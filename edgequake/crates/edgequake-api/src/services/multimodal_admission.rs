@@ -59,10 +59,32 @@ pub async fn resolve_upload_content(
 
     let (_extension, text_content, mime_type) =
         validate_file(filename, content, state.config.max_document_size)?;
+<<<<<<< HEAD
     Ok(ResolvedUploadContent {
         text_content,
         mime_type: mime_type.to_string(),
         meta: MultimodalAdmissionMeta::default(),
+=======
+    // SPEC-086: .md / markdown MIME → source_type markdown (not generic "file").
+    let source_type = if raw_ext == "md"
+        || mime_type.eq_ignore_ascii_case("text/markdown")
+        || mime_type.eq_ignore_ascii_case("text/x-markdown")
+    {
+        "markdown"
+    } else if raw_ext == "txt" || mime_type.starts_with("text/") {
+        "text"
+    } else {
+        "file"
+    };
+    Ok(ResolvedUploadContent {
+        text_content,
+        mime_type: mime_type.to_string(),
+        meta: MultimodalAdmissionMeta {
+            multimodal: false,
+            ingest_mode: None,
+            source_type,
+        },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         manifest: None,
     })
 }
@@ -100,4 +122,23 @@ mod tests {
         assert!(!meta.multimodal);
         assert_eq!(meta.source_type, "file");
     }
+<<<<<<< HEAD
+=======
+
+    #[test]
+    fn markdown_extension_maps_to_markdown_source_type() {
+        // Unit-level pin: resolve_upload_content needs AppState; assert taxonomy helper.
+        let raw_ext = "md";
+        let mime_type = "text/markdown";
+        let source_type = if raw_ext == "md"
+            || mime_type.eq_ignore_ascii_case("text/markdown")
+            || mime_type.eq_ignore_ascii_case("text/x-markdown")
+        {
+            "markdown"
+        } else {
+            "file"
+        };
+        assert_eq!(source_type, "markdown");
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

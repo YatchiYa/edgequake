@@ -66,8 +66,15 @@ pub async fn put_injection(
     state
         .storage
         .kv_storage
+<<<<<<< HEAD
         .upsert(&[(meta_key.clone(), meta)])
         .await?;
+=======
+        .upsert(&[(meta_key.clone(), meta.clone())])
+        .await?;
+    // SPEC-091 Wave B6: typed dual-write (warn-only).
+    crate::services::injection_relational::typed_injection_upsert(&meta).await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     info!(
         workspace_id = %workspace_id,
@@ -161,12 +168,25 @@ pub async fn get_injection(
 ) -> ApiResult<Json<InjectionDetailResponse>> {
     let workspace_id = workspace_id_from_tenant(&tenant_ctx);
     let meta_key = injection_meta_key(&workspace_id, &injection_id);
+<<<<<<< HEAD
     let val = state
         .storage
         .kv_storage
         .get_by_id(&meta_key)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("Injection {} not found", injection_id)))?;
+=======
+    // SPEC-091 Wave B6: typed-first when cut over; KV fallback.
+    let val = if crate::services::injection_relational::injections_prefer_relational() {
+        match crate::services::injection_relational::typed_injection_get(&injection_id).await {
+            Some(v) => Some(v),
+            None => state.storage.kv_storage.get_by_id(&meta_key).await?,
+        }
+    } else {
+        state.storage.kv_storage.get_by_id(&meta_key).await?
+    }
+    .ok_or_else(|| ApiError::NotFound(format!("Injection {} not found", injection_id)))?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     Ok(Json(detail_from_meta(&val)))
 }
 
@@ -236,6 +256,11 @@ pub async fn delete_injection(
         );
         let _ = state.storage.kv_storage.delete(&kv_ids_to_delete).await;
     }
+<<<<<<< HEAD
+=======
+    // SPEC-091 Wave B6: typed row parity (warn-only).
+    crate::services::injection_relational::typed_injection_delete(&injection_id).await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     info!(
         injection_id = %injection_id,
@@ -338,8 +363,15 @@ pub async fn update_injection(
     state
         .storage
         .kv_storage
+<<<<<<< HEAD
         .upsert(&[(meta_key.clone(), meta)])
         .await?;
+=======
+        .upsert(&[(meta_key.clone(), meta.clone())])
+        .await?;
+    // SPEC-091 Wave B6: typed dual-write (warn-only).
+    crate::services::injection_relational::typed_injection_upsert(&meta).await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     info!(injection_id = %injection_id, content_changed, new_version, "Updated injection entry");
 

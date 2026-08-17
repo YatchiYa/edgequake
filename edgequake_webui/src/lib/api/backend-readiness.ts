@@ -205,8 +205,14 @@ export async function probeBackendReadinessSnapshot(
 /**
  * Check if the backend is ready to serve requests.
  *
+<<<<<<< HEAD
  * Returns true for `ready` and `degraded` — only `unreachable` triggers the
  * "backend not reachable" banner. Degraded gets a softer busy message.
+=======
+ * Returns true for `ready` and `degraded` — only `unreachable` /
+ * `misconfigured` surface the BackendStatusBanner. Degraded (busy under
+ * ingestion) is treated as ready for UI purposes and does not show a banner.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  */
 export async function isBackendReady(
   request: ReadinessProbeClient = nativeFetchAdapter(),

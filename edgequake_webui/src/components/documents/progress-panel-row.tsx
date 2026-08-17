@@ -2,6 +2,7 @@
 
 /**
  * @module ProgressPanelRow
+<<<<<<< HEAD
  * @description DRY wrapper that renders PdfUploadProgress or IngestionProgressPanel
  * inside a standard card row with a dismiss (X) button.
  *
@@ -68,6 +69,41 @@ export interface ProgressPanelRowProps {
   /** data-testid for the row wrapper. */
   'data-testid'?: string;
   /** data-track-id attribute for Playwright selectors. */
+=======
+ * @description SPEC-086: one IngestionRunCard for all formats; PDF page detail nested under converting.
+ *
+ * @implements SPEC-051: Upload-parity progress for reprocess.
+ * @implements SPEC-054: Admission cleaning vs queued presenters.
+ * @implements SPEC-086: Format-agnostic progress presenter.
+ */
+
+import { AdmissionPhaseRow } from '@/components/documents/admission-phase-row';
+import { IngestionRunCard } from '@/components/documents/ingestion-run-card';
+import { PdfUploadProgress } from '@/components/documents/pdf-upload-progress';
+import { Button } from '@/components/ui/button';
+import { useIngestionProgress } from '@/hooks/use-ingestion-progress';
+import { shouldShowReprocessQueuingPanel } from '@/lib/documents/reprocess-cache';
+import { buildIngestionRunViewFromProgress } from '@/lib/pipeline/ingestion-run-view';
+import { sourceTypeFromFileName } from '@/lib/upload/file-kind';
+import { X } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+export interface ProgressPanelRowProps {
+  trackId: string;
+  documentName: string;
+  /**
+   * When true, nest PDF converting detail under the shared stepper.
+   */
+  isPdf?: boolean;
+  currentStage?: string | null;
+  stageMessage?: string | null;
+  onRemove?: () => void;
+  onComplete?: () => void;
+  onFailed?: (error: string) => void;
+  onCancel?: () => void;
+  'data-testid'?: string;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   'data-track-id'?: string;
 }
 
@@ -104,6 +140,42 @@ export function ProgressPanelRow({
     'Hides progress; processing continues.',
   );
 
+<<<<<<< HEAD
+=======
+  const { progress, cancel } = useIngestionProgress(
+    isAdmission ? null : trackId,
+    {
+      documentId: trackId,
+      documentName,
+    },
+  );
+
+  const run = useMemo(() => {
+    if (!progress) return null;
+    const sourceType = isPdf
+      ? 'pdf'
+      : sourceTypeFromFileName(documentName);
+    return buildIngestionRunViewFromProgress(progress, {
+      sourceType,
+      filename: documentName,
+    });
+  }, [progress, isPdf, documentName]);
+
+  useEffect(() => {
+    if (!progress) return;
+    if (progress.status === 'completed') onComplete?.();
+    if (progress.status === 'failed') {
+      onFailed?.(progress.progress.latest_message || 'Failed');
+    }
+  }, [progress, onComplete, onFailed]);
+
+  const handleCancel = () => {
+    // Always cancel the live track via WS; optional parent dismiss callback.
+    cancel();
+    onCancel?.();
+  };
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   return (
     <div
       className="relative p-2 rounded-lg border bg-card"
@@ -131,6 +203,7 @@ export function ProgressPanelRow({
               : 'reprocess-queuing-row'
           }
         />
+<<<<<<< HEAD
       ) : isPdf ? (
         <PdfUploadProgress
           trackId={trackId}
@@ -148,6 +221,31 @@ export function ProgressPanelRow({
           onFailed={onFailed}
           onCancel={onCancel}
         />
+=======
+      ) : run ? (
+        <IngestionRunCard
+          run={run}
+          compact
+          onCancel={handleCancel}
+          nestedDetail={
+            isPdf ? (
+              <PdfUploadProgress
+                trackId={trackId}
+                filename={documentName}
+                compact
+                nested
+                onComplete={onComplete}
+                onFailed={onFailed}
+              />
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className="text-sm text-muted-foreground py-1" data-testid="spec086-run-loading">
+          {documentName}
+          <span className="block text-xs">Queued for processing…</span>
+        </div>
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       )}
       {onRemove && (
         <Button

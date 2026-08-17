@@ -21,6 +21,10 @@ use crate::services::find_active_deletion_track_id;
 use crate::services::perform_document_deletion;
 use crate::state::AppState;
 
+<<<<<<< HEAD
+=======
+#[cfg(feature = "postgres")]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use crate::document_read_model::relational_document_scope;
 use crate::services::document_metadata_scan::{
     canonical_document_id, document_id_from_metadata_key, load_all_document_metadata_entries,
@@ -32,6 +36,7 @@ use super::super::storage_helpers::metadata_matches_tenant_context;
 /// Resolve the actual KV key prefix for a document.
 ///
 /// Returns `(actual_key_prefix, metadata_key, has_metadata)`.
+<<<<<<< HEAD
 async fn resolve_kv_key_prefix(document_id: &str, state: &AppState) -> (String, String, bool) {
     let direct_metadata_key = metadata_key_for_document(document_id);
     if state
@@ -44,6 +49,40 @@ async fn resolve_kv_key_prefix(document_id: &str, state: &AppState) -> (String, 
         .is_some()
     {
         return (document_id.to_string(), direct_metadata_key, true);
+=======
+pub(crate) async fn resolve_kv_key_prefix_for_batch(
+    document_id: &str,
+    state: &AppState,
+) -> (String, String, bool) {
+    resolve_kv_key_prefix(document_id, state).await
+}
+
+/// Resolve the actual KV key prefix for a document.
+///
+/// Returns `(actual_key_prefix, metadata_key, has_metadata)`.
+///
+/// SPEC-086: staging shells live at `staging:{id}-metadata`. Never treat
+/// `staging:{id}` as the cascade key prefix (breaks content/hash cleanup and
+/// can leave delete sessions hanging while a worker runs a useless graph scan).
+async fn resolve_kv_key_prefix(document_id: &str, state: &AppState) -> (String, String, bool) {
+    // IMP-075-13: final + staging existence in one RT (final-first for delete).
+    // Distinct from staging-first ingest SSOT — promoted final wins when both exist.
+    let direct_metadata_key = metadata_key_for_document(document_id);
+    let staging_metadata_key = edgequake_storage::kv_keys::staging_doc_metadata(document_id);
+    let probe_keys = [direct_metadata_key.clone(), staging_metadata_key.clone()];
+    if let Ok(vals) = state
+        .storage
+        .kv_storage
+        .get_by_ids_ordered(&probe_keys)
+        .await
+    {
+        if vals.first().and_then(|v| v.as_ref()).is_some() {
+            return (document_id.to_string(), direct_metadata_key, true);
+        }
+        if vals.get(1).and_then(|v| v.as_ref()).is_some() {
+            return (document_id.to_string(), staging_metadata_key, true);
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     if let Ok(entries) = load_all_document_metadata_entries(state.storage.kv_storage.as_ref()).await
@@ -51,9 +90,27 @@ async fn resolve_kv_key_prefix(document_id: &str, state: &AppState) -> (String, 
         for (key, val) in entries {
             let canonical = canonical_document_id(&key, &val);
             let legacy_json_id = val.get("id").and_then(|v| v.as_str());
+<<<<<<< HEAD
             if canonical == document_id || legacy_json_id == Some(document_id) {
                 let prefix =
                     document_id_from_metadata_key(&key).unwrap_or_else(|| document_id.to_string());
+=======
+            let staging_match = key.starts_with("staging:")
+                && (legacy_json_id == Some(document_id)
+                    || key == staging_metadata_key
+                    || canonical.strip_prefix("staging:") == Some(document_id));
+            if staging_match {
+                return (document_id.to_string(), key, true);
+            }
+            if canonical == document_id || legacy_json_id == Some(document_id) {
+                let prefix =
+                    document_id_from_metadata_key(&key).unwrap_or_else(|| document_id.to_string());
+                // Never use `staging:{id}` as cascade prefix.
+                let prefix = prefix
+                    .strip_prefix("staging:")
+                    .unwrap_or(prefix.as_str())
+                    .to_string();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 return (prefix, key, true);
             }
         }
@@ -62,6 +119,151 @@ async fn resolve_kv_key_prefix(document_id: &str, state: &AppState) -> (String, 
     (document_id.to_string(), direct_metadata_key, false)
 }
 
+<<<<<<< HEAD
+=======
+/// Sync-dismiss a staging-only admission shell (no graph/vector cascade needed).
+async fn delete_staging_shell_sync(
+    state: &AppState,
+    document_id: &str,
+    metadata_key: &str,
+    tenant_ctx: &TenantContext,
+) -> ApiResult<(StatusCode, Json<DeleteDocumentResponse>)> {
+    let meta = state
+        .storage
+        .kv_storage
+        .get_by_id(metadata_key)
+        .await
+        .ok()
+        .flatten();
+    if let Some(ref metadata) = meta {
+        if !metadata_matches_tenant_context(metadata, tenant_ctx) {
+            return Err(ApiError::NotFound(format!(
+                "Document {} not found",
+                document_id
+            )));
+        }
+    }
+    let workspace_id = meta
+        .as_ref()
+        .and_then(|m| m.get("workspace_id").and_then(|v| v.as_str()))
+        .unwrap_or("default")
+        .to_string();
+    let content_hash = meta
+        .as_ref()
+        .and_then(|m| m.get("content_hash").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .to_string();
+    let ingest_track_id = meta
+        .as_ref()
+        .and_then(|m| {
+            m.get("track_id")
+                .or_else(|| m.get("task_id"))
+                .and_then(|v| v.as_str())
+        })
+        .map(|s| s.to_string());
+
+    // Cancel any still-queued Insert so the worker cannot recreate final metadata
+    // after we wipe the staging shell (delete-during-early-upload race).
+    // SPEC-091 hardening: route through `apply_task_row_cancel` — a process-local
+    // registry cancel alone does not survive a worker restart; persisting
+    // `TaskStatus::Cancelled` on the row makes the delete intent durable (LAW-Q7).
+    if let Some(ref track) = ingest_track_id {
+        match crate::services::apply_task_row_cancel(
+            &state.tasks.storage,
+            &state.tasks.cancellation_registry,
+            track,
+        )
+        .await
+        {
+            Ok(applied) => {
+                tracing::info!(
+                    document_id = %document_id,
+                    track_id = %track,
+                    was_running = applied.was_running,
+                    row_cancelled = applied.cancelled,
+                    "Cancelled ingest task before sync staging dismiss (durable)"
+                );
+            }
+            Err(e) => {
+                // Fall back to the process-local signal so the delete still
+                // proceeds; the row cancel is retried by the state machine's
+                // terminal guard on the worker side.
+                let cancelled = state.tasks.cancellation_registry.cancel(track).await;
+                tracing::warn!(
+                    document_id = %document_id,
+                    track_id = %track,
+                    error = %e,
+                    cancelled,
+                    "Durable task-row cancel failed; fell back to registry-only cancel"
+                );
+            }
+        }
+    }
+
+    crate::services::rollback_staging(
+        &state.storage.kv_storage,
+        document_id,
+        &workspace_id,
+        &content_hash,
+    )
+    .await
+    .map_err(ApiError::Internal)?;
+
+    // SPEC-091 W2: typed ingestion_dedup staging rollback.
+    #[cfg(feature = "postgres")]
+    crate::services::ingestion_dedup_store::dual_release_staging(
+        state.pg_pool.as_ref(),
+        &workspace_id,
+        &content_hash,
+    )
+    .await;
+
+    // Belt-and-suspenders: drop any leftover staging keys for this id.
+    let leftover = [
+        edgequake_storage::kv_keys::staging_doc_metadata(document_id),
+        edgequake_storage::kv_keys::staging_doc_content(document_id),
+    ];
+    let _ = state.storage.kv_storage.delete(&leftover).await;
+
+    let track_id = format!("delete-staging-{document_id}");
+    state
+        .tasks
+        .progress_broadcaster
+        .deletion_started(document_id, &track_id);
+    state.tasks.progress_broadcaster.deletion_completed(
+        document_id,
+        &track_id,
+        0,
+        0,
+        0,
+        0,
+        false,
+        None,
+    );
+
+    tracing::info!(
+        document_id = %document_id,
+        "Staging admission shell deleted synchronously (no cascade)"
+    );
+
+    Ok((
+        StatusCode::OK,
+        Json(DeleteDocumentResponse {
+            document_id: document_id.to_string(),
+            deleted: true,
+            accepted: false,
+            track_id: Some(track_id),
+            chunks_deleted: 0,
+            entities_affected: 0,
+            relationships_affected: 0,
+            embeddings_deleted: 0,
+            partial_failure: false,
+            partial_failure_reason: None,
+        }),
+    ))
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// Delete a document by ID (async job — 202 Accepted).
 #[utoipa::path(
     delete,
@@ -92,6 +294,26 @@ pub async fn delete_document(
         );
     }
 
+<<<<<<< HEAD
+=======
+    // SPEC-086: orphan/failed staging shells have no graph — sync dismiss.
+    // Avoids queueing Deletion behind ingest and leave UI stuck on "Deleting".
+    if has_metadata && metadata_key.starts_with("staging:") {
+        let final_also_present = state
+            .storage
+            .kv_storage
+            .get_by_id(&metadata_key_for_document(&document_id))
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !final_also_present {
+            return delete_staging_shell_sync(&state, &document_id, &metadata_key, &tenant_ctx)
+                .await;
+        }
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let chunk_prefix = format!("{}-chunk-", actual_key_prefix);
     let chunk_ids: Vec<String> = state
         .storage
@@ -278,6 +500,7 @@ pub async fn delete_document(
     // not leave the document stuck in a deleting badge with no worker task.
     state.enqueue_task(task).await?;
 
+<<<<<<< HEAD
     if has_metadata {
         if let Ok(Some(mut metadata)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
             if let Some(obj) = metadata.as_object_mut() {
@@ -309,6 +532,10 @@ pub async fn delete_document(
             }
         }
     }
+=======
+    // SPEC-098 LAW-098-9: dual-write KV + SQL `deleting` (list merge honesty).
+    crate::services::admit_document_deleting(&state, &document_id, &actual_key_prefix).await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     state
         .tasks
@@ -444,6 +671,96 @@ mod tests {
     }
 
     #[tokio::test]
+<<<<<<< HEAD
+=======
+    async fn test_resolve_staging_prefix_uses_document_id() {
+        let state = AppState::test_state();
+        let doc_id = "staging-shell-doc-001";
+        let staging_key = edgequake_storage::kv_keys::staging_doc_metadata(doc_id);
+        state
+            .storage
+            .kv_storage
+            .upsert(&[(
+                staging_key.clone(),
+                json!({
+                    "id": doc_id,
+                    "status": "failed",
+                    "admission_staging": true,
+                    "workspace_id": "default",
+                    "error_message": "Orphaned staging admission — please re-upload"
+                }),
+            )])
+            .await
+            .unwrap();
+
+        let (prefix, key, has_metadata) = resolve_kv_key_prefix(doc_id, &state).await;
+        assert_eq!(
+            prefix, doc_id,
+            "must not use staging:{{id}} as cascade prefix"
+        );
+        assert_eq!(key, staging_key);
+        assert!(has_metadata);
+    }
+
+    #[tokio::test]
+    async fn test_delete_staging_shell_sync_removes_keys() {
+        let state = AppState::test_state();
+        let doc_id = "staging-shell-doc-002";
+        let staging_meta = edgequake_storage::kv_keys::staging_doc_metadata(doc_id);
+        let staging_content = edgequake_storage::kv_keys::staging_doc_content(doc_id);
+        state
+            .storage
+            .kv_storage
+            .upsert(&[
+                (
+                    staging_meta.clone(),
+                    json!({
+                        "id": doc_id,
+                        "status": "failed",
+                        "admission_staging": true,
+                        "workspace_id": "default",
+                        "content_hash": "abc123",
+                        "error_message": "Orphaned staging admission — please re-upload"
+                    }),
+                ),
+                (staging_content.clone(), json!({"text": "hello"})),
+            ])
+            .await
+            .unwrap();
+
+        let tenant = TenantContext {
+            tenant_id: Some("default".into()),
+            workspace_id: Some("default".into()),
+            user_id: None,
+        };
+        let (status, Json(resp)) = delete_document(
+            State(state.clone()),
+            axum::extract::Path(doc_id.to_string()),
+            tenant,
+        )
+        .await
+        .unwrap();
+        assert_eq!(status, StatusCode::OK);
+        assert!(resp.deleted);
+        assert!(!resp.accepted);
+        assert!(state
+            .storage
+            .kv_storage
+            .get_by_id(&staging_meta)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(state
+            .storage
+            .kv_storage
+            .get_by_id(&staging_content)
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     async fn test_delete_document_with_key_id_mismatch() {
         let state = AppState::test_state();
         let kv_prefix = "4b788a9e-0000-0000-0000-000000000001";

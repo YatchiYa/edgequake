@@ -11,6 +11,11 @@
 //! - building the correct recovery task (PDF vs text)
 //! - idempotent enqueue via [`AppState::enqueue_task`]
 
+<<<<<<< HEAD
+=======
+use std::sync::Arc;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use serde_json::{json, Value};
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -44,6 +49,13 @@ pub struct ReconcilePendingReport {
     pub already_scheduled: usize,
     pub skipped_no_content: usize,
     pub skipped_not_eligible: usize,
+<<<<<<< HEAD
+=======
+    /// Mid-pipeline docs with no live task and no recoverable content → failed.
+    pub failed_closed: usize,
+    /// Mid-pipeline KV healed to cancelled because the linked task is cancelled.
+    pub cancelled_synced: usize,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub errors: usize,
     pub document_ids: Vec<String>,
 }
@@ -54,6 +66,15 @@ pub fn is_orphan_waiting_status(status: &str) -> bool {
     super::reprocess_admission::is_reprocess_orphan_waiting_status(status)
 }
 
+<<<<<<< HEAD
+=======
+/// True when a document status should be scanned by the orphan-task janitor.
+pub fn is_orphan_reconcile_status(status: &str) -> bool {
+    is_orphan_waiting_status(status)
+        || crate::document_metadata::is_active_processing_status(status)
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// True when TaskStorage already has a pending/processing task for this document.
 pub async fn has_active_task_for_document(
     storage: &dyn TaskStorage,
@@ -94,6 +115,112 @@ pub async fn has_active_task_for_document(
     Ok(false)
 }
 
+<<<<<<< HEAD
+=======
+/// Outcome of attempting cancel-heal for a mid-pipeline orphan document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancelHealOutcome {
+    /// Metadata synced to cancelled (or already cancelled + relational touched).
+    Healed,
+    /// No cancelled task — caller may requeue / fail-close.
+    NotCancelled,
+}
+
+/// If the document has a Cancelled task and no active work, sync metadata to cancelled.
+///
+/// DRY SSOT used by orphan reconcile and `recover-stuck` so cancelled zombies are
+/// never re-enqueued as pending.
+pub async fn try_heal_cancelled_orphan(
+    state: &AppState,
+    document_id: &str,
+    metadata: &Value,
+) -> ApiResult<CancelHealOutcome> {
+    let workspace_id = parse_uuid_field(metadata, "workspace_id");
+    if has_active_task_for_document(state.tasks.storage.as_ref(), document_id, workspace_id).await?
+    {
+        return Ok(CancelHealOutcome::NotCancelled);
+    }
+    if !has_cancelled_task_for_document(
+        state.tasks.storage.as_ref(),
+        document_id,
+        metadata,
+        workspace_id,
+    )
+    .await?
+    {
+        return Ok(CancelHealOutcome::NotCancelled);
+    }
+
+    match super::task_document_sync::sync_doc_cancelled_by_document_id(
+        Arc::clone(&state.storage.kv_storage),
+        document_id,
+        "Task cancelled — reconciled orphan mid-pipeline metadata",
+    )
+    .await
+    {
+        Ok(_) => Ok(CancelHealOutcome::Healed),
+        Err(e) => {
+            warn!(
+                document_id = %document_id,
+                error = %e,
+                "SPEC-054: cancel-orphan KV sync failed"
+            );
+            Err(ApiError::Internal(e))
+        }
+    }
+}
+
+/// True when a Cancelled task references this document (track_id or payload).
+///
+/// Used to heal KV inflight zombies after cancel updated the task / relational
+/// column but left metadata at embedding/extracting.
+pub async fn has_cancelled_task_for_document(
+    storage: &dyn TaskStorage,
+    document_id: &str,
+    metadata: &Value,
+    workspace_id: Option<Uuid>,
+) -> ApiResult<bool> {
+    if let Some(track_id) = meta_str(metadata, "track_id").filter(|t| !t.is_empty()) {
+        if let Ok(Some(task)) = storage.get_task(track_id).await {
+            if task.status == TaskStatus::Cancelled {
+                return Ok(true);
+            }
+        }
+    }
+
+    let mut page = 1u32;
+    loop {
+        let list = storage
+            .list_tasks(
+                TaskFilter {
+                    workspace_id,
+                    status: Some(TaskStatus::Cancelled),
+                    ..Default::default()
+                },
+                Pagination {
+                    page,
+                    page_size: 100,
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+        for task in &list.tasks {
+            if extract_document_id_from_task(task).as_deref() == Some(document_id) {
+                return Ok(true);
+            }
+        }
+
+        if page >= list.total_pages.max(1) {
+            break;
+        }
+        page += 1;
+    }
+    Ok(false)
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 fn parse_uuid_field(meta: &Value, key: &str) -> Option<Uuid> {
     meta.get(key)
         .and_then(|v| v.as_str())
@@ -452,6 +579,32 @@ async fn ensure_one_orphan(
                 .map(str::to_string)
         });
 
+<<<<<<< HEAD
+=======
+    let status = meta_str(metadata, "status").unwrap_or("pending");
+    let mid_pipeline = crate::document_metadata::is_active_processing_status(status)
+        && !is_orphan_waiting_status(status);
+
+    // Heal cancel zombies before re-enqueue (DRY with recover-stuck).
+    match try_heal_cancelled_orphan(state, document_id, metadata).await {
+        Ok(CancelHealOutcome::Healed) => {
+            report.cancelled_synced += 1;
+            report.document_ids.push(document_id.to_string());
+            return;
+        }
+        Ok(CancelHealOutcome::NotCancelled) => {}
+        Err(e) => {
+            report.errors += 1;
+            warn!(
+                document_id = %document_id,
+                error = %e,
+                "SPEC-054: cancel-heal failed"
+            );
+            return;
+        }
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     match ensure_task_for_pending_document(
         state,
         document_id,
@@ -468,7 +621,38 @@ async fn ensure_one_orphan(
         }
         Ok(EnsureTaskOutcome::AlreadyScheduled) => report.already_scheduled += 1,
         Ok(EnsureTaskOutcome::SkippedNoContent)
+<<<<<<< HEAD
         | Ok(EnsureTaskOutcome::RequiresReupload { .. }) => report.skipped_no_content += 1,
+=======
+        | Ok(EnsureTaskOutcome::RequiresReupload { .. }) => {
+            // Mid-pipeline with no recoverable work must not stay Converting forever.
+            if mid_pipeline {
+                match super::task_document_sync::sync_doc_failed_no_active_task(
+                    Arc::clone(&state.storage.kv_storage),
+                    document_id,
+                    "Pipeline interrupted — no active task",
+                )
+                .await
+                {
+                    Ok(true) => {
+                        report.failed_closed += 1;
+                        report.document_ids.push(document_id.to_string());
+                    }
+                    Ok(false) => report.skipped_no_content += 1,
+                    Err(e) => {
+                        report.errors += 1;
+                        warn!(
+                            document_id = %document_id,
+                            error = %e,
+                            "SPEC-054: fail-closed orphan sync failed"
+                        );
+                    }
+                }
+            } else {
+                report.skipped_no_content += 1;
+            }
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         Ok(EnsureTaskOutcome::SkippedNotEligible) => report.skipped_not_eligible += 1,
         Err(e) => {
             report.errors += 1;
@@ -532,11 +716,22 @@ pub async fn reconcile_pending_documents_by_ids(
     Ok(report)
 }
 
+<<<<<<< HEAD
 /// Scan metadata and enqueue tasks for waiting docs with no active task.
+=======
+/// Scan metadata and enqueue tasks for waiting / mid-pipeline docs with no active task.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ///
 /// Stampede guard: stops after `max_documents` enqueues (not full DB scan
 /// processing). Prefer [`reconcile_pending_documents_by_ids`] for recovered
 /// docs from the current boot.
+<<<<<<< HEAD
+=======
+///
+/// Mid-pipeline statuses (`processing`/`converting`/…) with no live task are
+/// either re-enqueued (recoverable content/pdf) or fail-closed so Active Runs
+/// cannot show Converting forever after cancel/restart.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub async fn reconcile_pending_documents_missing_tasks(
     state: &AppState,
     max_documents: usize,
@@ -557,7 +752,11 @@ pub async fn reconcile_pending_documents_missing_tasks(
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     for (_key, value) in entries {
+<<<<<<< HEAD
         if report.enqueued >= max_documents {
+=======
+        if report.enqueued + report.failed_closed + report.cancelled_synced >= max_documents {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             break;
         }
 
@@ -565,7 +764,11 @@ pub async fn reconcile_pending_documents_missing_tasks(
             continue;
         };
         let status = obj.get("status").and_then(|v| v.as_str()).unwrap_or("");
+<<<<<<< HEAD
         if !is_orphan_waiting_status(status) {
+=======
+        if !is_orphan_reconcile_status(status) {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             continue;
         }
 
@@ -589,9 +792,17 @@ pub async fn reconcile_pending_documents_missing_tasks(
         enqueued = report.enqueued,
         already_scheduled = report.already_scheduled,
         skipped_no_content = report.skipped_no_content,
+<<<<<<< HEAD
         errors = report.errors,
         max_documents,
         "SPEC-054/#298: pending-document task reconcile complete"
+=======
+        failed_closed = report.failed_closed,
+        cancelled_synced = report.cancelled_synced,
+        errors = report.errors,
+        reason = %reason,
+        "SPEC-054/#298: pending/mid-pipeline document task reconcile complete"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     );
     Ok(report)
 }
@@ -611,6 +822,21 @@ mod tests {
     }
 
     #[test]
+<<<<<<< HEAD
+=======
+    fn orphan_reconcile_includes_mid_pipeline() {
+        assert!(is_orphan_reconcile_status("pending"));
+        assert!(is_orphan_reconcile_status("queued"));
+        assert!(is_orphan_reconcile_status("processing"));
+        assert!(is_orphan_reconcile_status("converting"));
+        assert!(is_orphan_reconcile_status("embedding"));
+        assert!(!is_orphan_reconcile_status("failed"));
+        assert!(!is_orphan_reconcile_status("completed"));
+        assert!(!is_orphan_reconcile_status("cancelled"));
+    }
+
+    #[test]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     fn issue304_failed_interrupted_is_ensure_eligible() {
         // Ordinary failed/cancelled are NOT Interrupted — recovery SSOT is narrow.
         assert!(

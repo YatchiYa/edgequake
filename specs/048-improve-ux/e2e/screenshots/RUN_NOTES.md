@@ -1,6 +1,10 @@
 # SPEC-048 Screenshot Analysis
 
+<<<<<<< HEAD
 Generated: 2026-07-17T14:13:50.176Z
+=======
+Generated: 2026-07-31T15:57:13.859Z
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ## S01-idle
 
@@ -13,8 +17,13 @@ Generated: 2026-07-17T14:13:50.176Z
 
 - ActiveRunsPanel owns working narrative (banner demoted)
 - Headline is stage-specific (Extracting Entities)
+<<<<<<< HEAD
 - Stepper extracting=active
 - Row stage=extracting (parity AC-02)
+=======
+- Phase strip extract=active; wire extracting=active
+- No row stage under ActiveRuns (LAW-IS3)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 - Working pill visible; completed row muted
 - Dropzone quiet while Working
 - File: `S02-working-parity.png`
@@ -24,7 +33,11 @@ Generated: 2026-07-17T14:13:50.176Z
 - ActiveRunsPanel visible
 - Full UnifiedStage timeline: prior done, extracting active, later pending
 - Step detail shows 42/351 chunks
+<<<<<<< HEAD
 - Overall (est.) < 100% mid-flight (first-principles progress)
+=======
+- Overall collapsed while stage meter owns N/M (LAW-IS2)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 - Client 4-step legend not required (DEF-10 morph)
 - File: `S03-server-stepper.png`
 
@@ -84,6 +97,10 @@ Generated: 2026-07-17T14:13:50.176Z
 
 ## S10-markdown-skip-convert
 
+<<<<<<< HEAD
 - Non-PDF: converting skipped (muted)
+=======
+- Non-PDF: converting omitted from timeline
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 - Chunking active with 3/10 detail
 - File: `S10-markdown-skip-convert.png`

@@ -52,6 +52,10 @@ from edgequake.resources.documents import (
     DocumentsResource,
     PdfResource,
 )
+<<<<<<< HEAD
+=======
+from edgequake.resources.parse import AsyncParseResource, ParseResource
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 from edgequake.resources.graph import (
     AsyncEntitiesResource,
     AsyncGraphResource,
@@ -149,6 +153,14 @@ class EdgeQuake:
         return PdfResource(self._transport)
 
     @cached_property
+<<<<<<< HEAD
+=======
+    def parse(self) -> ParseResource:
+        """SPEC-094: Stateless PDF → Markdown parse."""
+        return ParseResource(self._transport)
+
+    @cached_property
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     def query(self) -> QueryResource:
         """RAG query execution with optional streaming."""
         return QueryResource(self._transport)
@@ -357,6 +369,14 @@ class AsyncEdgeQuake:
         return AsyncPdfResource(self._transport)
 
     @cached_property
+<<<<<<< HEAD
+=======
+    def parse(self) -> AsyncParseResource:
+        """SPEC-094: Stateless PDF → Markdown parse."""
+        return AsyncParseResource(self._transport)
+
+    @cached_property
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     def query(self) -> AsyncQueryResource:
         """RAG query execution with optional streaming."""
         return AsyncQueryResource(self._transport)

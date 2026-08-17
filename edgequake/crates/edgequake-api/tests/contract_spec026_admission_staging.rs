@@ -37,6 +37,10 @@ fn sample_input(content: &str, hash: &str) -> DocumentAdmissionInput {
         content_hash: hash.to_string(),
         custom_metadata: None,
         track_id: None,
+<<<<<<< HEAD
+=======
+        expected_batch_count: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         gleaning: GleaningAdmissionOptions::default(),
         document_type: None,
         chunk_strategy: None,

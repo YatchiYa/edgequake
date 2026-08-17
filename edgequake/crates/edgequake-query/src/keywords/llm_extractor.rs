@@ -3,12 +3,14 @@
 //! This module provides the production-grade keyword extractor
 //! that uses an LLM to extract high-level and low-level keywords.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use crate::cache::llm_response_cache::{hash_keyword_args, llm_cache_storage_key, LlmCacheType};
 use crate::error::{QueryError, Result};
 use edgequake_llm::LLMProvider;
 
@@ -435,11 +437,18 @@ impl KeywordExtractor for LLMKeywordExtractor {
 
 /// Cached keyword extractor that wraps another extractor.
 ///
-/// Provides multi-level caching with configurable TTL.
+/// Provides multi-level caching with configurable TTL. Keys follow SPEC-103
+/// `{mode}:keywords:{hash}-cache` (mode defaults to `default`, LR extract style).
 pub struct CachedKeywordExtractor {
     inner: Arc<dyn KeywordExtractor>,
     cache: Arc<dyn KeywordCache>,
     ttl: Duration,
+    /// Query-mode segment for LR-shaped keys (keywords use `"default"`).
+    mode: String,
+    /// Model pin for LAW-C3 hash inputs.
+    model: String,
+    /// Shared hit flag observed by the query pipeline (LAW-C8).
+    hit_flag: Arc<AtomicBool>,
 }
 
 impl CachedKeywordExtractor {
@@ -449,7 +458,33 @@ impl CachedKeywordExtractor {
         cache: Arc<dyn KeywordCache>,
         ttl: Duration,
     ) -> Self {
-        Self { inner, cache, ttl }
+        Self::with_model(
+            inner,
+            cache,
+            ttl,
+            "default",
+            "unknown",
+            Arc::new(AtomicBool::new(false)),
+        )
+    }
+
+    /// Create with explicit mode/model pins for durable key identity.
+    pub fn with_model(
+        inner: Arc<dyn KeywordExtractor>,
+        cache: Arc<dyn KeywordCache>,
+        ttl: Duration,
+        mode: impl Into<String>,
+        model: impl Into<String>,
+        hit_flag: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            inner,
+            cache,
+            ttl,
+            mode: mode.into(),
+            model: model.into(),
+            hit_flag,
+        }
     }
 
     /// Create with default TTL (24 hours).
@@ -458,6 +493,29 @@ impl CachedKeywordExtractor {
         cache: Arc<dyn KeywordCache>,
     ) -> Self {
         Self::new(inner, cache, Duration::from_secs(24 * 60 * 60))
+    }
+
+    /// Shared hit flag (same Arc as on [`crate::QueryEngine`]).
+    pub fn hit_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.hit_flag)
+    }
+
+    /// Whether the last `extract*` call was served from cache.
+    pub fn last_cache_hit(&self) -> bool {
+        self.hit_flag.load(Ordering::Relaxed)
+    }
+
+    fn language_pin() -> Option<String> {
+        std::env::var("EDGEQUAKE_EXTRACTION_LANGUAGE")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    fn build_cache_key(&self, query: &str) -> String {
+        let lang = Self::language_pin();
+        let hash = hash_keyword_args(query, &self.mode, &self.model, lang.as_deref());
+        llm_cache_storage_key(&self.mode, LlmCacheType::Keywords, &hash)
     }
 }
 
@@ -470,11 +528,20 @@ impl KeywordExtractor for CachedKeywordExtractor {
 
     async fn extract_extended(&self, query: &str) -> Result<ExtractedKeywords> {
         let cache_key = self.cache_key(query);
+        self.hit_flag.store(false, Ordering::Relaxed);
 
+<<<<<<< HEAD
         // Check cache first (064: EDGEQUAKE_KEYWORD_CACHE=0 disables)
         if keyword_cache_enabled() {
             if let Ok(Some(cached)) = self.cache.get(&cache_key).await {
                 tracing::debug!(query = %query, "Keyword cache hit");
+=======
+        // Check cache first (064 / SPEC-103: master + KEYWORD_CACHE)
+        if keyword_cache_enabled() {
+            if let Ok(Some(cached)) = self.cache.get(&cache_key).await {
+                tracing::debug!(query = %query, "Keyword cache hit");
+                self.hit_flag.store(true, Ordering::Relaxed);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 return Ok(cached);
             }
         }
@@ -510,11 +577,16 @@ impl KeywordExtractor for CachedKeywordExtractor {
         llm_override: Option<std::sync::Arc<dyn crate::LLMProvider>>,
     ) -> Result<ExtractedKeywords> {
         let cache_key = self.cache_key(query);
+        self.hit_flag.store(false, Ordering::Relaxed);
 
         // Check cache first (independent of LLM provider)
         if keyword_cache_enabled() {
             if let Ok(Some(cached)) = self.cache.get(&cache_key).await {
                 tracing::debug!(query = %query, "Keyword cache hit (with LLM override)");
+<<<<<<< HEAD
+=======
+                self.hit_flag.store(true, Ordering::Relaxed);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 return Ok(cached);
             }
         }
@@ -539,7 +611,7 @@ impl KeywordExtractor for CachedKeywordExtractor {
     }
 
     fn cache_key(&self, query: &str) -> String {
-        self.inner.cache_key(query)
+        self.build_cache_key(query)
     }
 }
 

@@ -23,6 +23,12 @@ anyhow = "1.0"
 # Logging
 tracing = "0.1"
 edgequake-pdf = { path = "../edgequake-pdf" }
+<<<<<<< HEAD
+=======
+
+# SPEC-091 QW2: transition + provider budget Prometheus counters
+edgequake-observability = { path = "../edgequake-observability", features = ["metrics"] }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }

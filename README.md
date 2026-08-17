@@ -5,7 +5,11 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
+<<<<<<< HEAD
 [![Version](https://img.shields.io/badge/version-0.21.0-blue.svg?style=flat)](CHANGELOG.md)
+=======
+[![Version](https://img.shields.io/badge/version-0.24.1-blue.svg?style=flat)](CHANGELOG.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
@@ -26,6 +30,11 @@ curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-m
 The wizard guides you through provider selection (OpenAI / Ollama), model choice, and starts the full stack.  
 **Open** http://localhost:3000 **and you're in** — no login required (quickstart runs with open API via `EDGEQUAKE_DEV_MODE=true`).
 
+<<<<<<< HEAD
+=======
+> **Ports:** Docker quickstart maps the Web UI to **http://localhost:3000**. Local `make dev` defaults to **http://localhost:3010** (avoids collisions with other stacks).
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 <details>
 <summary><strong>Alternative: docker compose directly</strong></summary>
 
@@ -53,6 +62,7 @@ EDGEQUAKE_LLM_PROVIDER=ollama \
 
 </details>
 
+<<<<<<< HEAD
 | Service | URL |
 |---------|-----|
 | Web UI | http://localhost:3000 |
@@ -60,12 +70,23 @@ EDGEQUAKE_LLM_PROVIDER=ollama \
 | Swagger | http://localhost:8080/swagger-ui |
 | Health | http://localhost:8080/health |
 
+=======
+| Service | URL (Docker quickstart) | URL (`make dev`) |
+|---------|-------------------------|------------------|
+| Web UI | http://localhost:3000 | http://localhost:3010 |
+| REST API | http://localhost:8080 | http://localhost:8090* |
+| Swagger | http://localhost:8080/swagger-ui | http://localhost:8090/swagger-ui* |
+| Health | http://localhost:8080/health | http://localhost:8090/health* |
+
+\*Local `make dev` picks free ports starting at **8090** (API) / **3010** (UI); see `make status` for the bound ports.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 **Verify:**
 
 ```bash
 curl -s http://localhost:8080/health | python3 -m json.tool
 ```
 
+<<<<<<< HEAD
 > Pin a version: `EDGEQUAKE_VERSION=0.21.0 sh quickstart.sh`
 
 ### What's new in 0.21.0
@@ -79,6 +100,36 @@ Also in **0.20.2**: opaque soft-labels (067/072/073), reliable delete + dual fai
 ### Performance testing
 
 Publish Acc is **medical-mid n=200** (`make bench`) — not smoke n=40. Latest publish pack (`medical-mid-20260723T134124Z`): Acc EQ **0.770** vs LR **0.779** (Δ Acc 95% CI **[-0.045, +0.026]** — **statistical tie**; do **not** claim EQ beats LightRAG). Fair cold latency ratio **1.02×** (`C1COLD_v1`). Smoke peers remain CI/ablation references only.
+=======
+> Pin a version: `EDGEQUAKE_VERSION=0.24.1 sh quickstart.sh`
+
+### What's new in 0.24.0
+
+#### Database migration (read this first)
+
+**The API never migrates the database.** Schema changes are an explicit operator step.
+
+| Situation | What to run |
+|-----------|-------------|
+| **Fresh install** | `edgequake migrate` once, then start the API (`make dev` does this for you) |
+| **Upgrade from ≤ v0.22.0** | Backup → `migrate dry-run` → `migrate` → `migrate --confirm-drop` → `migrate` (applies deferred **142**) → start API |
+| **Server exits 78** | Schema behind or newer than the binary — run migrate, then restart |
+
+Irreversible drops (**125** KV, **126**/**131** vectors) need `--confirm-drop` and a backup; rollback after that is restore-only. Migration **142** asserts empty leftovers (aborts if rows remain; deferred while residue exists).
+
+Full plain-language guide: **[Migrate to v0.23.0+](docs/operations/migrate-to-0.23.md)** · production soak: [SPEC-091 upgrade runbook](docs/operations/spec091-upgrade-from-v0.22.0.md).
+
+#### Highlights
+
+- **SPEC-104 production data-layer monitors** — StorageInspector uses `workspace_id` + `PostgresConfig` AGE graph SSOT; no `42703` / `42P01` probes; INV-03 dual-read; tenant create **201/200/409**.
+- **SPEC-105 legacy cutover assert** — census SSOT; unknown `VECTOR_BACKEND` → typed; migration **142**; mid-upgrade deferral so expandables soft-exit while residue remains.
+- **Schema** — migrations through **142** (0.23.0 stopped at **141**).
+
+Also in **0.23.0**: SPEC-091 relational cutover (106–141), LD-15 boot gate, SPEC-094 parse API, SPEC-103 LLM cache, wizard/UX. **0.22.0**: SPEC-090 multi-pool + migrate CLI.
+### Performance testing
+
+Publish Acc is **medical-mid n=200** (`make bench`) — not smoke n=40. Latest publish pack (`medical-mid-20260802T135513Z`): Acc EQ **0.807** vs LR **0.779** (Δ Acc 95% CI **[-0.005, +0.059]** — statistical tie; L2 incomplete — do **not** claim EQ beats LightRAG / Acc Beat). Fair cold latency ratio **1.02×** (`C1COLD_v1`). Smoke peers remain CI/ablation references only. Required local pre-tag gate: see [Release & CD § SPEC-001](docs/operations/release-and-cd.md#spec-001-lightrag-acc-before-tag).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 - [EQ vs LightRAG Acc Bench](docs/comparisons/eq-vs-lightrag-acc-bench.md) — measured scorecard
 - [BUSINESS_REPORT.md](specs/001-benchmark/e2e/artifacts/publish/latest/BUSINESS_REPORT.md) — regenerated by `make bench` (n=200)
@@ -110,7 +161,11 @@ export NEXT_PUBLIC_DISABLE_DEMO_LOGIN=true
 docker compose -f docker-compose.quickstart.yml up -d
 ```
 
+<<<<<<< HEAD
 The API creates the bootstrap admin on startup. Sign in at http://localhost:3000/login.
+=======
+The API creates the bootstrap admin on startup. Sign in at http://localhost:3000/login (Docker quickstart) or http://localhost:3010/login (`make dev`).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 Upgrades from pre-v0.15: legacy KV `auth:user:*` records are imported into PostgreSQL automatically when present.
 
@@ -131,7 +186,11 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
   -F "file=@your-document.pdf"
 ```
 
+<<<<<<< HEAD
 Or drag-and-drop in the Web UI at http://localhost:3000.
+=======
+Or drag-and-drop in the Web UI at http://localhost:3000 (Docker) or http://localhost:3010 (`make dev`).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 **Query the knowledge graph:**
 
@@ -291,10 +350,17 @@ docker compose -f docker-compose.prebuilt.yml up -d
 
 ```bash
 # Pin full stack to this release
+<<<<<<< HEAD
 EDGEQUAKE_VERSION=0.21.0 docker compose -f docker-compose.quickstart.yml up -d
 
 # Pin PostgreSQL major (optional; default tag follows EDGEQUAKE_VERSION → PG18)
 EDGEQUAKE_VERSION=0.21.0 EDGEQUAKE_POSTGRES_TAG=0.21.0-pg16 \
+=======
+EDGEQUAKE_VERSION=0.24.1 docker compose -f docker-compose.quickstart.yml up -d
+
+# Pin PostgreSQL major (optional; default tag follows EDGEQUAKE_VERSION → PG18)
+EDGEQUAKE_VERSION=0.24.1 EDGEQUAKE_POSTGRES_TAG=0.21.0-pg16 \
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   docker compose -f docker-compose.quickstart.yml up -d
 ```
 
@@ -373,6 +439,10 @@ git clone https://github.com/raphaelmansuy/edgequake.git && cd edgequake
 make install
 cp edgequake_webui/.env.local.example edgequake_webui/.env.local
 make dev                        # Start full stack (PostgreSQL + Backend + Frontend)
+<<<<<<< HEAD
+=======
+# Web UI defaults to http://localhost:3010 — confirm with: make status
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ```
 
 ```bash
@@ -392,6 +462,12 @@ make ops17-smoke                # PG extension pin SSOT (pg16/17/18)
 make spec046-acc                # SPEC-046 ACC + AccReport JSON
 make release-gates              # fmt + workspace clippy + SPEC-006/018 + WebUI + version parity
 make test-e2e-lint              # Playwright flake anti-patterns
+<<<<<<< HEAD
+=======
+# SPEC-001 LightRAG Acc (local mandatory before tag — not in CI / release_gates.sh):
+make bench001-doctor
+make bench                      # EQ vs LightRAG Acc n=200 + publish/latest
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 # Optional UI-only (no backend): make test-e2e-ui
 ```
 
@@ -402,6 +478,10 @@ make test-e2e-lint              # Playwright flake anti-patterns
 | SPEC-006 / SPEC-018 | Resource + observability proofs | `CI` + `Release Gates` |
 | Invariants + test floor | Reliability floor (≥870 lib) | `Test Quality Gates` |
 | SPEC-046 ACC | Hybrid RAG science ACC | `SPEC-046 ACC` |
+<<<<<<< HEAD
+=======
+| SPEC-001 LightRAG Acc | EQ vs LightRAG GraphRAG-Bench Acc (n=200) | **Local only** (`make bench`) |
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 | OPS-17 pins | pgvector/AGE pin matrix | `PostgreSQL Matrix Nightly` |
 
 **CI speed principles** (see `.github/workflows/ci.yml`): shared cargo cache across jobs, `CARGO_INCREMENTAL=0` + sparse index, `--locked`, cancel-in-progress, no duplicate workspace lib suite in sibling workflows, release gates skip per-crate clippy / lib re-run when CI already owns them.

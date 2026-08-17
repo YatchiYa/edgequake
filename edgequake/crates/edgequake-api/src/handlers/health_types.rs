@@ -117,6 +117,18 @@ pub struct ApiCapabilities {
     /// Documented external SSO integration pattern when `oauth2_oidc_builtin` is false.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_sso_pattern: Option<String>,
+<<<<<<< HEAD
+=======
+    /// SPEC-091 LD-09: whether `EDGEQUAKE_SERVING_FENCE` is on (Ready vs Indexed badge).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub serving_fence_enabled: Option<bool>,
+    /// SPEC-091 IP0 / F-IP-21: provider in-flight budget is cluster-wide (Postgres slot ledger).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_budget_cluster: Option<bool>,
+    /// SPEC-091 IP0 / F-IP-21: byte admission (`try_admit`) is process-local — not cluster SSOT.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub byte_admission_process_local: Option<bool>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// Task queue + query engine operational snapshot (SPEC-024 Phase 4.3).
@@ -291,6 +303,76 @@ pub struct SchemaHealth {
     /// SPEC-083: operator opted into property-path SQL (`EDGEQUAKE_EQ_ID_FALLBACK`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub eq_id_fallback_enabled: Option<bool>,
+<<<<<<< HEAD
+=======
+
+    /// SPEC-091 Doc 17 (LAW-B3): embedded migrations not yet applied. Serves
+    /// post-boot drift detection (e.g. a replica up while the fleet migrated).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_count: Option<usize>,
+
+    /// SPEC-091 Doc 17 (LAW-B3): true when the schema disagrees with this
+    /// binary (pending or database-newer) — `edgequake migrate` is required.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub migration_required: Option<bool>,
+
+    /// SPEC-091 IW4 (LAW-I6): PostgreSQL / extension runtime capability matrix.
+    ///
+    /// Derived from `edgequake-storage` `PostgresCapabilityProbe` SSOT — same
+    /// fields as the live probe, not recomputed from version strings in handlers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub postgres_capabilities: Option<PostgresCapabilityHealth>,
+}
+
+/// PostgreSQL runtime capabilities exposed on `/health.schema` (SPEC-091 IW4).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+pub struct PostgresCapabilityHealth {
+    /// `current_setting('server_version_num') / 10000`.
+    pub postgres_major: u32,
+    /// Installed pgvector `extversion`, when the extension is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pgvector_version: Option<String>,
+    /// Installed Apache AGE `extversion`, when the extension is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub age_version: Option<String>,
+    /// Native `uuidv7()` available (PG18+ with function present).
+    pub uuidv7_available: bool,
+    /// pgvector ≥ 0.8.0 — iterative index scan GUCs (`hnsw.iterative_scan`, etc.).
+    pub iterative_scan_available: bool,
+    /// AGE ≥ 1.8 — agtype ↔ jsonb bidirectional casts (SPEC-091 RM3).
+    pub age_jsonb_agtype_cast_available: bool,
+}
+
+#[cfg(feature = "postgres")]
+impl From<edgequake_storage::adapters::postgres::PostgresCapabilityProbe>
+    for PostgresCapabilityHealth
+{
+    fn from(probe: edgequake_storage::adapters::postgres::PostgresCapabilityProbe) -> Self {
+        Self {
+            postgres_major: probe.postgres_major,
+            pgvector_version: probe.pgvector_version,
+            age_version: probe.age_version,
+            uuidv7_available: probe.uuidv7_available,
+            iterative_scan_available: probe.iterative_scan_available,
+            age_jsonb_agtype_cast_available: probe.age_jsonb_agtype_cast_available,
+        }
+    }
+}
+
+#[cfg(not(feature = "postgres"))]
+impl PostgresCapabilityHealth {
+    /// Placeholder when postgres feature is disabled (memory-only builds).
+    pub fn unavailable() -> Self {
+        Self {
+            postgres_major: 0,
+            pgvector_version: None,
+            age_version: None,
+            uuidv7_available: false,
+            iterative_scan_available: false,
+            age_jsonb_agtype_cast_available: false,
+        }
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// Migration 038 index health surfaced at bootstrap.
@@ -318,6 +400,10 @@ pub struct ComponentHealth {
 
     /// Graph storage status.
     pub graph_storage: bool,
+
+    /// Apache AGE extension available (PostgreSQL only, SPEC-090 F-090-19).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph_available: Option<bool>,
 
     /// LLM provider status.
     pub llm_provider: bool,
@@ -397,6 +483,7 @@ mod tests {
                 kv_storage: true,
                 vector_storage: true,
                 graph_storage: true,
+                graph_available: None,
                 llm_provider: true,
                 eq_id_schema: None,
             },
@@ -432,6 +519,7 @@ mod tests {
                 kv_storage: true,
                 vector_storage: true,
                 graph_storage: true,
+                graph_available: None,
                 llm_provider: true,
                 eq_id_schema: Some(true),
             },
@@ -444,6 +532,12 @@ mod tests {
                 halfvec_conversion_applied: None,
                 eq_id_graphs_degraded: None,
                 eq_id_fallback_enabled: None,
+<<<<<<< HEAD
+=======
+                pending_count: None,
+                migration_required: None,
+                postgres_capabilities: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }),
             providers: None,
             pdf_storage_enabled: None,
@@ -467,6 +561,12 @@ mod tests {
             halfvec_conversion_applied: None,
             eq_id_graphs_degraded: None,
             eq_id_fallback_enabled: None,
+<<<<<<< HEAD
+=======
+            pending_count: None,
+            migration_required: None,
+            postgres_capabilities: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         };
         let json = serde_json::to_string(&schema).unwrap();
         assert!(json.contains("\"latest_version\":14"));
@@ -481,6 +581,7 @@ mod tests {
             kv_storage: false,
             vector_storage: false,
             graph_storage: false,
+            graph_available: None,
             llm_provider: false,
             eq_id_schema: Some(false),
         };
@@ -504,6 +605,7 @@ mod tests {
                 kv_storage: true,
                 vector_storage: true,
                 graph_storage: true,
+                graph_available: None,
                 llm_provider: false,
                 eq_id_schema: Some(true),
             },
@@ -527,6 +629,7 @@ mod tests {
             kv_storage: true,
             vector_storage: true,
             graph_storage: true,
+            graph_available: None,
             llm_provider: true,
             eq_id_schema: Some(true),
         };
@@ -570,6 +673,7 @@ mod tests {
                 kv_storage: true,
                 vector_storage: true,
                 graph_storage: true,
+                graph_available: None,
                 llm_provider: true,
                 eq_id_schema: Some(true),
             },

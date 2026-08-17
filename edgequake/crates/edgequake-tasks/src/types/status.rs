@@ -7,7 +7,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Task status
+<<<<<<< HEAD
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+=======
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 #[serde(rename_all = "lowercase")]
 pub enum TaskStatus {
     Pending,
@@ -41,6 +45,12 @@ pub enum TaskType {
     KnowledgeInjection,
     /// Async document cascade delete (vectors → graph → KV → relational).
     Deletion,
+<<<<<<< HEAD
+=======
+    /// Selected multi-document delete (SPEC-084 / GH-317) — one task, many IDs.
+    #[serde(rename = "batch_deletion")]
+    BatchDeletion,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Durable workspace wipe-all (cancel inflight → clear graph/vectors → purge docs).
     #[serde(rename = "workspace_wipe")]
     WorkspaceWipe,
@@ -60,7 +70,11 @@ impl TaskType {
     /// Map task type → fairness lane (single mapping; workers must not re-derive).
     pub fn fairness_class(self) -> FairnessClass {
         match self {
+<<<<<<< HEAD
             Self::Deletion | Self::WorkspaceWipe => FairnessClass::Lifecycle,
+=======
+            Self::Deletion | Self::BatchDeletion | Self::WorkspaceWipe => FairnessClass::Lifecycle,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             Self::Upload
             | Self::Insert
             | Self::Scan
@@ -81,6 +95,10 @@ impl fmt::Display for TaskType {
             Self::PdfProcessing => write!(f, "pdf_processing"),
             Self::KnowledgeInjection => write!(f, "knowledge_injection"),
             Self::Deletion => write!(f, "deletion"),
+<<<<<<< HEAD
+=======
+            Self::BatchDeletion => write!(f, "batch_deletion"),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             Self::WorkspaceWipe => write!(f, "workspace_wipe"),
         }
     }
@@ -97,6 +115,13 @@ mod fairness_class_tests {
             FairnessClass::Lifecycle
         );
         assert_eq!(
+<<<<<<< HEAD
+=======
+            TaskType::BatchDeletion.fairness_class(),
+            FairnessClass::Lifecycle
+        );
+        assert_eq!(
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             TaskType::WorkspaceWipe.fairness_class(),
             FairnessClass::Lifecycle
         );

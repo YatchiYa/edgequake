@@ -1,6 +1,11 @@
 //! Event emission methods for `PipelineState`.
 //!
+<<<<<<< HEAD
 //! Contains: `emit_chunk_progress`, `emit_chunk_failure`, `emit_pdf_page_progress`.
+=======
+//! Contains: `emit_chunk_progress`, `emit_chunk_failure`, `emit_pdf_page_progress`,
+//! `emit_stage_transition`.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 use super::event::PipelineEvent;
 use super::PipelineState;
@@ -71,6 +76,30 @@ impl PipelineState {
         });
     }
 
+<<<<<<< HEAD
+=======
+    /// Emit a unified-stage transition (SPEC-086).
+    ///
+    /// WHY: Small markdown docs may never hit the every-3rd-chunk metadata tick.
+    /// Stage enter events keep progress UX format-agnostic without PDF page SSE.
+    pub fn emit_stage_transition(
+        &self,
+        document_id: String,
+        task_id: String,
+        stage: String,
+        stage_message: String,
+        stage_progress: Option<f32>,
+    ) {
+        let _ = self.tx.send(PipelineEvent::StageTransition {
+            document_id,
+            task_id,
+            stage,
+            stage_message,
+            stage_progress,
+        });
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Emit a PDF page progress event.
     ///
     /// @implements SPEC-007: PDF Upload Support with progress tracking

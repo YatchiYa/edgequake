@@ -2,7 +2,11 @@
  * SPEC-057 P4: getDocumentDisplayStatus prefers API SSOT fields.
  */
 import { describe, expect, it } from "vitest";
+<<<<<<< HEAD
 import { getDocumentDisplayStatus } from "../status-badge";
+=======
+import { getDocumentDisplayStatus } from "@/lib/documents/status-domain";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 describe("getDocumentDisplayStatus (SPEC-057 P4)", () => {
   it("passthrough display_status when present", () => {
@@ -45,4 +49,38 @@ describe("getDocumentDisplayStatus (SPEC-057 P4)", () => {
       }),
     ).toBe("re_embedding");
   });
+<<<<<<< HEAD
+=======
+
+  it("terminal status cancelled beats stale display_status extracting", () => {
+    expect(
+      getDocumentDisplayStatus({
+        status: "cancelled",
+        current_stage: "cancelled",
+        display_status: "extracting",
+        ui_phase: "running",
+      }),
+    ).toBe("cancelled");
+  });
+
+  it("ui_phase terminal with cancelled display beats extracting stage", () => {
+    expect(
+      getDocumentDisplayStatus({
+        status: "extracting",
+        current_stage: "embedding",
+        display_status: "cancelled",
+        ui_phase: "terminal",
+      }),
+    ).toBe("cancelled");
+  });
+
+  it("SPEC-098: delete_failed is a terminal lifecycle badge status", () => {
+    expect(
+      getDocumentDisplayStatus({
+        status: "delete_failed",
+        current_stage: "delete_failed",
+      }),
+    ).toBe("delete_failed");
+  });
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 });

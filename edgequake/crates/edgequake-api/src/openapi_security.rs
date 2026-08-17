@@ -45,6 +45,11 @@ fn is_public_path(path: &str) -> bool {
             | "/api/v1/auth/refresh"
             | "/api/v1/auth/oidc/login"
             | "/api/v1/auth/oidc/callback"
+<<<<<<< HEAD
+=======
+            | "/api/v1/setup/status"
+            | "/api/v1/setup/initialize"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     ) || path.starts_with("/api/v1/shared/")
 }
 

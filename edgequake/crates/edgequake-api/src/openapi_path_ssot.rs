@@ -5,7 +5,11 @@
 include!(concat!(env!("OUT_DIR"), "/openapi_path_count.rs"));
 
 /// Handler function names registered in `openapi.rs` `paths()` (last path segment).
+<<<<<<< HEAD
 pub const REGISTERED_HANDLER_COUNT: usize = 186;
+=======
+pub const REGISTERED_HANDLER_COUNT: usize = 197;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 const _: () = assert!(
     OPENAPI_GENERATED_HANDLER_COUNT == REGISTERED_HANDLER_COUNT,

@@ -124,12 +124,21 @@ export function UploadProgressList({
         </div>
       )}
       
+<<<<<<< HEAD
       <ScrollArea className="max-h-64">
         <div className="space-y-1">
           {uploadingFiles.map((uploadFile, index) => (
             uploadFile.trackId ? (
               // WHY ProgressPanelRow: DRY component shared with reprocess panels.
               // Renders PdfUploadProgress (isPdf=true) or IngestionProgressPanel.
+=======
+      {/* SPEC-099: tighter nested scroll so zone ≤35vh leaves table rows visible */}
+      <ScrollArea className={embedded ? "max-h-28" : "max-h-64"}>
+        <div className="space-y-1">
+          {uploadingFiles.map((uploadFile, index) => (
+            uploadFile.trackId ? (
+              // WHY ProgressPanelRow: DRY adapter → IngestionRunCard (+ nested PDF pages).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
               <ProgressPanelRow
                 key={`${uploadFile.file.name}-${index}`}
                 trackId={uploadFile.trackId}

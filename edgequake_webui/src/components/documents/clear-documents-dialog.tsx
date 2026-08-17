@@ -47,6 +47,10 @@ interface ClearDocumentsDialogProps {
    * Callback when open state changes
    */
   onOpenChange?: (open: boolean) => void;
+  /**
+   * SPEC-099: "menu" renders a destructive menu item (overflow); default is ghost button.
+   */
+  triggerVariant?: "button" | "menu";
 }
 
 const CONFIRMATION_TEXT = 'DELETE ALL';
@@ -62,6 +66,7 @@ export function ClearDocumentsDialog({
   showTrigger = true,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  triggerVariant = "button",
 }: ClearDocumentsDialogProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -195,6 +200,7 @@ export function ClearDocumentsDialog({
     return null;
   }
 
+<<<<<<< HEAD
   const triggerButton = (
     <Button
       variant="ghost"
@@ -205,6 +211,30 @@ export function ClearDocumentsDialog({
       {t('documents.clearAll.button', 'Clear All')}
     </Button>
   );
+=======
+  const triggerButton =
+    triggerVariant === "menu" ? (
+      <button
+        type="button"
+        className="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none text-destructive focus:bg-destructive/10 data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+        data-testid="spec099-clear-all-menu-item"
+        aria-label={t('documents.clearAll.button', 'Clear All')}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        {t('documents.clearAll.button', 'Clear All')}
+      </button>
+    ) : (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1.5"
+        data-testid="spec099-clear-all-button"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        {t('documents.clearAll.button', 'Clear All')}
+      </Button>
+    );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   return (
     <AlertDialog open={isOpen} onOpenChange={handleOpenChange}>

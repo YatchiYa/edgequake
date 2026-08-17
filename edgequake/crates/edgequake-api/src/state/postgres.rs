@@ -140,6 +140,7 @@ impl AppState {
         let user = url.username().to_string();
         let password = url.password().unwrap_or("").to_string();
 
+<<<<<<< HEAD
         // Create PostgreSQL configuration
         // WHY 32 connections (env-configurable via DATABASE_POOL_SIZE):
         // The frontend polls ~8 concurrent endpoints every 2s. Pipeline workers
@@ -152,10 +153,21 @@ impl AppState {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(32);
+=======
+        // SPEC-090 F-090-28: role-split pools (query/ingest/queue/admin).
+        // Optional DATABASE_READ_URL feeds the query pool (F-090-31).
+        let pool_bundle = edgequake_storage::PgPoolBundle::connect(&database_url).await?;
+        let pool = pool_bundle.ingest.clone();
+        let admin_pool = pool_bundle.admin.clone();
+        let queue_pool = pool_bundle.queue.clone();
+        let query_pool = pool_bundle.query.clone();
+        let _db_pool_size = pool_bundle.total_max_connections();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         let pg_config = edgequake_storage::adapters::postgres::PostgresConfig::new(
             host, port, database, user, password,
         )
         .with_namespace("default")
+<<<<<<< HEAD
         .with_max_connections(db_pool_size);
 
         // Create PostgreSQL connection pool for conversation service.
@@ -186,6 +198,9 @@ impl AppState {
             })
             .connect(&database_url)
             .await?;
+=======
+        .with_max_connections(pool_bundle.ingest_max);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         // Ensure required extensions are available (these should be created in Docker init.sql,
         // but we check and log if they're missing)
@@ -195,7 +210,11 @@ impl AppState {
         let extensions_result = sqlx::query_scalar::<_, String>(
             "SELECT extname FROM pg_extension WHERE extname IN ('vector', 'uuid-ossp')",
         )
+<<<<<<< HEAD
         .fetch_all(&pool)
+=======
+        .fetch_all(&admin_pool)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         .await;
 
         match extensions_result {
@@ -231,14 +250,105 @@ impl AppState {
             }
         }
 
+<<<<<<< HEAD
         // SPEC-006: migration bootstrap with progression logs + migration 038 verify/repair
         let migration_bootstrap =
             super::migration_bootstrap::run_postgres_migrations(&pool).await?;
+=======
+        // SPEC-006 / SPEC-090: migrations + reconcile on **admin** pool only.
+        // SPEC-091 LD-15: serving boot is fail-closed verify-only — schema apply
+        // is `edgequake migrate` only; pending/newer schema ⇒ exit-78 refusal.
+        let migration_bootstrap =
+            super::migration_bootstrap::bootstrap_for_serving(&admin_pool).await?;
+
+        // SPEC-091: automatic migration engine (07-migration-engine.md). Verify
+        // mode registers jobs + reports estimates; EDGEQUAKE_MIGRATION_MODE=
+        // automatic runs the leased, adaptive W1 backfill on the admin pool.
+        {
+            let prefix = pg_config.table_prefix();
+            let kv_table = edgequake_storage::adapters::postgres::qualified_kv_table_name(&prefix);
+            let vectors_table = format!("public.eq_{}_vectors", prefix);
+            edgequake_storage::migration_engine::spawn_for_serving(
+                &admin_pool,
+                kv_table,
+                vectors_table,
+            );
+        }
+
+        // SPEC-091 QW1 (LAW-Q3, LD-11): cluster-wide provider budget. Seed the
+        // ledger from the resolved budget (one number, one resolver), install
+        // it on the local-inference gate, and spawn the stale-slot reaper
+        // (EC-22 backstop). budget=0 ⇒ cloud-only: no DB round trips.
+        {
+            use edgequake_tasks::ProviderBudget as _;
+            let provider_budget = edgequake_tasks::provider_budget_from_env();
+            if provider_budget > 0 {
+                let budget_store = std::sync::Arc::new(
+                    edgequake_tasks::PostgresProviderBudget::new(admin_pool.clone()),
+                );
+                for provider_key in ["ollama", "lmstudio"] {
+                    if let Err(e) = budget_store
+                        .seed_budget(provider_key, provider_budget, "env")
+                        .await
+                    {
+                        tracing::warn!(
+                            provider = provider_key,
+                            error = %e,
+                            "SPEC-091 QW1: provider budget seed failed (gate falls back to process semaphore)"
+                        );
+                    }
+                }
+                let shared: edgequake_tasks::SharedProviderBudget = budget_store.clone();
+                crate::local_inference_gate::install_provider_budget(shared);
+                tracing::info!(
+                    budget = provider_budget,
+                    "SPEC-091 QW1: cluster-wide provider budget installed"
+                );
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                        match budget_store.reap_expired().await {
+                            Ok(n) if n > 0 => {
+                                tracing::warn!(
+                                    reaped = n,
+                                    "SPEC-091 QW1: reaped expired provider slots (EC-22)"
+                                );
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!(error = %e, "provider slot reaper failed")
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // SPEC-091 Wave B2: typed quarantine sink — failed compensation cleanups
+        // land in public.compensation_quarantine (drained below) instead of KV.
+        edgequake_storage::set_quarantine_sink(std::sync::Arc::new(
+            edgequake_storage::PgQuarantineSink::new(admin_pool.clone()),
+        ));
+
+        // SPEC-091 Wave B3+B4/B5: one pool serves every relational KV-family
+        // cutover (wsdoc membership, checkpoints, artifacts) via the shared
+        // sidecar registry.
+        crate::services::workspace_document_index::register_membership_pool(admin_pool.clone());
+
+        // SPEC-090 F-090-32: HNSW shape manifest drift (log + metric).
+        if let Err(e) = edgequake_storage::check_hnsw_index_manifest(&admin_pool).await {
+            tracing::warn!(error = %e, "SPEC-090: HNSW index manifest check failed");
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let age_extversion = migration_bootstrap.migration_043.extversion_after.clone();
         let postgres_capabilities =
             edgequake_storage::adapters::postgres::PostgresCapabilities::detect(
+<<<<<<< HEAD
                 &pool,
+=======
+                &admin_pool,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 age_extversion,
             )
             .await;
@@ -259,6 +369,7 @@ impl AppState {
             std::env::var("EDGEQUAKE_LLM_PROVIDER").unwrap_or_else(|_| "auto-detected".to_string())
         );
 
+<<<<<<< HEAD
         // Create PostgreSQL-backed storages (SPEC-011: single shared pool)
         use edgequake_storage::adapters::postgres::PostgresPool;
         use edgequake_storage::{DimensionEnsureOutcome, DimensionReconcilePolicy};
@@ -269,6 +380,31 @@ impl AppState {
         ));
         let graph_storage = Arc::new(PostgresAGEGraphStorage::with_pool(
             storage_pool.clone(),
+=======
+        // SPEC-090: ingest pool for writes; query pool for QueryEngine reads.
+        use edgequake_storage::adapters::postgres::PostgresPool;
+        use edgequake_storage::{DimensionEnsureOutcome, DimensionReconcilePolicy};
+        let ingest_pool = PostgresPool::from_existing(pool.clone(), pg_config.clone());
+        let query_pg = {
+            let mut c = pg_config.clone();
+            c.max_connections = pool_bundle.query_max;
+            PostgresPool::from_existing(query_pool.clone(), c)
+        };
+        let kv_storage = Arc::new(PostgresKVStorage::with_pool(
+            ingest_pool.clone(),
+            pg_config.clone(),
+        ));
+        let graph_storage = Arc::new(PostgresAGEGraphStorage::with_pool(
+            ingest_pool.clone(),
+            pg_config.clone(),
+        ));
+        let kv_query = Arc::new(PostgresKVStorage::with_pool(
+            query_pg.clone(),
+            pg_config.clone(),
+        ));
+        let graph_query = Arc::new(PostgresAGEGraphStorage::with_pool(
+            query_pg.clone(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             pg_config.clone(),
         ));
 
@@ -278,7 +414,11 @@ impl AppState {
         //   rebind default vector storage to stored dim (PreferExisting).
         // - New workspaces still use provider `embedding_dim` via registry.
         let provisional = PgVectorStorage::with_pool_and_dimension(
+<<<<<<< HEAD
             storage_pool.clone(),
+=======
+            ingest_pool.clone(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             pg_config.clone(),
             embedding_dim,
         );
@@ -300,7 +440,11 @@ impl AppState {
                 );
                 (
                     Arc::new(PgVectorStorage::with_pool_and_dimension(
+<<<<<<< HEAD
                         storage_pool.clone(),
+=======
+                        ingest_pool.clone(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                         pg_config.clone(),
                         stored,
                     )),
@@ -308,6 +452,14 @@ impl AppState {
                 )
             }
         };
+<<<<<<< HEAD
+=======
+        let vector_query = Arc::new(PgVectorStorage::with_pool_and_dimension(
+            query_pg.clone(),
+            pg_config.clone(),
+            vector_storage.dimension(),
+        ));
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         if recreated {
             tracing::warn!(
                 dimension = embedding_dim,
@@ -326,6 +478,7 @@ impl AppState {
         // Initialize storage backends to establish connections
         kv_storage.initialize().await?;
         vector_storage.initialize().await?;
+<<<<<<< HEAD
         // WHY: Apache AGE (graph extension) may not be available in all PostgreSQL deployments
         // (e.g., pgvector-only images used in CI). Graph storage failure is non-fatal;
         // graph-dependent features (entity extraction, Cypher queries) will degrade gracefully
@@ -337,6 +490,64 @@ impl AppState {
                 Install Apache AGE extension for full functionality.",
                 e
             );
+=======
+
+        // SPEC-091 W3/IW2 (fail-fast): when the typed backend is authoritative,
+        // `chunk_embeddings` (108) and fleet tables (130) must exist — refuse
+        // to boot rather than degrade to 42P01 / empty ANN on first read/write.
+        if edgequake_storage::vector_backend_reads_typed(
+            edgequake_storage::vector_backend_from_env(),
+        ) {
+            let required: &[&str] = &[
+                "chunk_embeddings",
+                "entity_embeddings",
+                "relationship_embeddings",
+                "report_embeddings",
+            ];
+            let mut missing = Vec::new();
+            for table in required {
+                let exists: bool = sqlx::query_scalar(
+                    "SELECT EXISTS (SELECT 1 FROM information_schema.tables \
+                     WHERE table_schema = 'public' AND table_name = $1)",
+                )
+                .bind(table)
+                .fetch_one(&admin_pool)
+                .await
+                .unwrap_or(false);
+                if !exists {
+                    missing.push(*table);
+                }
+            }
+            if !missing.is_empty() {
+                return Err(format!(
+                    "EDGEQUAKE_VECTOR_BACKEND=typed_embeddings/chunk_embeddings but \
+                     missing typed vector table(s): {} — run `edgequake migrate` \
+                     (migrations 108 + 130) first.",
+                    missing.join(", ")
+                )
+                .into());
+            }
+        }
+        // SPEC-090 F-090-19: fail-closed on graph init unless EDGEQUAKE_ALLOW_NO_GRAPH=1.
+        if let Err(e) = graph_storage.initialize().await {
+            let allow = std::env::var("EDGEQUAKE_ALLOW_NO_GRAPH")
+                .ok()
+                .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+                .unwrap_or(false);
+            if allow {
+                tracing::warn!(
+                    "Graph storage (Apache AGE) not available: {} \
+                     — continuing with EDGEQUAKE_ALLOW_NO_GRAPH=1",
+                    e
+                );
+            } else {
+                return Err(format!(
+                    "Graph storage (Apache AGE) initialize failed: {e}. \
+                     Set EDGEQUAKE_ALLOW_NO_GRAPH=1 to start without graph storage."
+                )
+                .into());
+            }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         } else {
             edgequake_storage::spawn_community_backfill_if_needed(
                 Arc::clone(&graph_storage) as Arc<dyn edgequake_storage::traits::GraphStorage>
@@ -345,6 +556,35 @@ impl AppState {
 
         tracing::info!("PostgreSQL storage backends initialized successfully");
 
+<<<<<<< HEAD
+=======
+        // SPEC-091 IW3 (LD-14): refuse stale rollback flags against dropped stores.
+        // SPEC-091 Doc 23: seed KV relation Absent cache from the same census (LAW-KVH2).
+        {
+            let posture = edgequake_storage::detect_cutover_posture(&admin_pool)
+                .await
+                .map_err(|e| format!("SPEC-091 cutover posture probe failed: {e}"))?;
+            edgequake_storage::validate_cutover_flags(&posture)?;
+            kv_storage.seed_relation_from_dropped(posture.kv_store_dropped);
+            kv_query.seed_relation_from_dropped(posture.kv_store_dropped);
+        }
+
+        // SPEC-091 IW3 (GAP-091-18): compensation-quarantine drain with real applier.
+        crate::services::compensation_drain_applier::spawn_compensation_drain_applier(
+            admin_pool.clone(),
+            Arc::clone(&kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
+            Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
+            Arc::clone(&graph_storage) as Arc<dyn edgequake_storage::traits::GraphStorage>,
+        );
+
+        // SPEC-091 RM0: outbox drain (default on) — mark processed / TTL; compensate dispatch.
+        crate::services::outbox_drain_applier::spawn_outbox_drain_applier(
+            admin_pool.clone(),
+            Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
+            Arc::clone(&graph_storage) as Arc<dyn edgequake_storage::traits::GraphStorage>,
+        );
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // Log provider and dimension configuration for debugging
         tracing::info!(
             provider = embedding_provider.name(),
@@ -358,9 +598,34 @@ impl AppState {
         // Create workspace service for full persistence
         let workspace_service_impl = WorkspaceServiceImpl::new(pool.clone());
 
+<<<<<<< HEAD
         // Ensure default tenant and workspace exist (critical for non-authenticated mode)
         workspace_service_impl.ensure_defaults().await?;
         tracing::info!("Default tenant and workspace ensured in PostgreSQL");
+=======
+        // SPEC-101: Skip silent Default seed on secure fresh installs (wizard owns creation).
+        // Escape hatches: EDGEQUAKE_PROVISION_DEFAULTS / EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD /
+        // auth disabled / dev_mode (LAW-101-7).
+        let auth_enabled = std::env::var("EDGEQUAKE_AUTH_ENABLED")
+            .map(|v| {
+                !matches!(
+                    v.to_ascii_lowercase().as_str(),
+                    "0" | "false" | "no" | "off"
+                )
+            })
+            .unwrap_or(true);
+        let dev_mode = std::env::var("EDGEQUAKE_DEV_MODE")
+            .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(false);
+        if crate::handlers::setup::should_provision_defaults_at_boot(auth_enabled, dev_mode) {
+            workspace_service_impl.ensure_defaults().await?;
+            tracing::info!("Default tenant and workspace ensured in PostgreSQL");
+        } else {
+            tracing::info!(
+                "SPEC-101: skipping silent default tenant/workspace provision (first-run wizard)"
+            );
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let workspace_service: SharedWorkspaceService = Arc::new(workspace_service_impl);
 
@@ -377,6 +642,7 @@ impl AppState {
         // WHY: Tasks must persist across backend restarts so cancel/retry work correctly.
         // Previous bug: MemoryTaskStorage was used, causing tasks to be lost on restart.
         let task_storage: edgequake_tasks::SharedTaskStorage = Arc::new(
+<<<<<<< HEAD
             edgequake_tasks::postgres::PostgresTaskStorage::new(pool.clone()),
         );
         let task_queue = Arc::new(edgequake_tasks::queue::ChannelTaskQueue::new(100));
@@ -395,6 +661,26 @@ impl AppState {
             Arc::new(PgWorkspaceVectorRegistry::new(
                 pg_config,
                 storage_pool.clone(),
+=======
+            edgequake_tasks::postgres::PostgresTaskStorage::new(queue_pool.clone()),
+        );
+        let task_queue = Arc::new(edgequake_tasks::queue::ChannelTaskQueue::new(100));
+        tracing::info!("✓ Task storage: PostgreSQL queue pool (SPEC-090 F-090-28)");
+
+        let engine_impl = super::query_bootstrap::build_production_query_engine(
+            Arc::clone(&vector_query) as Arc<dyn edgequake_storage::traits::VectorStorage>,
+            Arc::clone(&graph_query) as Arc<dyn edgequake_storage::traits::GraphStorage>,
+            Arc::clone(&embedding_provider),
+            Arc::clone(&llm_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,
+            Arc::clone(&kv_query) as Arc<dyn edgequake_storage::traits::KVStorage>,
+        );
+
+        // Create workspace vector registry for per-workspace dimensions (ingest pool)
+        let vector_registry: Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry> =
+            Arc::new(PgWorkspaceVectorRegistry::new(
+                pg_config,
+                ingest_pool.clone(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
                 embedding_dim,
             ));
@@ -440,10 +726,14 @@ impl AppState {
         let (resource_guard, graph_materialize, pdf_vision, read_path_db) =
             super::resource_runtime::build_resource_runtime();
 
+<<<<<<< HEAD
         let configured_pool_size: usize = std::env::var("DATABASE_POOL_SIZE")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(32);
+=======
+        let configured_pool_size = pool_bundle.total_max_connections() as usize;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         crate::read_path::warn_if_local_pool_oversized(configured_pool_size, llm_provider.name());
 
         let app_state = Self {
@@ -466,12 +756,20 @@ impl AppState {
             cache_manager: CacheManager::with_defaults(),
             rate_limiter: RateLimiter::new(TokenBucketConfig::default()),
             pg_pool: Some(pool.clone()),
+<<<<<<< HEAD
+=======
+            pool_bundle: Some(pool_bundle),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             start_time: std::time::Instant::now(),
             path_validation_config: Self::load_path_validation_config(),
             audit_logger: Some(audit_logger),
             resource_guard,
             graph_materialize,
             pdf_vision,
+<<<<<<< HEAD
+=======
+            parse_jobs: crate::handlers::parse::ParseJobStore::from_env(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             read_path_db,
             migration_bootstrap: Some(migration_bootstrap),
             postgres_capabilities: Some(postgres_capabilities),
@@ -480,7 +778,11 @@ impl AppState {
         };
 
         // SPEC-043: load server_config LLM defaults into process-wide overrides
+<<<<<<< HEAD
         if let Err(e) = app_state.server_config.load_from_pool(&pool).await {
+=======
+        if let Err(e) = app_state.server_config.load_from_pool(&admin_pool).await {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             tracing::warn!(error = %e, "Failed to load server_config LLM defaults at startup");
         } else {
             tracing::info!("Loaded server_config LLM defaults and app attribution (SPEC-043)");
@@ -490,8 +792,15 @@ impl AppState {
         // SPEC-021 P3-01: Log the entity sync mode for observability
         {
             use crate::storage_inspector::{InspectorConfig, StorageInspector};
+<<<<<<< HEAD
             let inspector =
                 StorageInspector::new(Arc::new(pool.clone()), InspectorConfig::default());
+=======
+            let inspector = StorageInspector::new(
+                Arc::new(admin_pool.clone()),
+                InspectorConfig::for_namespace("default"),
+            );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             let report = inspector.inspect().await;
             if report.has_critical {
                 tracing::error!(

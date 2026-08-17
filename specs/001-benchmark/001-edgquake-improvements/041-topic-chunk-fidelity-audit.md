@@ -67,4 +67,8 @@ export BENCH001_EQ_WORKSPACE_ID=2a7bcb2f-b156-4c49-9229-67f5bcde22a4
 python3 tools/bench001/scripts/audit_topic_chunk_fidelity.py \
   --predictions-eq specs/001-benchmark/e2e/artifacts/history/smoke-20260720T111944Z/predictions_eq.json \
   --predictions-lr specs/001-benchmark/e2e/artifacts/history/smoke-20260720T111944Z/predictions_lr.json
+<<<<<<< HEAD
+=======
+  # SPEC-097: predictions_*.json are local-only (gitignored); regenerate via make bench001-*
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ```

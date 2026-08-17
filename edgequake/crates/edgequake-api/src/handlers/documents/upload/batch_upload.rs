@@ -158,6 +158,10 @@ async fn enqueue_single_file(
             content_hash,
             custom_metadata,
             track_id: None,
+<<<<<<< HEAD
+=======
+            expected_batch_count: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             gleaning: GleaningAdmissionOptions::default(),
             document_type: None,
             chunk_strategy,

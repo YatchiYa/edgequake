@@ -11,7 +11,13 @@ use async_trait::async_trait;
 use edgequake_llm::LLMProvider;
 use edgequake_observability::record_ingest_stage_duration;
 use edgequake_storage::{
+<<<<<<< HEAD
     compensation, traits::KVStorage, GraphStorage, TextEmbedder, VectorStorage,
+=======
+    chunk_text_authority_from_env, chunk_text_authority_writes_kv,
+    chunk_text_authority_writes_relational, compensation, traits::ChunkRepository,
+    traits::KVStorage, GraphStorage, TextEmbedder, VectorStorage,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 
 use crate::merger::{
@@ -87,6 +93,42 @@ impl DefaultIngestionPersister {
         self.config.lineage_sink = Some(sink);
         self
     }
+<<<<<<< HEAD
+=======
+
+    /// SPEC-091 W1: attach relational chunk repository (gated by authority env flag).
+    pub fn with_relational_chunks(
+        mut self,
+        relational_chunks: Option<Arc<dyn ChunkRepository>>,
+    ) -> Self {
+        self.config = self.config.with_relational_chunks(relational_chunks);
+        self
+    }
+
+    /// SPEC-091 W3: attach typed embedding index.
+    pub fn with_typed_embedding_index(
+        mut self,
+        index: Option<Arc<dyn edgequake_storage::traits::domain::EmbeddingIndex>>,
+    ) -> Self {
+        self.config = self.config.with_typed_embedding_index(index);
+        self
+    }
+
+    /// SPEC-091 IW2: attach typed fleet embedding index.
+    pub fn with_fleet_embedding_index(
+        mut self,
+        index: Option<Arc<dyn edgequake_storage::traits::FleetEmbeddingIndex>>,
+    ) -> Self {
+        self.config = self.config.with_fleet_embedding_index(index);
+        self
+    }
+
+    /// SPEC-091 IP2: attach transactional outbox sink.
+    pub fn with_outbox(mut self, outbox: Option<Arc<dyn edgequake_storage::OutboxSink>>) -> Self {
+        self.config = self.config.with_outbox(outbox);
+        self
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 #[async_trait]
@@ -189,12 +231,29 @@ pub struct IngestionPersistConfig {
     pub llm_provider: Option<Arc<dyn LLMProvider>>,
     /// When set, chunk text is written to KV before vector upsert (SPEC-024 2.5 SSOT).
     pub kv_storage: Option<Arc<dyn KVStorage>>,
+<<<<<<< HEAD
+=======
+    /// SPEC-091 W1: relational chunk authority writer (`chunks` table).
+    pub relational_chunks: Option<Arc<dyn ChunkRepository>>,
+    /// SPEC-091 W3: typed chunk embedding index (`chunk_embeddings` table).
+    /// Wired only on postgres contexts; dual-write runs during rollout
+    /// (warn-only) and becomes authoritative under `chunk_embeddings` backend.
+    /// The spine `relational_chunks` repo doubles as the chunk-id resolver.
+    pub typed_embedding_index: Option<Arc<dyn edgequake_storage::traits::domain::EmbeddingIndex>>,
+    /// SPEC-091 IW2: typed fleet embedding index (entity/relationship/report).
+    pub fleet_embedding_index: Option<Arc<dyn edgequake_storage::traits::FleetEmbeddingIndex>>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Optional per-phase merge progress callback (SPEC-032 W-04).
     pub merge_progress: Option<std::sync::Arc<MergeProgressCallback>>,
     /// Optional lineage sink (SPEC-032 W-08).
     pub lineage_sink: Option<Arc<dyn crate::merger::LineageSink>>,
     /// Optional text embedder for community_report vectors (SPEC-046 EQ-046-11).
     pub text_embedder: Option<Arc<dyn TextEmbedder>>,
+<<<<<<< HEAD
+=======
+    /// SPEC-091 IP2: transactional outbox for multi-store milestones (LAW-D3).
+    pub outbox: Option<Arc<dyn edgequake_storage::OutboxSink>>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 impl IngestionPersistConfig {
@@ -212,9 +271,19 @@ impl IngestionPersistConfig {
             relational_sink,
             llm_provider,
             kv_storage: None,
+<<<<<<< HEAD
             merge_progress: None,
             lineage_sink: None,
             text_embedder: None,
+=======
+            relational_chunks: None,
+            typed_embedding_index: None,
+            fleet_embedding_index: None,
+            merge_progress: None,
+            lineage_sink: None,
+            text_embedder: None,
+            outbox: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
     }
 
@@ -223,6 +292,41 @@ impl IngestionPersistConfig {
         self
     }
 
+<<<<<<< HEAD
+=======
+    /// SPEC-091 IP2: wire transactional outbox sink.
+    pub fn with_outbox(mut self, outbox: Option<Arc<dyn edgequake_storage::OutboxSink>>) -> Self {
+        self.outbox = outbox;
+        self
+    }
+
+    pub fn with_relational_chunks(
+        mut self,
+        relational_chunks: Option<Arc<dyn ChunkRepository>>,
+    ) -> Self {
+        self.relational_chunks = relational_chunks;
+        self
+    }
+
+    /// SPEC-091 W3: wire the typed embedding index.
+    pub fn with_typed_embedding_index(
+        mut self,
+        index: Option<Arc<dyn edgequake_storage::traits::domain::EmbeddingIndex>>,
+    ) -> Self {
+        self.typed_embedding_index = index;
+        self
+    }
+
+    /// SPEC-091 IW2: wire the typed fleet embedding index.
+    pub fn with_fleet_embedding_index(
+        mut self,
+        index: Option<Arc<dyn edgequake_storage::traits::FleetEmbeddingIndex>>,
+    ) -> Self {
+        self.fleet_embedding_index = index;
+        self
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Wire a merge progress callback. The callback is cloned for each persist call.
     pub fn with_merge_progress(mut self, cb: MergeProgressCallback) -> Self {
         self.merge_progress = Some(std::sync::Arc::new(cb));
@@ -287,6 +391,7 @@ async fn persist_processing_result_impl(
     result: &ProcessingResult,
     chunk_options: ChunkVectorBuildOptions,
 ) -> Result<IngestionPersistOutput> {
+<<<<<<< HEAD
     let mut chunk_kv_ids: Vec<String> = Vec::new();
     if let Some(kv) = &config.kv_storage {
         let records = crate::chunk_storage::build_chunk_kv_records(
@@ -302,12 +407,78 @@ async fn persist_processing_result_impl(
                 .map_err(crate::error::PipelineError::StorageError)?;
             // SPEC-060: ingest KV stage histogram
             record_ingest_stage_duration("kv_upsert", stage_start.elapsed().as_secs_f64());
+=======
+    // SPEC-091: under typed authority, incomplete wiring is fail-closed —
+    // never silently skip typed chunk / fleet writes while legacy is stopped.
+    let typed_authority = edgequake_storage::vector_backend::vector_backend_reads_typed(
+        edgequake_storage::vector_backend_from_env(),
+    );
+    if typed_authority {
+        let has_chunk_embeddings = result.chunks.iter().any(|c| c.embedding.is_some());
+        if has_chunk_embeddings
+            && (config.typed_embedding_index.is_none() || config.relational_chunks.is_none())
+        {
+            return Err(crate::error::PipelineError::StorageError(
+                edgequake_storage::error::StorageError::Database(
+                    "SPEC-091: typed vector backend requires typed_embedding_index and \
+                     relational_chunks when chunk embeddings are present"
+                        .into(),
+                ),
+            ));
+        }
+        let has_entity_or_rel_embeddings = result.extractions.iter().any(|ex| {
+            ex.entities.iter().any(|e| e.embedding.is_some())
+                || ex.relationships.iter().any(|r| r.embedding.is_some())
+        });
+        if has_entity_or_rel_embeddings && config.fleet_embedding_index.is_none() {
+            return Err(crate::error::PipelineError::StorageError(
+                edgequake_storage::error::StorageError::Database(
+                    "SPEC-091: typed vector backend requires fleet_embedding_index when \
+                     entity/relationship embeddings are present"
+                        .into(),
+                ),
+            ));
+        }
+    }
+
+    let authority = chunk_text_authority_from_env();
+    let mut chunk_kv_ids: Vec<String> = Vec::new();
+    if chunk_text_authority_writes_kv(authority) {
+        if let Some(kv) = &config.kv_storage {
+            let records = crate::chunk_storage::build_chunk_kv_records(
+                &ctx.document_id,
+                ctx.source_file_path.as_deref(),
+                result,
+            );
+            if !records.is_empty() {
+                chunk_kv_ids = records.iter().map(|(id, _)| id.clone()).collect();
+                let stage_start = Instant::now();
+                kv.upsert(&records)
+                    .await
+                    .map_err(crate::error::PipelineError::StorageError)?;
+                record_ingest_stage_duration("kv_upsert", stage_start.elapsed().as_secs_f64());
+            }
+        }
+    }
+
+    if chunk_text_authority_writes_relational(authority) {
+        if let Some(repo) = &config.relational_chunks {
+            let stage_start = Instant::now();
+            super::relational_chunk_writer::persist_relational_chunks(repo.as_ref(), ctx, result)
+                .await
+                .map_err(crate::error::PipelineError::StorageError)?;
+            record_ingest_stage_duration(
+                "relational_chunk_upsert",
+                stage_start.elapsed().as_secs_f64(),
+            );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
     }
 
     let chunk_vectors = build_chunk_vector_batch(result, ctx, chunk_options);
     let chunk_vector_ids: Vec<String> = chunk_vectors.iter().map(|(id, _, _)| id.clone()).collect();
 
+<<<<<<< HEAD
     if !chunk_vectors.is_empty() {
         let stage_start = Instant::now();
         vector_storage
@@ -316,6 +487,61 @@ async fn persist_processing_result_impl(
             .map_err(crate::error::PipelineError::StorageError)?;
         // SPEC-060: ingest chunk vector stage histogram
         record_ingest_stage_duration("chunk_vector_upsert", stage_start.elapsed().as_secs_f64());
+=======
+    // SPEC-091 IP0: under typed authority legacy eq_*_vectors is write-stopped —
+    // skip the adapter call entirely (no dead RTT / stage noise).
+    if !chunk_vectors.is_empty() {
+        if edgequake_storage::legacy_vector_writes_stopped() {
+            record_ingest_stage_duration("chunk_vector_upsert_skipped", 0.0);
+            tracing::debug!(
+                document_id = %ctx.document_id,
+                count = chunk_vectors.len(),
+                "SPEC-091 IP0: skipped legacy chunk vector upsert (typed authority)"
+            );
+        } else {
+            let stage_start = Instant::now();
+            vector_storage
+                .upsert(&chunk_vectors)
+                .await
+                .map_err(crate::error::PipelineError::StorageError)?;
+            // SPEC-060: ingest chunk vector stage histogram
+            record_ingest_stage_duration(
+                "chunk_vector_upsert",
+                stage_start.elapsed().as_secs_f64(),
+            );
+        }
+    }
+
+    // SPEC-091 W3: dual-write typed chunk embeddings. Always runs when wired
+    // (rollout shadow) so the engine backfill only has to cover pre-existing
+    // legacy rows; warn-only under `legacy_tables` (rollback escape hatch),
+    // fail-closed under `chunk_embeddings` (typed is the authority there). The
+    // relational spine repo resolves `chunks.id` for the typed FK (LD-02).
+    if let (Some(index), Some(repo)) = (&config.typed_embedding_index, &config.relational_chunks) {
+        let stage_start = Instant::now();
+        let typed_result = super::typed_embedding_writer::persist_typed_chunk_embeddings(
+            index.as_ref(),
+            repo.as_ref(),
+            ctx,
+            result,
+        )
+        .await;
+        record_ingest_stage_duration(
+            "typed_chunk_embedding_upsert",
+            stage_start.elapsed().as_secs_f64(),
+        );
+        if let Err(e) = typed_result {
+            let backend = edgequake_storage::vector_backend_from_env();
+            if edgequake_storage::vector_backend::vector_backend_reads_typed(backend) {
+                return Err(crate::error::PipelineError::StorageError(e));
+            }
+            tracing::warn!(
+                error = %e,
+                document_id = %ctx.document_id,
+                "SPEC-091 W3: typed chunk embedding dual-write failed (legacy backend continues)"
+            );
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     let mut merger = KnowledgeGraphMerger::new(
@@ -335,6 +561,12 @@ async fn persist_processing_result_impl(
     if let Some(ref embedder) = config.text_embedder {
         merger = merger.with_text_embedder(embedder.clone());
     }
+<<<<<<< HEAD
+=======
+    if let Some(ref fleet_index) = config.fleet_embedding_index {
+        merger = merger.with_fleet_embedding_index(fleet_index.clone());
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     if config.merger_config.use_llm_summarization {
         if let Some(llm) = config.llm_provider.clone() {
@@ -408,6 +640,60 @@ async fn persist_processing_result_impl(
                         .await;
                 });
             }
+<<<<<<< HEAD
+=======
+            // SPEC-091 W4/IP2: chunks are query-visible only after vectors + graph
+            // merge succeeded → mark serving state `ready` for this document.
+            // Warn-only on mark failure; fence default is on (IP2) — backfill
+            // reconciles any missed rows.
+            let doc_uuid = uuid::Uuid::parse_str(&ctx.document_id).ok();
+            let ws = ctx
+                .workspace_id
+                .as_deref()
+                .and_then(|s| uuid::Uuid::parse_str(s).ok());
+            if chunk_text_authority_writes_relational(authority) {
+                if let (Some(repo), Some(doc_uuid)) = (&config.relational_chunks, doc_uuid) {
+                    if let Err(e) = repo
+                        .set_serving_state(
+                            edgequake_storage::traits::domain::DocumentId(doc_uuid),
+                            edgequake_storage::serving_fence::SERVING_STATE_READY,
+                        )
+                        .await
+                    {
+                        tracing::warn!(
+                            error = %e,
+                            document_id = %ctx.document_id,
+                            "SPEC-091: serving-state ready mark failed (backfill reconciles)"
+                        );
+                    }
+                    edgequake_storage::enqueue_outbox_best_effort(
+                        config.outbox.as_deref(),
+                        edgequake_storage::OUTBOX_AGGREGATE_DOCUMENT,
+                        doc_uuid,
+                        edgequake_storage::OUTBOX_EVENT_CHUNK_READY,
+                        serde_json::json!({ "document_id": ctx.document_id }),
+                        ws,
+                    )
+                    .await;
+                }
+            }
+            if let Some(doc_uuid) = doc_uuid {
+                edgequake_storage::enqueue_outbox_best_effort(
+                    config.outbox.as_deref(),
+                    edgequake_storage::OUTBOX_AGGREGATE_DOCUMENT,
+                    doc_uuid,
+                    edgequake_storage::OUTBOX_EVENT_MERGE_DONE,
+                    serde_json::json!({
+                        "document_id": ctx.document_id,
+                        "entities_created": stats.entities_created,
+                        "relationships_created": stats.relationships_created,
+                    }),
+                    ws,
+                )
+                .await;
+            }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             Ok(IngestionPersistOutput {
                 chunk_vector_ids,
                 merge_stats: stats,
@@ -428,6 +714,12 @@ async fn persist_processing_result_impl(
                 graph_storage.as_ref(),
                 vector_storage.as_ref(),
                 config.kv_storage.as_deref(),
+<<<<<<< HEAD
+=======
+                config.relational_chunks.as_deref(),
+                config.outbox.as_deref(),
+                authority,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 ctx,
                 &chunk_vector_ids,
                 &chunk_kv_ids,
@@ -446,6 +738,12 @@ async fn persist_processing_result_impl(
                 graph_storage.as_ref(),
                 vector_storage.as_ref(),
                 config.kv_storage.as_deref(),
+<<<<<<< HEAD
+=======
+                config.relational_chunks.as_deref(),
+                config.outbox.as_deref(),
+                authority,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 ctx,
                 &chunk_vector_ids,
                 &chunk_kv_ids,
@@ -463,6 +761,12 @@ async fn compensate_merge_failure(
     graph_storage: &dyn GraphStorage,
     vector_storage: &dyn VectorStorage,
     kv_storage: Option<&dyn KVStorage>,
+<<<<<<< HEAD
+=======
+    relational_chunks: Option<&dyn edgequake_storage::traits::domain::ChunkRepository>,
+    outbox: Option<&dyn edgequake_storage::OutboxSink>,
+    authority: edgequake_storage::chunk_text_authority::ChunkTextAuthority,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     ctx: &IngestionPersistContext,
     chunk_vector_ids: &[String],
     chunk_kv_ids: &[String],
@@ -484,6 +788,47 @@ async fn compensate_merge_failure(
         cause,
     )
     .await;
+<<<<<<< HEAD
+=======
+    // SPEC-091 W1: compensate relational chunk rows written in dual/relational
+    // mode (warn-only — a retry conflict-skips, and the backfill reconciles).
+    let doc_uuid = uuid::Uuid::parse_str(&ctx.document_id).ok();
+    let ws = ctx
+        .workspace_id
+        .as_deref()
+        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+    if edgequake_storage::chunk_text_authority::chunk_text_authority_writes_relational(authority) {
+        if let (Some(repo), Some(doc_uuid)) = (relational_chunks, doc_uuid) {
+            if let Err(e) = repo
+                .delete_for_document(
+                    &mut edgequake_storage::traits::domain::UnitOfWork::default(),
+                    edgequake_storage::traits::domain::DocumentId(doc_uuid),
+                )
+                .await
+            {
+                tracing::warn!(
+                    error = %e,
+                    document_id = %ctx.document_id,
+                    "SPEC-091: relational chunk compensation failed (retry conflict-skips)"
+                );
+            }
+        }
+    }
+    if let Some(doc_uuid) = doc_uuid {
+        edgequake_storage::enqueue_outbox_best_effort(
+            outbox,
+            edgequake_storage::OUTBOX_AGGREGATE_DOCUMENT,
+            doc_uuid,
+            edgequake_storage::OUTBOX_EVENT_COMPENSATE,
+            serde_json::json!({
+                "document_id": ctx.document_id,
+                "cause": cause,
+            }),
+            ws,
+        )
+        .await;
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     // SPEC-060: compensate stage histogram
     record_ingest_stage_duration("compensate", stage_start.elapsed().as_secs_f64());
 }
@@ -496,6 +841,10 @@ mod tests {
     use edgequake_storage::{
         GraphStorageReadOps, MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage,
     };
+<<<<<<< HEAD
+=======
+    use serial_test::serial;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     fn sample_result() -> ProcessingResult {
         let chunk = TextChunk {
@@ -519,11 +868,18 @@ mod tests {
             extractions: vec![ExtractionResult {
                 entities: vec![ExtractedEntity::new("Sarah Chen", "PERSON", "Engineer")
                     .with_source_chunk_id("doc1-chunk-0")],
+<<<<<<< HEAD
                 relationships: vec![ExtractedRelationship::new(
                     "Sarah Chen",
                     "EdgeQuake",
                     "LEADS",
                 )],
+=======
+                relationships: vec![
+                    ExtractedRelationship::new("Sarah Chen", "EdgeQuake", "LEADS")
+                        .with_source_chunk_id("doc1-chunk-0"),
+                ],
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 source_chunk_id: "doc1-chunk-0".to_string(),
                 ..Default::default()
             }],
@@ -533,7 +889,17 @@ mod tests {
     }
 
     #[tokio::test]
+<<<<<<< HEAD
     async fn persist_writes_chunk_kv_when_configured() {
+=======
+    #[serial]
+    async fn persist_writes_chunk_kv_when_configured() {
+        // SPEC-091 Wave A/D: authority default is `relational` (no KV chunk
+        // write) and vector default is typed (fail-closed without typed ports).
+        // This test exercises the legacy dual-KV path explicitly.
+        std::env::set_var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY", "dual");
+        std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "legacy_tables");
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         let graph = Arc::new(MemoryGraphStorage::new("kv-test"));
         let vector = Arc::new(MemoryVectorStorage::new("kv-test", 4));
         let kv = Arc::new(MemoryKVStorage::new("kv-test"));
@@ -556,6 +922,11 @@ mod tests {
         )
         .await
         .expect("persist");
+<<<<<<< HEAD
+=======
+        std::env::remove_var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY");
+        std::env::remove_var("EDGEQUAKE_VECTOR_BACKEND");
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let chunk_kv = kv.get_by_id("doc1-chunk-0").await.unwrap();
         assert!(
@@ -572,7 +943,14 @@ mod tests {
     }
 
     #[tokio::test]
+<<<<<<< HEAD
     async fn persist_writes_chunk_vectors_and_graph_nodes() {
+=======
+    #[serial]
+    async fn persist_writes_chunk_vectors_and_graph_nodes() {
+        // Legacy path: typed default skips eq_* upsert (IP0). Opt into legacy.
+        std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "legacy_tables");
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         let graph = Arc::new(MemoryGraphStorage::new("test"));
         let vector = Arc::new(MemoryVectorStorage::new("test", 4));
         vector.initialize().await.unwrap();
@@ -598,6 +976,128 @@ mod tests {
         assert!(out.merge_stats.entities_created + out.merge_stats.entities_updated > 0);
         assert!(vector.get_by_id("doc1-chunk-0").await.unwrap().is_some());
         assert!(graph.get_node("SARAH_CHEN").await.unwrap().is_some());
+<<<<<<< HEAD
+=======
+        std::env::remove_var("EDGEQUAKE_VECTOR_BACKEND");
+    }
+
+    /// SPEC-091 IP0 / IP-AC-01: typed authority must not call legacy vector upsert.
+    #[tokio::test]
+    #[serial]
+    async fn typed_authority_skips_legacy_chunk_vector_upsert() {
+        use async_trait::async_trait;
+        use edgequake_storage::traits::domain::{
+            EmbeddingCapabilities, EmbeddingIndex, EmbeddingRow, ModelId, ScoredChunk,
+            UpsertReport, VectorQuery, WorkspaceId,
+        };
+        use edgequake_storage::MemoryChunkRepository;
+
+        std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "typed_embeddings");
+
+        struct NoopEmbeddingIndex;
+        #[async_trait]
+        impl EmbeddingIndex for NoopEmbeddingIndex {
+            fn capabilities(&self) -> EmbeddingCapabilities {
+                EmbeddingCapabilities {
+                    metric: "cosine",
+                    supports_filters: true,
+                    supports_rerank: false,
+                }
+            }
+            async fn upsert_batch(
+                &self,
+                _model: ModelId,
+                rows: &[EmbeddingRow],
+            ) -> std::result::Result<UpsertReport, edgequake_storage::StorageError> {
+                Ok(UpsertReport {
+                    upserted: rows.len() as u64,
+                })
+            }
+            async fn search(
+                &self,
+                _req: &VectorQuery,
+            ) -> std::result::Result<Vec<ScoredChunk>, edgequake_storage::StorageError>
+            {
+                Ok(vec![])
+            }
+            async fn delete_for_workspace(
+                &self,
+                _workspace: WorkspaceId,
+            ) -> std::result::Result<u64, edgequake_storage::StorageError> {
+                Ok(0)
+            }
+        }
+
+        let graph = Arc::new(MemoryGraphStorage::new("ip0-skip"));
+        let vector = Arc::new(MemoryVectorStorage::new("ip0-skip", 4));
+        vector.initialize().await.unwrap();
+
+        let doc_id = uuid::Uuid::new_v4().to_string();
+        let ws_id = uuid::Uuid::new_v4().to_string();
+        let config = IngestionPersistConfig::from_settings(
+            IngestionPersistSettings::default(),
+            Arc::new(crate::merger::NoopEntitySink),
+            None,
+        )
+        .with_typed_embedding_index(Some(Arc::new(NoopEmbeddingIndex)))
+        .with_relational_chunks(Some(Arc::new(MemoryChunkRepository::new())));
+
+        let mut result = sample_result();
+        result.document_id = doc_id.clone();
+        result.chunks[0].id = format!("{doc_id}-chunk-0");
+
+        persist_processing_result(
+            graph,
+            vector.clone(),
+            &config,
+            &IngestionPersistContext::new(&doc_id, None, Some(ws_id)),
+            &result,
+            ChunkVectorBuildOptions::STANDARD,
+        )
+        .await
+        .expect("typed persist");
+
+        // Legacy MemoryVectorStorage would have received the upsert if called.
+        let chunk_key = format!("{doc_id}-chunk-0");
+        assert!(
+            vector.get_by_id(&chunk_key).await.unwrap().is_none(),
+            "IP-AC-01: legacy VectorStorage must stay empty under typed authority"
+        );
+        assert!(vector.is_empty().await.unwrap());
+        std::env::remove_var("EDGEQUAKE_VECTOR_BACKEND");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn typed_persist_fails_closed_when_typed_index_missing() {
+        std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "typed_embeddings");
+        let graph = Arc::new(MemoryGraphStorage::new("typed-fc"));
+        let vector = Arc::new(MemoryVectorStorage::new("typed-fc", 4));
+        vector.initialize().await.unwrap();
+
+        let config = IngestionPersistConfig::from_settings(
+            IngestionPersistSettings::default(),
+            Arc::new(crate::merger::NoopEntitySink),
+            None,
+        );
+        // No typed_embedding_index / relational_chunks — must Err under typed.
+        let err = persist_processing_result(
+            graph,
+            vector,
+            &config,
+            &IngestionPersistContext::new("doc1", None, None),
+            &sample_result(),
+            ChunkVectorBuildOptions::STANDARD,
+        )
+        .await
+        .expect_err("typed + missing index must fail closed");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("typed_embedding_index") || msg.contains("relational_chunks"),
+            "unexpected error: {msg}"
+        );
+        std::env::remove_var("EDGEQUAKE_VECTOR_BACKEND");
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     #[test]

@@ -100,6 +100,11 @@ use crate::handlers;
         handlers::get_cost_summary,
         handlers::get_model_pricing,
         handlers::estimate_cost,
+<<<<<<< HEAD
+=======
+        handlers::setup_status,
+        handlers::setup_initialize,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         handlers::create_tenant,
         handlers::list_tenants,
         handlers::get_tenant,
@@ -107,7 +112,10 @@ use crate::handlers;
         handlers::delete_tenant,
         handlers::create_workspace,
         handlers::list_workspaces,
+<<<<<<< HEAD
         handlers::list_workspaces_with_stats,
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         handlers::get_workspace_by_slug,
         handlers::get_workspace,
         handlers::update_workspace,
@@ -123,6 +131,12 @@ use crate::handlers;
         handlers::get_chunk_lineage,
         handlers::upload_pdf_document,
         handlers::upload_pdf_batch_document,
+<<<<<<< HEAD
+=======
+        handlers::parse_document,
+        handlers::list_parse_backends,
+        handlers::get_parse_job,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         handlers::get_pdf_status,
         handlers::list_pdfs,
         handlers::delete_pdf,
@@ -134,9 +148,21 @@ use crate::handlers;
         handlers::storage_inspect,
         handlers::storage_repair,
         handlers::ann_warmup,
+<<<<<<< HEAD
         handlers::entity_reconcile_plan,
         handlers::entity_reconcile_execute,
         handlers::delete_all_documents,
+=======
+        handlers::list_migration_jobs,
+        handlers::get_migration_job,
+        handlers::pause_migration_job,
+        handlers::resume_migration_job,
+        handlers::cancel_migration_job,
+        handlers::entity_reconcile_plan,
+        handlers::entity_reconcile_execute,
+        handlers::delete_all_documents,
+        handlers::batch_delete_documents,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         handlers::get_track_status,
         handlers::get_document,
         handlers::delete_document,
@@ -359,6 +385,12 @@ use crate::handlers;
         handlers::BudgetInfo,
         handlers::CostHistoryPoint,
         // Workspaces & Tenants schemas (SDK-aligned)
+<<<<<<< HEAD
+=======
+        handlers::SetupStatusResponse,
+        handlers::SetupInitializeRequest,
+        handlers::SetupInitializeResponse,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         handlers::CreateTenantRequest,
         handlers::UpdateTenantRequest,
         handlers::TenantResponse,
@@ -369,8 +401,11 @@ use crate::handlers;
         handlers::WorkspaceListResponse,
         handlers::PaginationParams,
         handlers::WorkspaceStatsResponse,
+<<<<<<< HEAD
         handlers::WorkspaceWithStatsResponse,
         handlers::WorkspaceStatsListResponse,
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         handlers::MetricsSnapshotDTO,
         handlers::MetricsHistoryResponse,
         handlers::RebuildEmbeddingsRequest,
@@ -402,6 +437,16 @@ use crate::handlers;
         handlers::PdfMetadata,
         handlers::PdfBatchUploadResponse,
         handlers::PdfBatchFileResult,
+<<<<<<< HEAD
+=======
+        // SPEC-094 Parse API
+        handlers::ParseResponse,
+        handlers::ParseAsyncAccepted,
+        handlers::ParseJobStatusResponse,
+        handlers::ParseBackendsResponse,
+        handlers::ParseOptions,
+        handlers::ParseMetrics,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // Documents (extended schemas)
         handlers::DeleteAllDocumentsResponse,
         handlers::DocumentDetailResponse,
@@ -487,6 +532,7 @@ use crate::handlers;
         (name = "Health", description = "Health check endpoints"),
         (name = "Observability", description = "Metrics and monitoring endpoints (Phase 3)"),
         (name = "Documents", description = "Document ingestion endpoints"),
+        (name = "Parse", description = "Stateless PDF to Markdown parsing (SPEC-094)"),
         (name = "Query", description = "Query execution endpoints"),
         (name = "Graph", description = "Knowledge graph exploration endpoints"),
         (name = "Entities", description = "Entity CRUD operations (Phase 2)"),

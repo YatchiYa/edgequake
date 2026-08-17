@@ -1,5 +1,9 @@
 'use client';
 
+<<<<<<< HEAD
+=======
+import { ServerDefaultsCard } from '@/components/onboarding/server-defaults-card';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { Button } from '@/components/ui/button';
 import {
   Collapsible,
@@ -7,6 +11,10 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { Label } from '@/components/ui/label';
+<<<<<<< HEAD
+=======
+import { Skeleton } from '@/components/ui/skeleton';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { useServerModelDefaults } from '@/hooks/use-server-model-defaults';
 import { cn } from '@/lib/utils';
 import { ChevronDown } from 'lucide-react';
@@ -31,7 +39,11 @@ export interface WorkspaceCreateModelSectionProps {
 
 /**
  * Collapsible model configuration for workspace creation.
+<<<<<<< HEAD
  * Hides advanced selectors when the server already has defaults (GitHub #233).
+=======
+ * SPEC-101: uses ServerDefaultsCard (LAW-101-2); Advanced hides chip storm.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  */
 export function WorkspaceCreateModelSection({
   llm,
@@ -43,9 +55,13 @@ export function WorkspaceCreateModelSection({
   onUseServerDefaultsChange,
 }: WorkspaceCreateModelSectionProps) {
   const { t } = useTranslation();
+<<<<<<< HEAD
   const { hasConfiguredDefaults, defaultLlmModel, defaultLlmProvider, defaultEmbeddingModel, defaultEmbeddingProvider, isLoading } =
     useServerModelDefaults();
 
+=======
+  const { hasConfiguredDefaults, isLoading } = useServerModelDefaults();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const [advancedOpen, setAdvancedOpen] = useState(!hasConfiguredDefaults);
 
   useEffect(() => {
@@ -61,12 +77,23 @@ export function WorkspaceCreateModelSection({
   }, [useServerDefaults, onUseServerDefaultsChange]);
 
   if (isLoading) {
+<<<<<<< HEAD
     return null;
+=======
+    return (
+      <div className="rounded-lg border p-3 space-y-2" data-testid="workspace-create-model-section">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-3/4" />
+      </div>
+    );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   }
 
   return (
     <div className="rounded-lg border p-3 space-y-3" data-testid="workspace-create-model-section">
       {hasConfiguredDefaults && !advancedOpen ? (
+<<<<<<< HEAD
         <div className="space-y-1" data-testid="workspace-create-server-defaults-summary">
           <p className="text-sm font-medium">{t('workspace.usingServerDefaults', 'Using server defaults')}</p>
           <p className="text-xs text-muted-foreground font-mono">
@@ -79,6 +106,13 @@ export function WorkspaceCreateModelSection({
               'Models are configured via environment variables. Expand advanced settings to override.'
             )}
           </p>
+=======
+        <div data-testid="workspace-create-server-defaults-summary">
+          <ServerDefaultsCard
+            showCustomize
+            onCustomize={() => setAdvancedOpen(true)}
+          />
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         </div>
       ) : null}
 
@@ -105,21 +139,48 @@ export function WorkspaceCreateModelSection({
                 {t('workspace.llmModel', 'LLM Model')}
                 <span className="text-destructive ml-0.5">*</span>
               </Label>
+<<<<<<< HEAD
               <LLMModelSelector value={llm} onChange={onLlmChange} />
+=======
+              <LLMModelSelector
+                value={llm}
+                onChange={onLlmChange}
+                showProviderFilters={false}
+                showCapabilityFilters={false}
+              />
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             </div>
             <div className="grid gap-2">
               <Label>
                 {t('workspace.embeddingModel', 'Embedding Model')}
                 <span className="text-destructive ml-0.5">*</span>
               </Label>
+<<<<<<< HEAD
               <EmbeddingModelSelector value={embedding} onChange={onEmbeddingChange} />
+=======
+              <EmbeddingModelSelector
+                value={embedding}
+                onChange={onEmbeddingChange}
+                showProviderFilters={false}
+              />
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             </div>
             <div className="grid gap-2 sm:col-span-2">
               <Label>
                 {t('workspace.visionLLM', 'Vision LLM')}
                 <span className="text-destructive ml-0.5">*</span>
               </Label>
+<<<<<<< HEAD
               <LLMModelSelector value={vision} onChange={onVisionChange} filterVision showUsageHint={false} />
+=======
+              <LLMModelSelector
+                value={vision}
+                onChange={onVisionChange}
+                filterVision
+                showProviderFilters={false}
+                showCapabilityFilters={false}
+              />
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             </div>
           </div>
         </CollapsibleContent>

@@ -76,8 +76,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{QueryError, Result};
 use crate::keywords::{
+<<<<<<< HEAD
     CachedKeywordExtractor, ExtractedKeywords, InMemoryKeywordCache, KeywordExtractor,
     LLMKeywordExtractor, MockKeywordExtractor,
+=======
+    CachedKeywordExtractor, ExtractedKeywords, KeywordExtractor, LLMKeywordExtractor,
+    MockKeywordExtractor,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 use crate::modes::QueryMode;
 use crate::tokenizer::{SimpleTokenizer, Tokenizer};
@@ -135,8 +140,13 @@ pub struct QueryEngineConfig {
     /// Mix-mode weights (P-G8 / RC-13). Mix runs the Local, Global, and Naive
     /// arms in parallel, min-max normalizes each arm, then takes the **max**
     /// weighted contribution per chunk (D-35: not a weighted sum). When
+<<<<<<< HEAD
     /// `EDGEQUAKE_MIX_FUSION=rrf` (default), RRF is used instead. A weight of 0
     /// skips that arm (E25).
+=======
+    /// `EDGEQUAKE_MIX_FUSION=rrf` (ablation; product default is round_robin /
+    /// SPEC-086 E2-occ). A weight of 0 skips that arm (E25).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub mix_local_weight: f32,
     pub mix_global_weight: f32,
     pub mix_naive_weight: f32,
@@ -410,8 +420,17 @@ pub struct QueryEngine {
     keyword_validation_cache: Arc<tokio::sync::RwLock<std::collections::HashMap<String, bool>>>,
     /// Optional cache for `context_only` retrieval contexts (P-G9).
     result_cache: Option<Arc<crate::cache::QueryResultCache>>,
+<<<<<<< HEAD
     /// Opt-in product Mix answer LLM cache (064 / LR `cache_type=query`).
     answer_cache: Option<crate::cache::SharedAnswerCache>,
+=======
+    /// Legacy in-memory answer cache (064); prefer [`Self::llm_response_cache`].
+    answer_cache: Option<crate::cache::SharedAnswerCache>,
+    /// SPEC-103 unified keywords+query LLM response cache (L1 and/or L2).
+    llm_response_cache: Option<crate::cache::SharedLlmResponseCache>,
+    /// Shared flag set by [`CachedKeywordExtractor`] on hit (LAW-C8).
+    keyword_cache_hit_flag: Arc<std::sync::atomic::AtomicBool>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 impl QueryEngine {
@@ -430,6 +449,7 @@ impl QueryEngine {
         embedding_provider: Arc<dyn EmbeddingProvider>,
         llm_provider: Arc<dyn LLMProvider>,
     ) -> Self {
+<<<<<<< HEAD
         // Create cached keyword extractor
         let base_extractor = Arc::new(LLMKeywordExtractor::new(llm_provider.clone()));
         let cache = Arc::new(InMemoryKeywordCache::new(1000));
@@ -438,6 +458,20 @@ impl QueryEngine {
             cache,
             std::time::Duration::from_secs(config.keyword_cache_ttl_secs),
         ));
+=======
+        let keyword_cache_hit_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let base_extractor = Arc::new(LLMKeywordExtractor::new(llm_provider.clone()));
+        let cache = Arc::new(crate::keywords::TieredKeywordCache::memory_only(1000));
+        let keyword_extractor: Arc<dyn KeywordExtractor> =
+            Arc::new(CachedKeywordExtractor::with_model(
+                base_extractor,
+                cache,
+                std::time::Duration::from_secs(config.keyword_cache_ttl_secs),
+                "default",
+                llm_provider.model().to_string(),
+                Arc::clone(&keyword_cache_hit_flag),
+            ));
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         Self {
             config,
@@ -454,6 +488,11 @@ impl QueryEngine {
             )),
             result_cache: None,
             answer_cache: None,
+<<<<<<< HEAD
+=======
+            llm_response_cache: None,
+            keyword_cache_hit_flag,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
     }
 
@@ -463,8 +502,13 @@ impl QueryEngine {
         self
     }
 
+<<<<<<< HEAD
     /// Enable in-memory Mix answer LLM cache (064). Also auto-enabled when
     /// `EDGEQUAKE_QUERY_ANSWER_CACHE=1` via [`Self::with_answer_cache_from_env`].
+=======
+    /// Enable Mix answer LLM cache (064 / SPEC-103). Also auto-enabled when
+    /// master `EDGEQUAKE_LLM_CACHE` is on via [`Self::with_answer_cache_from_env`].
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub fn with_answer_cache(self) -> Self {
         self.with_answer_cache_config(1_000, std::time::Duration::from_secs(3600))
     }
@@ -473,10 +517,21 @@ impl QueryEngine {
         self.answer_cache = Some(Arc::new(crate::cache::InMemoryAnswerCache::new(
             max_size, ttl,
         )));
+<<<<<<< HEAD
         self
     }
 
     /// Attach answer cache when `EDGEQUAKE_QUERY_ANSWER_CACHE` is truthy (default off).
+=======
+        self.llm_response_cache = Some(Arc::new(crate::cache::MemoryLlmResponseCache::new(
+            max_size, ttl,
+        )));
+        self.rewire_keyword_cache();
+        self
+    }
+
+    /// Attach answer cache when SPEC-103 flags enable it (master ON by default).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub fn with_answer_cache_from_env(self) -> Self {
         if crate::cache::answer_cache_enabled_from_env() {
             self.with_answer_cache()
@@ -485,12 +540,59 @@ impl QueryEngine {
         }
     }
 
+<<<<<<< HEAD
     /// Attach KV storage for chunk content hydration (SPEC-024 2.5).
     pub fn with_kv_storage(mut self, kv: Arc<dyn edgequake_storage::traits::KVStorage>) -> Self {
         self.kv_storage = Some(kv);
         self
     }
 
+=======
+    /// Attach unified LLM response cache (tests / custom backends).
+    pub fn with_llm_response_cache(mut self, cache: crate::cache::SharedLlmResponseCache) -> Self {
+        self.llm_response_cache = Some(cache);
+        if self.answer_cache.is_none() {
+            self.answer_cache = Some(Arc::new(crate::cache::InMemoryAnswerCache::with_defaults()));
+        }
+        self.rewire_keyword_cache();
+        self
+    }
+
+    /// Attach KV storage for chunk hydration + SPEC-103 L2 `public.llm_cache`.
+    pub fn with_kv_storage(mut self, kv: Arc<dyn edgequake_storage::traits::KVStorage>) -> Self {
+        self.kv_storage = Some(Arc::clone(&kv));
+        let tiered = Arc::new(crate::cache::TieredLlmResponseCache::with_kv(kv));
+        self.llm_response_cache = Some(tiered);
+        if self.answer_cache.is_none() && crate::cache::answer_cache_enabled_from_env() {
+            self.answer_cache = Some(Arc::new(crate::cache::InMemoryAnswerCache::with_defaults()));
+        }
+        self.rewire_keyword_cache();
+        self
+    }
+
+    /// Rebuild keyword extractor L1/L2 against current `llm_response_cache`.
+    fn rewire_keyword_cache(&mut self) {
+        let base_extractor = Arc::new(LLMKeywordExtractor::new(self.llm_provider.clone()));
+        let kw_cache: Arc<dyn crate::keywords::KeywordCache> =
+            if let Some(durable) = &self.llm_response_cache {
+                Arc::new(crate::keywords::TieredKeywordCache::with_durable(
+                    1000,
+                    Arc::clone(durable),
+                ))
+            } else {
+                Arc::new(crate::keywords::TieredKeywordCache::memory_only(1000))
+            };
+        self.keyword_extractor = Arc::new(CachedKeywordExtractor::with_model(
+            base_extractor,
+            kw_cache,
+            std::time::Duration::from_secs(self.config.keyword_cache_ttl_secs),
+            "default",
+            self.llm_provider.model().to_string(),
+            Arc::clone(&self.keyword_cache_hit_flag),
+        ));
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Wrap the engine's embedding provider in an LRU+TTL embedding cache
     /// (P-G9 / RC-14 / 064). Repeated `embed_one` and per-text batch `embed`
     /// slots share keys so Mix keyword-level batches stay warm.
@@ -537,6 +639,17 @@ impl QueryEngine {
         if let Some(cache) = &self.answer_cache {
             cache.clear();
         }
+<<<<<<< HEAD
+=======
+        if let Some(cache) = &self.llm_response_cache {
+            cache.clear_l1();
+        }
+    }
+
+    /// SPEC-103: unified LLM response cache handle (if wired).
+    pub fn llm_response_cache(&self) -> Option<&crate::cache::SharedLlmResponseCache> {
+        self.llm_response_cache.as_ref()
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 }
 
@@ -583,6 +696,11 @@ impl QueryEngine {
             )),
             result_cache: None,
             answer_cache: None,
+<<<<<<< HEAD
+=======
+            llm_response_cache: None,
+            keyword_cache_hit_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
     }
 

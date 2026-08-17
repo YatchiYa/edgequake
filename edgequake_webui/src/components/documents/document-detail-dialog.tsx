@@ -16,6 +16,7 @@
  */
 'use client';
 
+import { DocumentContentEmptyState } from '@/components/document/document-content-empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -48,7 +49,8 @@ import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { PDFMarkdownSplitView } from './pdf-markdown-split-view';
-import { StatusBadge as UnifiedStatusBadge, getDocumentDisplayStatus } from './status-badge';
+import { StatusBadge as UnifiedStatusBadge } from './status-badge';
+import { getDocumentDisplayStatus } from '@/lib/documents/status-domain';
 
 interface DocumentDetailDialogProps {
   document: Document | null;
@@ -69,14 +71,19 @@ function StatusBadge({ status, document }: { status: Document['status']; documen
   }
   
   // Legacy fallback for simple status strings
-  const statusConfig = {
-    pending: { label: 'Pending', variant: 'secondary' as const },
-    processing: { label: 'Processing', variant: 'default' as const },
-    completed: { label: 'Completed', variant: 'default' as const },
-    indexed: { label: 'Indexed', variant: 'default' as const },
-    failed: { label: 'Failed', variant: 'destructive' as const },
-    partial_failure: { label: 'Partial Failure', variant: 'destructive' as const },
-    cancelled: { label: 'Cancelled', variant: 'outline' as const },
+  const statusConfig: Record<
+    NonNullable<Document['status']>,
+    { label: string; variant: 'secondary' | 'default' | 'destructive' | 'outline' }
+  > = {
+    pending: { label: 'Pending', variant: 'secondary' },
+    processing: { label: 'Processing', variant: 'default' },
+    completed: { label: 'Completed', variant: 'default' },
+    indexed: { label: 'Indexed', variant: 'default' },
+    failed: { label: 'Failed', variant: 'destructive' },
+    partial_failure: { label: 'Partial Failure', variant: 'destructive' },
+    cancelled: { label: 'Cancelled', variant: 'outline' },
+    deleting: { label: 'Deleting', variant: 'secondary' },
+    delete_failed: { label: 'Delete failed', variant: 'destructive' },
   };
 
   // Handle 'indexed' as 'completed' for display purposes
@@ -271,9 +278,7 @@ export function DocumentDetailDialog({
                   {document.content}
                 </pre>
               ) : (
-                <p className="text-muted-foreground text-sm">
-                  {t('documents.details.noContent', 'No content available')}
-                </p>
+                <DocumentContentEmptyState className="text-muted-foreground text-sm" />
               )}
             </ScrollArea>
           </TabsContent>

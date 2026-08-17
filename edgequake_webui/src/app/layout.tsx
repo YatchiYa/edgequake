@@ -44,8 +44,18 @@ export default function RootLayout({
   };
 
   return (
+<<<<<<< HEAD
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning>
+=======
+    // h-full + overflow-hidden: dashboard pages own scrolling; virtualizer
+    // padding must never extend document.documentElement.scrollHeight (SPEC-099).
+    <html lang="en" className="h-full overflow-hidden" suppressHydrationWarning>
+      <body
+        className={`${inter.variable} h-full overflow-hidden font-sans antialiased`}
+        suppressHydrationWarning
+      >
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         <script
           suppressHydrationWarning
           dangerouslySetInnerHTML={{

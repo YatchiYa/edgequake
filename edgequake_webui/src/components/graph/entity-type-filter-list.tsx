@@ -7,7 +7,12 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+<<<<<<< HEAD
 import { ENTITY_TYPE_COLORS } from "@/lib/graph/label-utils";
+=======
+import { EntityTypeColorSwatch } from "@/components/graph/entity-type-color-swatch";
+import { useEntityTypeColors } from "@/hooks/use-entity-type-colors";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/stores/use-graph-store";
 import { Eye, EyeOff } from "lucide-react";
@@ -23,6 +28,10 @@ export interface EntityTypeStat {
 
 export function useEntityTypeStats(): EntityTypeStat[] {
   const nodes = useGraphStore((s) => s.nodes);
+<<<<<<< HEAD
+=======
+  const { colorFor } = useEntityTypeColors();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const { t } = useTranslation();
 
   return useMemo(() => {
@@ -39,14 +48,22 @@ export function useEntityTypeStats(): EntityTypeStat[] {
         return {
           type,
           count,
+<<<<<<< HEAD
           color: ENTITY_TYPE_COLORS[normalized] ?? ENTITY_TYPE_COLORS.DEFAULT,
+=======
+          color: colorFor(type),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           label: t(
             `graph.nodeTypes.${normalized.toLowerCase()}`,
             type.charAt(0).toUpperCase() + type.slice(1).toLowerCase(),
           ),
         };
       });
+<<<<<<< HEAD
   }, [nodes, t]);
+=======
+  }, [nodes, t, colorFor]);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 export interface EntityTypeFilterListProps {
@@ -73,6 +90,10 @@ export function EntityTypeFilterList({
   const setVisibleEntityTypes = useGraphStore((s) => s.setVisibleEntityTypes);
 
   const typeStats = useEntityTypeStats();
+<<<<<<< HEAD
+=======
+  const { colors, setTypeColor, resetTypeColor } = useEntityTypeColors();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const normalizedQuery = typeQuery.trim().toLowerCase();
 
   const filteredStats = useMemo(() => {
@@ -186,6 +207,7 @@ export function EntityTypeFilterList({
           ) : (
             filteredStats.map(({ type, count, color, label }) => {
               const isVisible = visibleEntityTypes.has(type);
+<<<<<<< HEAD
               return (
                 <button
                   key={type}
@@ -233,6 +255,65 @@ export function EntityTypeFilterList({
                     />
                   )}
                 </button>
+=======
+              // WHY: row is a div — swatch is its own <button>; nesting buttons
+              // inside buttons is invalid HTML and breaks hydration (SPEC-102).
+              return (
+                <div
+                  key={type}
+                  role="listitem"
+                  className={cn(
+                    "w-full flex items-center gap-2.5 rounded-md",
+                    "hover:bg-background/80",
+                    compact ? "px-2 py-1.5" : "px-2.5 py-2",
+                    !isVisible && "opacity-45",
+                  )}
+                >
+                  <EntityTypeColorSwatch
+                    entityType={type}
+                    color={color}
+                    overrides={colors}
+                    onChange={(hex) => void setTypeColor(type, hex)}
+                    onReset={() => void resetTypeColor(type)}
+                  />
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex-1 flex items-center gap-2.5 min-w-0 text-left rounded-md",
+                      "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                    )}
+                    onClick={() => toggleEntityType(type)}
+                    aria-pressed={isVisible}
+                    aria-label={`${label}: ${count}. ${isVisible ? t("graph.legend.clickToHide", "Click to hide") : t("graph.legend.clickToShow", "Click to show")}`}
+                  >
+                    <span
+                      className={cn(
+                        "flex-1 truncate font-medium min-w-0",
+                        compact ? "text-[11px]" : "text-xs",
+                      )}
+                    >
+                      {label}
+                    </span>
+                    <Badge
+                      variant={isVisible ? "secondary" : "outline"}
+                      className="h-5 min-w-7 px-1.5 text-[10px] font-semibold tabular-nums shrink-0 justify-center"
+                    >
+                      {count}
+                    </Badge>
+                    {isVisible ? (
+                      <Eye
+                        className="h-3.5 w-3.5 text-primary/70 shrink-0"
+                        aria-hidden
+                      />
+                    ) : (
+                      <EyeOff
+                        className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                        aria-hidden
+                      />
+                    )}
+                  </button>
+                </div>
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
               );
             })
           )}

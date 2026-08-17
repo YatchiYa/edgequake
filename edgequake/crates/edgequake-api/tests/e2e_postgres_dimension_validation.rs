@@ -3,6 +3,14 @@
 //! @implements SPEC-032: Ollama/LM Studio provider support - Dimension validation
 //! @iteration OODA Loop #4 - Phase 6C
 
+<<<<<<< HEAD
+=======
+// Route to the dedicated scratch test database (see common/test_db.rs).
+#[cfg(feature = "postgres")]
+#[path = "common/test_db.rs"]
+mod test_db;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 #[cfg(feature = "postgres")]
 mod postgres_tests {
     use edgequake_api::state::AppState;
@@ -11,6 +19,11 @@ mod postgres_tests {
     /// Helper: Check if PostgreSQL is available
     fn is_postgres_available() -> bool {
         std::env::var("DATABASE_URL").is_ok()
+    }
+
+    /// Resolve the dev `DATABASE_URL` redirected to the scratch test database.
+    fn scratch_db_url() -> String {
+        crate::test_db::isolated_test_url(&std::env::var("DATABASE_URL").unwrap())
     }
 
     /// Test that fresh PostgreSQL storage doesn't error (no dimension mismatch).
@@ -27,7 +40,7 @@ mod postgres_tests {
         std::env::remove_var("OLLAMA_HOST");
         std::env::remove_var("OPENAI_API_KEY");
 
-        let database_url = std::env::var("DATABASE_URL").unwrap();
+        let database_url = scratch_db_url();
 
         // Create AppState with fresh storage
         let result = AppState::new_postgres(database_url, "").await;
@@ -40,7 +53,7 @@ mod postgres_tests {
             // Delete all vectors using raw SQL (safer than relying on clear())
             if let Ok(pool) = sqlx::postgres::PgPoolOptions::new()
                 .max_connections(1)
-                .connect(&std::env::var("DATABASE_URL").unwrap())
+                .connect(&scratch_db_url())
                 .await
             {
                 let _ = sqlx::query("TRUNCATE TABLE eq_default_vectors CASCADE")
@@ -59,7 +72,7 @@ mod postgres_tests {
             return;
         }
 
-        let database_url = std::env::var("DATABASE_URL").unwrap();
+        let database_url = scratch_db_url();
 
         // Step 1: Create storage with OpenAI dimensions (1536)
         std::env::remove_var("EDGEQUAKE_LLM_PROVIDER");
@@ -139,7 +152,7 @@ mod postgres_tests {
             return;
         }
 
-        let database_url = std::env::var("DATABASE_URL").unwrap();
+        let database_url = scratch_db_url();
 
         // Step 1: Create storage with OpenAI (1536-dim)
         std::env::set_var("OPENAI_API_KEY", "sk-test");

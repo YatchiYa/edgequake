@@ -35,7 +35,12 @@ fn contract_mix_fusion_env_modes() {
     std::env::remove_var("EDGEQUAKE_MIX_FUSION");
     assert_eq!(
         edgequake_query::fusion::mix_fusion_mode_from_env(),
+<<<<<<< HEAD
         MixFusionMode::Rrf
+=======
+        MixFusionMode::RoundRobin,
+        "SPEC-086: product default is E2-occ round_robin"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     );
 
     std::env::set_var("EDGEQUAKE_MIX_FUSION", "weighted");
@@ -54,6 +59,16 @@ fn contract_mix_fusion_env_modes() {
         "max_after_minmax"
     );
 
+<<<<<<< HEAD
+=======
+    std::env::set_var("EDGEQUAKE_MIX_FUSION", "rrf");
+    assert_eq!(
+        edgequake_query::fusion::mix_fusion_mode_from_env(),
+        MixFusionMode::Rrf,
+        "explicit rrf remains a labeled ablation"
+    );
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     std::env::set_var("EDGEQUAKE_MIX_FUSION", "round_robin");
     assert_eq!(
         edgequake_query::fusion::mix_fusion_mode_from_env(),
@@ -63,6 +78,10 @@ fn contract_mix_fusion_env_modes() {
     std::env::remove_var("EDGEQUAKE_MIX_FUSION");
     assert_eq!(
         edgequake_query::fusion::mix_fusion_mode_from_env(),
+<<<<<<< HEAD
         MixFusionMode::Rrf
+=======
+        MixFusionMode::RoundRobin
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     );
 }

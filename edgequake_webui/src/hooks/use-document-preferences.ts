@@ -49,6 +49,8 @@ const DEFAULTS = {
   statusFilter: "all" as DocStatus,
   sortField: "created_at" as SortField,
   sortDirection: "desc" as SortDirection,
+  /** SPEC-099: Cost column opt-in (default hidden) */
+  showCostColumn: false,
 };
 
 /**
@@ -75,6 +77,10 @@ export interface UseDocumentPreferencesReturn {
   /** Sort direction */
   sortDirection: SortDirection;
   setSortDirection: (direction: SortDirection) => void;
+
+  /** SPEC-099: show Cost column (default false) */
+  showCostColumn: boolean;
+  setShowCostColumn: (show: boolean) => void;
 }
 
 /**
@@ -86,6 +92,7 @@ function readPreferences(): Partial<{
   statusFilter: DocStatus;
   sortField: SortField;
   sortDirection: SortDirection;
+  showCostColumn: boolean;
 }> {
   if (typeof window === "undefined") return {};
 
@@ -123,6 +130,16 @@ export function useDocumentPreferences(): UseDocumentPreferencesReturn {
     return isSortDirection(prefs.sortDirection)
       ? prefs.sortDirection
       : DEFAULTS.sortDirection;
+<<<<<<< HEAD
+=======
+  });
+
+  const [showCostColumn, setShowCostColumn] = useState(() => {
+    const prefs = readPreferences();
+    return typeof prefs.showCostColumn === "boolean"
+      ? prefs.showCostColumn
+      : DEFAULTS.showCostColumn;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   });
 
   useEffect(() => {
@@ -134,12 +151,13 @@ export function useDocumentPreferences(): UseDocumentPreferencesReturn {
           statusFilter,
           sortField,
           sortDirection,
+          showCostColumn,
         }),
       );
     } catch {
       // Ignore localStorage errors (e.g., in incognito mode)
     }
-  }, [pageSize, statusFilter, sortField, sortDirection]);
+  }, [pageSize, statusFilter, sortField, sortDirection, showCostColumn]);
 
   return {
     pageSize,
@@ -150,6 +168,8 @@ export function useDocumentPreferences(): UseDocumentPreferencesReturn {
     setSortField,
     sortDirection,
     setSortDirection,
+    showCostColumn,
+    setShowCostColumn,
   };
 }
 

@@ -8,6 +8,10 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DocumentDownloadMenu } from './document-download-menu';
+<<<<<<< HEAD
+=======
+import { needsReuploadNotReprocess } from '@/lib/pipeline/pipeline-document-state';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import type { Document } from '@/types';
 import { Copy, Eye, MoreVertical, RefreshCw, StopCircle, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -103,6 +107,7 @@ export function DocumentActionsMenu({
               {t('documents.actions.viewPdf', 'View PDF')}
             </DropdownMenuItem>
           )}
+<<<<<<< HEAD
 
           <DocumentDownloadMenu document={doc} variant="submenu" />
 
@@ -133,6 +138,40 @@ export function DocumentActionsMenu({
             {t('documents.actions.reprocess')}
           </DropdownMenuItem>
 
+=======
+
+          <DocumentDownloadMenu document={doc} variant="submenu" />
+
+          {/* Reset status option for failed documents */}
+          {showReset && (
+            <DropdownMenuItem asChild>
+              <div className="p-0">
+                <ResetDocumentStatusButton document={doc} iconOnly={false} size="sm" />
+              </div>
+            </DropdownMenuItem>
+          )}
+
+          {/* Cancel option for processing documents */}
+          {canCancel && (
+            <DropdownMenuItem 
+              onClick={() => onCancel(doc.track_id!)}
+              className="text-orange-600"
+              disabled={isCancelling}
+            >
+              <StopCircle className="h-4 w-4 mr-2" />
+              {t('documents.actions.cancel', 'Cancel Extraction')}
+            </DropdownMenuItem>
+          )}
+
+          {/* Reprocess — hide for orphan staging shells (dismiss + re-upload). */}
+          {!needsReuploadNotReprocess(doc) && (
+            <DropdownMenuItem onClick={() => onReprocess(doc.id)}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              {t('documents.actions.reprocess')}
+            </DropdownMenuItem>
+          )}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           {/* SPEC-050: Delete now opens a confirm dialog with impact preview */}
           <DropdownMenuItem
             onClick={() => setDeleteDialogOpen(true)}

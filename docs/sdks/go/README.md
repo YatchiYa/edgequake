@@ -1,6 +1,16 @@
+<<<<<<< HEAD
 # Go SDK
 
 > **Product: v0.19.0** · SDK package: **~0.4.0** (decoupled from server)
+=======
+---
+title: "Go SDK"
+---
+
+# Go SDK
+
+> **Product: v0.23.0** · SDK package: **~0.4.0** (decoupled from server)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 **Location:** `sdks/go`
 
@@ -37,10 +47,19 @@ log.Println(out.Affected)
 
 `BulkDelete` sends `conversation_ids` in the POST body.
 
+<<<<<<< HEAD
 ## v0.19 notes
 
 - Task cancel: `c.Tasks.Cancel(ctx, trackID)` — verify against [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md).
 - PDF progress SSE and `display_status` fields may require raw HTTP; Tier 1 SDKs lead on typed helpers.
+=======
+## v0.23 notes
+
+- Task cancel: `c.Tasks.Cancel(ctx, trackID)` — verify against [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md).
+- PDF progress SSE and `display_status` / `ui_phase` fields may require raw JSON decoding; Tier 1 SDKs lead on typed helpers.
+- **Stateless parse (SPEC-094):** no typed `parse` resource yet — use raw HTTP `POST /api/v1/parse` (multipart `file` + `options` JSON; sync ≤ 15 pages / 20 MiB, async ≤ 1000 pages), `GET /api/v1/parse/backends`, and `GET /api/v1/parse/jobs/{id}`. Response shapes: `ParseResponse` (`markdown`, `page_count`, `metrics.total_ms`, …), `ParseAsyncAccepted` (`job_id`), `ParseJobStatusResponse` (`status`, `result`, `error`).
+- **LLM cache (server-side):** `EDGEQUAKE_LLM_CACHE=1` default caches keywords + answers; `EDGEQUAKE_KEYWORD_CACHE` / `EDGEQUAKE_QUERY_ANSWER_CACHE` override. No client change — set flags on the server.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ## Test
 

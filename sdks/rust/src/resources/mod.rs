@@ -15,6 +15,10 @@ pub mod graph;
 pub mod health;
 pub mod lineage;
 pub mod models;
+<<<<<<< HEAD
+=======
+pub mod parse;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod pdf;
 pub mod pipeline;
 pub mod provenance;

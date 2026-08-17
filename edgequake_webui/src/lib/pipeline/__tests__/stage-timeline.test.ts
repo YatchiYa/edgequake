@@ -32,12 +32,20 @@ function doc(partial: Partial<Document> & { id: string }): Document {
 }
 
 describe("stage-timeline", () => {
+<<<<<<< HEAD
   it("marks converting skipped for markdown", () => {
+=======
+  it("omits converting for markdown (no Converting PDF label)", () => {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     const tl = buildStageTimeline(
       run({ sourceType: "markdown", stage: "chunking" }),
     );
     const converting = tl.steps.find((s) => s.id === "converting");
+<<<<<<< HEAD
     expect(converting?.status).toBe("skipped");
+=======
+    expect(converting).toBeUndefined();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     expect(tl.steps.find((s) => s.id === "chunking")?.status).toBe("active");
   });
 
@@ -150,6 +158,10 @@ describe("stage-timeline", () => {
   });
 
   it("entities mode skips uploading and converting", () => {
+<<<<<<< HEAD
+=======
+    // Default sourceType pdf: converting stays in timeline but skipped for entities mode.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     const tl = buildStageTimeline(
       run({
         stage: "extracting",
@@ -160,6 +172,20 @@ describe("stage-timeline", () => {
     expect(tl.steps.find((s) => s.id === "uploading")?.status).toBe("skipped");
     expect(tl.steps.find((s) => s.id === "converting")?.status).toBe("skipped");
     expect(tl.steps.find((s) => s.id === "extracting")?.status).toBe("active");
+<<<<<<< HEAD
+=======
+
+    const mdEntities = buildStageTimeline(
+      run({
+        stage: "extracting",
+        mode: "entities",
+        sourceType: "markdown",
+        filename: "notes.md",
+        counts: { current: 1, total: 10, unit: "chunks" },
+      }),
+    );
+    expect(mdEntities.steps.find((s) => s.id === "converting")).toBeUndefined();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   });
 
   it("gleaning is a first-class active step after extracting done", () => {
@@ -189,6 +215,29 @@ describe("stage-timeline", () => {
     expect(tl.steps.find((s) => s.id === "embedding")?.status).toBe("pending");
   });
 
+<<<<<<< HEAD
+=======
+  it("cancelled freezes at cancelledAtStage — Cancelled chip, never Failed", () => {
+    const tl = buildStageTimeline(
+      run({
+        stage: "cancelled",
+        stageStatus: "cancelled",
+        cancelledAtStage: "extracting",
+        message: "Processing cancelled",
+      }),
+    );
+    // Cancelled step is the focus chip (not Failed); priors stay done.
+    expect(tl.activeStepId).toBe("extracting");
+    expect(tl.steps.find((s) => s.id === "extracting")?.status).toBe(
+      "cancelled",
+    );
+    expect(tl.steps.find((s) => s.id === "chunking")?.status).toBe("done");
+    expect(tl.steps.find((s) => s.id === "embedding")?.status).toBe("pending");
+    expect(tl.steps.some((s) => s.status === "failed")).toBe(false);
+    expect(tl.overallProgress01).toBeLessThan(1);
+  });
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   it("completed marks all non-skipped steps done", () => {
     const tl = buildStageTimeline(
       run({
@@ -197,7 +246,11 @@ describe("stage-timeline", () => {
         sourceType: "text",
       }),
     );
+<<<<<<< HEAD
     expect(tl.steps.find((s) => s.id === "converting")?.status).toBe("skipped");
+=======
+    expect(tl.steps.find((s) => s.id === "converting")).toBeUndefined();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     expect(
       tl.steps
         .filter((s) => s.status !== "skipped")

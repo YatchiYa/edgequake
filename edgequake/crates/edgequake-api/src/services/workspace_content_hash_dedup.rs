@@ -14,12 +14,18 @@ use crate::workspace_scope::metadata_matches_tenant_context;
 use edgequake_storage::kv_keys;
 
 /// Returns true when promoted or staging metadata still backs this hash mapping.
+<<<<<<< HEAD
+=======
+///
+/// IMP-075-07: final + staging in one `get_by_ids_ordered` (O(1) RT), not two sequential gets.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub async fn workspace_has_visible_document_for_hash(
     state: &AppState,
     document_id: &str,
     tenant_ctx: &TenantContext,
 ) -> ApiResult<bool> {
     let metadata_key = metadata_key_for_document(document_id);
+<<<<<<< HEAD
     if let Ok(Some(meta)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
         if metadata_matches_tenant_context(&meta, tenant_ctx) {
             return Ok(true);
@@ -28,6 +34,18 @@ pub async fn workspace_has_visible_document_for_hash(
 
     let staging_key = kv_keys::staging_doc_metadata(document_id);
     if let Ok(Some(meta)) = state.storage.kv_storage.get_by_id(&staging_key).await {
+=======
+    let staging_key = kv_keys::staging_doc_metadata(document_id);
+    let keys = [metadata_key, staging_key];
+    let vals = state
+        .storage
+        .kv_storage
+        .get_by_ids_ordered(&keys)
+        .await
+        .map_err(|e| ApiError::Internal(format!("KV batch metadata read failed: {e}")))?;
+
+    for meta in vals.into_iter().flatten() {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         if metadata_matches_tenant_context(&meta, tenant_ctx) {
             return Ok(true);
         }
@@ -62,6 +80,20 @@ pub async fn recycle_orphan_workspace_hash(
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to recycle orphan hash key: {e}")))?;
 
+<<<<<<< HEAD
+=======
+    // SPEC-091 W2: typed ingestion_dedup recycle parity.
+    #[cfg(feature = "postgres")]
+    if let Some(content_hash) = content_hash_from_workspace_hash_key(hash_key, workspace_id) {
+        crate::services::ingestion_dedup_store::dual_delete_all(
+            state.pg_pool.as_ref(),
+            workspace_id,
+            &content_hash,
+        )
+        .await;
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     Ok(())
 }
 

@@ -14,7 +14,13 @@ export interface Document {
     | "partial_failure"
     | "failed"
     | "indexed"
+<<<<<<< HEAD
     | "cancelled";
+=======
+    | "cancelled"
+    | "deleting"
+    | "delete_failed";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   error_message?: string;
   /** Structured failure code (e.g. `server_restart_interrupted`). */
   failure_code?: string;
@@ -35,6 +41,14 @@ export interface Document {
   content_hash?: string;
   /** Track ID for batch grouping. */
   track_id?: string;
+<<<<<<< HEAD
+=======
+  /**
+   * True while document lives in `staging:{id}-metadata` (pre-promote).
+   * SPEC-086: list-visible; orphan recovery fails shells with no live task.
+   */
+  admission_staging?: boolean;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   /** Tenant ID for multi-tenancy. */
   tenant_id?: string;
   /** Workspace ID for multi-tenancy. */
@@ -95,6 +109,31 @@ export interface Document {
   stage_message?: string;
 
   /**
+<<<<<<< HEAD
+=======
+   * Structured stage counts (LAW-IS1 / SPEC-091). Prefer over parsing stage_message.
+   * Wire: { unit, current, total } — unit pages|chunks|entities|relationships|figures.
+   */
+  progress_counts?: {
+    unit: string;
+    current: number;
+    total: number;
+  };
+
+  /** SPEC-091 IS2 / LAW-IS4: 1-based FCFS queue position (pending admission). */
+  queue_position?: number | null;
+  /** Estimated seconds until claim (clamped; see eta_basis). */
+  eta_seconds?: number | null;
+  /** `measured` | `no_history` */
+  eta_basis?: string | null;
+  /**
+   * SPEC-091 IS3 / LD-09: set only when serving fence is on.
+   * true = Ready (queryable); false = Indexed (not yet queryable).
+   */
+  query_ready?: boolean | null;
+
+  /**
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
    * SPEC-057 P4: API SSOT badge key (cancelled|failed|completed|extracting|…).
    * Prefer over local stage/status derivation when present.
    */
@@ -106,6 +145,15 @@ export interface Document {
   ui_phase?: string;
 
   /**
+<<<<<<< HEAD
+=======
+   * Last non-terminal pipeline stage when cancel froze the run (INV-10).
+   * Written by backend on cancel; used for honest Active Runs freeze.
+   */
+  cancelled_from_stage?: string;
+
+  /**
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
    * Reprocess mode when this run was started via soft/hard reprocess (SPEC-048).
    * Wire: full | entities | merge
    */
@@ -299,7 +347,12 @@ export interface DocumentChunk {
 export interface UploadDocumentRequest {
   content: string;
   title?: string;
+<<<<<<< HEAD
   source_type?: "text" | "file" | "url";
+=======
+  /** SPEC-086: include markdown (and file kinds) for text-path admission. */
+  source_type?: "text" | "file" | "url" | "markdown" | "image" | "pdf";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   metadata?: Record<string, unknown>;
   async_processing?: boolean;
   /** Optional track ID for batch grouping. If not provided, one will be generated. */

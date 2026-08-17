@@ -8,6 +8,7 @@ use std::collections::HashSet;
 
 use crate::context::RetrievedChunk;
 
+<<<<<<< HEAD
 fn env_flag_on(name: &str) -> bool {
     std::env::var(name)
         .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
@@ -17,6 +18,22 @@ fn env_flag_on(name: &str) -> bool {
 /// `EDGEQUAKE_L2_BM25_UNION=1` enables BM25∪CE citation chunks.
 pub fn l2_bm25_union_enabled() -> bool {
     env_flag_on("EDGEQUAKE_L2_BM25_UNION")
+=======
+/// Default-on (SPEC-086 E2-occ). Explicit `0`/`false`/`off` disables.
+fn env_flag_on_default_true(name: &str) -> bool {
+    match std::env::var(name) {
+        Ok(v) => !matches!(
+            v.to_ascii_lowercase().as_str(),
+            "0" | "false" | "no" | "off"
+        ),
+        Err(_) => true,
+    }
+}
+
+/// `EDGEQUAKE_L2_BM25_UNION` — BM25∪CE citation chunks (product default **on**).
+pub fn l2_bm25_union_enabled() -> bool {
+    env_flag_on_default_true("EDGEQUAKE_L2_BM25_UNION")
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 pub fn l2_bm25_mix_top_k() -> usize {
@@ -76,12 +93,22 @@ pub fn l2_bm25_mode() -> L2Bm25Mode {
         .as_str()
     {
         "replace" | "bm25" | "bm25_only" => L2Bm25Mode::Replace,
+<<<<<<< HEAD
         "fact_replace" | "fact" => L2Bm25Mode::FactReplace,
+=======
+        "union" | "union_bm25_first" | "bm25_first" => L2Bm25Mode::UnionBm25First,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // off / none / same / prompt: Acc Mix (post-trunc) is the citation list.
         "off" | "none" | "0" | "false" | "unified" | "same" | "prompt" | "acc" => {
             L2Bm25Mode::Unified
         }
+<<<<<<< HEAD
         _ => L2Bm25Mode::UnionBm25First,
+=======
+        // Empty / fact_replace → product + Acc E2-occ default (SPEC-086).
+        "fact_replace" | "fact" | "" => L2Bm25Mode::FactReplace,
+        _ => L2Bm25Mode::FactReplace,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 }
 

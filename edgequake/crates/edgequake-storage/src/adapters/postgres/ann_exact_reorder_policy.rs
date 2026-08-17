@@ -1,7 +1,18 @@
+<<<<<<< HEAD
 //! SPEC-076 — Opt-in ANN → exact distance reorder (A3).
 //!
 //! Default OFF. When enabled, queries fetch `candidate_k` ANN hits then re-rank
 //! by exact stored distance on a MATERIALIZED CTE (pgvector guidance).
+=======
+//! SPEC-076 / SPEC-090 — ANN → exact distance reorder (A3).
+//!
+//! When enabled, queries fetch `candidate_k` ANN hits then re-rank by exact
+//! stored distance on a MATERIALIZED CTE (pgvector guidance).
+//!
+//! SPEC-090 F-090-06 / LAW-P5: when `hnsw.iterative_scan = relaxed_order`,
+//! exact reorder is forced on with `candidate_k ≈ 4 * top_k` so results leave
+//! storage in distance order.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 use crate::filter_column_policy::env_flag_true;
 
@@ -25,7 +36,11 @@ impl Default for AnnExactReorderPolicy {
 }
 
 impl AnnExactReorderPolicy {
+<<<<<<< HEAD
     /// Load from env — default OFF (no silent flip).
+=======
+    /// Load from env — default OFF unless coupled via [`Self::for_search`].
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub fn from_env() -> Self {
         let enabled = env_flag_true("EDGEQUAKE_ANN_EXACT_REORDER");
         let candidate_k = std::env::var("EDGEQUAKE_ANN_REORDER_CANDIDATE_K")
@@ -39,6 +54,22 @@ impl AnnExactReorderPolicy {
         }
     }
 
+<<<<<<< HEAD
+=======
+    /// Resolve reorder for a search given iterative_scan mode and `top_k`.
+    ///
+    /// Forces reorder when mode is `relaxed_order` (pgvector may return out-of-order).
+    pub fn for_search(iterative_scan_mode: &str, top_k: usize) -> Self {
+        let mut policy = Self::from_env();
+        if iterative_scan_mode == "relaxed_order" {
+            policy.enabled = true;
+            let coupled = (top_k.saturating_mul(4)).max(DEFAULT_ANN_REORDER_CANDIDATE_K);
+            policy.candidate_k = policy.candidate_k.max(coupled).clamp(1, 10_000);
+        }
+        policy
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Effective inner LIMIT: at least `top_k`, at most policy candidate_k when enabled.
     pub fn effective_candidate_k(&self, top_k: usize) -> usize {
         if !self.enabled {
@@ -108,17 +139,42 @@ pub fn build_ann_select_sql(
 mod tests {
     use super::*;
 
+<<<<<<< HEAD
     #[test]
     fn default_policy_is_off() {
         std::env::remove_var("EDGEQUAKE_ANN_EXACT_REORDER");
         std::env::remove_var("EDGEQUAKE_ANN_REORDER_CANDIDATE_K");
         let p = AnnExactReorderPolicy::from_env();
+=======
+    /// Env vars are process-global: tests that mutate them must be serialized
+    /// or parallel scheduling races (`set_var` vs `remove_var`) flake.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn default_policy_is_off() {
+        let p = AnnExactReorderPolicy::default();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         assert!(!p.enabled);
         assert_eq!(p.effective_candidate_k(20), 20);
     }
 
     #[test]
+<<<<<<< HEAD
     fn enabled_raises_candidate_k() {
+=======
+    fn relaxed_order_forces_reorder() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("EDGEQUAKE_ANN_EXACT_REORDER");
+        std::env::remove_var("EDGEQUAKE_ANN_REORDER_CANDIDATE_K");
+        let p = AnnExactReorderPolicy::for_search("relaxed_order", 20);
+        assert!(p.enabled);
+        assert_eq!(p.effective_candidate_k(20), 80);
+    }
+
+    #[test]
+    fn enabled_raises_candidate_k() {
+        let _guard = ENV_LOCK.lock().unwrap();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         std::env::set_var("EDGEQUAKE_ANN_EXACT_REORDER", "1");
         std::env::set_var("EDGEQUAKE_ANN_REORDER_CANDIDATE_K", "50");
         let p = AnnExactReorderPolicy::from_env();

@@ -114,6 +114,18 @@ pub struct WorkspaceResponse {
     /// When true, unknown types are remapped to OTHER/CONCEPT (default true).
     pub entity_types_strict: bool,
 
+<<<<<<< HEAD
+=======
+    /// Configured extraction language override (SPEC-096).
+    /// `null` / omitted means inherit `EDGEQUAKE_EXTRACTION_LANGUAGE` or English.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extraction_language: Option<String>,
+
+    /// Custom entity-type → hex color map for graph visualization (SPEC-102).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Creation timestamp.
     pub created_at: String,
     /// Last update timestamp.
@@ -194,6 +206,7 @@ pub struct WorkspaceStatsResponse {
     pub stale: bool,
 }
 
+<<<<<<< HEAD
 /// A workspace with its statistics inlined.
 ///
 /// WHY: listing workspaces and then fetching `/workspaces/{id}/stats` per row
@@ -218,6 +231,8 @@ pub struct WorkspaceStatsListResponse {
     pub total: usize,
 }
 
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// Single metrics snapshot for historical data.
 ///
 /// OODA-22: Individual snapshot in metrics history response.

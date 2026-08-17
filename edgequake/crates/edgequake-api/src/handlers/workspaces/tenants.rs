@@ -26,6 +26,10 @@ use crate::state::AppState;
     path = "/api/v1/tenants",
     request_body = CreateTenantRequest,
     responses(
+<<<<<<< HEAD
+=======
+        (status = 200, description = "Tenant already existed (idempotent get-or-create by slug)", body = TenantResponse),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         (status = 201, description = "Tenant created", body = TenantResponse),
         (status = 400, description = "Invalid request"),
         (status = 409, description = "Tenant with this slug already exists"),
@@ -112,11 +116,17 @@ pub async fn create_tenant(
         tenant = tenant.with_vision_config(model, provider);
     }
 
+<<<<<<< HEAD
     // Store tenant via workspace service
+=======
+    // Store tenant via workspace service (SPEC-104 A+: conflict enforced in core).
+    let requested_id = tenant.tenant_id;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
         .await
+<<<<<<< HEAD
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
     // Auto-create a default workspace for the new tenant (R004)
@@ -163,6 +173,57 @@ pub async fn create_tenant(
             default_embedding = %format!("{}/{}", created_tenant.default_embedding_provider, created_tenant.default_embedding_model),
             "Auto-created default workspace for tenant with model config"
         );
+=======
+        .map_err(ApiError::from)?;
+    let created_new = created_tenant.tenant_id == requested_id;
+
+    // Auto-create a default workspace only for newly inserted tenants (R004).
+    // SPEC-032: Workspace inherits tenant's default model configuration
+    if created_new {
+        let mut default_workspace_request =
+            edgequake_core::CreateWorkspaceRequest::new("Default Workspace")
+                .with_llm_config(
+                    &created_tenant.default_llm_model,
+                    &created_tenant.default_llm_provider,
+                )
+                .with_embedding_config(
+                    &created_tenant.default_embedding_model,
+                    &created_tenant.default_embedding_provider,
+                    created_tenant.default_embedding_dimension,
+                );
+        default_workspace_request.slug = Some("default".to_string());
+        // Persist vision parsing mode on the auto-created Default Workspace.
+        default_workspace_request.pdf_parser_backend =
+            Some(edgequake_pdf::PdfParserBackend::Vision);
+        // SPEC-041: Inherit vision LLM config if set on tenant
+        if let (Some(model), Some(provider)) = (
+            created_tenant.default_vision_llm_model.as_ref(),
+            created_tenant.default_vision_llm_provider.as_ref(),
+        ) {
+            default_workspace_request.vision_llm_model = Some(model.clone());
+            default_workspace_request.vision_llm_provider = Some(provider.clone());
+        }
+
+        if let Err(e) = state
+            .workspace_service
+            .create_workspace(created_tenant.tenant_id, default_workspace_request)
+            .await
+        {
+            tracing::warn!(
+                tenant_id = %created_tenant.tenant_id,
+                error = %e,
+                "Failed to auto-create default workspace"
+            );
+            // Continue anyway - tenant was created successfully
+        } else {
+            tracing::info!(
+                tenant_id = %created_tenant.tenant_id,
+                default_llm = %format!("{}/{}", created_tenant.default_llm_provider, created_tenant.default_llm_model),
+                default_embedding = %format!("{}/{}", created_tenant.default_embedding_provider, created_tenant.default_embedding_model),
+                "Auto-created default workspace for tenant with model config"
+            );
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     let response = TenantResponse {
@@ -195,9 +256,21 @@ pub async fn create_tenant(
         tenant_id = %created_tenant.tenant_id,
         default_llm = %response.default_llm_full_id,
         default_embedding = %response.default_embedding_full_id,
+<<<<<<< HEAD
         "Created tenant with model configuration"
     );
     Ok((StatusCode::CREATED, Json(response)))
+=======
+        created_new = created_new,
+        "Upserted tenant with model configuration (SPEC-104)"
+    );
+    let status = if created_new {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(response)))
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// List all tenants.

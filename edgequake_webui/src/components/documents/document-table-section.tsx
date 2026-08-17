@@ -48,10 +48,24 @@ const ESTIMATED_ROW_HEIGHT = 52;
  * the body table so they stay in perfect alignment (DRY / single source of truth).
  * table-fixed on both tables means colgroup widths are authoritative.
  */
+<<<<<<< HEAD
 function TableColGroup() {
   return (
     <colgroup>
       <col style={{ width: '2.5rem' }} /><col /><col style={{ width: '8.5rem' }} /><col style={{ width: '5rem' }} /><col style={{ width: '5.5rem' }} /><col style={{ width: '9rem' }} /><col style={{ width: '9rem' }} /><col style={{ width: '10.5rem' }} />
+=======
+function TableColGroup({ showCostColumn }: { showCostColumn: boolean }) {
+  return (
+    <colgroup>
+      <col style={{ width: '2.5rem' }} />
+      <col />
+      <col style={{ width: '8.5rem' }} />
+      <col style={{ width: '5rem' }} />
+      {showCostColumn ? <col style={{ width: '5.5rem' }} /> : null}
+      <col style={{ width: '9rem' }} />
+      <col style={{ width: '9rem' }} />
+      <col style={{ width: '10.5rem' }} />
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     </colgroup>
   );
 }
@@ -103,6 +117,13 @@ export interface DocumentTableSectionProps {
   sortDirection: SortDirection;
   /** Column header sort toggle */
   onSort: (field: SortField) => void;
+<<<<<<< HEAD
+=======
+  /** SPEC-099: Cost column opt-in */
+  showCostColumn?: boolean;
+  /** SPEC-099: overflow honesty affordance */
+  overflowLabel?: string | null;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /**
@@ -141,6 +162,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
   sortField,
   sortDirection,
   onSort,
+<<<<<<< HEAD
 }: DocumentTableSectionProps) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -161,16 +183,56 @@ export const DocumentTableSection = memo(function DocumentTableSection({
       : 0;
 
   const showTable = !isLoading && documents.length > 0;
+=======
+  showCostColumn = false,
+  overflowLabel = null,
+}: DocumentTableSectionProps) {
+  const { t } = useTranslation();
+  const scrollRef = useRef<HTMLDivElement>(null);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
+  const virtualizer = useVirtualizer({
+    count: documents.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    overscan: 8,
+  });
+
+  const virtualItems = virtualizer.getVirtualItems();
+  const totalVirtualHeight = virtualizer.getTotalSize();
+  // Offset for the visible window inside the spacer (TanStack absolute pattern).
+  // Do NOT use <tr height=padding> spacers — table min-height leaks into
+  // document.scrollHeight and creates the page-level white-band scrollbar.
+  const windowOffset = virtualItems[0]?.start ?? 0;
+
+  const showTable = !isLoading && documents.length > 0;
+
+  // SPEC-099: must be a real flex child (not a Fragment). A Fragment breaks the
+  // min-h-0 / flex-1 chain → virtualizer padding blows page height, header +
+  // dropzone scroll away, and a large empty white band appears below rows.
   return (
+<<<<<<< HEAD
     <>
+=======
+    <div
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip"
+      data-testid="documents-inventory-section"
+    >
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       {/* ── ZONE 1: shrink-0 header (never inside the scroll container) ── */}
       <div className="shrink-0 px-4 pt-3 bg-background">
         {/* Count / filter info */}
         {showTable && (
           <div className="flex items-center gap-2 mb-1.5">
             <FileText className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+<<<<<<< HEAD
             <span className="text-xs text-muted-foreground tabular-nums">
+=======
+            <span
+              className="text-xs text-muted-foreground tabular-nums"
+              data-testid="spec099-inventory-count"
+            >
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
               {searchQuery || statusFilter !== 'all'
                 ? t('documents.filter.showingFiltered', '{{count}} of {{total}}', {
                     count: documents.length,
@@ -178,6 +240,17 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                   })
                 : t('documents.documentCount', '{{count}} documents', { count: totalCount })}
             </span>
+<<<<<<< HEAD
+=======
+            {overflowLabel ? (
+              <span
+                className="text-xs text-amber-700 dark:text-amber-400"
+                data-testid="spec099-scale-overflow"
+              >
+                {overflowLabel}
+              </span>
+            ) : null}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           </div>
         )}
 
@@ -185,7 +258,11 @@ export const DocumentTableSection = memo(function DocumentTableSection({
         {showTable && (
           <div className="border border-border border-b-0 rounded-t-lg bg-muted/40 overflow-hidden shadow-sm">
             <table className="w-full table-fixed caption-bottom text-sm" role="presentation">
+<<<<<<< HEAD
               <TableColGroup />
+=======
+              <TableColGroup showCostColumn={showCostColumn} />
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead scope="col" className="rounded-tl-lg">
@@ -193,6 +270,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                       checked={isAllSelected}
                       onCheckedChange={(checked) => onSelectAll(!!checked)}
                       aria-label={t('documents.bulk.selectAll', 'Select all')}
+<<<<<<< HEAD
                     />
                   </TableHead>
                   <SortableColumnHeader
@@ -309,11 +387,149 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                   <tr aria-hidden="true"><td style={{ height: paddingBottom }} /></tr>
                 )}
               </TableBody>
+=======
+                    />
+                  </TableHead>
+                  <SortableColumnHeader
+                    field="title"
+                    label={t('documents.table.title', 'Title')}
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={onSort}
+                  />
+                  <SortableColumnHeader
+                    field="status"
+                    label={t('documents.table.status', 'Status')}
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={onSort}
+                  />
+                  <SortableColumnHeader
+                    field="entity_count"
+                    label={t('documents.table.entities', 'Entities')}
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={onSort}
+                    align="center"
+                  />
+                  {showCostColumn ? (
+                    <SortableColumnHeader
+                      field="cost_usd"
+                      label={t('documents.table.cost', 'Cost')}
+                      activeField={sortField}
+                      direction={sortDirection}
+                      onSort={onSort}
+                      align="center"
+                    />
+                  ) : null}
+                  <SortableColumnHeader
+                    field="created_at"
+                    label={t('documents.table.created', 'Created')}
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={onSort}
+                  />
+                  <SortableColumnHeader
+                    field="updated_at"
+                    label={t('documents.table.updated', 'Last Updated')}
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={onSort}
+                  />
+                  <TableHead scope="col" className="rounded-tr-lg">
+                    <span className="sr-only">{t('documents.table.actions', 'Actions')}</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             </table>
           </div>
         )}
       </div>
+<<<<<<< HEAD
     </>
+=======
+
+      {/* ── ZONE 2: flex-1 scroll container (body only) ── */}
+      <div
+        ref={scrollRef}
+        className="min-h-[9rem] flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-3 [contain:paint]"
+        data-testid="documents-table-scroll"
+      >
+        {/* Loading / empty states — shown when no table */}
+        <DocumentTableStates
+          isLoading={isLoading}
+          isEmpty={documents.length === 0}
+          onUploadClick={onUploadClick}
+          statusFilter={statusFilter}
+          searchQuery={searchQuery}
+          onClearFilter={onClearFilter}
+          isBusyUpdating={isBusyUpdating}
+        />
+
+        {showTable && (
+          <div
+            className="relative w-full"
+            style={{ height: totalVirtualHeight }}
+            data-testid="documents-virtual-spacer"
+          >
+            <div
+              className="absolute left-0 right-0 border border-border rounded-b-lg overflow-hidden shadow-sm bg-background"
+              style={{ transform: `translateY(${windowOffset}px)` }}
+              aria-label={t('documents.table.ariaLabel', 'Documents list')}
+            >
+              <table className="w-full table-fixed caption-bottom text-sm">
+                <TableColGroup showCostColumn={showCostColumn} />
+                <TableBody>
+                  {virtualItems.map((virtualRow) => {
+                    const doc = documents[virtualRow.index];
+                    if (!doc) return null;
+                    const bareId = doc.id.replace(/^staging:/, "");
+                    const isLiveRun =
+                      Boolean(activeRunDocumentIds?.has(doc.id)) ||
+                      Boolean(activeRunDocumentIds?.has(bareId));
+                    const isBackground =
+                      Boolean(activeRunDocumentIds && activeRunDocumentIds.size > 0) &&
+                      !isLiveRun;
+                    return (
+                      <DocumentTableRow
+                        key={doc.id}
+                        doc={doc}
+                        index={virtualRow.index}
+                        isSelected={selectedIds.has(doc.id)}
+                        isActive={selectedDocument?.id === doc.id}
+                        isBackground={isBackground}
+                        isLiveRun={isLiveRun}
+                        showCostColumn={showCostColumn}
+                        searchQuery={searchQuery}
+                        onSelect={onSelectOne}
+                        onClick={onRowClick}
+                        onDoubleClick={onRowDoubleClick}
+                        onViewDetails={onViewDetails}
+                        onViewInGraph={onViewInGraph}
+                        onViewPdf={onViewPdf}
+                        onRetry={onRetry}
+                        onReprocess={onReprocess}
+                        onCancel={onCancel}
+                        onDelete={onDelete}
+                        isRetrying={isRetrying}
+                        isCancelling={isCancelling}
+                        isDeleting={
+                          (deletingDocumentIds?.has(doc.id) ?? false) ||
+                          (doc.status || '').toLowerCase() === 'deleting' ||
+                          (doc.current_stage || '').toLowerCase() === 'deleting'
+                        }
+                      />
+                    );
+                  })}
+                </TableBody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   );
 });
 

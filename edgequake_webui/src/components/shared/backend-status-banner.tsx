@@ -6,8 +6,14 @@
  * retries NetworkError silently in the background, this banner tells the
  * user *why* counts read as 0 and offers a manual retry.
  *
+<<<<<<< HEAD
  * SPEC-021 P-G13: distinguishes *unreachable* (process down) from
  * *degraded* (busy during ingestion — counts may lag but backend is alive).
+=======
+ * SPEC-021 P-G13: surfaces *unreachable* / *misconfigured* only.
+ * *degraded* (busy during ingestion) is intentionally silent — laggy counts
+ * during processing are expected and must not interrupt the UI.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  *
  * @implements FEAT1030 - System health monitoring (visible degradation)
  */
@@ -41,11 +47,27 @@ export function BackendStatusBanner() {
   });
 
   const state = readiness?.state;
+<<<<<<< HEAD
   if (dismissed || isLoading || !state || state === 'ready') {
     return null;
   }
 
   const isUnreachable = state === 'unreachable';
+=======
+  // WHY: Do not surface the busy/degraded "Processing documents…" banner —
+  // ingestion lag is normal and the amber strip is noise on detail/list pages.
+  // Keep the banner only for true outages / wrong-port misconfiguration.
+  if (
+    dismissed ||
+    isLoading ||
+    !state ||
+    state === 'ready' ||
+    state === 'degraded'
+  ) {
+    return null;
+  }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const isMisconfigured = state === 'misconfigured';
 
   return (
@@ -63,9 +85,13 @@ export function BackendStatusBanner() {
       <span className="flex-1">
         {isMisconfigured
           ? t('common.backendWrongPort', 'EdgeQuake is starting up on a different port. Please refresh in a moment.')
+<<<<<<< HEAD
           : isUnreachable
           ? t('common.backendNotReady', 'EdgeQuake is not available right now. Please check that the server is running.')
           : t('common.backendBusy', 'Processing documents — some counts may be temporarily out of date.')}
+=======
+          : t('common.backendNotReady', 'EdgeQuake is not available right now. Please check that the server is running.')}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       </span>
       <Loader2 className="h-3 w-3 animate-spin opacity-70" aria-hidden="true" />
       <button

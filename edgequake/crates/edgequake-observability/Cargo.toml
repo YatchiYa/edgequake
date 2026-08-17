@@ -29,10 +29,17 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 metrics = { version = "0.24", optional = true }
 metrics-exporter-prometheus = { version = "0.17", optional = true }
 
+<<<<<<< HEAD
 opentelemetry = { version = "0.31", optional = true }
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"], optional = true }
 opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic"], optional = true }
 tracing-opentelemetry = { version = "0.32", optional = true }
+=======
+opentelemetry = { version = "0.32", optional = true }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"], optional = true }
+tracing-opentelemetry = { version = "0.33", optional = true }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

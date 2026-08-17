@@ -36,6 +36,15 @@ impl PipelineState {
         inner.pdf_progress.get(track_id).cloned()
     }
 
+<<<<<<< HEAD
+=======
+    /// Insert or replace a progress entry (e.g. rehydrate after process restart).
+    pub async fn put_pdf_progress(&self, track_id: &str, progress: PdfUploadProgress) {
+        let mut inner = self.inner.write().await;
+        inner.pdf_progress.insert(track_id.to_string(), progress);
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Start a phase with known total items.
     ///
     /// Use this when beginning a phase like `PdfConversion` with `total_pages`.

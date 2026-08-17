@@ -83,6 +83,16 @@ impl KVStorage for MemoryKVStorage {
         Ok(results)
     }
 
+    /// IMP-075-06: single lock + O(K) lookups (not default trait N× get_by_id).
+    /// Order-preserving with `None` gaps — parity with Postgres UNNEST batch.
+    async fn get_by_ids_ordered(&self, ids: &[String]) -> Result<Vec<Option<serde_json::Value>>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let data = self.data.read().map_err(super::lock::map_lock_err)?;
+        Ok(ids.iter().map(|id| data.get(id).cloned()).collect())
+    }
+
     async fn filter_keys(&self, keys: HashSet<String>) -> Result<HashSet<String>> {
         let data = self.data.read().map_err(super::lock::map_lock_err)?;
 
@@ -372,5 +382,41 @@ mod tests {
 
         // Assert: transition failed (key doesn't exist)
         assert!(!result, "Transition should fail for non-existent key");
+    }
+
+    /// SPEC-087: default count_embedded_chunks_for_docs (empty + chunk keys).
+    #[tokio::test]
+    async fn test_count_embedded_chunks_for_docs() {
+        let storage = MemoryKVStorage::new("test");
+        storage.initialize().await.unwrap();
+
+        assert_eq!(
+            storage.count_embedded_chunks_for_docs(&[]).await.unwrap(),
+            0
+        );
+
+        let doc = "doc-a".to_string();
+        storage
+            .upsert(&[
+                (
+                    format!("{doc}-chunk-0"),
+                    json!({"content": "a", "index": 0}),
+                ),
+                (
+                    format!("{doc}-chunk-1"),
+                    json!({"content": "b", "index": 1}),
+                ),
+                ("other-chunk-0".into(), json!({"content": "x"})),
+            ])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            storage
+                .count_embedded_chunks_for_docs(&[doc])
+                .await
+                .unwrap(),
+            2
+        );
     }
 }

@@ -110,7 +110,13 @@ pub fn unique_relationships_for_embed(
             if source_key.is_empty() || target_key.is_empty() || source_key == target_key {
                 continue;
             }
+<<<<<<< HEAD
             let key = format!("{}->{}:{}", source_key, target_key, rel.relation_type);
+=======
+            // SPEC-098 LAW-098-3/8: casefold so "knows"/"KNOWS" collapse.
+            let rel_type = edgequake_storage::normalize_relation_type_str(&rel.relation_type);
+            let key = format!("{}->{}:{}", source_key, target_key, rel_type);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             if let Some(existing) = by_key.get_mut(&key) {
                 existing.mentions.push((ext_idx, rel_idx));
                 if rel.description.len() > description_len_from_embed_text(&existing.text) {
@@ -190,7 +196,13 @@ pub fn dedupe_relationships_by_endpoints(
         if source_key.is_empty() || target_key.is_empty() || source_key == target_key {
             continue;
         }
+<<<<<<< HEAD
         let key = format!("{}->{}:{}", source_key, target_key, rel.relation_type);
+=======
+        // SPEC-098 LAW-098-3/8: casefold so "knows"/"KNOWS" collapse.
+        let rel_type = edgequake_storage::normalize_relation_type_str(&rel.relation_type);
+        let key = format!("{}->{}:{}", source_key, target_key, rel_type);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         if let Some(existing) = by_key.get_mut(&key) {
             if rel.description.len() > existing.description.len() {
                 existing.description = rel.description.clone();

@@ -68,6 +68,7 @@ async fn get_document_inner(
         "Getting document by ID with tenant context"
     );
 
+<<<<<<< HEAD
     // Fetch document metadata
     let metadata_key =
         crate::services::document_metadata_scan::metadata_key_for_document(&document_id);
@@ -82,6 +83,17 @@ async fn get_document_inner(
     );
 
     let metadata = metadata_values.into_iter().next();
+=======
+    // Fetch document metadata (final, then staging — SPEC-086 list-visible shells).
+    let metadata_key =
+        crate::services::document_metadata_scan::metadata_key_for_document(&document_id);
+    let staging_key = edgequake_storage::kv_keys::staging_doc_metadata(&document_id);
+    debug!(metadata_key = %metadata_key, "Looking up metadata key");
+    let mut metadata = storage.kv_storage.get_by_id(&metadata_key).await?;
+    if metadata.is_none() {
+        metadata = storage.kv_storage.get_by_id(&staging_key).await?;
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     debug!(has_metadata = metadata.is_some(), "Metadata value present");
 
     // SPEC-011: prefix scan — no full keys() table scan
@@ -462,9 +474,25 @@ async fn get_document_inner(
         Some(tid) => tasks.cancellation_registry.has_cancel_intent(tid).await,
         None => false,
     };
+<<<<<<< HEAD
     let status_view =
         crate::services::map_ingestion_status(crate::services::IngestionStatusInputs {
             task_status: None,
+=======
+    let task_status_owned = match track_id.as_deref() {
+        Some(tid) => tasks
+            .storage
+            .get_task(tid)
+            .await
+            .ok()
+            .flatten()
+            .map(|t| t.status.to_string()),
+        None => None,
+    };
+    let status_view =
+        crate::services::map_ingestion_status(crate::services::IngestionStatusInputs {
+            task_status: task_status_owned.as_deref(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             doc_status: Some(status.as_str()),
             current_stage: current_stage.as_deref(),
             failure_class: failure_class.as_deref(),

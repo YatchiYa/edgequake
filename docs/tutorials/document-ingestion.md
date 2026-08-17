@@ -2,7 +2,11 @@
 title: "Tutorial: Document Ingestion Deep-Dive"
 ---
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # Tutorial: Document Ingestion Deep-Dive
 
@@ -14,7 +18,11 @@ This tutorial explores EdgeQuake's document processing pipeline in depth, coveri
 **Level**: Intermediate  
 **Prerequisites**: Completed [First RAG App](/docs/tutorials/first-rag-app/)
 
+<<<<<<< HEAD
 ### API truth (v0.19.0)
+=======
+### API truth (v0.23.0)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 | Concept | SSOT |
 | ------- | ---- |

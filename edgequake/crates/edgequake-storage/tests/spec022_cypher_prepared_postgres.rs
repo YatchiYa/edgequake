@@ -62,6 +62,7 @@ mod postgres_integration {
 #[test]
 fn spec022_nodes_ops_use_parameterized_cypher() {
     // nodes_ops split into read/mutate modules (SPEC-054 modularization).
+<<<<<<< HEAD
     let read = include_str!("../src/adapters/postgres/graph/nodes_ops/read.rs");
     let mutate = include_str!("../src/adapters/postgres/graph/nodes_ops/mutate.rs");
     assert!(
@@ -71,14 +72,44 @@ fn spec022_nodes_ops_use_parameterized_cypher() {
     assert!(
         mutate.contains("cypher_execute_bound"),
         "pg_delete_node must use parameterized Cypher execute"
+=======
+    // SPEC-088 SSOT: request-path has/get are native UNIQUE lookups (not Cypher MATCH).
+    // Cypher remains only as the debug fallback when native graph writes are disabled.
+    let read = include_str!("../src/adapters/postgres/graph/nodes_ops/read.rs");
+    let mutate = include_str!("../src/adapters/postgres/graph/nodes_ops/mutate.rs");
+    assert!(
+        read.contains("pg_get_nodes_batch")
+            && read.contains("Cypher property MATCH is not used on the request path"),
+        "pg_has_node/pg_get_node must use native batch lookup (SPEC-088), not Cypher MATCH"
+    );
+    assert!(
+        mutate.contains("cypher_execute_bound") && mutate.contains("native_graph_writes_enabled"),
+        "pg_delete_node must keep parameterized Cypher execute as native-off fallback"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     );
 }
 
 #[test]
 fn spec022_edges_ops_use_parameterized_cypher() {
     let edges = include_str!("../src/adapters/postgres/graph/edges_ops.rs");
+<<<<<<< HEAD
     assert!(edges.contains("cypher_query_bound"));
     assert!(edges.contains("cypher_execute_bound"));
+=======
+    assert!(
+        edges.contains("native_graph_writes_enabled"),
+        "edge mutate path must gate on native graph writes"
+    );
+    assert!(
+        edges.contains("cypher_execute_bound"),
+        "edge DELETE must keep parameterized Cypher execute as native-off fallback"
+    );
+    // Reads are native SQL (sqlx::query); bound Cypher is not required on the get path.
+    assert!(
+        edges.contains("sqlx::query"),
+        "edge read/native delete paths must use sqlx binds"
+    );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 #[test]

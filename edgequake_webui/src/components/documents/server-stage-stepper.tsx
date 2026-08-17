@@ -8,6 +8,10 @@
 "use client";
 
 import { AdmissionPhaseRow } from "@/components/documents/admission-phase-row";
+<<<<<<< HEAD
+=======
+import { PhaseStrip } from "@/components/documents/phase-strip";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { cn } from "@/lib/utils";
 import type { IngestionRunView } from "@/lib/pipeline/ingestion-run-view";
 import {
@@ -20,6 +24,14 @@ interface ServerStageStepperProps {
   run: IngestionRunView;
   /** When true, hide skipped converting for non-PDF (still shown muted by default). */
   hideSkipped?: boolean;
+<<<<<<< HEAD
+=======
+  /**
+   * `phases` (default): SPEC-091 IS3 4-phase strip for ActiveRuns.
+   * `wire`: full UnifiedStage chips (Pipeline / Details).
+   */
+  variant?: "phases" | "wire";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   className?: string;
 }
 
@@ -31,6 +43,11 @@ function statusClasses(status: StageStepStatus): string {
       return "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200";
     case "failed":
       return "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200";
+<<<<<<< HEAD
+=======
+    case "cancelled":
+      return "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     case "skipped":
       return "text-muted-foreground/50 line-through decoration-muted-foreground/40";
     default:
@@ -46,6 +63,11 @@ function dotClasses(status: StageStepStatus): string {
       return "bg-sky-500 animate-pulse";
     case "failed":
       return "bg-rose-500";
+<<<<<<< HEAD
+=======
+    case "cancelled":
+      return "bg-orange-500";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     case "skipped":
       return "bg-muted-foreground/25";
     default:
@@ -56,6 +78,10 @@ function dotClasses(status: StageStepStatus): string {
 export function ServerStageStepper({
   run,
   hideSkipped = false,
+<<<<<<< HEAD
+=======
+  variant = "phases",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   className,
 }: ServerStageStepperProps) {
   const timeline = buildStageTimeline(run);
@@ -63,10 +89,25 @@ export function ServerStageStepper({
     ? timeline.steps.filter((s) => s.status !== "skipped")
     : timeline.steps;
   const active = steps.find(
+<<<<<<< HEAD
     (s) => s.status === "active" || s.status === "failed",
   );
   const detailLine = formatStepDetailLine(active?.detail);
   const admissionPhase = timeline.admissionPhase;
+=======
+    (s) =>
+      s.status === "active" ||
+      s.status === "failed" ||
+      s.status === "cancelled",
+  );
+  const detailLine = formatStepDetailLine(active?.detail);
+  const admissionPhase = timeline.admissionPhase;
+  const isCancelTerminal =
+    run.stageStatus === "cancelled" ||
+    run.stage === "cancelled" ||
+    run.stageStatus === "stopping" ||
+    run.stage === "stopping";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   return (
     <div
@@ -75,6 +116,10 @@ export function ServerStageStepper({
       data-stage={run.stage}
       data-admission={admissionPhase ?? "running"}
       data-overall-progress={timeline.overallProgress01.toFixed(3)}
+<<<<<<< HEAD
+=======
+      data-variant={variant}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     >
       {admissionPhase ? (
         <AdmissionPhaseRow
@@ -84,6 +129,12 @@ export function ServerStageStepper({
         />
       ) : null}
 
+<<<<<<< HEAD
+=======
+      {variant === "phases" ? (
+        <PhaseStrip run={run} />
+      ) : (
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
         {steps.map((step) => (
           <span
@@ -110,8 +161,14 @@ export function ServerStageStepper({
           </span>
         ))}
       </div>
+<<<<<<< HEAD
 
       {active && detailLine ? (
+=======
+      )}
+
+      {active && detailLine && !isCancelTerminal ? (
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         <div
           className={cn(
             "rounded-md border px-2 py-1.5 text-[11px] tabular-nums",

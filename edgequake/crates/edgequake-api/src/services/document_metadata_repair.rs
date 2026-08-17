@@ -28,7 +28,11 @@ async fn load_relational_titles(
     pool: &sqlx::PgPool,
 ) -> Result<HashMap<String, String>, sqlx::Error> {
     let rows = sqlx::query_as::<_, (String, String)>(
+<<<<<<< HEAD
         "SELECT id::text, title FROM documents WHERE title IS NOT NULL AND title != ''",
+=======
+        "SELECT id::text, title FROM public.documents WHERE title IS NOT NULL AND title != ''",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     )
     .fetch_all(pool)
     .await?;

@@ -10,6 +10,15 @@ sdks/swift/.swiftpm/
 sdks/**/.build/
 sdks/**/.swiftpm/
 
+<<<<<<< HEAD
+=======
+# Java SDK — Maven target/ is covered by root target/; Eclipse/m2e often
+# materializes a mirrored `bin/` tree with .class + copied sources (do not commit).
+sdks/java/bin/
+sdks/**/bin/
+*.class
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 **/*.rs.bk
 *.pdb
 
@@ -27,6 +36,10 @@ sdks/**/.swiftpm/
 !specs/017-dry-and-solid-audit/005-edgequake-pipeline/e2e/screenshots/*.png
 !specs/017-dry-and-solid-audit/006-edgequake-query/e2e/screenshots/*.png
 !specs/017-dry-and-solid-audit/007-edgequake-storage/e2e/screenshots/*.png
+<<<<<<< HEAD
+=======
+!specs/096-multi-language-extraction/e2e/screenshots/*.png
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # Environment files
 .env
@@ -138,15 +151,30 @@ edgequake-website/
 # Root-level marketing screenshots (safe to regenerate)
 /*.png
 
+<<<<<<< HEAD
 # Bench001 medical-full raw eval/predictions exceed GitHub 100MB limit — keep
 # scorecard/SUMMARY/BUSINESS_REPORT only; regenerate locally via make bench001-medical-full-*.
 specs/001-benchmark/e2e/artifacts/medical-full/predictions_*.json
 specs/001-benchmark/e2e/artifacts/medical-full/eval_*.json
 specs/001-benchmark/e2e/artifacts/history/medical-full-*/predictions_*.json
 specs/001-benchmark/e2e/artifacts/history/medical-full-*/eval_*.json
+=======
+# SPEC-097 / GH-351 — fat regenerable bench001 archives (local-only).
+# Keep thin scorecard/SUMMARY/BUSINESS_REPORT/meta in git; regenerate fat via make bench001-*.
+specs/001-benchmark/e2e/artifacts/**/predictions_*.json
+specs/001-benchmark/e2e/artifacts/**/eval_*.json
+specs/001-benchmark/e2e/artifacts/**/eval_*.raw.json
+specs/001-benchmark/e2e/artifacts/**/logs/progress.jsonl
+specs/001-benchmark/e2e/artifacts/history/**/logs/
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # OS files
 Thumbs.db
 ehthumbs.db
 ./metals
 .edgecrab-artifacts/
+<<<<<<< HEAD
+=======
+specs/93-migration-assessment/reports/*/pre-upgrade.dump
+.freebuff/
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042

@@ -20,7 +20,11 @@ Ingestion is a long-running, multi-store, multi-tenant workflow. Reliability is 
 | INV-03 | **Cancel is cooperative and terminal** — After cancel, work must not restart; retries forbidden. | Controllability + cost control. |
 | INV-04 | **Cancel intent is durable** — Pending/parked work must observe cancel across restart. | Race: cancel before worker registers token. |
 | INV-05 | **One status story** — Task, doc KV, PDF, and UI stage agree on terminal semantics (incl. Cancelled). | Trust. |
+<<<<<<< HEAD
 | INV-06 | **Fairness parks, never thrash-requeues** — Excess tenant work waits without channel storms. | Multi-tenant SLO. |
+=======
+| INV-06 | **Fairness parks, never thrash-requeues** — Excess tenant work waits without channel storms. Durable **fairness hold** makes parked work claim-invisible; claim prefers tenants with free lane capacity (FP-1…FP-5 below). | Multi-tenant SLO + max productive admission. |
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 | INV-07 | **Idempotent persist** — Re-running a stage must not corrupt KV/vector/graph (upsert + source-tracked merge). | At-least-once delivery. |
 | INV-08 | **Saga leaves no queryable orphan** — On merge failure, compensate; on compensate failure, alert. | Dual-store consistency. |
 | INV-09 | **Permanent failures do not burn retry budget** — Taxonomy SSOT (SPEC-045). | Cost + latency. |
@@ -41,7 +45,12 @@ Ingestion is a long-running, multi-store, multi-tenant workflow. Reliability is 
   INV-03 Cancel terminal            YES — TaskStatus::Cancelled, no retry
   INV-04 Durable cancel intent      NO — CancellationRegistry intents in-memory
   INV-05 One status story           NO — PDF enum lacks Cancelled; multi-layer stages
+<<<<<<< HEAD
   INV-06 Fairness parks             YES — TenantConcurrencyLimiter acquire park
+=======
+  INV-06 Fairness parks             YES — limiter park + durable fairness_hold_until
+                                    (claim excludes holds; prefer under-cap tenants)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   INV-07 Idempotent persist         YES — upsert + merger (best effort)
   INV-08 Saga no orphans            PARTIAL — compensate on merge fail; crash window
   INV-09 Permanent taxonomy         YES — ingestion_reliability.rs (gaps → Unknown)
@@ -84,6 +93,27 @@ Ingestion is a long-running, multi-store, multi-tenant workflow. Reliability is 
 
 ---
 
+<<<<<<< HEAD
+=======
+## INV-06 — Fairness first principles (FP-1…FP-5)
+
+| Law | Meaning |
+| --- | ------- |
+| **FP-1 Capacity before claim** | A task that cannot run under its tenant lane must not occupy claim bandwidth. |
+| **FP-2 Tenant priority** | Among claimable work, prefer tenants with **free** ingest/lifecycle slots (durable in-flight count + configured max). Not a latency SLA or weighted fair-share %. |
+| **FP-3 Dual-lane preserved** | Ingest vs lifecycle remain separate. Workspace-fair pick (SPEC-084 LAW-13) applies under that. |
+| **FP-4 Orthogonal byte admission** | Global in-flight byte budget stays **after** the fairness slot; do not merge into the semaphore. |
+| **FP-5 One park SSOT** | Park visibility lives in **storage** (`fairness_hold_until`); process-local park set is only duplicate-waiter safety, not the scheduling filter. |
+
+**Priority guarantee by tenant (v1):** when tenant A is at ingest cap (active Processing leases **or** active fairness holds), pending work for tenant B with free capacity is claimed before A’s at-cap Pending (including within the same workspace); A’s held rows are not reclaim-stormed. Hold TTL expiry while still parked re-marks the hold. Park wake stages a lane permit by `track_id` before clear/send; cancel/skip drops that permit.
+
+**Non-goals for INV-06:** weighted fair-share %, per-tenant latency SLOs, priority scores, or folding byte admission into lane semaphores.
+
+Ops SSOT: [docs/ingestion-cancel-and-fairness.md](../../docs/ingestion-cancel-and-fairness.md).
+
+---
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ## Design principles for the improvement plan
 
 1. **Postgres is the source of truth** for task lifecycle (industry pattern: `FOR UPDATE SKIP LOCKED` claim).  
@@ -100,5 +130,9 @@ Ingestion is a long-running, multi-store, multi-tenant workflow. Reliability is 
 - Replacing Postgres with an external workflow engine (Temporal, etc.)  
 - Perfect exactly-once across LLM providers (impossible; aim for idempotent side effects)  
 - Changing GraphRAG extraction quality algorithms (separate from reliability mechanics)
+<<<<<<< HEAD
+=======
+- Weighted fair-share / latency SLOs for tenant scheduling (see INV-06 non-goals)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 Next: [003-code-is-law.md](./003-code-is-law.md)

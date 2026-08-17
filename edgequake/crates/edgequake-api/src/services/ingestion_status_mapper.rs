@@ -149,7 +149,20 @@ pub fn map_ingestion_status(inputs: IngestionStatusInputs<'_>) -> IngestionStatu
     let task = norm(inputs.task_status);
     let stage = norm(inputs.current_stage);
 
+<<<<<<< HEAD
     // Terminal success (doc preferred, then task indexed).
+=======
+    // True when the document row still reports in-flight work.
+    // PDF convert tasks finish as `indexed` before the follow-on Insert starts
+    // (SPEC-057 P2); while doc/stage remain non-terminal, the document row is
+    // the SSOT — never let a completed convert task paint the badge Completed.
+    let doc_in_flight = match stage {
+        Some(s) => !is_terminal_document_status(legacy_status_to_unified_stage(s)),
+        None => doc.is_some_and(|s| !is_terminal_document_status(s)),
+    };
+
+    // Terminal success (doc preferred, then task indexed — only when doc is idle).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     if let Some(s) = doc.filter(|s| is_terminal_success_status(s)) {
         return IngestionStatusView {
             display_status: success_display(s).into(),
@@ -161,6 +174,7 @@ pub fn map_ingestion_status(inputs: IngestionStatusInputs<'_>) -> IngestionStatu
             stage_message,
         };
     }
+<<<<<<< HEAD
     if let Some(s) = task.filter(|s| eq_ci(s, "indexed") || is_terminal_success_status(s)) {
         return IngestionStatusView {
             display_status: success_display(s).into(),
@@ -171,6 +185,20 @@ pub fn map_ingestion_status(inputs: IngestionStatusInputs<'_>) -> IngestionStatu
             failure_class: None,
             stage_message,
         };
+=======
+    if !doc_in_flight {
+        if let Some(s) = task.filter(|s| eq_ci(s, "indexed") || is_terminal_success_status(s)) {
+            return IngestionStatusView {
+                display_status: success_display(s).into(),
+                ui_phase: "terminal".into(),
+                is_terminal: true,
+                is_failure: false,
+                is_cancelled: false,
+                failure_class: None,
+                stage_message,
+            };
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     // Terminal failure (never cancel — already handled).
@@ -239,8 +267,24 @@ pub fn inputs_from_document_summary<'a>(
     pdf_status: Option<&'a str>,
     cancel_intent: bool,
 ) -> IngestionStatusInputs<'a> {
+<<<<<<< HEAD
     IngestionStatusInputs {
         task_status: None,
+=======
+    inputs_from_document_summary_with_task(summary, failure_class, pdf_status, cancel_intent, None)
+}
+
+/// Build mapper inputs including durable task row status (cancel lag honesty).
+pub fn inputs_from_document_summary_with_task<'a>(
+    summary: &'a DocumentSummary,
+    failure_class: Option<&'a str>,
+    pdf_status: Option<&'a str>,
+    cancel_intent: bool,
+    task_status: Option<&'a str>,
+) -> IngestionStatusInputs<'a> {
+    IngestionStatusInputs {
+        task_status,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         doc_status: summary.status.as_deref(),
         current_stage: summary.current_stage.as_deref(),
         failure_class,
@@ -258,11 +302,36 @@ pub fn enrich_document_summary_status(
     pdf_status: Option<&str>,
     cancel_intent: bool,
 ) {
+<<<<<<< HEAD
     let view = map_ingestion_status(inputs_from_document_summary(
+=======
+    enrich_document_summary_status_with_task(
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         summary,
         failure_class,
         pdf_status,
         cancel_intent,
+<<<<<<< HEAD
+=======
+        None,
+    );
+}
+
+/// Fill presentation fields with optional task-row status (dual-SSOT lag).
+pub fn enrich_document_summary_status_with_task(
+    summary: &mut DocumentSummary,
+    failure_class: Option<&str>,
+    pdf_status: Option<&str>,
+    cancel_intent: bool,
+    task_status: Option<&str>,
+) {
+    let view = map_ingestion_status(inputs_from_document_summary_with_task(
+        summary,
+        failure_class,
+        pdf_status,
+        cancel_intent,
+        task_status,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     ));
     summary.display_status = Some(view.display_status);
     summary.ui_phase = Some(view.ui_phase);
@@ -275,17 +344,44 @@ pub fn enrich_document_summaries(summaries: &mut [DocumentSummary]) {
     }
 }
 
+<<<<<<< HEAD
 /// Enrich summaries with cancel-intent lookups from the shared registry.
 pub async fn enrich_document_summaries_with_cancel(
     summaries: &mut [DocumentSummary],
     registry: &edgequake_tasks::CancellationRegistry,
+=======
+/// Enrich summaries with cancel-intent + durable task status (list/track SSOT).
+pub async fn enrich_document_summaries_with_cancel(
+    summaries: &mut [DocumentSummary],
+    registry: &edgequake_tasks::CancellationRegistry,
+    task_storage: &dyn edgequake_tasks::storage::TaskStorage,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ) {
     for summary in summaries.iter_mut() {
         let cancel_intent = match summary.track_id.as_deref() {
             Some(track_id) => registry.has_cancel_intent(track_id).await,
             None => false,
         };
+<<<<<<< HEAD
         enrich_document_summary_status(summary, None, None, cancel_intent);
+=======
+        let task_status_owned = match summary.track_id.as_deref() {
+            Some(track_id) => task_storage
+                .get_task(track_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|t| t.status.to_string()),
+            None => None,
+        };
+        enrich_document_summary_status_with_task(
+            summary,
+            None,
+            None,
+            cancel_intent,
+            task_status_owned.as_deref(),
+        );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 }
 
@@ -381,10 +477,31 @@ mod tests {
                 terminal: true,
             },
             Fixture {
+<<<<<<< HEAD
                 name: "indexed_task",
                 inputs: IngestionStatusInputs {
                     task_status: Some("indexed"),
                     doc_status: Some("processing"),
+=======
+                // Completed convert/`indexed` task must not win over in-flight doc.
+                name: "indexed_task_doc_inflight",
+                inputs: IngestionStatusInputs {
+                    task_status: Some("indexed"),
+                    doc_status: Some("processing"),
+                    current_stage: Some("extracting"),
+                    ..Default::default()
+                },
+                display: "extracting",
+                ui_phase: "running",
+                cancelled: false,
+                terminal: false,
+            },
+            Fixture {
+                // No doc signal — indexed task is honest terminal success.
+                name: "indexed_task_no_doc",
+                inputs: IngestionStatusInputs {
+                    task_status: Some("indexed"),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     ..Default::default()
                 },
                 display: "indexed",
@@ -393,6 +510,24 @@ mod tests {
                 terminal: true,
             },
             Fixture {
+<<<<<<< HEAD
+=======
+                // PDF convert follow-on: convert task indexed, ingest still queued.
+                name: "pdf_convert_follow_on_pending_ingest",
+                inputs: IngestionStatusInputs {
+                    task_status: Some("indexed"),
+                    doc_status: Some("processing"),
+                    current_stage: Some("preprocessing"),
+                    stage_message: Some("PDF converted — queueing knowledge-graph ingest"),
+                    ..Default::default()
+                },
+                display: "preprocessing",
+                ui_phase: "running",
+                cancelled: false,
+                terminal: false,
+            },
+            Fixture {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 name: "converting",
                 inputs: IngestionStatusInputs {
                     doc_status: Some("processing"),

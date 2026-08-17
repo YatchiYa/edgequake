@@ -188,6 +188,7 @@ export function QueryInterface() {
               aria-label={t("query.attachImages", "Attach images")}
               onChange={handleImageInputChange}
             />
+<<<<<<< HEAD
             {attachedImages.length > 0 && (
               <div
                 className="flex flex-wrap gap-2 mb-2"
@@ -218,6 +219,48 @@ export function QueryInterface() {
                 ))}
               </div>
             )}
+=======
+            {/* SPEC-100: reserve attachment row height when files are pending */}
+            <div
+              className={
+                attachedImages.length > 0
+                  ? "mb-2 min-h-16"
+                  : "mb-0 min-h-0 overflow-hidden"
+              }
+              data-testid="spec100-query-attachments-slot"
+            >
+              {attachedImages.length > 0 && (
+                <div
+                  className="flex flex-wrap gap-2"
+                  role="list"
+                  aria-label={t("query.attachedImages", "Attached images")}
+                >
+                  {attachedImages.map((img, idx) => (
+                    <div
+                      key={idx}
+                      role="listitem"
+                      className="relative group w-16 h-16 rounded border overflow-hidden flex-shrink-0"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={img.preview}
+                        alt={`Attachment ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(idx)}
+                        className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                        aria-label={t("query.removeImage", `Remove image ${idx + 1}`)}
+                      >
+                        <X className="h-3 w-3 text-white" aria-hidden="true" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             <div
               className="relative"
               onDrop={handleDrop}

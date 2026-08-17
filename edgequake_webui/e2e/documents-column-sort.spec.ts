@@ -170,6 +170,10 @@ test.describe("Documents table column sort", () => {
           statusFilter: "all",
           sortField: "created_at",
           sortDirection: "desc",
+<<<<<<< HEAD
+=======
+          showCostColumn: true,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }),
       );
     });

@@ -191,6 +191,12 @@ mod tests {
             TaskType::Insert,
             serde_json::json!({}),
         );
+<<<<<<< HEAD
+=======
+        // SPEC-091 QW0: an Indexed task must walk the legal path (Complete
+        // requires Processing — the state machine refuses Pending → Indexed).
+        task.mark_processing();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         task.mark_success(serde_json::json!({"ok": true}));
         let track_id = task.track_id.clone();
         storage.create_task(&task).await.unwrap();

@@ -83,17 +83,44 @@ fn metadata_matches_workspace_context(
         return is_legacy_default_workspace_context(tenant_ctx.workspace_id.as_deref());
     }
 
+<<<<<<< HEAD
     let Some(ctx_workspace_id) =
         parse_workspace_uuid_or_default(tenant_ctx.workspace_id.as_deref())
     else {
         return true;
     };
 
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let Some(stored_workspace_id) = parse_workspace_uuid_or_default(stored_workspace_raw) else {
         return false;
     };
 
+<<<<<<< HEAD
     stored_workspace_id == ctx_workspace_id
+=======
+    // Concrete stored workspace: resolve the context header explicitly and
+    // fail closed. A malformed X-Workspace-ID previously matched EVERY
+    // workspace here (`return true` — GAP-091-08, SPEC-091 IW0).
+    match crate::middleware::resolve_workspace_header(tenant_ctx.workspace_id.as_deref()) {
+        crate::middleware::ScopeHeader::Resolved(ctx_workspace_id) => {
+            stored_workspace_id == ctx_workspace_id
+        }
+        // Anonymous (headerless dev-mode) requests operate as the default
+        // workspace, mirroring the tenant-side default mapping in
+        // `metadata_matches_tenant_id_context`.
+        crate::middleware::ScopeHeader::Absent => {
+            stored_workspace_id == crate::middleware::default_workspace_uuid()
+        }
+        crate::middleware::ScopeHeader::Malformed => {
+            tracing::warn!(
+                workspace_id = tenant_ctx.workspace_id.as_deref().unwrap_or_default(),
+                "denying document metadata match: malformed X-Workspace-ID header"
+            );
+            false
+        }
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 fn metadata_matches_tenant_id_context(
@@ -111,10 +138,24 @@ fn metadata_matches_tenant_id_context(
 
     let ctx_tenant_raw = tenant_ctx.tenant_id.as_deref().map(str::trim);
 
+<<<<<<< HEAD
     match (
         resolve_tenant_uuid(ctx_tenant_raw),
         resolve_tenant_uuid(stored_tenant_raw),
     ) {
+=======
+    // Anonymous (headerless dev-mode) requests operate as the default tenant:
+    // `resolve_context_uuid(None)` yields None, which would otherwise make a
+    // document stored under the default tenant UUID invisible to the very
+    // principal that uploaded it (404 on delete-while-queued). Mirror the
+    // legacy-default semantics used when stored metadata is alias-shaped.
+    let ctx_resolved = match ctx_tenant_raw {
+        None | Some("") => Some(crate::middleware::default_tenant_uuid()),
+        other => resolve_tenant_uuid(other),
+    };
+
+    match (ctx_resolved, resolve_tenant_uuid(stored_tenant_raw)) {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         (Some(ctx_id), Some(stored_id)) => ctx_id == stored_id,
         _ => ctx_tenant_raw == stored_tenant_raw,
     }
@@ -184,4 +225,38 @@ mod tests {
         assert!(metadata_matches(&doc_t1, &ctx("t1", "default")));
         assert!(!metadata_matches(&doc_t2, &ctx("t1", "default")));
     }
+<<<<<<< HEAD
+=======
+
+    #[test]
+    fn anonymous_ctx_matches_default_tenant_uuid_metadata() {
+        // Staged upload stores the RESOLVED default tenant UUID; an anonymous
+        // delete (no X-Tenant-ID header → tenant_id: None) must still match —
+        // regression for delete-while-queued 404 (SPEC-091 hardening).
+        let metadata = serde_json::json!({
+            "workspace_id": "default",
+            "tenant_id": default_tenant_uuid().to_string(),
+        });
+        let anonymous = TenantContext {
+            tenant_id: None,
+            workspace_id: None,
+            user_id: None,
+        };
+        assert!(metadata_matches(&metadata, &anonymous));
+    }
+
+    #[test]
+    fn anonymous_ctx_does_not_match_foreign_tenant_uuid() {
+        let metadata = serde_json::json!({
+            "workspace_id": "default",
+            "tenant_id": uuid::Uuid::new_v4().to_string(),
+        });
+        let anonymous = TenantContext {
+            tenant_id: None,
+            workspace_id: None,
+            user_id: None,
+        };
+        assert!(!metadata_matches(&metadata, &anonymous));
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

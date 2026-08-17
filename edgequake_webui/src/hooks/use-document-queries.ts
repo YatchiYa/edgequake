@@ -2,6 +2,11 @@
 
 import { useWebSocket } from "@/hooks/use-websocket";
 import { getDocuments, getPipelineStatus } from "@/lib/api/edgequake";
+<<<<<<< HEAD
+=======
+import { protectDeletingDocumentsInQueryData } from "@/lib/documents/deletion-session";
+import { mergeMonotonicListDocuments } from "@/lib/documents/merge-monotonic-list";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { protectPinnedDocumentsInQueryData } from "@/lib/documents/progress-admit";
 import { getAutomationAwareRefetchInterval } from "@/lib/runtime/browser-detection";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,6 +36,8 @@ export interface UseDocumentQueriesReturn {
   data: Awaited<ReturnType<typeof getDocuments>> | undefined;
   /** Loading state */
   isLoading: boolean;
+  /** Background refetch (soft refresh) — list stays painted via placeholderData */
+  isFetching: boolean;
   /** Error state */
   isError: boolean;
   /** Error object */
@@ -107,6 +114,18 @@ export function useDocumentQueries({
 }: UseDocumentQueriesOptions): UseDocumentQueriesReturn {
   const queryClient = useQueryClient();
   const { connected: wsConnected } = useWebSocket();
+<<<<<<< HEAD
+=======
+
+  const documentsQueryKey = [
+    "documents",
+    tenantId,
+    workspaceId,
+    currentPage,
+    pageSize,
+    statusFilter,
+  ] as const;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   // OODA-42 COMPLETE: WebSocket-based real-time updates with transition-aware fallback
   // WHY: Users want instant document status updates without polling overhead
@@ -114,6 +133,7 @@ export function useDocumentQueries({
   //
   // When WS is connected, slow list poll to 5s — stage patches + 5s safety-net
   // cover Ollama chunk storms without refetching 500 docs every 2s.
+<<<<<<< HEAD
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: [
       "documents",
@@ -123,15 +143,39 @@ export function useDocumentQueries({
       pageSize,
       statusFilter,
     ],
+=======
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: documentsQueryKey,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     queryFn: async () => {
       const data = await getDocuments({
         page: currentPage,
         page_size: pageSize,
         status: statusFilter === "all" ? undefined : statusFilter,
       });
+<<<<<<< HEAD
       // Keep provisional reprocess rows as processing while POST admits (graph cleanup).
       return protectPinnedDocumentsInQueryData(data);
     },
+=======
+      // SPEC-120: WS-advanced converting must survive a stale queued poll.
+      const previous = queryClient.getQueryData<DocumentsResult>([
+        ...documentsQueryKey,
+      ]);
+      const merged = {
+        ...data,
+        items: mergeMonotonicListDocuments(data.items, previous?.items),
+      };
+      // Keep provisional reprocess rows as processing while POST admits (graph cleanup).
+      // SPEC-098: keep deleting pins over stale Completed/Ready polls.
+      return protectDeletingDocumentsInQueryData(
+        protectPinnedDocumentsInQueryData(merged),
+      );
+    },
+    // Soft refresh: keep prior list painted so Active runs / table do not
+    // unmount → remount (SPEC-099 CLS). Cold load still has data === undefined.
+    placeholderData: (previous) => previous,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     // Retry policy comes from QueryProvider (TimeoutError / read_path_busy → 1;
     // NetworkError cold-start → up to 4). Do not override with retry:1.
     // Smart polling:
@@ -214,6 +258,7 @@ export function useDocumentQueries({
   return {
     data,
     isLoading,
+    isFetching,
     isError,
     error: error as Error | null,
     refetch,

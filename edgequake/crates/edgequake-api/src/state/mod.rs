@@ -144,10 +144,21 @@ pub struct AppState {
     /// Rate limiter for tenant-based rate limiting.
     pub rate_limiter: RateLimiter,
 
+<<<<<<< HEAD
     /// PostgreSQL pool (only available when using postgres feature).
     #[cfg(feature = "postgres")]
     pub pg_pool: Option<PgPool>,
 
+=======
+    /// PostgreSQL ingest/primary pool (backward-compat; prefer `pool_bundle`).
+    #[cfg(feature = "postgres")]
+    pub pg_pool: Option<PgPool>,
+
+    /// SPEC-090 F-090-28: role-split pools (query/ingest/queue/admin).
+    #[cfg(feature = "postgres")]
+    pub pool_bundle: Option<edgequake_storage::PgPoolBundle>,
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Server start time for uptime calculation.
     pub start_time: std::time::Instant,
 
@@ -166,6 +177,12 @@ pub struct AppState {
     /// P-G13: caps concurrent vision PDF conversions process-wide.
     pub pdf_vision: Arc<PdfVisionSemaphore>,
 
+<<<<<<< HEAD
+=======
+    /// SPEC-094: in-memory async parse jobs + dedicated admission semaphore.
+    pub parse_jobs: crate::handlers::parse::ParseJobStore,
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Interactive HTTP read-path DB bulkhead (list/get docs, tenants, workspaces).
     pub read_path_db: Arc<crate::read_path::ReadPathDbPermit>,
 

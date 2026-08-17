@@ -26,15 +26,26 @@ fn e2e_ops_p3_acc_full_pass() {
             .collect::<Vec<_>>()
     );
     let json = serde_json::to_string_pretty(&report).expect("serialize ACC report");
+<<<<<<< HEAD
     assert!(json.contains("graph_walk_default_ppr"));
+=======
+    assert!(json.contains("graph_walk_default_bfs"));
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     assert!(json.contains("faithfulness_heuristic_floor"));
 }
 
 #[test]
+<<<<<<< HEAD
 fn e2e_ops_p3_ppr_default_and_bfs_escape() {
     assert_eq!(parse_graph_walk_mode(""), GraphWalkMode::Ppr);
     assert_eq!(parse_graph_walk_mode("bfs"), GraphWalkMode::Bfs);
     assert_eq!(GraphWalkMode::default(), GraphWalkMode::Ppr);
+=======
+fn e2e_ops_p3_bfs_default_and_ppr_escape() {
+    assert_eq!(parse_graph_walk_mode(""), GraphWalkMode::Bfs);
+    assert_eq!(parse_graph_walk_mode("ppr"), GraphWalkMode::Ppr);
+    assert_eq!(GraphWalkMode::default(), GraphWalkMode::Bfs);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 #[test]

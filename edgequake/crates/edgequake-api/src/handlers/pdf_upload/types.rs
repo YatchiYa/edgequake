@@ -242,6 +242,22 @@ pub struct PdfUploadResponse {
     /// offer the user a choice to reprocess or skip the duplicate.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duplicate_of: Option<String>,
+<<<<<<< HEAD
+=======
+
+    /// Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position
+    /// at admission. Only set on a fresh enqueue.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_position: Option<u64>,
+
+    /// Estimated seconds until claim (measured drain; clamped when unknown).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_seconds: Option<u64>,
+
+    /// ETA basis: `measured` or `no_history` (honest uncertainty, R-15).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_basis: Option<String>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// Batch PDF upload response.

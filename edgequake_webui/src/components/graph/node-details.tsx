@@ -37,6 +37,10 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { AuthenticatedMarkdownImage } from '@/components/query/markdown/AuthenticatedMarkdownImage';
+<<<<<<< HEAD
+=======
+import { useEntityTypeColors } from '@/hooks/use-entity-type-colors';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { deleteEntity, getDocumentMmAssetUrl } from '@/lib/api/edgequake';
 import {
     bareGraphId,
@@ -44,7 +48,10 @@ import {
     formatEntityLabel,
     formatEntityType,
     formatMmEntitySubtitle,
+<<<<<<< HEAD
     getEntityTypeColor,
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     graphPropString,
     graphSourceDocumentId,
     isMmItemId,
@@ -147,6 +154,10 @@ function PropertyValue({
 }
 
 export function NodeDetails({ node }: NodeDetailsProps) {
+<<<<<<< HEAD
+=======
+  const { colorFor } = useEntityTypeColors();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const { focusNode, edges, nodes } = useGraphStore();
   const queryClient = useQueryClient();
   // FIX #174: Read workspace entity types for the edit dialog dropdown
@@ -209,7 +220,11 @@ export function NodeDetails({ node }: NodeDetailsProps) {
     }
   };
 
+<<<<<<< HEAD
   const typeColor = getEntityTypeColor(node.node_type);
+=======
+  const typeColor = colorFor(node.node_type);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const mmSubtitle = formatMmEntitySubtitle(node.node_type, node.properties);
   const identityId = bareGraphId(node.id);
   const showIdentityRow =
@@ -416,7 +431,11 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                       </p>
                     ) : (
                       relatedNodes.map(({ edge, isSource, nodeId, label, type }, index) => {
+<<<<<<< HEAD
                         const relationColor = getEntityTypeColor(type);
+=======
+                        const relationColor = colorFor(type);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                         
                         return (
                           <div

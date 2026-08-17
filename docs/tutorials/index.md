@@ -3,7 +3,11 @@ title: Tutorials
 description: Step-by-step tutorials for common EdgeQuake workflows — from your first RAG app to advanced multi-tenant deployments.
 ---
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 Step-by-step tutorials to get the most out of EdgeQuake. All examples follow the **OpenAPI snapshot** (SSOT): `DocumentSummary` uses `display_status` / `ui_phase` / `track_id` / `current_stage`; query returns `answer` + `sources`; progress uses `/ws/progress/{track_id}` (not legacy `/rag/*` routes).
 

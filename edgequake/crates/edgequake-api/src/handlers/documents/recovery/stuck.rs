@@ -13,7 +13,10 @@ use crate::document_metadata::is_active_processing_status;
 use crate::error::ApiResult;
 use crate::handlers::documents_types::*;
 use crate::middleware::TenantContext;
+<<<<<<< HEAD
 use crate::services::document_metadata_scan::load_scoped_document_metadata;
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use crate::state::AppState;
 
 use super::super::storage_helpers::cleanup_document_graph_data;
@@ -66,6 +69,24 @@ pub(crate) async fn run_recover_stuck(
         tenant_ctx.tenant_id, tenant_ctx.workspace_id, request.stuck_threshold_minutes
     );
 
+<<<<<<< HEAD
+=======
+    // SPEC-086: fail orphan staging shells (list-visible) before final-metadata recover.
+    let staging_age =
+        std::time::Duration::from_secs(request.stuck_threshold_minutes.saturating_mul(60));
+    if let Err(e) = crate::services::recover_orphaned_staging_admissions(
+        std::sync::Arc::clone(&state.storage.kv_storage),
+        std::sync::Arc::clone(&state.tasks.storage),
+        Some(staging_age),
+        #[cfg(feature = "postgres")]
+        state.pg_pool.as_ref(),
+    )
+    .await
+    {
+        tracing::warn!(error = %e, "recover_orphaned_staging_admissions during recover-stuck");
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     // Generate new track ID for recovery batch
     let new_track_id = format!(
         "recover_{}_{}",
@@ -77,8 +98,18 @@ pub(crate) async fn run_recover_stuck(
     let cutoff_time = Utc::now() - threshold;
 
     // P-G7 + SPEC-027: batch scoped metadata (suffix index + tenant filter).
+<<<<<<< HEAD
     let scoped_metadata =
         load_scoped_document_metadata(state.storage.kv_storage.as_ref(), &tenant_ctx).await?;
+=======
+    // Prefer progress loader so aged staging shells (post 086 merge) are visible.
+    let scoped_metadata =
+        crate::services::document_metadata_scan::load_scoped_document_metadata_for_progress(
+            state.storage.kv_storage.as_ref(),
+            &tenant_ctx,
+        )
+        .await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     let mut stuck_docs = Vec::new();
     let mut requeued_ids = Vec::new();
@@ -125,6 +156,18 @@ pub(crate) async fn run_recover_stuck(
                 };
 
                 if is_stuck {
+<<<<<<< HEAD
+=======
+                    // Staging shells need re-upload after orphan fail — never
+                    // requeue onto final `{id}-metadata` (empty content → ghost pending).
+                    if obj
+                        .get("admission_staging")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                    {
+                        continue;
+                    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     if let Some(id) = doc_id {
                         stuck_docs.push((id.to_string(), title.unwrap_or(id).to_string()));
                     }
@@ -135,7 +178,12 @@ pub(crate) async fn run_recover_stuck(
 
     // Requeue stuck documents via SPEC-054/#298 SSOT (DRY with startup reconcile).
     use crate::services::pending_doc_task_reconcile::{
+<<<<<<< HEAD
         ensure_task_for_pending_document, EnsureTaskOutcome,
+=======
+        ensure_task_for_pending_document, try_heal_cancelled_orphan, CancelHealOutcome,
+        EnsureTaskOutcome,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     };
 
     let vector = crate::services::get_workspace_vector_storage_for_delete(
@@ -145,6 +193,44 @@ pub(crate) async fn run_recover_stuck(
     .await;
 
     for (doc_id, doc_title) in &stuck_docs {
+<<<<<<< HEAD
+=======
+        let metadata_key =
+            crate::services::document_metadata_scan::metadata_key_for_document(doc_id);
+        let mut metadata = state
+            .storage
+            .kv_storage
+            .get_by_id(&metadata_key)
+            .await?
+            .unwrap_or_else(|| serde_json::json!({ "id": doc_id, "title": doc_title }));
+
+        // Ensure tenant/workspace ids are present for cancel-heal + task construction.
+        if let Some(obj) = metadata.as_object_mut() {
+            if obj.get("tenant_id").and_then(|v| v.as_str()).is_none() {
+                if let Some(ref tid) = tenant_ctx.tenant_id {
+                    obj.insert("tenant_id".to_string(), serde_json::json!(tid));
+                }
+            }
+            if obj.get("workspace_id").and_then(|v| v.as_str()).is_none() {
+                if let Some(ref wid) = tenant_ctx.workspace_id {
+                    obj.insert("workspace_id".to_string(), serde_json::json!(wid));
+                }
+            }
+        }
+
+        // P0: never requeue when the linked task is already Cancelled.
+        match try_heal_cancelled_orphan(&state, doc_id, &metadata).await? {
+            CancelHealOutcome::Healed => {
+                tracing::info!(
+                    document_id = %doc_id,
+                    "recover_stuck: healed cancelled orphan — skipped requeue"
+                );
+                continue;
+            }
+            CancelHealOutcome::NotCancelled => {}
+        }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // OODA-08 / SPEC-059: retract vectors + prune graph sources BEFORE requeueing
         let stats = crate::services::retract_document_indexes(
             &state.storage.graph_storage,
@@ -165,6 +251,7 @@ pub(crate) async fn run_recover_stuck(
         let _ =
             cleanup_document_graph_data(doc_id, &state.storage.graph_storage, Some(&vector)).await;
 
+<<<<<<< HEAD
         let metadata_key =
             crate::services::document_metadata_scan::metadata_key_for_document(doc_id);
         let mut metadata = state
@@ -186,6 +273,9 @@ pub(crate) async fn run_recover_stuck(
                     obj.insert("workspace_id".to_string(), serde_json::json!(wid));
                 }
             }
+=======
+        if let Some(obj) = metadata.as_object_mut() {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             obj.insert("status".to_string(), serde_json::json!("pending"));
             obj.insert(
                 "recovery_reason".to_string(),

@@ -34,6 +34,13 @@ pub struct IngestionPipelineOptions {
     /// connection storms. Set via metadata `allow_local_gleaning` or env
     /// `EDGEQUAKE_LOCAL_ENABLE_GLEANING=1`.
     pub allow_local_gleaning: bool,
+<<<<<<< HEAD
+=======
+    /// Natural-language output language for extraction string values (SPEC-096).
+    ///
+    /// Resolved by callers via `resolve_extraction_language` (workspace → env → English).
+    pub extraction_language: String,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 impl IngestionPipelineOptions {
@@ -47,9 +54,22 @@ impl IngestionPipelineOptions {
             is_pdf_source: false,
             llm_provider: None,
             allow_local_gleaning: false,
+<<<<<<< HEAD
         }
     }
 
+=======
+            extraction_language: crate::prompts::DEFAULT_EXTRACTION_LANGUAGE.to_string(),
+        }
+    }
+
+    /// Set extraction output language (SPEC-096).
+    pub fn with_extraction_language(mut self, language: impl Into<String>) -> Self {
+        self.extraction_language = language.into();
+        self
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Bind the extract-role provider so pipeline knobs can be provider-aware.
     pub fn with_llm_provider(mut self, provider: impl Into<String>) -> Self {
         self.llm_provider = Some(provider.into());
@@ -170,6 +190,10 @@ pub fn build_ingestion_pipeline(
         chunk_strategy = options.chunk_strategy.as_str(),
         enable_gleaning = enable_gleaning,
         max_gleaning = max_gleaning,
+<<<<<<< HEAD
+=======
+        extraction_language = %options.extraction_language,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         llm_provider = provider,
         is_local_extraction = crate::pipeline::is_local_extraction_provider(provider),
         chunk_timeout_secs = pipeline_config.chunk_extraction_timeout_secs,
@@ -178,13 +202,26 @@ pub fn build_ingestion_pipeline(
         "Building ingestion pipeline"
     );
 
+<<<<<<< HEAD
     let base_extractor: Arc<dyn EntityExtractor> =
         Arc::new(LLMExtractor::new(llm.clone()).with_entity_schema(entity_schema.clone()));
+=======
+    let language = options.extraction_language.clone();
+    let base_extractor: Arc<dyn EntityExtractor> = Arc::new(
+        LLMExtractor::new(llm.clone())
+            .with_entity_schema(entity_schema.clone())
+            .with_language(language.clone()),
+    );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     let extractor: Arc<dyn EntityExtractor> = if enable_gleaning && max_gleaning > 0 {
         Arc::new(
             GleaningExtractor::new(llm, base_extractor)
                 .with_entity_schema(entity_schema)
+<<<<<<< HEAD
+=======
+                .with_language(language)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 .with_config(GleaningConfig {
                     max_gleaning,
                     always_glean: false,
@@ -277,4 +314,31 @@ mod tests {
             chunks.len()
         );
     }
+<<<<<<< HEAD
+=======
+
+    #[test]
+    fn spec096_pipeline_factory_wires_language() {
+        let opts = IngestionPipelineOptions::from_document_size(1_000)
+            .with_extraction_language("Korean")
+            .with_gleaning(false, 0);
+        assert_eq!(opts.extraction_language, "Korean");
+        let llm = Arc::new(MockProvider::new()) as Arc<dyn LLMProvider>;
+        let embedding = Arc::new(MockProvider::new()) as Arc<dyn EmbeddingProvider>;
+        // Smoke: factory accepts language option without panic.
+        let _pipeline = build_ingestion_pipeline(
+            llm,
+            embedding,
+            EntityExtractionSchema::server_default(),
+            opts,
+        );
+        let prompt = crate::prompts::json_extraction_prompt(
+            "Seoul is the capital.",
+            &EntityExtractionSchema::server_default(),
+            "Korean",
+        );
+        assert!(prompt.contains("Korean"));
+        assert!(prompt.contains("Output Language"));
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

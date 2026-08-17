@@ -11,9 +11,15 @@ EdgeQuake supports three PostgreSQL major tiers with a **single application bina
 
 | Profile | PG | pgvector | AGE | Local build | GHCR tag |
 | ------- | -- | -------- | --- | ----------- | -------- |
+<<<<<<< HEAD
 | `pg18` (default) | 18 | 0.8.3 | 1.7.0 | `Dockerfile.postgres.pg18` | `:latest` / `:VERSION` |
 | `pg17` | 17 | 0.8.3 | 1.7.0 | `Dockerfile.postgres.pg17` | `:latest-pg17` |
 | `pg16` (legacy) | 16 | 0.8.3 | 1.6.0 | `Dockerfile.postgres` | `:latest-pg16` |
+=======
+| `pg18` (default) | 18 | 0.8.5 | 1.8.0 | `Dockerfile.postgres.pg18` | `:latest` / `:VERSION` |
+| `pg17` | 17 | 0.8.5 | 1.7.0 | `Dockerfile.postgres.pg17` | `:latest-pg17` |
+| `pg16` (legacy) | 16 | 0.8.5 | 1.6.0 | `Dockerfile.postgres` | `:latest-pg16` |
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 **SSOT:** `extension-pins.sh` — all Dockerfiles, verify scripts, and Makefile targets source this file.
 
@@ -100,7 +106,11 @@ Canonical `EDGEQUAKE_*` variables take precedence when both are set.
 | --- | --- | --- |
 | `edgequake` | `8080` | EdgeQuake API server |
 | `frontend` | `3000` | Next.js web UI |
+<<<<<<< HEAD
 | `postgres` | `5432` | PostgreSQL (PG18 default) with `pgvector` 0.8.3, Apache AGE 1.7.0 |
+=======
+| `postgres` | `5432` | PostgreSQL (PG18 default) with `pgvector` 0.8.5, Apache AGE 1.8.0 |
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ## PostgreSQL Image (extensions)
 
@@ -108,8 +118,13 @@ Built from `Dockerfile.postgres.pg18` (default), `.pg17`, or `Dockerfile.postgre
 
 | Extension | Version (PG18) | Purpose |
 | --- | --- | --- |
+<<<<<<< HEAD
 | `vector` (pgvector) | 0.8.3 | embedding ANN + iterative scan |
 | `age` (Apache AGE) | 1.7.0 | property graph / Cypher |
+=======
+| `vector` (pgvector) | 0.8.5 | embedding ANN + iterative scan |
+| `age` (Apache AGE) | 1.8.0 | property graph / Cypher |
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 | `pg_trgm` | contrib | trigram fuzzy search |
 | `btree_gin` | contrib | GIN btree operator classes |
 | `uuid-ossp` | contrib | legacy UUID helpers |

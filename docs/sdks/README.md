@@ -1,6 +1,16 @@
+<<<<<<< HEAD
 # EdgeQuake SDKs
 
 > **Product: v0.19.0** · Contract: [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+---
+title: "EdgeQuake SDKs"
+---
+
+# EdgeQuake SDKs
+
+> **Product: v0.23.0** · Contract: [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 Official HTTP clients for the EdgeQuake API. SDK **package** versions (~**0.4.0**) are decoupled from the server — check `pyproject.toml`, `package.json`, or crate manifests for the client semver you install.
 
@@ -27,7 +37,11 @@ Use these docs for **copy-paste examples** and day-to-day integration. For hones
 
 | What | Version | Notes |
 |------|---------|-------|
+<<<<<<< HEAD
 | EdgeQuake server / Docker | **0.19.0** | `ghcr.io/raphaelmansuy/edgequake:0.19.0` |
+=======
+| EdgeQuake server / Docker | **0.23.0** | `ghcr.io/raphaelmansuy/edgequake:0.23.0` |
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 | SDK packages (PyPI, npm, Maven, …) | **~0.4.0** | Independent release cadence |
 | API contract | OpenAPI snapshot | Must match server you target |
 
@@ -45,12 +59,24 @@ Configure these on the client **once**; every resource reuses the same transport
 ## Quick actions
 
 1. **Health** — `GET /health` (unversioned) before anything else.
+<<<<<<< HEAD
 2. **List documents** — `GET /api/v1/documents` with optional `page`, `page_size`, `date_from`, `date_to`, `document_pattern`.
 3. **Batch ingestion** — SDKs expose:
    - `POST /api/v1/documents/upload/batch`
    - `POST /api/v1/documents/pdf/batch`
 4. **Progress / cancel (v0.19)** — WebSocket `/ws/progress/{track_id}` or `POST /api/v1/tasks/{track_id}/cancel`; see [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md). Tier 1 SDKs lead; Tier 2 may need raw HTTP.
 5. **Conversations** — list uses cursor filters (`filter[folder_id]`, etc.); bulk delete body uses **`conversation_ids`**; response uses **`affected`**.
+=======
+2. **List documents** — `GET /api/v1/documents` with optional `page`, `page_size`, `date_from`, `date_to`, `document_pattern`. Document responses expose `display_status` (badge key from `IngestionStatusMapper`) and `ui_phase` (`idle | running | stopping | terminal`) — prefer those over raw `status`/`stage` for UI (SPEC-057 P4).
+3. **Batch ingestion** — SDKs expose:
+   - `POST /api/v1/documents/upload/batch`
+   - `POST /api/v1/documents/pdf/batch`
+4. **Progress / cancel (v0.23)** — WebSocket `/ws/progress/{track_id}` or `POST /api/v1/tasks/{track_id}/cancel`; see [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md). Tier 1 SDKs lead; Tier 2 may need raw HTTP.
+5. **Stateless parse (v0.23 / SPEC-094)** — `POST /api/v1/parse` converts a PDF to Markdown **without** ingestion residue. Tier 1 SDKs (Rust, Python, TypeScript) ship a typed `parse` resource: `parse()`, `backends()`, `job()`. Sync is default (≤ 15 pages / 20 MiB); pass `async: true` (or `Prefer: respond-async`) for jobs up to 1000 pages, polled via `GET /api/v1/parse/jobs/{id}`. Tier 2 SDKs: use raw HTTP until parity lands.
+6. **Conversations** — list uses cursor filters (`filter[folder_id]`, etc.); bulk delete body uses **`conversation_ids`**; response uses **`affected`**.
+
+**SPEC-103 LLM cache (server-side, no SDK field):** query keyword extraction and answers are cached by default (`EDGEQUAKE_LLM_CACHE=1`; overrides `EDGEQUAKE_KEYWORD_CACHE` / `EDGEQUAKE_QUERY_ANSWER_CACHE`). Caching is a server concern — clients just send the same query and get the same answer; set the env vars on the **server**, not the client.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ## See also
 

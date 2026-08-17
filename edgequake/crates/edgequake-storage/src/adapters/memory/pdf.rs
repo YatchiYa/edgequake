@@ -279,13 +279,25 @@ impl PdfDocumentStorage for MemoryPdfStorage {
         status: &str,
     ) -> Result<()> {
         let mut documents = self.documents.write().map_err(map_lock_err)?;
+<<<<<<< HEAD
+=======
+        // Mirror Postgres: never shrink stored body on conflict.
+        let content = match documents.get(document_id) {
+            Some(existing) if existing.content.len() > content.len() => existing.content.clone(),
+            _ => content.to_string(),
+        };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         documents.insert(
             *document_id,
             DocumentRecord {
                 workspace_id: *workspace_id,
                 tenant_id: tenant_id.copied(),
                 title: title.to_string(),
+<<<<<<< HEAD
                 content: content.to_string(),
+=======
+                content,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 status: status.to_string(),
                 ..Default::default()
             },
@@ -434,6 +446,31 @@ mod tests {
     }
 
     #[tokio::test]
+<<<<<<< HEAD
+=======
+    async fn ensure_document_record_does_not_shrink_content() {
+        let storage = MemoryPdfStorage::new();
+        let ws = Uuid::new_v4();
+        let doc_id = Uuid::new_v4();
+        let full = "F".repeat(800);
+
+        storage
+            .ensure_document_record(&doc_id, &ws, None, "title", &full, "indexed")
+            .await
+            .unwrap();
+        storage
+            .ensure_document_record(&doc_id, &ws, None, "title", "short-summary", "indexed")
+            .await
+            .unwrap();
+
+        let docs = storage.documents.read().unwrap();
+        let rec = docs.get(&doc_id).expect("document row");
+        assert_eq!(rec.content, full);
+        assert_eq!(rec.status, "indexed");
+    }
+
+    #[tokio::test]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     async fn clear_markdown_resets_cached_conversion() {
         // WHY: reprocess mode=full must invalidate the cached markdown so the
         // resume shortcut cannot serve stale content on the next run.

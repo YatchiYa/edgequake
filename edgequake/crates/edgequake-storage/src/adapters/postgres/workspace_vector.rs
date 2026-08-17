@@ -22,6 +22,10 @@ use super::config::{PostgresConfig, VectorIndexType};
 use super::connection::PostgresPool;
 use super::hnsw_runtime_policy::HnswRuntimePolicy;
 use super::vector::PgVectorStorage;
+<<<<<<< HEAD
+=======
+use super::workspace_table::{drop_workspace_vector_tables, resolve_workspace_namespace};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use crate::adapters::workspace_vector_cache::WorkspaceVectorInstanceCache;
 use crate::error::{Result, StorageError};
 use crate::traits::{VectorStorage, WorkspaceVectorConfig, WorkspaceVectorRegistry};
@@ -79,9 +83,7 @@ impl PgWorkspaceVectorRegistry {
         shared_pool: &PostgresPool,
         config: &WorkspaceVectorConfig,
     ) -> Result<Arc<dyn VectorStorage>> {
-        // Create PostgreSQL config with workspace-specific namespace
-        let short_id = &config.workspace_id.to_string()[..8];
-        let namespace = format!("{}_ws_{}", config.namespace, short_id);
+        let namespace = resolve_workspace_namespace(shared_pool, config).await?;
 
         let pg_config = PostgresConfig::new(
             base_config.host.clone(),
@@ -202,6 +204,7 @@ impl WorkspaceVectorRegistry for PgWorkspaceVectorRegistry {
     /// orphan `eq_{ns}_ws_{id}_vectors` table that accumulates over time and can
     /// interfere with workspace re-creation (same short-id collision risk).
     async fn drop_workspace_table(&self, workspace_id: &Uuid) -> crate::error::Result<()> {
+<<<<<<< HEAD
         let short_id = &workspace_id.to_string()[..8];
         let ns = &self.config.namespace;
         // Table format mirrors WorkspaceVectorConfig::table_name():
@@ -222,6 +225,14 @@ impl WorkspaceVectorRegistry for PgWorkspaceVectorRegistry {
             workspace_id = %workspace_id,
             table = %table,
             "Dropped workspace vector table (SPEC-054)"
+=======
+        let config = WorkspaceVectorConfig::new(*workspace_id, self.default_dimension)
+            .with_namespace(&self.config.namespace);
+        drop_workspace_vector_tables(&self.shared_pool, &config).await?;
+        tracing::info!(
+            workspace_id = %workspace_id,
+            "Dropped workspace vector table(s) (SPEC-054 / F-090-17)"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         );
         Ok(())
     }
@@ -258,7 +269,10 @@ mod tests {
         let workspace_id = Uuid::parse_str("4e32a055-9722-40f9-b03e-ade870b07604").unwrap();
         let config = WorkspaceVectorConfig::new(workspace_id, 1536);
 
-        assert_eq!(config.table_name(), "eq_default_ws_4e32a055_vectors");
+        assert_eq!(
+            config.table_name(),
+            "eq_default_ws_4e32a055_9722_40f9_b03e_ade870b07604_vectors"
+        );
     }
 
     #[test]
@@ -266,6 +280,9 @@ mod tests {
         let workspace_id = Uuid::parse_str("4e32a055-9722-40f9-b03e-ade870b07604").unwrap();
         let config = WorkspaceVectorConfig::new(workspace_id, 768).with_namespace("prod");
 
-        assert_eq!(config.table_name(), "eq_prod_ws_4e32a055_vectors");
+        assert_eq!(
+            config.table_name(),
+            "eq_prod_ws_4e32a055_9722_40f9_b03e_ade870b07604_vectors"
+        );
     }
 }

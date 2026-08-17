@@ -70,10 +70,29 @@ impl PostgresAGEGraphStorage {
             limit
         );
 
+<<<<<<< HEAD
         let rows = sqlx::query(&sql)
             .fetch_all(&mut *conn)
             .await
             .map_err(|e| StorageError::Database(format!("popular labels SQL failed: {}", e)))?;
+=======
+        // SPEC-089 / F-336-15 / LAW-H2: no app timeout on trait path — PG must kill.
+        let timeout_ms = super::super::helpers::graph_query_statement_timeout_ms();
+        let mut timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
+        let rows = match sqlx::query(&sql).fetch_all(&mut **timed.as_mut()).await {
+            Ok(r) => {
+                timed.commit().await?;
+                r
+            }
+            Err(e) => {
+                let _ = timed.rollback().await;
+                return Err(StorageError::Database(format!(
+                    "popular labels SQL failed: {}",
+                    e
+                )));
+            }
+        };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         Ok(rows
             .iter()
@@ -117,6 +136,13 @@ impl PostgresAGEGraphStorage {
         tracing::debug!(query = %query, escaped = %escaped_query, "search_labels starting");
         let search_text = Self::sql_vertex_search_text("v");
 
+<<<<<<< HEAD
+=======
+        // SPEC-089 / F-336-15 / LAW-H2: autocomplete has no tokio budget — PG kill.
+        let timeout_ms = super::super::helpers::graph_query_statement_timeout_ms();
+        let mut timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // Try full-text search first (best for word matching).
         // 032: FTS must use bare label — scoped node_id (`{ws}::NAME`) breaks
         // keyword validation / prefix match against natural-language terms.
@@ -135,10 +161,17 @@ impl PostgresAGEGraphStorage {
             escaped_query, self.graph_name, tenant_and, limit
         );
 
+<<<<<<< HEAD
         let fts_rows = sqlx::query(&fts_sql).fetch_all(&mut *conn).await;
 
         // If full-text search finds results, return them
         if let Ok(rows) = fts_rows {
+=======
+        let fts_rows = sqlx::query(&fts_sql).fetch_all(&mut **timed.as_mut()).await;
+
+        // If full-text search finds results, return them
+        if let Ok(rows) = &fts_rows {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             if !rows.is_empty() {
                 let labels: Vec<String> = rows
                     .iter()
@@ -146,9 +179,20 @@ impl PostgresAGEGraphStorage {
                     .collect();
 
                 if !labels.is_empty() {
+<<<<<<< HEAD
                     return Ok(labels);
                 }
             }
+=======
+                    timed.commit().await?;
+                    return Ok(labels);
+                }
+            }
+        } else {
+            // FTS error aborts the local txn — reopen before falling back.
+            let _ = timed.rollback().await;
+            timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
 
         // WHY: Fallback to trigram similarity for fuzzy matching (typos, partial matches)
@@ -169,11 +213,21 @@ impl PostgresAGEGraphStorage {
             escaped_query, self.graph_name, tenant_and, limit
         );
 
+<<<<<<< HEAD
         let trgm_rows = sqlx::query(&trgm_sql).fetch_all(&mut *conn).await;
         tracing::debug!(sql = %trgm_sql, result = ?trgm_rows.as_ref().map(|r| r.len()).unwrap_or(0), "trigram search");
 
         // If trigram search finds results, return them
         if let Ok(rows) = trgm_rows {
+=======
+        let trgm_rows = sqlx::query(&trgm_sql)
+            .fetch_all(&mut **timed.as_mut())
+            .await;
+        tracing::debug!(sql = %trgm_sql, result = ?trgm_rows.as_ref().map(|r| r.len()).unwrap_or(0), "trigram search");
+
+        // If trigram search finds results, return them
+        if let Ok(rows) = &trgm_rows {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             if !rows.is_empty() {
                 let labels: Vec<String> = rows
                     .iter()
@@ -182,9 +236,19 @@ impl PostgresAGEGraphStorage {
                 tracing::debug!(labels = ?labels, "trigram search found labels");
 
                 if !labels.is_empty() {
+<<<<<<< HEAD
                     return Ok(labels);
                 }
             }
+=======
+                    timed.commit().await?;
+                    return Ok(labels);
+                }
+            }
+        } else {
+            let _ = timed.rollback().await;
+            timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
 
         // Final fallback to simple ILIKE prefix matching (always works)
@@ -198,10 +262,29 @@ impl PostgresAGEGraphStorage {
             self.graph_name, escaped_query, tenant_and, limit
         );
 
+<<<<<<< HEAD
         let prefix_rows = sqlx::query(&prefix_sql)
             .fetch_all(&mut *conn)
             .await
             .map_err(|e| StorageError::Database(format!("Search labels query failed: {}", e)))?;
+=======
+        let prefix_rows = match sqlx::query(&prefix_sql)
+            .fetch_all(&mut **timed.as_mut())
+            .await
+        {
+            Ok(r) => {
+                timed.commit().await?;
+                r
+            }
+            Err(e) => {
+                let _ = timed.rollback().await;
+                return Err(StorageError::Database(format!(
+                    "Search labels query failed: {}",
+                    e
+                )));
+            }
+        };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let labels: Vec<String> = prefix_rows
             .iter()
@@ -275,10 +358,28 @@ impl PostgresAGEGraphStorage {
 
         tracing::debug!(sql = %sql, "search_nodes SQL");
 
+<<<<<<< HEAD
         let rows = sqlx::query(&sql)
             .fetch_all(&mut *conn)
             .await
             .map_err(|e| StorageError::Database(format!("Search nodes query failed: {}", e)))?;
+=======
+        // SPEC-089 Wave 3 / F-336-10: match run_timed_graph_query with PG kill.
+        let timeout_ms = super::super::helpers::graph_query_statement_timeout_ms();
+        let mut timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
+        let rows = match sqlx::query(&sql).fetch_all(&mut **timed.as_mut()).await {
+            Ok(r) => {
+                timed.commit().await?;
+                r
+            }
+            Err(e) => {
+                let _ = timed.rollback().await;
+                return Err(StorageError::Database(format!(
+                    "Search nodes query failed: {e}"
+                )));
+            }
+        };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let results: Vec<(GraphNode, usize)> = rows
             .iter()
@@ -353,10 +454,28 @@ impl PostgresAGEGraphStorage {
             self.graph_name, vertex_where, self.graph_name, min_degree_val, limit
         );
 
+<<<<<<< HEAD
         let rows = sqlx::query(&sql)
             .fetch_all(&mut *conn)
             .await
             .map_err(|e| StorageError::Database(format!("Optimized SQL query failed: {}", e)))?;
+=======
+        // SPEC-089 Wave 3 / F-336-10: PG kill aligned with run_timed_graph_query.
+        let timeout_ms = super::super::helpers::graph_query_statement_timeout_ms();
+        let mut timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
+        let rows = match sqlx::query(&sql).fetch_all(&mut **timed.as_mut()).await {
+            Ok(r) => {
+                timed.commit().await?;
+                r
+            }
+            Err(e) => {
+                let _ = timed.rollback().await;
+                return Err(StorageError::Database(format!(
+                    "Optimized SQL query failed: {e}"
+                )));
+            }
+        };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let mut results = Vec::with_capacity(limit);
 

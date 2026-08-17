@@ -10,12 +10,21 @@ import {
 import type { PdfUploadOptions } from "@/types";
 import type { MultipartUploadProgress } from "@/lib/upload/multipart-upload-client";
 
+<<<<<<< HEAD
 import { classifyUploadFile } from "./file-kind";
+=======
+import { classifyUploadFile, isMarkdownUploadFile } from "./file-kind";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { resolveProgressTrackId } from "./progress-track-id";
 
 export interface PerformFileUploadOptions {
   /** Client batch correlation id (multipart); not the progress-store key. */
   batchTrackId: string;
+<<<<<<< HEAD
+=======
+  /** SPEC-084 / GH-318: total files in this client batch (track completeness). */
+  expectedBatchCount?: number;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   pdfParserBackend?: PdfUploadOptions["pdf_parser_backend"];
   /** Enable inline image VLM analysis on PDF markdown (LightRAG `process_options=i`). */
   analyzeInlineImages?: boolean;
@@ -31,7 +40,11 @@ export interface NormalizedUploadResult {
   track_id?: string;
   status?: string;
   isPdf: boolean;
+<<<<<<< HEAD
   source_type: "pdf" | "image" | "text";
+=======
+  source_type: "pdf" | "image" | "text" | "markdown";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 function duplicateFromFileUpload(response: {
@@ -64,6 +77,12 @@ export async function performFileUpload(
       pdf_parser_backend: options.pdfParserBackend,
       analyze_inline_images: options.analyzeInlineImages ?? true,
       onUploadProgress: options.onUploadProgress,
+<<<<<<< HEAD
+=======
+      metadata: options.expectedBatchCount
+        ? { expected_batch_count: options.expectedBatchCount }
+        : undefined,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     });
     return {
       document_id: pdfResponse.document_id,
@@ -104,12 +123,26 @@ export async function performFileUpload(
   }
 
   const text = await file.text();
+<<<<<<< HEAD
   const textResponse = await uploadDocument({
     content: text,
     source_type: "text",
     title: file.name,
     async_processing: true,
     track_id: options.batchTrackId,
+=======
+  // SPEC-086: pin .md as markdown (not generic text) for stage skip + chunk strategy.
+  const sourceType = isMarkdownUploadFile(file) ? "markdown" : "text";
+  const textResponse = await uploadDocument({
+    content: text,
+    source_type: sourceType,
+    title: file.name,
+    async_processing: true,
+    track_id: options.batchTrackId,
+    metadata: options.expectedBatchCount
+      ? { expected_batch_count: options.expectedBatchCount }
+      : undefined,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   });
 
   return {
@@ -119,6 +152,10 @@ export async function performFileUpload(
     track_id: resolveProgressTrackId(textResponse),
     status: textResponse.status,
     isPdf: false,
+<<<<<<< HEAD
     source_type: "text",
+=======
+    source_type: sourceType,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   };
 }

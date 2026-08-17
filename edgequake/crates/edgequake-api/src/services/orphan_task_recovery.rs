@@ -15,8 +15,13 @@ use tracing::{debug, info, warn};
 
 use crate::document_metadata::is_terminal_success_status;
 use crate::services::extract_document_id_from_task;
+<<<<<<< HEAD
 use crate::services::resolve_document_metadata_key;
 use crate::services::sync_document_failed_on_orphan_heartbeat;
+=======
+use crate::services::sync_document_failed_on_orphan_heartbeat;
+use edgequake_storage::kv_keys;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 /// Counters from a boot orphan recovery pass.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -77,11 +82,48 @@ pub async fn recover_orphaned_tasks(
             .map_err(|e| format!("list_tasks failed: {e}"))?;
         let batch_len = task_list.tasks.len();
 
+<<<<<<< HEAD
+=======
+        // IMP-075-05: batch staging+final metadata for the page (O(1) RT), not
+        // 2×N resolve_document_metadata_key + get_by_id per task.
+        let mut page_meta_keys: Vec<String> = Vec::with_capacity(batch_len * 2);
+        let mut doc_ids_for_tasks: Vec<Option<String>> = Vec::with_capacity(batch_len);
+        for task in &task_list.tasks {
+            let doc_id = extract_document_id_from_task(task);
+            if let Some(ref id) = doc_id {
+                page_meta_keys.push(kv_keys::staging_doc_metadata(id));
+                page_meta_keys.push(kv_keys::doc_metadata(id));
+            }
+            doc_ids_for_tasks.push(doc_id);
+        }
+        let page_meta_vals = if page_meta_keys.is_empty() {
+            Vec::new()
+        } else {
+            kv_storage
+                .get_by_ids_ordered(&page_meta_keys)
+                .await
+                .unwrap_or_default()
+        };
+        // doc_id → staging-first metadata value (if any)
+        let mut meta_by_doc: std::collections::HashMap<String, serde_json::Value> =
+            std::collections::HashMap::with_capacity(batch_len);
+        let mut key_idx = 0usize;
+        for doc_id in doc_ids_for_tasks.iter().flatten() {
+            let staging = page_meta_vals.get(key_idx).and_then(|v| v.clone());
+            let final_m = page_meta_vals.get(key_idx + 1).and_then(|v| v.clone());
+            key_idx += 2;
+            if let Some(m) = staging.or(final_m) {
+                meta_by_doc.insert(doc_id.clone(), m);
+            }
+        }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         for mut task in task_list.tasks {
             let age = now.signed_duration_since(task.updated_at);
             let age_mins = age.num_minutes();
 
             if let Some(doc_id) = extract_document_id_from_task(&task) {
+<<<<<<< HEAD
                 let meta_key = resolve_document_metadata_key(&doc_id, &kv_storage).await;
                 if let Ok(Some(meta)) = kv_storage.get_by_id(&meta_key).await {
                     let doc_status = meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
@@ -89,6 +131,13 @@ pub async fn recover_orphaned_tasks(
                         task.status = TaskStatus::Indexed;
                         task.clear_lease();
                         task.error_message = Some(format!(
+=======
+                if let Some(meta) = meta_by_doc.get(&doc_id) {
+                    let doc_status = meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                    if is_terminal_success_status(doc_status) {
+                        // SPEC-091 QW0: Complete event via the state machine SSOT.
+                        task.close_orphaned_indexed(format!(
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                             "Auto-closed after restart: document already terminal ({doc_status}); \
                              task was still Processing (age {age_mins} minutes)."
                         ));
@@ -121,10 +170,15 @@ pub async fn recover_orphaned_tasks(
             }
 
             if auto_resume {
+<<<<<<< HEAD
                 task.status = TaskStatus::Pending;
                 task.clear_lease();
                 task.started_at = None;
                 task.error_message = Some(format!(
+=======
+                // SPEC-091 QW0: LeaseLost event via the state machine SSOT.
+                task.recover_to_pending(format!(
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     "Auto-recovered after backend restart (was processing for {age_mins} minutes). \
                      Will resume from checkpoint if available."
                 ));
@@ -148,9 +202,15 @@ pub async fn recover_orphaned_tasks(
                     "Interrupted by server restart (was Processing for {age_mins} minutes). \
                      Interrupted — use Reprocess to resume from checkpoint if available."
                 );
+<<<<<<< HEAD
                 task.status = TaskStatus::Failed;
                 task.clear_lease();
                 task.error_message = Some(error_msg.clone());
+=======
+                // SPEC-091 QW0: Fail event via the state machine SSOT (no retry
+                // bookkeeping — the attempt was interrupted, not a processing error).
+                task.fail_orphaned(error_msg.clone());
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 task.updated_at = now;
 
                 match task_storage.update_task(&task).await {

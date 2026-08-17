@@ -331,6 +331,13 @@ pub(crate) fn apply_authenticated_context(
         }
     }
 
+<<<<<<< HEAD
+=======
+    // SPEC-087 / Issue #335: authenticated principal owns TenantContext.user_id.
+    // Never keep a random X-User-ID / localStorage UUID when JWT/API-key auth succeeded.
+    tenant_ctx.user_id = Some(authenticated.auth.user_id.clone());
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     crate::services::tenant_isolation::attach_pg_isolation_scope(
         request,
         &tenant_ctx,
@@ -537,6 +544,11 @@ fn is_public_request(state: &crate::state::AppState, method: &Method, path: &str
             | "/auth/refresh"
             | "/auth/oidc/login"
             | "/auth/oidc/callback"
+<<<<<<< HEAD
+=======
+            | "/setup/status"
+            | "/setup/initialize"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     ) || (*method == Method::POST
         && normalized_path == "/users"
         && state.auth.config.allow_registration)
@@ -810,6 +822,47 @@ pub fn resolve_workspace_uuid(workspace_id: Option<&str>) -> Option<uuid::Uuid> 
     resolve_context_uuid(workspace_id, Some(default_workspace_uuid()))
 }
 
+<<<<<<< HEAD
+=======
+/// Tri-state resolution of a scope header value (tenant/workspace).
+///
+/// `resolve_context_uuid` conflates "header absent" and "header malformed"
+/// (both yield `None`), which historically let malformed headers pass scope
+/// checks as wildcards (SPEC-091 IW0, GAP-091-08/10). Callers that enforce
+/// isolation MUST use this resolver so the malformed case can fail closed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScopeHeader {
+    /// Header absent or empty — anonymous/dev-mode context; the caller maps
+    /// this to the built-in default scope explicitly.
+    Absent,
+    /// Valid UUID or the `default` alias, resolved to a concrete UUID.
+    Resolved(uuid::Uuid),
+    /// Present but neither a UUID nor the `default` alias — deny.
+    Malformed,
+}
+
+fn resolve_scope_header(raw_id: Option<&str>, default_uuid: uuid::Uuid) -> ScopeHeader {
+    match raw_id.map(str::trim) {
+        None | Some("") => ScopeHeader::Absent,
+        Some("default") => ScopeHeader::Resolved(default_uuid),
+        Some(value) => match uuid::Uuid::parse_str(value) {
+            Ok(uuid) => ScopeHeader::Resolved(uuid),
+            Err(_) => ScopeHeader::Malformed,
+        },
+    }
+}
+
+/// Tri-state resolution of the `X-Tenant-ID` header (see [`ScopeHeader`]).
+pub fn resolve_tenant_header(tenant_id: Option<&str>) -> ScopeHeader {
+    resolve_scope_header(tenant_id, default_tenant_uuid())
+}
+
+/// Tri-state resolution of the `X-Workspace-ID` header (see [`ScopeHeader`]).
+pub fn resolve_workspace_header(workspace_id: Option<&str>) -> ScopeHeader {
+    resolve_scope_header(workspace_id, default_workspace_uuid())
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// Parse a workspace ID string into a UUID, honoring the `default` alias (SPEC-017 API-DRY-005).
 pub fn parse_workspace_id(workspace_id: &str) -> Result<uuid::Uuid, crate::error::ApiError> {
     resolve_workspace_uuid(Some(workspace_id)).ok_or_else(|| {

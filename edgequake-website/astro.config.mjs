@@ -71,6 +71,7 @@ export default defineConfig({
       sidebar: [
         {
           label: "Getting Started",
+<<<<<<< HEAD
           autogenerate: { directory: "docs/getting-started" },
         },
         {
@@ -88,24 +89,56 @@ export default defineConfig({
         {
           label: "API Reference",
           autogenerate: { directory: "docs/api-reference" },
+=======
+          items: [{ autogenerate: { directory: "docs/getting-started" } }],
+        },
+        {
+          label: "Concepts",
+          items: [{ autogenerate: { directory: "docs/concepts" } }],
+        },
+        {
+          label: "Architecture",
+          items: [{ autogenerate: { directory: "docs/architecture" } }],
+        },
+        {
+          label: "Tutorials",
+          items: [{ autogenerate: { directory: "docs/tutorials" } }],
+        },
+        {
+          label: "API Reference",
+          items: [{ autogenerate: { directory: "docs/api-reference" } }],
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         },
         {
           label: "Deep Dives",
           collapsed: true,
+<<<<<<< HEAD
           autogenerate: { directory: "docs/deep-dives" },
+=======
+          items: [{ autogenerate: { directory: "docs/deep-dives" } }],
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         },
         {
           label: "Operations",
           collapsed: true,
+<<<<<<< HEAD
           autogenerate: { directory: "docs/operations" },
         },
         {
           label: "Integrations",
           autogenerate: { directory: "docs/integrations" },
+=======
+          items: [{ autogenerate: { directory: "docs/operations" } }],
+        },
+        {
+          label: "Integrations",
+          items: [{ autogenerate: { directory: "docs/integrations" } }],
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         },
         {
           label: "Comparisons",
           collapsed: true,
+<<<<<<< HEAD
           autogenerate: { directory: "docs/comparisons" },
         },
         {
@@ -115,6 +148,17 @@ export default defineConfig({
         {
           label: "Troubleshooting",
           autogenerate: { directory: "docs/troubleshooting" },
+=======
+          items: [{ autogenerate: { directory: "docs/comparisons" } }],
+        },
+        {
+          label: "Security",
+          items: [{ autogenerate: { directory: "docs/security" } }],
+        },
+        {
+          label: "Troubleshooting",
+          items: [{ autogenerate: { directory: "docs/troubleshooting" } }],
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         },
         {
           label: "Resources",

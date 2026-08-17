@@ -19,8 +19,20 @@ import {
   type SortDirection,
   type SortField,
 } from "@/lib/documents/document-sort";
+<<<<<<< HEAD
 import { useMemo } from "react";
 import type { DocStatus } from "./use-document-preferences";
+=======
+import {
+  countClientStatusCounts,
+  type StatusCounts,
+} from "@/lib/documents/inventory-view-model";
+import { useMemo } from "react";
+import type { DocStatus } from "./use-document-preferences";
+
+export type { StatusCounts };
+export { countClientStatusCounts };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 /**
  * Options for useDocumentFiltering hook.
@@ -50,6 +62,7 @@ export interface UseDocumentFilteringOptions {
 }
 
 /**
+<<<<<<< HEAD
  * Status counts for document status tabs.
  */
 export interface StatusCounts {
@@ -82,6 +95,8 @@ export function countClientStatusCounts(
 }
 
 /**
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  * Return type for useDocumentFiltering hook.
  */
 export interface UseDocumentFilteringReturn {
@@ -98,28 +113,16 @@ export interface UseDocumentFilteringReturn {
 }
 
 /**
- * Filter documents by search query and status.
+ * Filter documents by search query.
+ *
+ * SPEC-084 / GH-319: status filtering is server-side (before pagination).
+ * Client must not re-filter status on a truncated page.
  */
-function filterDocuments(
-  docs: Document[],
-  searchQuery: string,
-  statusFilter: DocStatus,
-): Document[] {
-  let filtered = docs;
-
-  // Apply search filter
-  if (searchQuery.trim()) {
-    const query = searchQuery.toLowerCase().trim();
-    filtered = filtered.filter((doc) => {
-      const title = doc.title?.toLowerCase() || "";
-      const fileName = doc.file_name?.toLowerCase() || "";
-      return (
-        title.includes(query) ||
-        fileName.includes(query) ||
-        doc.id.includes(query)
-      );
-    });
+function filterDocuments(docs: Document[], searchQuery: string): Document[] {
+  if (!searchQuery.trim()) {
+    return docs;
   }
+<<<<<<< HEAD
 
   // Apply status filter
   if (statusFilter !== "all") {
@@ -130,6 +133,18 @@ function filterDocuments(
   }
 
   return filtered;
+=======
+  const query = searchQuery.toLowerCase().trim();
+  return docs.filter((doc) => {
+    const title = doc.title?.toLowerCase() || "";
+    const fileName = doc.file_name?.toLowerCase() || "";
+    return (
+      title.includes(query) ||
+      fileName.includes(query) ||
+      doc.id.includes(query)
+    );
+  });
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /**
@@ -153,7 +168,6 @@ export function useDocumentFiltering(
   const {
     documents: rawDocuments,
     searchQuery,
-    statusFilter,
     sortField,
     sortDirection,
     pageSize,
@@ -164,9 +178,9 @@ export function useDocumentFiltering(
 
   // Memoize filtering and sorting for performance
   const documents = useMemo(() => {
-    const filtered = filterDocuments(rawDocuments, searchQuery, statusFilter);
+    const filtered = filterDocuments(rawDocuments, searchQuery);
     return sortDocuments(filtered, sortField, sortDirection);
-  }, [rawDocuments, searchQuery, statusFilter, sortField, sortDirection]);
+  }, [rawDocuments, searchQuery, sortField, sortDirection]);
 
   const totalCount = documents.length;
   const totalPages = Math.ceil(totalCount / pageSize);
@@ -174,14 +188,26 @@ export function useDocumentFiltering(
   // Calculate status counts (use server-side if available for efficiency)
   const statusCounts = useMemo<StatusCounts>(() => {
     if (serverStatusCounts) {
+      const pending = serverStatusCounts.pending;
+      const processing = serverStatusCounts.processing;
+      const completed = serverStatusCounts.completed;
+      const failed = serverStatusCounts.failed;
+      const partial_failure = serverStatusCounts.partial_failure || 0;
+      const cancelled = serverStatusCounts.cancelled || 0;
       return {
-        all: allDocuments.length,
-        pending: serverStatusCounts.pending,
-        processing: serverStatusCounts.processing,
-        completed: serverStatusCounts.completed,
-        failed: serverStatusCounts.failed,
-        partial_failure: serverStatusCounts.partial_failure || 0,
-        cancelled: serverStatusCounts.cancelled || 0,
+        all:
+          pending +
+          processing +
+          completed +
+          failed +
+          partial_failure +
+          cancelled,
+        pending,
+        processing,
+        completed,
+        failed,
+        partial_failure,
+        cancelled,
       };
     }
     return countClientStatusCounts(allDocuments);

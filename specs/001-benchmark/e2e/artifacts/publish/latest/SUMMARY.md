@@ -22,16 +22,25 @@
 
 | SUT | Acc | F1 | cos |
 |-----|-----|----|-----|
+<<<<<<< HEAD
 | EdgeQuake mix | 0.7700 | 0.7043 | 0.9672 |
 | LightRAG mix | 0.7789 | 0.7165 | 0.9663 |
 | Δ (EQ − LR) | -0.0089 | -0.0122 | 0.0008 |
 
 - **Δ Acc 95% CI (bootstrap):** [-0.0449, +0.0258] (n=200)
+=======
+| EdgeQuake mix | 0.8068 | 0.7535 | 0.9666 |
+| LightRAG mix | 0.7793 | 0.7169 | 0.9663 |
+| Δ (EQ − LR) | +0.0275 | 0.0366 | 0.0003 |
+
+- **Δ Acc 95% CI (bootstrap):** [-0.0050, +0.0586] (n=200)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ## Retrieval (L2)
 
 | SUT | evidence_recall | context_relevancy |
 |-----|-----------------|-------------------|
+<<<<<<< HEAD
 | EdgeQuake | 0.9261 | 0.4075 |
 | LightRAG | 0.9502 | 0.5112 |
 
@@ -60,12 +69,46 @@
 - ingest wall s: 598.4
 - EQ/LR p50 ratio: 4.025 (SLO ≤1.5×: FAIL/WAIVE)
 - EQ stage p50 ms: keyword=1011, embed=1064, retrieve=587, rerank=9, generate=2025
+=======
+| EdgeQuake | 0.9091 | 0.4200 |
+| LightRAG | 0.9583 | 0.4987 |
+
+## By question_type (EQ Acc)
+
+- **Fact Retrieval:** 0.7890
+- **Complex Reasoning:** 0.7929
+- **Contextual Summarize:** 0.8334
+- **Creative Generation:** 0.8119
+
+## By question_type (LR Acc)
+
+- **Fact Retrieval:** 0.7490
+- **Complex Reasoning:** 0.7768
+- **Contextual Summarize:** 0.8298
+- **Creative Generation:** 0.7615
+
+## Ops
+
+- EQ empty-answer rate: 0.000
+- LR empty-answer rate: 0.000
+- EQ empty-context rate: 0.000
+- LR empty-context rate: 0.000
+- EQ query p50/p95 ms: 4650 / 11012
+- LR query p50/p95 ms: 647 / 1126
+- ingest wall s: 0.0
+- EQ/LR p50 ratio: 7.187 (SLO ≤1.5×: FAIL/WAIVE)
+- EQ stage p50 ms: keyword=1089, embed=999, retrieve=458, rerank=82, generate=2044
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ## Pins
 
 ```json
 {
+<<<<<<< HEAD
   "edgequake_git_sha": "fa62d6e7",
+=======
+  "edgequake_git_sha": "b9f188de8",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "dataset_id": "GraphRAG-Bench/GraphRAG-Bench",
   "dataset_revision": "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546",
   "fixture_id": "medical_publish_question_ids_v1",

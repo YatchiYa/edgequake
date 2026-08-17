@@ -4,16 +4,28 @@ title: "EdgeQuake REST API Reference"
 
 # EdgeQuake REST API Reference
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 > **Base URL**: `http://localhost:8080` (API under `/api/v1`)  
 > **Interactive docs**: `/swagger-ui/` when the backend is running
 
+<<<<<<< HEAD
 This page is a **guided overlay** for v0.19.0. For the full endpoint catalog, request/response schemas, and Try-it-out, use OpenAPI — it is regenerated on every release and matches the running server.
 
 ---
 
 ## v0.19.0 quick reference
+=======
+This page is a **guided overlay** for v0.23.0. For the full endpoint catalog, request/response schemas, and Try-it-out, use OpenAPI — it is regenerated on every release and matches the running server.
+
+---
+
+## v0.23.0 quick reference
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ### Authentication
 
@@ -95,6 +107,7 @@ See [Cost Tracking](/docs/deep-dives/cost-tracking/).
 - [Authentication](#authentication)
 - [Health & Diagnostics](#health--diagnostics)
 - [Documents API](#documents-api)
+- [Parse API](#parse-api-spec-094)
 - [Query API](#query-api)
 - [Chat API](#chat-api)
 - [Graph API](#graph-api)
@@ -166,7 +179,11 @@ Deep health check with component status for monitoring dashboards.
 ```json
 {
   "status": "healthy",
+<<<<<<< HEAD
   "version": "0.19.0",
+=======
+  "version": "0.23.0",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "storage_mode": "postgresql",
   "workspace_id": "default",
   "components": {
@@ -367,6 +384,68 @@ curl -X DELETE http://localhost:8080/api/v1/documents/doc-uuid \
   "partial_failure": false
 }
 ```
+<<<<<<< HEAD
+=======
+
+---
+
+## Parse API (SPEC-094)
+
+Stateless **PDF → Markdown** conversion with **no document residue** — nothing is stored, embedded, or indexed. Use this when you only need the extracted text (preview, eval, export), not a full ingestion.
+
+| Endpoint | Description |
+| -------- | ----------- |
+| `POST /api/v1/parse` | Parse a PDF (multipart `file` field or raw `application/pdf` body) |
+| `GET /api/v1/parse/backends` | List available parse backends (`vision`, `edgeparse`, …) |
+| `GET /api/v1/parse/jobs/{id}` | Poll an async parse job (in-memory TTL) |
+
+**Sync vs async:**
+
+| Input | Sync (≤ 15 pages, ≤ 20 MiB) | Async (up to 1000 pages) |
+| ----- | --------------------------- | ------------------------ |
+| `Prefer: respond-async` header | Optional — forces async | — |
+| Over ceiling | 202 + job id (async) | — |
+
+**Response** (sync 200) — `ParseResponse`: Markdown plus timing/cost metrics only (no `job_id` — that field exists only on async responses):
+
+```json
+{
+  "markdown": "# Extracted content\n...",
+  "backend": "vision",
+  "backend_effective": "vision",
+  "fallback_applied": false,
+  "page_count": 12,
+  "metrics": {
+    "total_ms": 3450,
+    "pages_per_second": 3.5,
+    "estimated_cost_usd": 0.0042
+  },
+  "warnings": [],
+  "request_id": "req-uuid"
+}
+```
+
+Example — parse a PDF synchronously:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/parse \
+  -F "file=@document.pdf"
+```
+
+Example — request async processing:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/parse \
+  -H "Prefer: respond-async" \
+  -F "file=@large-document.pdf"
+# → 202 { "job_id": "pr_...", "status": "accepted", "request_id": "req-uuid" }
+#   poll GET /api/v1/parse/jobs/{job_id} → { "job_id": ..., "status": "completed|processing|failed", "result": {ParseResponse}, "error": {code, message} }
+```
+
+Async jobs are held in an **in-memory TTL store** (default 1 hour) — restarting the API loses them.
+
+> The parse API never creates documents or tasks — nothing to cancel, nothing to clean up. Full spec: [`specs/94-api-markdown/00-spec.md`](../../specs/94-api-markdown/00-spec.md).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ---
 
@@ -397,7 +476,11 @@ curl -X POST http://localhost:8080/api/v1/query \
 | Field                  | Type    | Default  | Description                                         |
 | ---------------------- | ------- | -------- | --------------------------------------------------- |
 | `query`                | string  | required | The question to answer                              |
+<<<<<<< HEAD
 | `mode`                 | string  | "hybrid" | Query mode (see below)                              |
+=======
+| `mode`                 | string  | "mix" | Query mode (see below)                              |
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 | `context_only`         | boolean | false    | Return only retrieved context, no LLM answer        |
 | `prompt_only`          | boolean | false    | Return formatted prompt for debugging               |
 | `enable_rerank`        | boolean | true     | Apply reranking to improve relevance                |
@@ -405,6 +488,19 @@ curl -X POST http://localhost:8080/api/v1/query \
 | `conversation_history` | array   | null     | Previous messages for multi-turn context            |
 | `system_prompt`        | string  | null     | Custom instructions prepended to LLM context        |
 | `document_filter`      | object  | null     | Optional filter to restrict RAG context (see below) |
+<<<<<<< HEAD
+
+**Document Filter Object**:
+
+| Field              | Type   | Description                                                                  |
+| ------------------ | ------ | ---------------------------------------------------------------------------- |
+| `date_from`        | string | ISO 8601 date. Only include documents created on or after this date          |
+| `date_to`          | string | ISO 8601 date. Only include documents created on or before this date         |
+| `document_pattern` | string | Comma-separated terms. Matches document titles case-insensitively (OR logic) |
+
+All filter fields are optional and AND-ed together. Omit `document_filter` entirely to query all documents.
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 **Document Filter Object**:
 
@@ -416,15 +512,15 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 All filter fields are optional and AND-ed together. Omit `document_filter` entirely to query all documents.
 
-**Query Modes**:
+**Query Modes** (default when unset is **`mix`** — the code falls back to `QueryMode::Mix`):
 
 | Mode     | Description              | Use Case                          |
 | -------- | ------------------------ | --------------------------------- |
 | `naive`  | Vector search only       | Fast, simple queries              |
 | `local`  | Entity-centric retrieval | Questions about specific entities |
-| `global` | Community summaries      | Theme/overview questions          |
-| `hybrid` | Local + Global (default) | General queries                   |
-| `mix`    | Adaptive blending        | Complex queries                   |
+| `global` | Relationship-centric search | Theme/overview questions        |
+| `hybrid` | Local + Global + Naive (round-robin) | General queries      |
+| `mix`    | Weighted blend of all arms (**default**) | Complex queries      |
 | `bypass` | Direct LLM, no RAG       | When context not needed           |
 
 **Response**:
@@ -1222,7 +1318,11 @@ Injection entries enrich the knowledge graph and improve retrieval but are filte
 
 ## See Also
 
+<<<<<<< HEAD
 - [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) — full endpoint catalog (v0.19.0)
+=======
+- [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) — full endpoint catalog (v0.23.0)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 - [Pipeline Progress](/docs/deep-dives/pipeline-progress/) — progress WS/REST/SSE
 - [Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness.md) — cancel SSOT
 - [Quick Start Guide](/docs/getting-started/quick-start/) - Get running in 5 minutes

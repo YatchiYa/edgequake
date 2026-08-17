@@ -15,7 +15,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+<<<<<<< HEAD
 import { apiClient } from '@/lib/api/client';
+=======
+import { Skeleton } from '@/components/ui/skeleton';
+import { apiClient } from '@/lib/api/client';
+import { useAuthStore } from '@/stores/use-auth-store';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import type { Tenant } from '@/types';
 import { Shield } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -26,6 +32,16 @@ interface TenantQuotaRow extends Tenant {
 }
 
 export function AdminQuotaSection() {
+<<<<<<< HEAD
+=======
+  const currentUser = useAuthStore((s) => s.user);
+  const hasHydrated = useAuthStore((s) => s._hasHydrated);
+  const isAdmin =
+    currentUser?.role === 'admin' ||
+    currentUser?.roles?.includes('admin') ||
+    false;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const [tenants, setTenants] = useState<TenantQuotaRow[]>([]);
   const [serverDefault, setServerDefault] = useState<number | null>(null);
   const [newDefault, setNewDefault] = useState('');
@@ -33,8 +49,17 @@ export function AdminQuotaSection() {
   const [isSavingDefault, setIsSavingDefault] = useState(false);
   const [editingTenant, setEditingTenant] = useState<TenantQuotaRow | null>(null);
 
+<<<<<<< HEAD
   // Load tenants and server default on mount
   useEffect(() => {
+=======
+  // Load tenants and server default on mount (admin only)
+  useEffect(() => {
+    if (!hasHydrated || !isAdmin) {
+      setIsLoading(false);
+      return;
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     async function load() {
       setIsLoading(true);
       try {
@@ -53,7 +78,32 @@ export function AdminQuotaSection() {
       }
     }
     load();
+<<<<<<< HEAD
   }, []);
+=======
+  }, [hasHydrated, isAdmin]);
+
+  // SPEC-100: skeleton while auth/admin check or data loads (never return null→tall)
+  if (!hasHydrated || (isAdmin && isLoading)) {
+    return (
+      <Card data-testid="spec100-admin-quota-skeleton">
+        <CardHeader className="pb-3">
+          <Skeleton className="h-5 w-24" />
+          <Skeleton className="h-3 w-64" />
+        </CardHeader>
+        <CardContent className="min-h-[12rem] space-y-3">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!isAdmin) {
+    return null;
+  }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   const handleSaveDefault = async () => {
     const val = parseInt(newDefault, 10);
@@ -88,6 +138,7 @@ export function AdminQuotaSection() {
     );
   };
 
+<<<<<<< HEAD
   if (isLoading) {
     return null; // Don't flash admin section while loading
   }
@@ -95,6 +146,11 @@ export function AdminQuotaSection() {
   return (
     <>
       <Card>
+=======
+  return (
+    <>
+      <Card data-testid="spec100-admin-quota-section">
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-muted-foreground" />

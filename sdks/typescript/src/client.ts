@@ -33,6 +33,10 @@ import { GraphResource } from "./resources/graph.js";
 import { LineageResource } from "./resources/lineage.js";
 import { ModelsResource } from "./resources/models.js";
 import { OllamaResource } from "./resources/ollama.js";
+<<<<<<< HEAD
+=======
+import { ParseResource } from "./resources/parse.js";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { PipelineResource } from "./resources/pipeline.js";
 import { ProvenanceResource } from "./resources/provenance.js";
 import { QueryResource } from "./resources/query.js";
@@ -150,6 +154,12 @@ export class EdgeQuake {
   /** Ollama-compatible API. */
   readonly ollama: OllamaResource;
 
+<<<<<<< HEAD
+=======
+  /** SPEC-094: Stateless PDF → Markdown parse. */
+  readonly parse: ParseResource;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   /** Admin — quotas and server defaults. */
   readonly admin: AdminResource;
 
@@ -183,6 +193,10 @@ export class EdgeQuake {
     this.settings = new SettingsResource(this._transport);
     this.models = new ModelsResource(this._transport);
     this.ollama = new OllamaResource(this._transport);
+<<<<<<< HEAD
+=======
+    this.parse = new ParseResource(this._transport);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     this.admin = new AdminResource(this._transport);
     this.effectiveConfig = new EffectiveConfigResource(this._transport);
   }

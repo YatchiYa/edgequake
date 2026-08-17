@@ -74,6 +74,10 @@ pub async fn upload_document(
             content_hash,
             custom_metadata: request.metadata,
             track_id: request.track_id,
+<<<<<<< HEAD
+=======
+            expected_batch_count: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             gleaning: GleaningAdmissionOptions::new(request.enable_gleaning, request.max_gleaning),
             document_type: Some("markdown"),
             chunk_strategy,
@@ -99,6 +103,12 @@ pub async fn upload_document(
                 entity_count: None,
                 relationship_count: None,
                 cost: None,
+<<<<<<< HEAD
+=======
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }),
         )),
         DocumentAdmissionOutcome::Accepted(accepted) => Ok((
@@ -113,6 +123,15 @@ pub async fn upload_document(
                 entity_count: None,
                 relationship_count: None,
                 cost: None,
+<<<<<<< HEAD
+=======
+                queue_position: accepted.queue.as_ref().map(|q| q.position),
+                eta_seconds: accepted.queue.as_ref().map(|q| q.eta_seconds),
+                eta_basis: accepted
+                    .queue
+                    .as_ref()
+                    .map(|q| q.basis.as_str().to_string()),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }),
         )),
     }

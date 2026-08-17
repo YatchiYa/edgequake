@@ -1,0 +1,260 @@
+'use client';
+
+import { WizardShell } from '@/components/onboarding/wizard-shell';
+import { STEP_META } from '@/components/onboarding/step-meta';
+import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-step';
+import { ReviewStep } from '@/components/onboarding/steps/review-step';
+import { TenantBasicsStep } from '@/components/onboarding/steps/tenant-basics-step';
+import { WorkspaceBasicsStep } from '@/components/onboarding/steps/workspace-basics-step';
+import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace-extraction-step';
+import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
+import type { LLMSelection } from '@/components/workspace/llm-model-selector';
+import { ENTITY_PRESETS } from '@/constants/entity-presets';
+import { useServerModelDefaults } from '@/hooks/use-server-model-defaults';
+import { setTenantContext } from '@/lib/api/client-context';
+import {
+  createTenant,
+  createWorkspace,
+  getWorkspaces,
+  updateWorkspace,
+} from '@/lib/api/edgequake';
+import { buildTenantModelPayload, buildWorkspaceModelPayload } from '@/lib/onboarding/model-payload';
+import { useWizardDraftPersistence } from '@/lib/onboarding/use-wizard-draft-persistence';
+import {
+  EMPTY_WIZARD_DRAFT,
+  canProceed,
+  clampStepIndex,
+  draftForStorage,
+  stepsForWizard,
+  type WizardDraft,
+  type WizardStepId,
+} from '@/lib/onboarding/wizard-state';
+import type { Tenant, Workspace } from '@/types';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+
+export interface CreateTenantWizardProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated?: (tenant: Tenant, workspace: Workspace) => void;
+}
+
+function initialTenantDraft(): WizardDraft {
+  return {
+    ...EMPTY_WIZARD_DRAFT,
+    tenantName: '',
+    workspaceName: 'Default Workspace',
+    entityTypes: [...ENTITY_PRESETS.general.types],
+  };
+}
+
+/**
+ * SPEC-101 — Guided Create Tenant (+ configure first workspace via PATCH Default).
+ */
+export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTenantWizardProps) {
+  const { t } = useTranslation();
+  const steps = useMemo(() => stepsForWizard('create-tenant'), []);
+  const baselineRef = useRef(initialTenantDraft());
+  const [stepIndex, setStepIndex] = useState(0);
+  const [draft, setDraft] = useState<WizardDraft>(initialTenantDraft);
+  const [llm, setLlm] = useState<LLMSelection | undefined>();
+  const [embedding, setEmbedding] = useState<EmbeddingSelection | undefined>();
+  const [vision, setVision] = useState<LLMSelection | undefined>();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const { hasConfiguredDefaults } = useServerModelDefaults();
+  const { clearDraft } = useWizardDraftPersistence(
+    'create-tenant',
+    open,
+    draft,
+    setDraft,
+    stepIndex,
+    setStepIndex,
+    steps.length,
+  );
+
+  const stepId = steps[clampStepIndex(stepIndex, steps.length)];
+  const meta = STEP_META[stepId];
+
+  const patchDraft = useCallback((patch: Partial<WizardDraft>) => {
+    setDraft((d) => ({ ...d, ...patch }));
+  }, []);
+
+  const advancedValid = Boolean(llm?.provider && embedding?.provider && vision?.provider);
+
+  const canGoNext = canProceed(stepId, draft, {
+    hasConfiguredDefaults,
+    advancedModelsValid: advancedValid,
+  });
+
+  const isDirty =
+    stepIndex > 0 ||
+    JSON.stringify(draftForStorage(draft)) !==
+      JSON.stringify(draftForStorage(baselineRef.current));
+
+  const reset = useCallback(() => {
+    const next = initialTenantDraft();
+    baselineRef.current = next;
+    setStepIndex(0);
+    setDraft(next);
+    setLlm(undefined);
+    setEmbedding(undefined);
+    setVision(undefined);
+    setAdvancedOpen(false);
+    clearDraft();
+  }, [clearDraft]);
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next) reset();
+    onOpenChange(next);
+  };
+
+  const goToStep = (target: WizardStepId) => {
+    const idx = steps.indexOf(target);
+    if (idx >= 0) setStepIndex(idx);
+  };
+
+  const finalize = async () => {
+    setSubmitting(true);
+    try {
+      const tenantModels = buildTenantModelPayload({
+        useServerDefaults: draft.useServerDefaults,
+        llm,
+        embedding,
+        vision,
+      });
+      const tenant = await createTenant({
+        name: draft.tenantName.trim(),
+        description: draft.tenantDescription.trim() || undefined,
+        ...tenantModels,
+      });
+      // Scope subsequent workspace calls to the new tenant (not the prior header context).
+      setTenantContext(tenant.id);
+
+      const list = await getWorkspaces(tenant.id);
+      const autoWs =
+        list.find((w) => w.slug === 'default') ??
+        list.find((w) => w.name === 'Default Workspace') ??
+        list[0];
+
+      const wsModels = buildWorkspaceModelPayload({
+        useServerDefaults: draft.useServerDefaults,
+        llm,
+        embedding,
+        vision,
+      });
+
+      let workspace: Workspace;
+      if (autoWs) {
+        workspace = await updateWorkspace(tenant.id, autoWs.id, {
+          name: draft.workspaceName.trim(),
+          description: draft.workspaceDescription.trim() || undefined,
+          ...wsModels,
+          entity_types: draft.entityTypes.length > 0 ? draft.entityTypes : undefined,
+          entity_type_colors:
+            Object.keys(draft.entityTypeColors).length > 0
+              ? draft.entityTypeColors
+              : undefined,
+          extraction_language: draft.extractionLanguage ?? undefined,
+        });
+      } else {
+        workspace = await createWorkspace(tenant.id, {
+          name: draft.workspaceName.trim(),
+          slug: draft.workspaceSlug.trim() || undefined,
+          description: draft.workspaceDescription.trim() || undefined,
+          ...wsModels,
+          entity_types: draft.entityTypes.length > 0 ? draft.entityTypes : undefined,
+          entity_type_colors:
+            Object.keys(draft.entityTypeColors).length > 0
+              ? draft.entityTypeColors
+              : undefined,
+          extraction_language: draft.extractionLanguage ?? undefined,
+        });
+      }
+
+      // Success toast owned by caller (header / tenant-guard).
+      onCreated?.(tenant, workspace);
+      handleOpenChange(false);
+    } catch (error) {
+      toast.error(t('tenant.createFailed', 'Failed to create tenant'), {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onNext = () => {
+    if (stepIndex >= steps.length - 1) {
+      void finalize();
+      return;
+    }
+    setStepIndex((i) => clampStepIndex(i + 1, steps.length));
+  };
+
+  const body = (() => {
+    switch (stepId) {
+      case 'tenant-basics':
+        return <TenantBasicsStep draft={draft} onChange={patchDraft} />;
+      case 'models':
+        return (
+          <ModelDefaultsStep
+            draft={draft}
+            onChange={patchDraft}
+            llm={llm}
+            embedding={embedding}
+            vision={vision}
+            onLlmChange={setLlm}
+            onEmbeddingChange={setEmbedding}
+            onVisionChange={setVision}
+            advancedOpen={advancedOpen}
+            onAdvancedOpenChange={setAdvancedOpen}
+          />
+        );
+      case 'workspace-basics':
+        return <WorkspaceBasicsStep draft={draft} onChange={patchDraft} />;
+      case 'extraction':
+        return <WorkspaceExtractionStep draft={draft} onChange={patchDraft} />;
+      case 'review':
+        return (
+          <ReviewStep
+            draft={draft}
+            includeAdmin={false}
+            includeTenant
+            llm={llm}
+            embedding={embedding}
+            vision={vision}
+            onEditStep={goToStep}
+          />
+        );
+      default:
+        return null;
+    }
+  })();
+
+  return (
+    <WizardShell
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={t('tenant.createNew', 'Create New Tenant')}
+      description={t(
+        'tenant.createDescription',
+        'Create a new tenant to organize your workspaces and data.',
+      )}
+      stepIndex={stepIndex}
+      stepCount={steps.length}
+      stepTitle={t(meta.titleKey, meta.title)}
+      stepDescription={t(meta.descriptionKey, meta.description)}
+      canGoNext={canGoNext}
+      isLastStep={stepIndex >= steps.length - 1}
+      isSubmitting={submitting}
+      isDirty={isDirty}
+      onBack={() => setStepIndex((i) => clampStepIndex(i - 1, steps.length))}
+      onNext={onNext}
+      testId="create-tenant-wizard"
+    >
+      {body}
+    </WizardShell>
+  );
+}

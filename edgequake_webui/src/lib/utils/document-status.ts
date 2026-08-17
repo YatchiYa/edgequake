@@ -9,7 +9,11 @@ import {
   getDocumentDisplayStatus,
   isProcessingStatus,
   type DocumentStatus,
+<<<<<<< HEAD
 } from "@/components/documents/status-badge";
+=======
+} from "@/lib/documents/status-domain";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import type { Document } from "@/types";
 import { formatGraphMergeStageMessage } from "@/lib/pipeline/graph-merge-progress";
 
@@ -176,6 +180,14 @@ export function resolveDocumentDisplayStatus(
     return 'partial_success';
   }
 
+<<<<<<< HEAD
+=======
+  // SPEC-098 LAW-098-11: never collapse lifecycle delete_failed → pipeline Failed.
+  if (legacyStatus === "delete_failed" || baseStatus === "delete_failed") {
+    return "delete_failed";
+  }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const terminalError = getEffectiveErrorMessage(doc);
   if (terminalError) {
     if (legacyStatus === "partial_failure" || baseStatus === "partial_failure") {

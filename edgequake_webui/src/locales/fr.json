@@ -681,6 +681,22 @@
     "weight": "Poids",
     "weightHint": "Un poids plus élevé indique une relation plus forte (0.0 - 1.0)"
   },
+<<<<<<< HEAD
+=======
+  "context": {
+    "tenantLabel": "Tenant",
+    "workspaceLabel": "Espace",
+    "selectTenant": "Sélectionner un tenant",
+    "selectWorkspace": "Sélectionner un espace",
+    "searchPlaceholder": "Rechercher organisations et espaces...",
+    "noMatches": "Aucun résultat",
+    "current": "Actuel",
+    "stepOrganization": "1 · Organisation",
+    "stepWorkspace": "2 · Espace",
+    "stepWorkspaceIn": "2 · Espace · {{tenant}}",
+    "pickOrganizationFirst": "Sélectionnez une organisation pour choisir un espace."
+  },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "tenant": {
     "createDescription": "Créez un nouveau Tenant pour organiser vos espaces de travail.",
     "createFailed": "Échec de la création du Tenant",
@@ -693,10 +709,18 @@
     "selectContext": "Sélectionner le contexte",
     "selectTenant": "Sélectionnez un Tenant...",
     "tenant": "Tenant",
+<<<<<<< HEAD
+=======
+    "organizations": "Organisations",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     "defaultVisionLlmModel": "Modèle Vision LLM par défaut",
     "defaultVisionLlmHint": "Utilisé pour l'extraction PDF par vision. Les espaces de travail héritent de cette valeur si aucun modèle n'est défini."
   },
   "workspace": {
+<<<<<<< HEAD
+=======
+    "workspaces": "Espaces de travail",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     "actions": "Actions de l'espace de travail",
     "actionsDesc": "Gérez les données de l'espace de travail et retraitez les documents.",
     "autoDetect": "Détection automatique",
@@ -764,6 +788,74 @@
     "updated": "Mis à jour",
     "workspace": "Espace de travail"
   },
+<<<<<<< HEAD
+=======
+  "onboarding": {
+    "stepOf": "Étape {{current}} sur {{total}}",
+    "firstRunTitle": "Bienvenue — configurer EdgeQuake",
+    "firstRunDescription": "Créez votre compte administrateur, organisation et premier espace de travail.",
+    "loadingSetup": "Vérification de l'état de configuration…",
+    "finishSetup": "Terminer la configuration",
+    "setupComplete": "Configuration terminée. Bienvenue sur EdgeQuake !",
+    "setupCompleteLogin": "Configuration terminée. Connectez-vous avec votre nouveau compte administrateur.",
+    "alreadyInitialized": "Instance déjà initialisée",
+    "setupFailed": "Échec de la configuration",
+    "adminUsername": "Nom d'utilisateur",
+    "adminEmail": "E-mail (facultatif)",
+    "adminPassword": "Mot de passe",
+    "adminPasswordConfirm": "Confirmer le mot de passe",
+    "adminPasswordHint": "Au moins 8 caractères. Conservez-le en sécurité.",
+    "adminUsernameError": "Le nom d'utilisateur doit contenir au moins 3 caractères.",
+    "adminPasswordError": "Le mot de passe doit contenir au moins 8 caractères.",
+    "adminPasswordRequired": "Le mot de passe est obligatoire.",
+    "adminPasswordMismatch": "Les mots de passe ne correspondent pas.",
+    "tenantNameRequired": "Le nom de l'organisation est obligatoire.",
+    "workspaceNameRequired": "Le nom de l'espace de travail est obligatoire.",
+    "reviewHint": "Rien n'est enregistré tant que vous n'avez pas confirmé.",
+    "editStep": "Modifier",
+    "discardTitle": "Abandonner les modifications ?",
+    "discardDescription": "La progression de l'assistant n'est pas enregistrée. Fermer l'abandonnera.",
+    "keepEditing": "Continuer",
+    "discardConfirm": "Abandonner",
+    "uploadDocuments": "Téléverser des documents",
+    "createWorkspace": "Créer l'espace de travail",
+    "changeDomain": "Changer de domaine",
+    "entityTypesHeading": "Types d'entités à extraire",
+    "entityTypesHint": "Choisissez les types d'entités à extraire dans le graphe de connaissances.",
+    "overriddenDefaults": "Remplacé",
+    "customModelsHint": "Choisissez LLM, embedding et vision. Les filtres de fournisseur restent masqués.",
+    "adminSection": "Admin",
+    "modelsSection": "Modèles",
+    "modelsMode": "Mode",
+    "extractionSection": "Extraction",
+    "documentParsingTitle": "Analyse de documents",
+    "documentParsingSubtitle": "Choisissez comment les PDF sont convertis en texte.",
+    "documentParsingSection": "Analyse de documents",
+    "pdfParserHeading": "Analyseur PDF",
+    "pdfParserHint": "Choisissez comment les PDF sont convertis en texte. La valeur serveur bascule vers Vision.",
+    "reconfigureTitle": "Reconfigurer l'espace de travail",
+    "reconfigureDescription": "Mettez à jour les modèles, l'analyse de documents et l'extraction.",
+    "reconfigureReviewTitle": "Vérifier et appliquer",
+    "reconfigureReviewSubtitle": "Confirmez les changements. Une reconstruction peut être nécessaire.",
+    "applyChanges": "Appliquer",
+    "noChanges": "Aucun changement à appliquer",
+    "strictMode": "Strict",
+    "impactTitle": "Impact de ces changements",
+    "impactLlm": "Modèle LLM",
+    "impactEmbedding": "Modèle d'embedding",
+    "impactVision": "LLM vision",
+    "impactPdfParser": "Analyseur PDF",
+    "impactLanguage": "Langue d'extraction",
+    "impactEntityTypes": "Types d'entités",
+    "impactStrict": "Types d'entités stricts",
+    "impactRebuildRequired": "Les documents existants peuvent nécessiter une reconstruction.",
+    "impactRebuildEmbeddings": "Reconstruire les embeddings pour le nouveau modèle.",
+    "impactRebuildKg": "Reconstruire le graphe de connaissances pour le nouveau LLM.",
+    "impactRebuildVision": "Reconstruire le graphe pour les changements vision/PDF.",
+    "impactZeroDocs": "Aucun document — les changements s'appliquent aux prochaines ingestions.",
+    "impactFutureOnly": "Langue et types d'entités s'appliquent aux prochaines ingestions."
+  },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "entityTypes": {
     "title": "Types d'entités",
     "description": "Types d'entités à extraire des documents dans cet espace de travail.",

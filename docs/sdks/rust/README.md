@@ -1,6 +1,16 @@
+<<<<<<< HEAD
 # Rust SDK
 
 > **Product: v0.19.0** · Crate **~0.4.0** (decoupled from server)
+=======
+---
+title: "Rust SDK"
+---
+
+# Rust SDK
+
+> **Product: v0.23.0** · Crate **~0.4.0** (decoupled from server)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 **Location:** `sdks/rust`  
 **Authority:** Same headers and `/api/v1` paths as the Axum server.
@@ -46,6 +56,47 @@ async fn main() -> edgequake_sdk::Result<()> {
 | List conversations with API filters | `conversations().list_with_query(&ConversationListQuery { .. })` |
 | Bulk delete conversations | POST body uses `conversation_ids` via SDK helpers |
 | Cancel ingestion task | `tasks().cancel(track_id)` — see [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md) |
+<<<<<<< HEAD
+=======
+| Stateless parse (SPEC-094) | `parse().parse(file_bytes, filename, options)` → `ParseOutcome::{Completed, Accepted}`; also `parse().backends()`, `parse().job(id)` |
+
+## Stateless parse (SPEC-094, v0.23)
+
+`POST /api/v1/parse` converts a PDF to Markdown without ingestion residue. Sync by default (≤ 15 pages / 20 MiB); async for larger jobs (≤ 1000 pages).
+
+```rust
+use edgequake_sdk::resources::parse::ParseOptions;
+
+let bytes = std::fs::read("/tmp/paper.pdf")?;
+
+// Sync parse — ParseOutcome::Completed(ParseResponse) or Accepted(202)
+let outcome = client
+    .parse()
+    .parse(
+        bytes,
+        "paper.pdf",
+        ParseOptions { pages: Some("1-5".into()), ..Default::default() },
+    )
+    .await?;
+
+match outcome {
+    edgequake_sdk::resources::parse::ParseOutcome::Completed(res) => {
+        println!("{} pages, {} ms", res.page_count, res.metrics.total_ms);
+        println!("{}", &res.markdown[..200.min(res.markdown.len())]);
+    }
+    edgequake_sdk::resources::parse::ParseOutcome::Accepted(acc) => {
+        let status = client.parse().job(&acc.job_id).await?;
+        if let Some(result) = status.result {
+            println!("{}", &result.markdown[..200.min(result.markdown.len())]);
+        }
+    }
+}
+
+let backends = client.parse().backends().await?; // ParseBackendsResponse
+```
+
+Document responses also expose `display_status` / `ui_phase` (SPEC-057 P4) — prefer them over raw `status`/`stage` for progress UI. Query keyword/answer caching is **server-side only** (`EDGEQUAKE_LLM_CACHE=1` default; `EDGEQUAKE_KEYWORD_CACHE` / `EDGEQUAKE_QUERY_ANSWER_CACHE` overrides) — no client change needed.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ## Next
 

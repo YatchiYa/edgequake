@@ -49,7 +49,11 @@
 pub use crate::handlers::documents_types::*;
 
 // Sub-modules: each owns a single responsibility
+<<<<<<< HEAD
 mod delete;
+=======
+pub(crate) mod delete;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 mod query;
 mod recovery;
 pub(crate) mod storage_helpers;
@@ -128,6 +132,12 @@ mod tests {
                 llm_model: Some("gpt-4o-mini".to_string()),
                 embedding_model: Some("text-embedding-3-small".to_string()),
             }),
+<<<<<<< HEAD
+=======
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -183,6 +193,15 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
+<<<<<<< HEAD
+=======
+            progress_counts: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
+            query_ready: None,
+            cancelled_from_stage: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         };
 
         let json = serde_json::to_string(&summary).unwrap();
@@ -221,6 +240,15 @@ mod tests {
                 pdf_id: None,
                 display_status: None,
                 ui_phase: None,
+<<<<<<< HEAD
+=======
+                progress_counts: None,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
+                cancelled_from_stage: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }],
             total: 1,
             page: 1,
@@ -349,6 +377,15 @@ mod tests {
                 pdf_id: None,
                 display_status: None,
                 ui_phase: None,
+<<<<<<< HEAD
+=======
+                progress_counts: None,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
+                cancelled_from_stage: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }],
             total_count: 1,
             status_summary: StatusCounts {
@@ -361,6 +398,11 @@ mod tests {
                 unknown: 0,
             },
             is_complete: true,
+<<<<<<< HEAD
+=======
+            expected_count: None,
+            registered_count: 1,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             latest_message: Some("All documents processed successfully".to_string()),
         };
 

@@ -4,7 +4,11 @@ title: 'Troubleshooting Guide'
 
 # Troubleshooting Guide
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Ingestion SSOT: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+> **Product: v0.23.0** · Ingestion SSOT: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 > **Diagnosing and Resolving Common EdgeQuake Issues**
 
@@ -186,7 +190,11 @@ docker compose up -d
 **Diagnosis**:
 
 ```bash
+<<<<<<< HEAD
 # Queue pressure + store contention (v0.19 SSOT)
+=======
+# Queue pressure + store contention (v0.23 SSOT)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 curl -s http://localhost:8080/api/v1/pipeline/queue-metrics | jq
 
 # Check pending tasks
@@ -229,7 +237,11 @@ Full cancel, fairness, lease, and multi-replica semantics: [Ingestion cancel & f
 
 ---
 
+<<<<<<< HEAD
 ### 3.1 Interrupted / Reprocess (v0.19)
+=======
+### 3.1 Interrupted / Reprocess (v0.23)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 #### Symptom: Document shows **Failed** with message containing "Interrupted — use Reprocess"
 
@@ -280,7 +292,11 @@ Fairness park **releases** the claim before waiting on tenant capacity — a par
 
 ---
 
+<<<<<<< HEAD
 ### 3.3 Cancel is not Failed (v0.19)
+=======
+### 3.3 Cancel is not Failed (v0.23)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 #### Symptom: User cancelled ingestion but UI or API still shows **Failed** instead of **Cancelled**
 
@@ -993,7 +1009,7 @@ curl "http://localhost:8080/api/v1/workspaces/$WORKSPACE_ID/stats"
 # Try naive mode (vector only) to verify basic retrieval
 curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
   -H "Content-Type: application/json" \
-  -d '{"query": "test", "mode": "naive", "max_chunks": 20}'
+  -d '{"query": "test", "mode": "naive"}'
 ```
 
 ---
@@ -1076,9 +1092,9 @@ RUST_LOG="edgequake=debug" cargo run
 curl -X POST "http://localhost:8080/api/v1/query" \
   -d '{"query": "test", "llm_model": "gpt-4.1-nano"}'
 
-# Reduce context size
+# Reduce context size (per-query knobs)
 curl -X POST "http://localhost:8080/api/v1/query" \
-  -d '{"query": "test", "max_chunks": 5, "max_entities": 5}'
+  -d '{"query": "test", "max_results": 5}'
 ```
 
 ---

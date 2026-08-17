@@ -17,6 +17,14 @@ impl TimedStorageOp {
             start: Instant::now(),
         }
     }
+<<<<<<< HEAD
+=======
+
+    /// Start a timer using a SPEC-088 data-layer Ref ID (same string as metrics `op` label).
+    pub fn start_dataop(ref_id: &'static str) -> Self {
+        Self::start(ref_id)
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 impl Drop for TimedStorageOp {

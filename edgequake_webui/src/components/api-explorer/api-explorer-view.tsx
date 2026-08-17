@@ -25,9 +25,16 @@ const ApiReferenceReact = dynamic(
   },
   {
     ssr: false,
+<<<<<<< HEAD
     loading: () => (
       <div
         className="flex h-full items-center justify-center bg-background"
+=======
+    // SPEC-100: full-bleed skeleton in flex-1 min-h-0 until Scalar mounts
+    loading: () => (
+      <div
+        className="flex h-full min-h-0 flex-1 flex-col items-center justify-center bg-background"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         data-id="api-explorer-loading"
         data-testid="api-explorer-loading"
       >

@@ -4,7 +4,11 @@ title: 'EdgeQuake vs Microsoft GraphRAG'
 
 # EdgeQuake vs Microsoft GraphRAG
 
+<<<<<<< HEAD
 > **Product: v0.19.0**
+=======
+> **Product: v0.23.0**
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 > **Two Approaches to Graph-Enhanced RAG**
 
@@ -139,11 +143,11 @@ EdgeQuake uses flat communities, trading hierarchical flexibility for simpler im
 | Local Search  | `local`              | Entity-centered graph traversal            |
 | DRIFT Search  | N/A                  | Local + community context                  |
 | Basic Search  | `naive`              | Standard vector similarity                 |
-| N/A           | `hybrid`             | Combined local + global (default)          |
-| N/A           | `mix`                | Weighted combination with scores           |
+| N/A           | `hybrid`             | Local + Global + Naive (round-robin)   |
+| N/A           | `mix`                | Weighted blend, RRF fusion (**default**)|
 | N/A           | `bypass`             | Direct LLM, no retrieval                   |
 
-**Key Difference:** GraphRAG's DRIFT (Dynamic Reasoning Including Facts and Themes) mode combines local entity search with community context. EdgeQuake's `hybrid` mode combines local and global but without the adaptive weighting.
+**Key Difference:** GraphRAG's DRIFT (Dynamic Reasoning Including Facts and Themes) mode combines local entity search with community context. EdgeQuake's `hybrid` mode combines local, global, **and** the naive chunk arm via round-robin interleave (SPEC-046 P0.5 — broader than LightRAG's local+global hybrid); `mix` is the production default with RRF fusion.
 
 ---
 
@@ -289,7 +293,11 @@ Uses Tokio's concurrent task execution for parallel context retrieval, generally
 **EdgeQuake's unified PostgreSQL:**
 
 - `DATABASE_URL` required — no production in-memory fallback
+<<<<<<< HEAD
 - Official images: `ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg16|pg17|pg18`
+=======
+- Official images: `ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0-pg16|pg17|pg18`
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 - Transactional consistency + RLS tenant isolation
 - Simpler deployment than split Parquet + LanceDB stacks
 

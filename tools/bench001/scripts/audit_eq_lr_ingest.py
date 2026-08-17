@@ -154,7 +154,11 @@ def _relation_chunk_density(edges: list[dict], lr_rel: dict[str, list[str]]) -> 
 
 
 def _count_eq_entity_vectors(workspace_id: str) -> int | None:
+<<<<<<< HEAD
     """Count entity rows in the workspace vector table (032 identity parity)."""
+=======
+    """Count entity embedding rows (typed SSOT, else legacy workspace vectors)."""
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     try:
         import psycopg2
     except ImportError:
@@ -170,6 +174,26 @@ def _count_eq_entity_vectors(workspace_id: str) -> int | None:
             cur.execute(
                 """
                 SELECT COUNT(*) FROM information_schema.tables
+<<<<<<< HEAD
+=======
+                WHERE table_schema='public' AND table_name='entity_embeddings'
+                """
+            )
+            if int(cur.fetchone()[0]) > 0:
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM entity_embeddings
+                    WHERE workspace_id = %s::uuid
+                    """,
+                    (workspace_id,),
+                )
+                typed_n = int(cur.fetchone()[0])
+                if typed_n > 0:
+                    return typed_n
+            cur.execute(
+                """
+                SELECT COUNT(*) FROM information_schema.tables
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 WHERE table_schema='public' AND table_name=%s
                 """,
                 (table,),

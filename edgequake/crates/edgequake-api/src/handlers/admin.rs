@@ -229,7 +229,11 @@ pub async fn storage_inspect(
             .ok_or_else(|| ApiError::Internal("Postgres pool not available".into()))?;
         let inspector = StorageInspector::new(
             std::sync::Arc::new(pool.clone()),
+<<<<<<< HEAD
             InspectorConfig::default(),
+=======
+            InspectorConfig::for_namespace("default"),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         );
         let report = inspector.inspect().await;
         Ok(Json(report))
@@ -303,7 +307,11 @@ pub async fn storage_repair(
             .ok_or_else(|| ApiError::Internal("Postgres pool not available".into()))?;
         let inspector = StorageInspector::new(
             std::sync::Arc::new(pool.clone()),
+<<<<<<< HEAD
             InspectorConfig::default(),
+=======
+            InspectorConfig::for_namespace("default"),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         );
         let report = inspector.inspect().await;
 
@@ -547,3 +555,348 @@ pub async fn ann_warmup(
             .into(),
     }))
 }
+<<<<<<< HEAD
+=======
+
+// ── SPEC-091 migration progress ───────────────────────────────────────────────
+
+/// Response for GET /admin/migration-jobs (progressive migration information).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MigrationJobsResponse {
+    /// Current `EDGEQUAKE_MIGRATION_MODE` (`off` | `verify` | `automatic`).
+    pub mode: String,
+    /// Jobs from `edgequake.migration_progress` (empty when table missing or mode=off).
+    pub jobs: Vec<MigrationJobItem>,
+    pub note: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MigrationJobItem {
+    pub job_id: String,
+    pub step_id: String,
+    pub state: String,
+    pub processed_count: i64,
+    pub estimated_total: Option<i64>,
+    pub completion_pct: Option<f64>,
+    pub throttle_reason: Option<String>,
+}
+
+/// List automatic-migration jobs with progressive completion information.
+///
+/// Surfaces the same ledger as `edgequake.migration_progress` and the CLI
+/// (`edgequake migrate status`). Boot never blocks on these jobs.
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/migration-jobs",
+    responses(
+        (status = 200, description = "Migration job progress", body = MigrationJobsResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin required"),
+    ),
+    tags = ["admin"]
+)]
+pub async fn list_migration_jobs(
+    State(state): State<AppState>,
+    _admin: ApiRequireAdmin,
+) -> Result<Json<MigrationJobsResponse>, ApiError> {
+    let mode = edgequake_storage::MigrationMode::from_env();
+    let mode_str = match mode {
+        edgequake_storage::MigrationMode::Off => "off",
+        edgequake_storage::MigrationMode::Verify => "verify",
+        edgequake_storage::MigrationMode::Automatic => "automatic",
+    }
+    .to_string();
+
+    if !mode.reports_pending() {
+        return Ok(Json(MigrationJobsResponse {
+            mode: mode_str,
+            jobs: vec![],
+            note: "EDGEQUAKE_MIGRATION_MODE=off — job reporting disabled".into(),
+        }));
+    }
+
+    list_migration_jobs_postgres(&state, mode_str).await
+}
+
+#[cfg(feature = "postgres")]
+async fn list_migration_jobs_postgres(
+    state: &AppState,
+    mode_str: String,
+) -> Result<Json<MigrationJobsResponse>, ApiError> {
+    let Some(pool) = state.pg_pool.as_ref() else {
+        return Ok(Json(MigrationJobsResponse {
+            mode: mode_str,
+            jobs: vec![],
+            note: "No PostgreSQL pool — migration ledger unavailable".into(),
+        }));
+    };
+
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        job_id: Uuid,
+        step_id: String,
+        state: String,
+        processed_count: i64,
+        estimated_total: Option<i64>,
+        completion_pct: Option<f64>,
+        throttle_reason: Option<String>,
+    }
+
+    // Prefer the SQL view; fall back to empty if migration 106 not yet applied.
+    let rows = sqlx::query_as::<_, Row>(
+        r#"
+        SELECT job_id, step_id, state, processed_count, estimated_total,
+               completion_pct::float8 AS completion_pct, throttle_reason
+        FROM edgequake.migration_progress
+        ORDER BY started_at NULLS LAST, step_id
+        "#,
+    )
+    .fetch_all(pool)
+    .await;
+
+    let jobs = match rows {
+        Ok(rows) => rows
+            .into_iter()
+            .map(|r| MigrationJobItem {
+                job_id: r.job_id.to_string(),
+                step_id: r.step_id,
+                state: r.state,
+                processed_count: r.processed_count,
+                estimated_total: r.estimated_total,
+                completion_pct: r.completion_pct,
+                throttle_reason: r.throttle_reason,
+            })
+            .collect(),
+        Err(e) => {
+            tracing::debug!(error = %e, "SPEC-091: migration_progress view unavailable");
+            return Ok(Json(MigrationJobsResponse {
+                mode: mode_str,
+                jobs: vec![],
+                note: format!("migration_progress unavailable (apply migration 106?): {e}"),
+            }));
+        }
+    };
+
+    Ok(Json(MigrationJobsResponse {
+        mode: mode_str,
+        jobs,
+        note: "Progress is ledger-derived and monotonic across restarts (SPEC-091)".into(),
+    }))
+}
+
+#[cfg(not(feature = "postgres"))]
+async fn list_migration_jobs_postgres(
+    _state: &AppState,
+    mode_str: String,
+) -> Result<Json<MigrationJobsResponse>, ApiError> {
+    Ok(Json(MigrationJobsResponse {
+        mode: mode_str,
+        jobs: vec![],
+        note: "postgres feature disabled — migration ledger unavailable".into(),
+    }))
+}
+
+// ── SPEC-091 P1: migration job detail + operator control ─────────────────────
+
+/// Response for the control verbs (pause/resume/cancel).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MigrationJobControlResponse {
+    pub job_id: String,
+    pub state: String,
+    pub action: String,
+    pub note: String,
+}
+
+#[cfg(feature = "postgres")]
+fn migration_pool(state: &AppState) -> Result<&sqlx::PgPool, ApiError> {
+    state.pg_pool.as_ref().ok_or_else(|| {
+        ApiError::BadRequest("No PostgreSQL pool — migration ledger unavailable".into())
+    })
+}
+
+#[cfg(not(feature = "postgres"))]
+fn migration_stub<T>() -> Result<Json<T>, ApiError> {
+    Err(ApiError::BadRequest(
+        "postgres feature disabled — migration ledger unavailable".into(),
+    ))
+}
+
+/// Job detail: ledger row + recent batches + derived rate/ETA (P1).
+///
+/// GET /api/v1/admin/migration-jobs/{job_id}
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/migration-jobs/{job_id}",
+    params(("job_id" = String, Path, description = "Migration job UUID")),
+    responses(
+        (status = 200, description = "Migration job detail (ledger row + recent batches + rate/ETA)"),
+        (status = 404, description = "Job not found"),
+    ),
+    tags = ["admin"]
+)]
+pub async fn get_migration_job(
+    State(state): State<AppState>,
+    _admin: ApiRequireAdmin,
+    Path(job_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    #[cfg(feature = "postgres")]
+    {
+        let pool = migration_pool(&state)?;
+        let job_id = uuid::Uuid::parse_str(&job_id)
+            .map_err(|_| ApiError::BadRequest(format!("invalid job_id '{job_id}'")))?;
+        let detail = edgequake_storage::migration_engine::lease::job_detail(pool, job_id)
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?
+            .ok_or_else(|| ApiError::NotFound(format!("migration job {job_id} not found")))?;
+        Ok(Json(
+            serde_json::to_value(detail).map_err(|e| ApiError::Internal(e.to_string()))?,
+        ))
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (state, job_id);
+        migration_stub()
+    }
+}
+
+/// Operator control shared handler (DRY — one implementation, three routes).
+#[cfg(feature = "postgres")]
+async fn control_migration_job(
+    state: &AppState,
+    job_id_raw: &str,
+    action: edgequake_storage::migration_engine::lease::JobControl,
+    action_name: &'static str,
+) -> Result<Json<MigrationJobControlResponse>, ApiError> {
+    let pool = migration_pool(state)?;
+    let job_id = uuid::Uuid::parse_str(job_id_raw)
+        .map_err(|_| ApiError::BadRequest(format!("invalid job_id '{job_id_raw}'")))?;
+    match edgequake_storage::migration_engine::lease::control_job(pool, job_id, action).await {
+        Ok(new_state) => Ok(Json(MigrationJobControlResponse {
+            job_id: job_id.to_string(),
+            state: new_state.clone(),
+            action: action_name.into(),
+            note: match new_state.as_str() {
+                "paused" => "Runner parks at the next batch boundary and keeps its lease alive; \
+                             resume to continue from the committed cursor."
+                    .into(),
+                "running" => {
+                    "Job resumes from the last committed cursor (idempotent batches).".into()
+                }
+                "cancelled" => {
+                    "Terminal: committed batches stay (idempotent); rerun requires a new \
+                     schema generation. Completed rows are NOT rolled back."
+                        .into()
+                }
+                _ => String::new(),
+            },
+        })),
+        Err(edgequake_storage::StorageError::InvalidQuery(msg)) if msg.contains("not found") => {
+            Err(ApiError::NotFound(msg))
+        }
+        Err(edgequake_storage::StorageError::InvalidQuery(msg)) => Err(ApiError::Conflict(msg)),
+        Err(e) => Err(ApiError::Internal(e.to_string())),
+    }
+}
+
+/// Pause a migration job at the next batch boundary.
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/migration-jobs/{job_id}/pause",
+    params(("job_id" = String, Path, description = "Migration job UUID")),
+    responses(
+        (status = 200, description = "Job paused", body = MigrationJobControlResponse),
+        (status = 404, description = "Job not found"),
+        (status = 409, description = "Illegal transition from current state"),
+    ),
+    tags = ["admin"]
+)]
+pub async fn pause_migration_job(
+    State(state): State<AppState>,
+    _admin: ApiRequireAdmin,
+    Path(job_id): Path<String>,
+) -> Result<Json<MigrationJobControlResponse>, ApiError> {
+    #[cfg(feature = "postgres")]
+    {
+        return control_migration_job(
+            &state,
+            &job_id,
+            edgequake_storage::migration_engine::lease::JobControl::Pause,
+            "pause",
+        )
+        .await;
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (state, job_id);
+        migration_stub()
+    }
+}
+
+/// Resume a paused migration job (continues from the committed cursor).
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/migration-jobs/{job_id}/resume",
+    params(("job_id" = String, Path, description = "Migration job UUID")),
+    responses(
+        (status = 200, description = "Job resumed", body = MigrationJobControlResponse),
+        (status = 404, description = "Job not found"),
+        (status = 409, description = "Illegal transition from current state"),
+    ),
+    tags = ["admin"]
+)]
+pub async fn resume_migration_job(
+    State(state): State<AppState>,
+    _admin: ApiRequireAdmin,
+    Path(job_id): Path<String>,
+) -> Result<Json<MigrationJobControlResponse>, ApiError> {
+    #[cfg(feature = "postgres")]
+    {
+        return control_migration_job(
+            &state,
+            &job_id,
+            edgequake_storage::migration_engine::lease::JobControl::Resume,
+            "resume",
+        )
+        .await;
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (state, job_id);
+        migration_stub()
+    }
+}
+
+/// Cancel a migration job (terminal; committed batches are not rolled back).
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/migration-jobs/{job_id}/cancel",
+    params(("job_id" = String, Path, description = "Migration job UUID")),
+    responses(
+        (status = 200, description = "Job cancelled", body = MigrationJobControlResponse),
+        (status = 404, description = "Job not found"),
+        (status = 409, description = "Illegal transition from current state"),
+    ),
+    tags = ["admin"]
+)]
+pub async fn cancel_migration_job(
+    State(state): State<AppState>,
+    _admin: ApiRequireAdmin,
+    Path(job_id): Path<String>,
+) -> Result<Json<MigrationJobControlResponse>, ApiError> {
+    #[cfg(feature = "postgres")]
+    {
+        return control_migration_job(
+            &state,
+            &job_id,
+            edgequake_storage::migration_engine::lease::JobControl::Cancel,
+            "cancel",
+        )
+        .await;
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (state, job_id);
+        migration_stub()
+    }
+}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042

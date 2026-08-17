@@ -113,6 +113,46 @@ describe("patchDocumentsCacheFromProgress", () => {
     expect(data?.items[0].stage_message).toBe("Completed");
   });
 
+<<<<<<< HEAD
+=======
+  it("SPEC-120: PdfPageProgress clears queued display_status", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["documents", "ws-1"], {
+      items: [
+        makeDoc("a", {
+          status: "pending",
+          current_stage: "queued",
+          display_status: "queued",
+          ui_phase: "idle",
+          track_id: "pdf-track",
+        }),
+      ],
+    });
+
+    const patched = patchDocumentsCacheFromProgress(queryClient, {
+      type: "PdfPageProgress",
+      data: {
+        document_id: "a",
+        task_id: "pdf-track",
+        current_page: 7,
+        total_pages: 17,
+        progress: 0.41,
+        phase: "ocr",
+      },
+    });
+
+    expect(patched).toBe(1);
+    const data = queryClient.getQueryData<{ items: Document[] }>([
+      "documents",
+      "ws-1",
+    ]);
+    expect(data?.items[0].current_stage).toBe("converting");
+    expect(data?.items[0].display_status).toBe("converting");
+    expect(data?.items[0].ui_phase).toBe("running");
+    expect(data?.items[0].status).toBe("processing");
+  });
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   it("patches StatusSnapshot active_tasks", () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["documents", "ws-1"], {

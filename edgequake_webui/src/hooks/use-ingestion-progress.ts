@@ -3,6 +3,8 @@
  * @description Hook for tracking document ingestion progress via WebSocket/polling.
  * Based on WebUI Specification Document WEBUI-005 (14-webui-websocket-progress.md)
  *
+ * SPEC-086: store is SSOT after applyPolledProgress; subscribe to tracks.get(trackId).
+ *
  * @implements UC0007 - User monitors document processing progress
  * @implements FEAT0602 - Real-time progress indicators
  * @implements FEAT0603 - WebSocket-based live updates
@@ -63,7 +65,7 @@ interface UseIngestionProgressResult {
  */
 export function useIngestionProgress(
   trackId: string | null,
-  options: UseIngestionProgressOptions = {}
+  options: UseIngestionProgressOptions = {},
 ): UseIngestionProgressResult {
   const {
     enableWebSocket = true,
@@ -79,9 +81,15 @@ export function useIngestionProgress(
     unsubscribe,
     cancel: wsCancel,
   } = useWebSocket();
-  const { getTrack, startTracking } = useIngestionStore();
+  const startTracking = useIngestionStore((s) => s.startTracking);
+  const applyPolledProgress = useIngestionStore((s) => s.applyPolledProgress);
+  // SPEC-086: subscribe to track slice (not memoized getTrack) so immutable updates re-render.
+  const storeProgress = useIngestionStore((s) =>
+    trackId ? (s.tracks.get(trackId) ?? null) : null,
+  );
   const { getIngestionCost } = useCostStore();
 
+<<<<<<< HEAD
   // Get progress from store (from WebSocket events)
   const storeProgress = useMemo(() => {
     return trackId ? getTrack(trackId) : null;
@@ -96,6 +104,17 @@ export function useIngestionProgress(
     storeProgress?.status === "failed" ||
     storeProgress?.status === "cancelled";
 
+=======
+  // WHY: Always poll as a fallback until the track reaches a terminal state,
+  // even when WebSocket is connected. WS events can be missed (reconnect gaps,
+  // race conditions) leaving the panel stuck showing a processing state forever.
+  // Use a slower interval when WS is live (5s vs 2s) to avoid redundant requests.
+  const isTerminalStatus =
+    storeProgress?.status === "completed" ||
+    storeProgress?.status === "failed" ||
+    storeProgress?.status === "cancelled";
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const shouldPoll = !!trackId && !isTerminalStatus;
   const effectiveInterval = connected ? 5000 : pollingInterval;
 
@@ -143,16 +162,27 @@ export function useIngestionProgress(
     };
   }, [trackId, enableWebSocket, autoSubscribe, subscribe, unsubscribe]);
 
+<<<<<<< HEAD
   // Update store from polled data (refresh document id/name when available)
+=======
+  // SPEC-086: write poll into store via merge (seed must not beat advanced poll)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   useEffect(() => {
-    if (polledProgress && trackId) {
-      startTracking(
-        trackId,
-        polledProgress.document_id,
-        polledProgress.document_name
-      );
-    }
-  }, [polledProgress, trackId, startTracking]);
+    if (!polledProgress || !trackId) return;
+    // Soft 404 / empty: do not treat as terminal merge
+    const mapped: IngestionProgress = {
+      track_id: polledProgress.track_id,
+      document_id: polledProgress.document_id,
+      document_name: polledProgress.document_name,
+      status: polledProgress.status,
+      overall_progress: polledProgress.progress.completion_percentage,
+      progress: polledProgress.progress,
+      started_at: polledProgress.started_at,
+      updated_at: polledProgress.updated_at,
+      completed_at: polledProgress.completed_at,
+    };
+    applyPolledProgress(mapped);
+  }, [polledProgress, trackId, applyPolledProgress]);
 
   // Get cost from cost store
   const cost = useMemo(() => {
@@ -166,6 +196,7 @@ export function useIngestionProgress(
     }
   };
 
+<<<<<<< HEAD
   // WHY: Map polled API data to the IngestionProgress shape for use below.
   const mappedPolledProgress = useMemo(
     () =>
@@ -210,8 +241,11 @@ export function useIngestionProgress(
     return storeProgress;
   }, [storeProgress, mappedPolledProgress]);
 
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   return {
-    progress,
+    // Store is SSOT after applyPolledProgress / WS handlers
+    progress: storeProgress,
     isLive: connected && enableWebSocket,
     isLoading: isLoading && !storeProgress,
     error: error as Error | null,
@@ -225,8 +259,7 @@ export function useIngestionProgress(
  * Hook to get all active ingestion tracks.
  */
 export function useActiveIngestionTracks(): IngestionProgress[] {
-  const { getActiveTracks } = useIngestionStore();
-  return useMemo(() => getActiveTracks(), [getActiveTracks]);
+  return useIngestionStore((s) => s.getActiveTracks());
 }
 
 export default useIngestionProgress;

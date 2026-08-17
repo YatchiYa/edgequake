@@ -80,15 +80,29 @@ pub fn assert_workspace_uses_mistral(ws: &Value) {
 }
 
 /// Resolve PostgreSQL connection URL from environment.
+<<<<<<< HEAD
 pub fn database_url() -> Option<String> {
     env::var("DATABASE_URL").ok().or_else(|| {
+=======
+///
+/// The resolved database is redirected to a dedicated scratch test database and
+/// auto-provisioned once per process (see [`super::test_db`]) so tests run fully
+/// isolated from the dev database.
+pub fn database_url() -> Option<String> {
+    let base = env::var("DATABASE_URL").ok().or_else(|| {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         let password = env::var("POSTGRES_PASSWORD").ok()?;
         let host = env::var("POSTGRES_HOST").unwrap_or_else(|_| "localhost".to_string());
         let port = env::var("POSTGRES_PORT").unwrap_or_else(|_| "5432".to_string());
         let db = env::var("POSTGRES_DB").unwrap_or_else(|_| "edgequake".to_string());
         let user = env::var("POSTGRES_USER").unwrap_or_else(|_| "edgequake".to_string());
         Some(format!("postgresql://{user}:{password}@{host}:{port}/{db}"))
+<<<<<<< HEAD
     })
+=======
+    })?;
+    Some(super::test_db::isolated_test_url(&base))
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 pub fn require_database_url() -> String {
@@ -167,6 +181,11 @@ pub async fn start_worker_pool(state: &mut AppState) {
         max_tasks_per_tenant: 4,
         max_lifecycle_tasks_per_tenant: 4,
         processing_timeout_secs: 900,
+<<<<<<< HEAD
+=======
+        provider_budget: 0,
+        tenant_lane_weight: 1,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     };
 
     let mut worker_pool = WorkerPool::new(

@@ -12,6 +12,10 @@ use edgequake_pipeline::{
     MergeProgressCallback, NoopEntitySink, NoopLineageSink, ProcessingResult, RelationalEntitySink,
 };
 use edgequake_query::QueryResultCacheInvalidator;
+<<<<<<< HEAD
+=======
+use edgequake_storage::traits::domain::ChunkRepository;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use edgequake_storage::traits::{GraphStorage, KVStorage, VectorStorage};
 
 #[cfg(feature = "postgres")]
@@ -73,15 +77,86 @@ pub fn tag_injection_sources(result: &mut ProcessingResult, doc_id: &str) {
 }
 
 /// Resolve the relational entity sink (CQRS dual-write when enabled).
+<<<<<<< HEAD
 pub async fn resolve_relational_sink(state: &AppState) -> Arc<dyn RelationalEntitySink> {
     #[cfg(feature = "postgres")]
     if let Some(ref pool) = state.pg_pool {
         return PostgresEntitySink::create_if_enabled(Arc::new(pool.clone())).await;
+=======
+///
+/// Under typed embeddings, always returns a fail-closed Postgres sink so fleet
+/// mirror has relational FKs even when `entity_sync_mode=disabled`.
+pub async fn resolve_relational_sink(state: &AppState) -> Arc<dyn RelationalEntitySink> {
+    #[cfg(feature = "postgres")]
+    if let Some(ref pool) = state.pg_pool {
+        return PostgresEntitySink::create_for_runtime(Arc::new(pool.clone())).await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
     let _ = state;
     Arc::new(NoopEntitySink)
 }
 
+<<<<<<< HEAD
+=======
+/// SPEC-091 W1: relational chunk writer when Postgres pool is available.
+/// Authority flag (`EDGEQUAKE_CHUNK_TEXT_AUTHORITY`) still gates whether it is used.
+#[cfg(feature = "postgres")]
+pub fn resolve_relational_chunk_repo(
+    pool: Option<&sqlx::PgPool>,
+) -> Option<Arc<dyn ChunkRepository>> {
+    pool.map(|pool| {
+        Arc::new(edgequake_storage::PostgresChunkRepository::new(
+            pool.clone(),
+        )) as Arc<dyn ChunkRepository>
+    })
+}
+
+/// SPEC-091 W3: typed chunk embedding index when Postgres pool is available.
+/// Under `typed_embeddings`, this is write SSOT for chunk vectors (legacy
+/// `eq_*_vectors` upserts are write-stopped at the adapter).
+#[cfg(feature = "postgres")]
+pub fn resolve_typed_embedding_index(
+    pool: Option<sqlx::PgPool>,
+) -> Option<Arc<dyn edgequake_storage::traits::domain::EmbeddingIndex>> {
+    pool.map(|pool| {
+        let model = std::env::var("EDGEQUAKE_EMBEDDING_MODEL")
+            .unwrap_or_else(|_| "text-embedding-3-small".to_string());
+        Arc::new(edgequake_storage::PgChunkEmbeddingIndex::new(pool, model))
+            as Arc<dyn edgequake_storage::traits::domain::EmbeddingIndex>
+    })
+}
+
+/// SPEC-091 IW2: typed fleet embedding index (entity/relationship/report).
+#[cfg(feature = "postgres")]
+pub fn resolve_fleet_embedding_index(
+    pool: Option<sqlx::PgPool>,
+) -> Option<Arc<dyn edgequake_storage::traits::FleetEmbeddingIndex>> {
+    pool.map(|pool| {
+        let model = std::env::var("EDGEQUAKE_EMBEDDING_MODEL")
+            .unwrap_or_else(|_| "text-embedding-3-small".to_string());
+        Arc::new(edgequake_storage::PgFleetEmbeddingIndex::new(pool, model))
+            as Arc<dyn edgequake_storage::traits::FleetEmbeddingIndex>
+    })
+}
+
+/// Non-postgres builds have no relational spine; the authority flag defaults
+/// to `kv`, so this is never reached in practice.
+#[cfg(not(feature = "postgres"))]
+pub fn resolve_relational_chunk_repo(_pool: Option<&()>) -> Option<Arc<dyn ChunkRepository>> {
+    None
+}
+
+#[cfg(feature = "postgres")]
+fn relational_chunk_pool(state: &AppState) -> Option<&sqlx::PgPool> {
+    state.pg_pool.as_ref()
+}
+
+#[cfg(not(feature = "postgres"))]
+fn relational_chunk_pool(_state: &AppState) -> Option<&'static ()> {
+    None
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// Persist pipeline output via `IngestionPersister` and invalidate query result cache.
 pub async fn persist_ingestion_result(
     state: &AppState,
@@ -90,14 +165,28 @@ pub async fn persist_ingestion_result(
     relational_sink: Arc<dyn RelationalEntitySink>,
     params: PersistIngestionParams<'_>,
 ) -> Result<IngestionPersistOutput, edgequake_pipeline::error::PipelineError> {
+<<<<<<< HEAD
     persist_with_providers(
+=======
+    persist_with_providers_progress_and_embedder(
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         Arc::clone(&state.query.llm_provider),
         Some(state.query.engine_impl.as_ref() as &dyn QueryResultCacheInvalidator),
         graph_storage,
         vector_storage,
         Arc::clone(&state.storage.kv_storage),
         relational_sink,
+<<<<<<< HEAD
         params,
+=======
+        Arc::new(NoopLineageSink),
+        None,
+        resolve_relational_chunk_repo(relational_chunk_pool(state)),
+        #[cfg(feature = "postgres")]
+        state.pg_pool.clone(),
+        params,
+        None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     )
     .await
 }
@@ -148,6 +237,12 @@ pub async fn persist_with_providers_and_progress(
         relational_sink,
         lineage_sink,
         None,
+<<<<<<< HEAD
+=======
+        None,
+        #[cfg(feature = "postgres")]
+        None, // no pool in this wrapper: typed hook is a no-op (processor passes pool)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         params,
         merge_progress,
     )
@@ -155,6 +250,12 @@ pub async fn persist_with_providers_and_progress(
 }
 
 /// Persist with optional text embedder for community_report vectors (SPEC-046).
+<<<<<<< HEAD
+=======
+///
+/// SPEC-091: pass `relational_chunks` (from [`resolve_relational_chunk_repo`]) so
+/// `EDGEQUAKE_CHUNK_TEXT_AUTHORITY=dual|relational` can write the spine.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 #[allow(clippy::too_many_arguments)]
 pub async fn persist_with_providers_progress_and_embedder(
     llm_provider: Arc<dyn LLMProvider>,
@@ -165,6 +266,11 @@ pub async fn persist_with_providers_progress_and_embedder(
     relational_sink: Arc<dyn RelationalEntitySink>,
     lineage_sink: Arc<dyn LineageSink>,
     text_embedder: Option<Arc<dyn edgequake_storage::TextEmbedder>>,
+<<<<<<< HEAD
+=======
+    relational_chunks: Option<Arc<dyn ChunkRepository>>,
+    #[cfg(feature = "postgres")] typed_embedding_pool: Option<sqlx::PgPool>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     params: PersistIngestionParams<'_>,
     merge_progress: Option<MergeProgressCallback>,
 ) -> Result<IngestionPersistOutput, edgequake_pipeline::error::PipelineError> {
@@ -187,7 +293,29 @@ pub async fn persist_with_providers_progress_and_embedder(
         Some(llm_provider),
         Some(kv_storage),
     )
+<<<<<<< HEAD
     .with_lineage_sink(lineage_sink);
+=======
+    .with_lineage_sink(lineage_sink)
+    .with_relational_chunks(relational_chunks);
+
+    // SPEC-091 W3/IW2: typed chunk + fleet embedding writes. Under
+    // `typed_embeddings` the legacy `eq_*_vectors` adapter is write-stopped;
+    // these hooks are the SSOT (fail-closed when typed).
+    #[cfg(feature = "postgres")]
+    {
+        let typed_index = resolve_typed_embedding_index(typed_embedding_pool.clone());
+        persister = persister.with_typed_embedding_index(typed_index);
+        let fleet_index = resolve_fleet_embedding_index(typed_embedding_pool.clone());
+        persister = persister.with_fleet_embedding_index(fleet_index);
+        // SPEC-091 IP2: transactional outbox (LAW-D3) — same pool as typed writers.
+        if let Some(pool) = typed_embedding_pool {
+            let outbox: Arc<dyn edgequake_storage::OutboxSink> =
+                Arc::new(edgequake_storage::PostgresOutboxSink::new(pool));
+            persister = persister.with_outbox(Some(outbox));
+        }
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     if let Some(embedder) = text_embedder {
         persister = persister.with_text_embedder(embedder);

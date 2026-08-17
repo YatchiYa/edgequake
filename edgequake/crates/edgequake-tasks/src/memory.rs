@@ -2,7 +2,9 @@
 
 use crate::{
     error::{TaskError, TaskResult},
+    fairness_hold::ClaimFairnessPolicy,
     storage::*,
+<<<<<<< HEAD
     types::{Task, TaskStatus},
 };
 use async_trait::async_trait;
@@ -10,6 +12,18 @@ use chrono::Utc;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
+=======
+    types::{FairnessClass, Task, TaskStatus},
+};
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, RwLock,
+    },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     time::Duration,
 };
 use uuid::Uuid;
@@ -18,6 +32,13 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct MemoryTaskStorage {
     tasks: Arc<RwLock<HashMap<String, Task>>>,
+    /// SPEC-091 R-18: park markers mirror the Postgres `fairness_parked_at`
+    /// column (migration 111) so memory claim semantics match the SSOT guard.
+    fairness_parked: Arc<RwLock<std::collections::HashMap<String, chrono::DateTime<Utc>>>>,
+    /// Test / ops instrumentation: successful claim_next picks.
+    claim_count: Arc<AtomicU64>,
+    /// Test / ops instrumentation: successful release_claim calls.
+    release_claim_count: Arc<AtomicU64>,
 }
 
 impl MemoryTaskStorage {
@@ -25,7 +46,20 @@ impl MemoryTaskStorage {
     pub fn new() -> Self {
         Self {
             tasks: Arc::new(RwLock::new(HashMap::new())),
+            fairness_parked: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            claim_count: Arc::new(AtomicU64::new(0)),
+            release_claim_count: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    /// Number of successful `claim_next` / `claim_next_with_policy` picks.
+    pub fn claim_count(&self) -> u64 {
+        self.claim_count.load(Ordering::Relaxed)
+    }
+
+    /// Number of successful `release_claim` calls.
+    pub fn release_claim_count(&self) -> u64 {
+        self.release_claim_count.load(Ordering::Relaxed)
     }
 }
 
@@ -226,6 +260,7 @@ impl TaskStorage for MemoryTaskStorage {
         Ok(stats)
     }
 
+<<<<<<< HEAD
     async fn claim_next(&self, worker_id: &str, lease_ttl: Duration) -> TaskResult<Option<Task>> {
         let mut tasks = self.tasks.write().unwrap();
         let now = Utc::now();
@@ -243,6 +278,94 @@ impl TaskStorage for MemoryTaskStorage {
 
         let track_id = match candidates.first() {
             Some((_, id)) => id.clone(),
+=======
+    async fn claim_next_with_policy(
+        &self,
+        worker_id: &str,
+        lease_ttl: Duration,
+        policy: ClaimFairnessPolicy,
+    ) -> TaskResult<Option<Task>> {
+        let mut tasks = self.tasks.write().unwrap();
+        let now = Utc::now();
+
+        // SPEC-084 / GH-316 + SPEC-057 INV-06: exclude holds; prefer under-cap tenants;
+        // then least-loaded workspace-fair claim.
+        // SPEC-091 R-18: exclude fairness-parked rows (state-machine guard parity).
+        let parked = self.fairness_parked.read().unwrap();
+        let eligible: Vec<&Task> = tasks
+            .values()
+            .filter(|t| {
+                if t.is_fairness_held(now) {
+                    return false;
+                }
+                match t.status {
+                    TaskStatus::Pending => !parked.contains_key(&t.track_id),
+                    TaskStatus::Processing => t.lease_is_expired(now),
+                    _ => false,
+                }
+            })
+            .collect();
+        drop(parked);
+
+        let active_ws = |ws: uuid::Uuid| -> usize {
+            tasks
+                .values()
+                .filter(|t| {
+                    t.workspace_id == ws
+                        && t.status == TaskStatus::Processing
+                        && !t.lease_is_expired(now)
+                })
+                .count()
+        };
+        // FP-2: processing leases + active fairness holds both occupy lane capacity
+        // (held Pending is claim-invisible but still saturates the tenant).
+        let tenant_lane_inflight = |tenant: uuid::Uuid, class: FairnessClass| -> usize {
+            tasks
+                .values()
+                .filter(|t| {
+                    t.tenant_id == tenant
+                        && t.task_type.fairness_class() == class
+                        && ((t.status == TaskStatus::Processing && !t.lease_is_expired(now))
+                            || (t.status == TaskStatus::Pending && t.is_fairness_held(now)))
+                })
+                .count()
+        };
+        let at_cap_rank = |t: &Task| -> u8 {
+            let class = t.task_type.fairness_class();
+            let max = policy.max_for_class(class);
+            if max == 0 {
+                return 0;
+            }
+            if tenant_lane_inflight(t.tenant_id, class) < max {
+                0
+            } else {
+                1
+            }
+        };
+
+        let fair_workspace = eligible
+            .iter()
+            .map(|t| t.workspace_id)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .min_by_key(|ws| {
+                let ws_tasks: Vec<&&Task> =
+                    eligible.iter().filter(|t| t.workspace_id == *ws).collect();
+                let best_cap = ws_tasks.iter().map(|t| at_cap_rank(t)).min().unwrap_or(1);
+                let oldest = ws_tasks.iter().map(|t| t.created_at).min().unwrap_or(now);
+                (best_cap, active_ws(*ws), oldest)
+            });
+
+        let mut candidates: Vec<(u8, chrono::DateTime<Utc>, String)> = eligible
+            .into_iter()
+            .filter(|t| Some(t.workspace_id) == fair_workspace)
+            .map(|t| (at_cap_rank(t), t.created_at, t.track_id.clone()))
+            .collect();
+        candidates.sort_by_key(|(cap, created_at, _)| (*cap, *created_at));
+
+        let track_id = match candidates.first() {
+            Some((_, _, id)) => id.clone(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             None => return Ok(None),
         };
 
@@ -259,10 +382,41 @@ impl TaskStorage for MemoryTaskStorage {
         task.lease_owner = Some(worker_id.to_string());
         task.lease_token = Some(lease_token);
         task.lease_expires_at = Some(lease_expires_at);
+<<<<<<< HEAD
 
         Ok(Some(task.clone()))
     }
 
+=======
+        // Claiming clears any residual hold (defensive).
+        task.fairness_hold_until = None;
+
+        self.claim_count.fetch_add(1, Ordering::Relaxed);
+        Ok(Some(task.clone()))
+    }
+
+    async fn mark_fairness_hold(&self, track_id: &str, hold_ttl: Duration) -> TaskResult<()> {
+        let mut tasks = self.tasks.write().unwrap();
+        let Some(task) = tasks.get_mut(track_id) else {
+            return Err(TaskError::TaskNotFound(track_id.to_string()));
+        };
+        let now = Utc::now();
+        task.fairness_hold_until = Some(crate::lease_expires_at(now, hold_ttl));
+        task.updated_at = now;
+        Ok(())
+    }
+
+    async fn clear_fairness_hold(&self, track_id: &str) -> TaskResult<()> {
+        let mut tasks = self.tasks.write().unwrap();
+        let Some(task) = tasks.get_mut(track_id) else {
+            return Ok(());
+        };
+        task.fairness_hold_until = None;
+        task.updated_at = Utc::now();
+        Ok(())
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     async fn refresh_lease(
         &self,
         track_id: &str,
@@ -307,9 +461,46 @@ impl TaskStorage for MemoryTaskStorage {
         task.started_at = None;
         task.updated_at = now;
         task.clear_lease();
+<<<<<<< HEAD
         Ok(true)
     }
 
+=======
+        self.release_claim_count.fetch_add(1, Ordering::Relaxed);
+        Ok(true)
+    }
+
+    async fn mark_fairness_parked(
+        &self,
+        track_id: &str,
+        worker_id: &str,
+        lease_token: Uuid,
+    ) -> TaskResult<bool> {
+        if !self.release_claim(track_id, worker_id, lease_token).await? {
+            return Ok(false);
+        }
+        self.fairness_parked
+            .write()
+            .unwrap()
+            .insert(track_id.to_string(), Utc::now());
+        Ok(true)
+    }
+
+    async fn clear_fairness_park(&self, track_id: &str) -> TaskResult<()> {
+        self.fairness_parked.write().unwrap().remove(track_id);
+        Ok(())
+    }
+
+    async fn clear_stale_fairness_parks(&self, max_age: Duration) -> TaskResult<u64> {
+        let cutoff =
+            Utc::now() - chrono::Duration::from_std(max_age).unwrap_or(chrono::Duration::MAX);
+        let mut parked = self.fairness_parked.write().unwrap();
+        let before = parked.len();
+        parked.retain(|_, parked_at| *parked_at > cutoff);
+        Ok((before - parked.len()) as u64)
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     async fn get_queue_metrics_filtered(
         &self,
         tenant_id: Option<uuid::Uuid>,
@@ -394,8 +585,7 @@ impl TaskStorage for MemoryTaskStorage {
             0.0
         };
 
-        // Worker utilization (assuming 4 max workers)
-        let max_workers = 4u32;
+        let max_workers = crate::config::task_max_workers_from_env();
         let active_workers = processing_count.min(max_workers as u64) as u32;
         let worker_utilization = ((active_workers as f64 / max_workers as f64) * 100.0) as u8;
 
@@ -409,9 +599,78 @@ impl TaskStorage for MemoryTaskStorage {
             max_wait_time_seconds: max_wait_time,
             throughput_per_minute,
             estimated_queue_time_seconds,
-            rate_limited: false, // TODO: Track rate limiting separately
+            rate_limited: QueueMetrics::compute_rate_limited(
+                pending_count,
+                active_workers,
+                max_workers,
+                throughput_per_minute,
+            ),
             timestamp: now,
         })
+    }
+
+    async fn prune_terminal_tasks(&self, older_than_days: u32) -> TaskResult<u64> {
+        let cutoff = Utc::now() - chrono::Duration::days(i64::from(older_than_days.max(1)));
+        let mut tasks = self.tasks.write().unwrap();
+        let before = tasks.len();
+        tasks.retain(|_, task| {
+            if !matches!(
+                task.status,
+                TaskStatus::Indexed | TaskStatus::Failed | TaskStatus::Cancelled
+            ) {
+                return true;
+            }
+            task.completed_at
+                .map(|completed| completed >= cutoff)
+                .unwrap_or(true)
+        });
+        Ok((before - tasks.len()) as u64)
+    }
+
+    async fn count_pending_older_than(&self, created_at: DateTime<Utc>) -> TaskResult<u64> {
+        let tasks = self.tasks.read().unwrap();
+        Ok(tasks
+            .values()
+            .filter(|t| t.status == TaskStatus::Pending && t.created_at < created_at)
+            .count() as u64)
+    }
+
+    async fn count_completed_within(&self, window: Duration) -> TaskResult<u64> {
+        let since = Utc::now()
+            - chrono::Duration::from_std(window).unwrap_or(chrono::Duration::minutes(10));
+        let tasks = self.tasks.read().unwrap();
+        Ok(tasks
+            .values()
+            .filter(|t| t.completed_at.map(|c| c >= since).unwrap_or(false))
+            .count() as u64)
+    }
+
+    async fn pending_queue_ahead_batch(
+        &self,
+        track_ids: &[String],
+    ) -> TaskResult<Vec<(String, u64)>> {
+        if track_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let wanted: std::collections::HashSet<&str> =
+            track_ids.iter().map(String::as_str).collect();
+        let tasks = self.tasks.read().unwrap();
+        let mut pending: Vec<&Task> = tasks
+            .values()
+            .filter(|t| t.status == TaskStatus::Pending)
+            .collect();
+        pending.sort_by(|a, b| {
+            a.created_at
+                .cmp(&b.created_at)
+                .then_with(|| a.track_id.cmp(&b.track_id))
+        });
+        let mut out = Vec::new();
+        for (ahead, task) in pending.into_iter().enumerate() {
+            if wanted.contains(task.track_id.as_str()) {
+                out.push((task.track_id.clone(), ahead as u64));
+            }
+        }
+        Ok(out)
     }
 }
 
@@ -581,6 +840,8 @@ mod tests {
             TaskType::Scan,
             serde_json::json!({}),
         );
+        // SPEC-091 QW0: Complete requires Processing (state machine SSOT).
+        task3.mark_processing();
         task3.mark_success(serde_json::json!({"result": "ok"}));
         storage.create_task(&task3).await.unwrap();
 
@@ -738,4 +999,199 @@ mod tests {
             .expect("expired processing should be claimable");
         assert_eq!(claimed.lease_owner.as_deref(), Some("worker-b"));
     }
+<<<<<<< HEAD
+=======
+
+    #[tokio::test]
+    async fn fairness_hold_excludes_from_claim_until_clear_or_expiry() {
+        use crate::fairness_hold::ClaimFairnessPolicy;
+
+        let storage = MemoryTaskStorage::new();
+        let task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        let track_id = task.track_id.clone();
+        storage.create_task(&task).await.unwrap();
+
+        storage
+            .mark_fairness_hold(&track_id, Duration::from_secs(30))
+            .await
+            .unwrap();
+        assert!(storage
+            .claim_next("w", Duration::from_secs(30))
+            .await
+            .unwrap()
+            .is_none());
+
+        storage.clear_fairness_hold(&track_id).await.unwrap();
+        let claimed = storage
+            .claim_next("w", Duration::from_secs(30))
+            .await
+            .unwrap()
+            .expect("cleared hold is claimable");
+        assert_eq!(claimed.track_id, track_id);
+        let _ = storage
+            .release_claim(&track_id, "w", claimed.lease_token.unwrap())
+            .await;
+
+        // Expired hold becomes claimable without clear.
+        storage
+            .mark_fairness_hold(&track_id, Duration::from_millis(1))
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        assert!(storage
+            .claim_next_with_policy("w", Duration::from_secs(30), ClaimFairnessPolicy::default())
+            .await
+            .unwrap()
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn claim_prefers_under_cap_tenant_over_saturated() {
+        use crate::fairness_hold::ClaimFairnessPolicy;
+
+        let storage = MemoryTaskStorage::new();
+        let tenant_a = uuid::Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let tenant_b = uuid::Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+        let ws_a = uuid::Uuid::parse_str("aaaaaaaa-0000-0000-0000-000000000001").unwrap();
+        let ws_b = uuid::Uuid::parse_str("bbbbbbbb-0000-0000-0000-000000000001").unwrap();
+
+        // Tenant A saturates ingest (1 processing with valid lease).
+        let mut holder = Task::new(
+            tenant_a,
+            ws_a,
+            TaskType::Insert,
+            serde_json::json!({"i": 0}),
+        );
+        holder.mark_processing();
+        holder.lease_owner = Some("holder".into());
+        holder.lease_token = Some(Uuid::new_v4());
+        holder.lease_expires_at = Some(Utc::now() + chrono::Duration::hours(1));
+        storage.create_task(&holder).await.unwrap();
+
+        let pending_a = Task::new(
+            tenant_a,
+            ws_a,
+            TaskType::Insert,
+            serde_json::json!({"i": 1}),
+        );
+        let pending_b = Task::new(
+            tenant_b,
+            ws_b,
+            TaskType::Insert,
+            serde_json::json!({"i": 2}),
+        );
+        // Make A older so FIFO without priority would pick A.
+        let mut pending_a = pending_a;
+        pending_a.created_at = Utc::now() - chrono::Duration::seconds(60);
+        let track_b = pending_b.track_id.clone();
+        storage.create_task(&pending_a).await.unwrap();
+        storage.create_task(&pending_b).await.unwrap();
+
+        let policy = ClaimFairnessPolicy::from_lane_caps(1, 1);
+        let claimed = storage
+            .claim_next_with_policy("w", Duration::from_secs(30), policy)
+            .await
+            .unwrap()
+            .expect("should claim under-cap tenant B");
+        assert_eq!(
+            claimed.track_id, track_b,
+            "FP-2: prefer tenant B (under cap) over tenant A pending"
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_prefers_under_cap_within_same_workspace() {
+        use crate::fairness_hold::ClaimFairnessPolicy;
+
+        let storage = MemoryTaskStorage::new();
+        let tenant_a = uuid::Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let tenant_b = uuid::Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+        let ws = uuid::Uuid::parse_str("cccccccc-0000-0000-0000-000000000001").unwrap();
+
+        let mut holder = Task::new(tenant_a, ws, TaskType::Insert, serde_json::json!({"i": 0}));
+        holder.mark_processing();
+        holder.lease_owner = Some("holder".into());
+        holder.lease_token = Some(Uuid::new_v4());
+        holder.lease_expires_at = Some(Utc::now() + chrono::Duration::hours(1));
+        storage.create_task(&holder).await.unwrap();
+
+        let mut pending_a = Task::new(tenant_a, ws, TaskType::Insert, serde_json::json!({"i": 1}));
+        pending_a.created_at = Utc::now() - chrono::Duration::seconds(60);
+        let pending_b = Task::new(tenant_b, ws, TaskType::Insert, serde_json::json!({"i": 2}));
+        let track_b = pending_b.track_id.clone();
+        storage.create_task(&pending_a).await.unwrap();
+        storage.create_task(&pending_b).await.unwrap();
+
+        let claimed = storage
+            .claim_next_with_policy(
+                "w",
+                Duration::from_secs(30),
+                ClaimFairnessPolicy::from_lane_caps(1, 1),
+            )
+            .await
+            .unwrap()
+            .expect("claim under-cap within workspace");
+        assert_eq!(
+            claimed.track_id, track_b,
+            "within-workspace ORDER BY at_cap must beat FIFO"
+        );
+    }
+
+    #[tokio::test]
+    async fn held_pending_counts_toward_tenant_at_cap() {
+        use crate::fairness_hold::ClaimFairnessPolicy;
+
+        let storage = MemoryTaskStorage::new();
+        let tenant_a = uuid::Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let tenant_b = uuid::Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+        let ws_a = uuid::Uuid::parse_str("aaaaaaaa-0000-0000-0000-000000000001").unwrap();
+        let ws_b = uuid::Uuid::parse_str("bbbbbbbb-0000-0000-0000-000000000001").unwrap();
+
+        let held_a = Task::new(
+            tenant_a,
+            ws_a,
+            TaskType::Insert,
+            serde_json::json!({"i": 0}),
+        );
+        let track_held = held_a.track_id.clone();
+        storage.create_task(&held_a).await.unwrap();
+        storage
+            .mark_fairness_hold(&track_held, Duration::from_secs(60))
+            .await
+            .unwrap();
+
+        let mut pending_a = Task::new(
+            tenant_a,
+            ws_a,
+            TaskType::Insert,
+            serde_json::json!({"i": 1}),
+        );
+        pending_a.created_at = Utc::now() - chrono::Duration::seconds(60);
+        let pending_b = Task::new(
+            tenant_b,
+            ws_b,
+            TaskType::Insert,
+            serde_json::json!({"i": 2}),
+        );
+        let track_b = pending_b.track_id.clone();
+        storage.create_task(&pending_a).await.unwrap();
+        storage.create_task(&pending_b).await.unwrap();
+
+        let claimed = storage
+            .claim_next_with_policy(
+                "w",
+                Duration::from_secs(30),
+                ClaimFairnessPolicy::from_lane_caps(1, 1),
+            )
+            .await
+            .unwrap()
+            .expect("prefer tenant B while A is held-saturated");
+        assert_eq!(claimed.track_id, track_b);
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

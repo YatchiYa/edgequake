@@ -302,7 +302,40 @@ export default function DocumentViewPage() {
     staleTime: reprocessTrackId ? 3 * 1000 : 30 * 1000,
     refetchInterval: reprocessTrackId ? 3 * 1000 : false,
     refetchOnMount: 'always',
+    // SPEC-100: soft refresh keeps prior document (no full-page skeleton flash)
+    placeholderData: (previous) => previous,
   });
+  const coldLoad = isLoading && !document;
+
+  // First principles: if a PDF has figure captions but no page assets yet, include
+  // extracted page PNGs from the stored PDF and enrich markdown (no VLM re-OCR).
+  const assetsIncludeAttempted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!document?.id || document.source_type !== 'pdf') return;
+    if (assetsIncludeAttempted.current === document.id) return;
+    const md = document.content || '';
+    const needsAssets =
+      /figure\s+\d/i.test(md) &&
+      !md.includes('assets/') &&
+      !md.includes('/documents/') &&
+      Boolean(document.pdf_id);
+    if (!needsAssets) return;
+    assetsIncludeAttempted.current = document.id;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await includeDocumentAssetsFromPdf(document.id);
+        if (!cancelled && (result.markdown_updated || result.assets_persisted > 0)) {
+          await refetch();
+        }
+      } catch {
+        // Soft-fail: viewer still shows caption text; user can refresh after backend upgrade.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [document, refetch]);
 
   // First principles: if a PDF has figure captions but no page assets yet, include
   // extracted page PNGs from the stored PDF and enrich markdown (no VLM re-OCR).
@@ -396,19 +429,33 @@ export default function DocumentViewPage() {
   const isFailed = status === 'failed' || status === 'partial_failure';
   const isCancelled = status === 'cancelled';
 
-  // Loading state
-  if (isLoading) {
+  // Loading state — SPEC-100: match final 2-column shell (CLS)
+  if (coldLoad) {
     return (
+<<<<<<< HEAD
       <div className="flex flex-col h-full">
+=======
+      <div
+        className="flex h-full min-h-0 flex-col overflow-clip"
+        data-testid="spec100-document-detail-skeleton"
+      >
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         <HeaderSkeleton />
-        <div className="flex-1 flex">
-          <div className="flex-1 p-8">
-            <Skeleton className="h-32 w-full mb-4" />
-            <Skeleton className="h-64 w-full" />
+        {/* Idle progress slot collapsed — matches live page (no dead band before body). */}
+        <div
+          className="h-0 min-h-0 overflow-hidden"
+          data-testid="detail-page-reprocess-progress-slot"
+          aria-hidden
+        />
+        <div className="flex min-h-0 flex-1">
+          <div className="flex min-h-0 flex-1 flex-col p-4 md:p-6">
+            <Skeleton className="mb-3 h-8 w-1/2" />
+            <Skeleton className="min-h-0 flex-1 w-full" />
           </div>
-          <div className="w-[35%] border-l p-4">
-            <Skeleton className="h-32 w-full mb-4" />
+          <div className="hidden w-[35%] shrink-0 border-l p-4 md:block">
+            <Skeleton className="mb-4 h-32 w-full" />
             <Skeleton className="h-48 w-full" />
+            <Skeleton className="mt-4 h-24 w-full" />
           </div>
         </div>
       </div>
@@ -525,6 +572,7 @@ export default function DocumentViewPage() {
             <p className="text-xs text-destructive break-words overflow-hidden">
               {getEffectiveErrorMessage(document)}
             </p>
+<<<<<<< HEAD
           </div>
         )}
         {isCancelled && (
@@ -560,8 +608,54 @@ export default function DocumentViewPage() {
               onCancel={() => setReprocessTrackId(null)}
               data-testid="detail-page-reprocess-panel"
             />
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           </div>
         )}
+        {isCancelled && (
+          <div className="px-3 py-2 bg-muted/50 border-t">
+            <p className="text-xs text-muted-foreground">
+              {t('documents.cancelled.message', 'Processing was cancelled. Click Reprocess to retry.')}
+            </p>
+          </div>
+        )}
+        {/* Progress slot: always mounted. Idle height 0 — an empty h-5.5rem
+            reserve was a dead white band before the document body ("gap before
+            the text"). Expanding on reprocess is user-initiated (hadRecentInput). */}
+        <div
+          className={
+            reprocessTrackId
+              ? 'min-h-[5.5rem] shrink-0 border-t bg-card/80 px-3 py-2'
+              : 'h-0 min-h-0 overflow-hidden border-0 p-0'
+          }
+          data-testid="detail-page-reprocess-progress-slot"
+          aria-hidden={!reprocessTrackId}
+        >
+          {reprocessTrackId ? (
+            <div data-testid="detail-page-reprocess-progress">
+              <ProgressPanelRow
+                trackId={resolveReprocessPanelTrackId(
+                  reprocessTrackId,
+                  document?.track_id,
+                )}
+                documentName={
+                  document?.file_name || document?.title || documentId.slice(0, 8)
+                }
+                isPdf={shouldUsePdfReprocessPanel(
+                  document?.source_type === 'pdf',
+                  reprocessMode,
+                )}
+                onComplete={() => {
+                  setReprocessTrackId(null);
+                  void refetch();
+                }}
+                onFailed={() => setReprocessTrackId(null)}
+                onCancel={() => setReprocessTrackId(null)}
+                data-testid="detail-page-reprocess-panel"
+              />
+            </div>
+          ) : null}
+        </div>
       </header>
 
       {/* SPEC-051: Reprocess choice dialog for the document detail page. */}
@@ -707,8 +801,18 @@ export default function DocumentViewPage() {
         {/* Mobile/Tablet: Tabbed layout */}
         <div className="flex-1 lg:hidden overflow-hidden">
           <Tabs defaultValue="content" className="h-full flex flex-col">
-            <TabsList className={`grid w-full ${isPdfDocument ? 'grid-cols-3' : 'grid-cols-2'} rounded-none border-b`}>
-              {isPdfDocument && <TabsTrigger value="pdf">PDF</TabsTrigger>}
+            {/* SPEC-100: always 3-col tab slot so async PDF detection does not widen tabs. */}
+            <TabsList
+              className="grid w-full grid-cols-3 rounded-none border-b"
+              data-testid="spec100-document-detail-tabs"
+            >
+              <TabsTrigger
+                value="pdf"
+                disabled={!isPdfDocument}
+                className={!isPdfDocument ? 'invisible pointer-events-none' : undefined}
+              >
+                PDF
+              </TabsTrigger>
               <TabsTrigger value="content">Markdown</TabsTrigger>
               <TabsTrigger value="metadata">Details</TabsTrigger>
             </TabsList>

@@ -14,11 +14,23 @@ import {
   dismissDeleteSession,
   formatDeleteCountsLabel,
   formatDeleteLivenessLabel,
+<<<<<<< HEAD
   formatDeleteSuccessDetail,
   getDeleteSessions,
   isHexShortDocumentLabel,
   preferDocumentName,
   patchDocumentsDeletingOptimistic,
+=======
+  formatDeleteProgressHeader,
+  formatDeleteSuccessDetail,
+  getActiveDeletingDocumentIds,
+  getDeleteSessions,
+  isDeletingPinned,
+  isHexShortDocumentLabel,
+  preferDocumentName,
+  patchDocumentsDeletingOptimistic,
+  protectDeletingDocumentsInQueryData,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 } from "../deletion-session";
 
 afterEach(() => {
@@ -136,6 +148,36 @@ describe("deletion-session", () => {
       }),
     ).toBe("Document removed");
   });
+<<<<<<< HEAD
+=======
+
+  it("SPEC-098: beginDeleteSession pins deleting against Completed poll", () => {
+    beginDeleteSession({ documentId: "doc-1", documentName: "a.pdf" });
+    expect(isDeletingPinned("doc-1")).toBe(true);
+    expect(getActiveDeletingDocumentIds().has("doc-1")).toBe(true);
+    const protectedData = protectDeletingDocumentsInQueryData({
+      items: [
+        {
+          id: "doc-1",
+          title: "a",
+          status: "completed",
+          current_stage: "completed",
+        } as Document,
+      ],
+    });
+    expect(protectedData.items?.[0]?.status).toBe("deleting");
+    applyDeletionCompleted({
+      documentId: "doc-1",
+      chunksDeleted: 0,
+      entitiesRemoved: 0,
+      relationshipsRemoved: 0,
+      embeddingsDeleted: 0,
+      partialFailure: false,
+      error: null,
+    });
+    expect(isDeletingPinned("doc-1")).toBe(false);
+  });
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 });
 
 describe("admissionPhaseCopy deleting", () => {
@@ -150,4 +192,48 @@ describe("admissionPhaseCopy deleting", () => {
     expect(copy.title).toBe("Deleting");
     expect(copy.detail).toContain("graph");
   });
+<<<<<<< HEAD
+=======
+
+  it("SPEC-098: completed session shows Deleted title", () => {
+    const copy = admissionPhaseCopy(
+      "deleting",
+      t,
+      "Document removed",
+      "completed",
+    );
+    expect(copy.title).toBe("Deleted");
+    expect(copy.detail).toBe("Document removed");
+  });
+});
+
+describe("formatDeleteProgressHeader (SPEC-098 LAW-098-11)", () => {
+  it("all failed → Delete failed (N), no pulse", () => {
+    const h = formatDeleteProgressHeader([
+      { status: "failed" },
+      { status: "failed" },
+    ]);
+    expect(h.text).toBe("Delete failed (2)");
+    expect(h.pulse).toBe(false);
+  });
+
+  it("mixed → Deleting A · failed B with pulse", () => {
+    const h = formatDeleteProgressHeader([
+      { status: "active" },
+      { status: "failed" },
+      { status: "active" },
+    ]);
+    expect(h.text).toBe("Deleting 2 · failed 1");
+    expect(h.pulse).toBe(true);
+  });
+
+  it("all active → Deleting N with pulse", () => {
+    const h = formatDeleteProgressHeader([
+      { status: "active" },
+      { status: "active" },
+    ]);
+    expect(h.text).toBe("Deleting 2 document(s)");
+    expect(h.pulse).toBe(true);
+  });
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 });

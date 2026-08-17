@@ -29,12 +29,21 @@ fn contract_single_node_upsert_routes_native_when_enabled() {
 
 #[test]
 fn contract_batch_uses_eq_id_on_conflict() {
+<<<<<<< HEAD
     // SPEC-062: denormalized eq_node_id arbiter + full-replace EXCLUDED.properties
     // (Rust always sends complete property maps; skip eq_merge_graph_properties tax).
     let mutate = include_str!("../src/adapters/postgres/graph/nodes_ops/mutate.rs");
     assert!(
         mutate.contains("eq_node_id") && mutate.contains("EXCLUDED.properties"),
         "native node upsert must ON CONFLICT (eq_node_id) SET properties = EXCLUDED.properties"
+=======
+    // SPEC-062: denormalized eq_* arbiter; SPEC-058 / SPEC-098: merge properties
+    // via eq_merge_graph_properties (source_ids union under concurrency).
+    let mutate = include_str!("../src/adapters/postgres/graph/nodes_ops/mutate.rs");
+    assert!(
+        mutate.contains("eq_node_id") && mutate.contains("eq_merge_graph_properties"),
+        "native node upsert must ON CONFLICT (eq_node_id) merge via eq_merge_graph_properties"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     );
     let edges = include_str!("../src/adapters/postgres/graph/edges_ops.rs");
     assert!(
@@ -42,8 +51,37 @@ fn contract_batch_uses_eq_id_on_conflict() {
             && edges.contains("eq_target_id")
             && edges.contains("eq_rel_type")
             && edges.contains("ON CONFLICT (eq_source_id, eq_target_id, eq_rel_type)")
+<<<<<<< HEAD
             && edges.contains("EXCLUDED.properties"),
         "native edge upsert must JOIN/CONFLICT on eq_source_id/eq_target_id/eq_rel_type (D-30)"
+=======
+            && edges.contains("eq_merge_graph_properties"),
+        "native edge upsert must JOIN/CONFLICT on eq_* (D-30) and merge properties (SPEC-058)"
+    );
+}
+
+#[test]
+fn contract_replace_mode_skips_eq_merge() {
+    // SPEC-098 LAW-098-12: cascade prune must SET EXCLUDED.properties, not union.
+    let mutate = include_str!("../src/adapters/postgres/graph/nodes_ops/mutate.rs");
+    assert!(
+        mutate.contains("GraphPropertyWriteMode::Replace")
+            && mutate.contains("properties = EXCLUDED.properties"),
+        "native node Replace mode must set EXCLUDED.properties"
+    );
+    let edges = include_str!("../src/adapters/postgres/graph/edges_ops.rs");
+    assert!(
+        edges.contains("GraphPropertyWriteMode::Replace")
+            && edges.contains("properties = EXCLUDED.properties"),
+        "native edge Replace mode must set EXCLUDED.properties"
+    );
+    let trait_src = include_str!("../src/traits/graph_mutate_ops.rs");
+    assert!(
+        trait_src.contains("enum GraphPropertyWriteMode")
+            && trait_src.contains("upsert_nodes_batch_with_mode")
+            && trait_src.contains("upsert_edges_batch_with_mode"),
+        "trait must expose GraphPropertyWriteMode + with_mode batch APIs"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     );
 }
 

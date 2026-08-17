@@ -2,11 +2,34 @@
 
 use sqlx::PgPool;
 
+<<<<<<< HEAD
 /// Execute bootstrap `apply.sql` scripts (multi-statement; not compatible with `sqlx::query`).
+=======
+/// True when heavy support DDL apply is allowed (SPEC-091 LD-15: migrate CLI
+/// only — the boot escape flag was removed; serving boot is verify-only).
+fn heavy_bootstrap_apply_allowed() -> bool {
+    crate::state::migration_bootstrap::migrate_cli_mode()
+}
+
+/// Execute bootstrap `apply.sql` scripts (multi-statement; not compatible with `sqlx::query`).
+///
+/// SPEC-091 Doc 17 (LD-15): heavy apply runs only via `edgequake migrate`
+/// (`EDGEQUAKE_MIGRATE_CLI=1`); serving boot degrades these hooks to read-only probes.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub(super) async fn execute_bootstrap_apply_sql(
     pool: &PgPool,
     sql: &str,
 ) -> Result<(), sqlx::Error> {
+<<<<<<< HEAD
+=======
+    if !heavy_bootstrap_apply_allowed() {
+        tracing::debug!(
+            target: "edgequake.migration",
+            "SPEC-090: skipping execute_bootstrap_apply_sql (verify-only boot)"
+        );
+        return Ok(());
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     sqlx::raw_sql(sql).execute(pool).await?;
     Ok(())
 }
@@ -45,6 +68,12 @@ mod m081;
 mod m083;
 mod m086;
 mod m092;
+<<<<<<< HEAD
+=======
+mod m139;
+mod m140;
+mod m141;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 pub(super) use m038::reconcile_migration_038;
 pub(super) use m040::reconcile_migration_040_background;
@@ -80,3 +109,9 @@ pub(super) use m081::reconcile_migration_081;
 pub(super) use m083::reconcile_migration_083;
 pub(super) use m086::reconcile_migration_086;
 pub(super) use m092::reconcile_migration_092;
+<<<<<<< HEAD
+=======
+pub(super) use m139::reconcile_migration_139_background;
+pub(super) use m140::reconcile_migration_140_background;
+pub(super) use m141::reconcile_migration_141_background;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042

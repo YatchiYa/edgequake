@@ -305,7 +305,17 @@ fn spec027_traversal_pushes_tenant_scope_to_storage() {
             .join("../edgequake-storage/src/adapters/postgres/graph/query_ops/expand.rs"),
     )
     .unwrap_or_else(|e| panic!("read query_ops/expand.rs: {e}"));
+<<<<<<< HEAD
     assert!(query_ops.contains("pg_get_knowledge_graph_scoped"));
+=======
+    // Storage entry is `pg_get_knowledge_graph` (tenant/workspace args — not a separate *_scoped name).
+    assert!(query_ops.contains("pg_get_knowledge_graph("));
+    assert!(
+        query_ops.contains("tenant_id: Option<&str>")
+            && query_ops.contains("workspace_id: Option<&str>"),
+        "pg_get_knowledge_graph must accept tenant/workspace scope"
+    );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 #[test]
@@ -322,7 +332,14 @@ fn spec027_migration_046_startup_reconcile_wired() {
     assert!(bootstrap.contains("migration_046"));
     assert!(std::path::Path::new("src/state/migration_bootstrap/reconcile/m046.rs").exists());
     let postgres = read_crate_src("src/state/postgres.rs");
+<<<<<<< HEAD
     assert!(postgres.contains("run_postgres_migrations"));
+=======
+    assert!(
+        postgres.contains("bootstrap_for_serving") || postgres.contains("run_postgres_migrations"),
+        "postgres boot must call bootstrap_for_serving / run_postgres_migrations (SPEC-090)"
+    );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 #[test]
@@ -1074,12 +1091,25 @@ fn spec027_identity_pg_rls_envelope_phase43() {
     let identity = read_crate_src("src/services/identity_storage.rs");
     assert!(identity.contains("with_optional_pg_rls"));
     assert!(!identity.contains("acquire_optional_pg_connection"));
+<<<<<<< HEAD
     assert!(identity.contains("ensure_anonymous_user_in_postgres"));
+=======
+    // SPEC-087: shared per-tenant guest replaces per-browser anon_* mint
+    assert!(identity.contains("ensure_shared_guest_user_in_postgres"));
+    assert!(identity.contains("shared_guest_user_id"));
+    assert!(identity.contains("guest@anonymous.local"));
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let session = read_crate_src("src/services/session_storage.rs");
     assert!(session.contains("with_optional_pg_rls"));
     assert!(!session.contains("acquire_optional_pg_connection"));
     let bootstrap = read_crate_src("src/handlers/postgres_user_bootstrap.rs");
+<<<<<<< HEAD
     assert!(bootstrap.contains("ensure_anonymous_user_in_postgres"));
+=======
+    assert!(bootstrap.contains("ensure_shared_guest_user_in_postgres"));
+    assert!(bootstrap.contains("resolve_identity_bootstrap_policy"));
+    assert!(bootstrap.contains("EDGEQUAKE_ALLOW_ANONYMOUS"));
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 #[test]

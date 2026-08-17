@@ -4,6 +4,15 @@
 //! Two-path design (issue #305/#309):
 //! - **Modern**: GIN-friendly `source_ids @>` exact candidates (indexed).
 //! - **Legacy**: bounded LIKE/unnest only when modern arrays are absent.
+<<<<<<< HEAD
+=======
+//!
+//! # SPEC-089 / GH-336
+//!
+//! Cartesian `prefixes × SOURCE_CHUNK_PROBE_LIMIT` probes are safe only for
+//! **page-scoped** batches. Always combine with [`SOURCE_PREFIX_BATCH_LIMIT`]
+//! and [`SOURCE_COUNT_STATEMENT_TIMEOUT_MS`] (LAW-H1 / LAW-H2).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 /// Max chunk indices probed for GIN `@>` entity-count reconcile (list hot path).
 ///
@@ -11,11 +20,101 @@
 /// `_ag_label_vertex` (~140k+ nodes → multi-second Documents list). Exact
 /// chunk-id containment uses `idx_*_source_ids_gin` (~1 ms). Documents with
 /// more than this many chunks still get a correct lower bound; stats write
+<<<<<<< HEAD
 /// path (P-A1) remains the primary count source.
 pub(in crate::adapters::postgres::graph) const SOURCE_CHUNK_PROBE_LIMIT: usize = 256;
 
 use super::escape::escape_sql_literal;
 
+=======
+/// path (P-A1) remains the primary count source (LAW-H5).
+pub(in crate::adapters::postgres::graph) const SOURCE_CHUNK_PROBE_LIMIT: usize = 256;
+
+/// Max document prefixes per count SQL round-trip (SPEC-089 / GH-336 / LAW-H1).
+///
+/// WHY: one query with thousands of prefixes × 256 probes saturates the pool
+/// even when each GIN probe is cheap (~7ms). Callers chunk larger lists.
+pub(in crate::adapters::postgres::graph) const SOURCE_PREFIX_BATCH_LIMIT: usize = 32;
+
+/// Server-side kill for entity-count reconcile (SPEC-089 / GH-336 / LAW-H2).
+///
+/// WHY: `tokio::time::timeout` alone abandons the Rust future while Postgres
+/// keeps running (zombie pool holders). `SET LOCAL statement_timeout` inside
+/// a transaction cancels the statement; aligned under API `AGE_RECONCILE_TIMEOUT`
+/// (400ms).
+pub(in crate::adapters::postgres::graph) const SOURCE_COUNT_STATEMENT_TIMEOUT_MS: u32 = 300;
+
+/// Server-side kill for cascade discovery GIN probes (SPEC-089 Wave 3 / F-336-08).
+///
+/// WHY: delete/reprocess use the same `CROSS JOIN generate_series` CTE as counts
+/// but need a larger budget than list reconcile (typical ~100ms; concurrent
+/// storms must still die ≪ minutes).
+pub(in crate::adapters::postgres::graph) const SOURCE_DISCOVERY_STATEMENT_TIMEOUT_MS: u32 = 2000;
+
+/// Server-side kill for workspace dashboard AGE counts (SPEC-089 Phase 4 / F-336-14).
+///
+/// WHY: `GET /workspaces/{id}/stats` wraps fetch in `tokio::timeout(4s)`. PG must
+/// cancel first (LAW-H2) — 250ms headroom under the app budget.
+pub(in crate::adapters::postgres::graph) const WORKSPACE_STATS_STATEMENT_TIMEOUT_MS: u32 = 3_750;
+
+/// Resolve probe series upper bound from known chunk counts (SPEC-089).
+///
+/// `0` / unknown → full [`SOURCE_CHUNK_PROBE_LIMIT`]. Otherwise
+/// `clamp(max_chunk_count, 1..=SOURCE_CHUNK_PROBE_LIMIT)` so
+/// `generate_series(0, n-1)` covers chunk indices `0..chunk_count-1`.
+pub(in crate::adapters::postgres::graph) fn source_count_probe_limit(
+    max_chunk_count: usize,
+) -> usize {
+    if max_chunk_count == 0 {
+        SOURCE_CHUNK_PROBE_LIMIT
+    } else {
+        max_chunk_count.clamp(1, SOURCE_CHUNK_PROBE_LIMIT)
+    }
+}
+
+use super::escape::escape_sql_literal;
+
+/// SSOT probe CTE for cascade discovery (IMP-031-08).
+///
+/// # Planner law (2026-07-25 incident)
+///
+/// Putting tenant/workspace predicates on the same join as
+/// `source_ids @> probe` lets Postgres prefer `idx_node_tenant_id` (~30k
+/// rows) then recheck `@>` as a **Join Filter** (~4s @ 200k nodes → 15s
+/// `statement_timeout` on batch delete).
+///
+/// **Probe-first** + **`MATERIALIZED`** forces Nested Loop from probes →
+/// `Bitmap Index Scan on idx_*_source_ids_gin` (~100ms).
+///
+/// `$1` = exact ids, `$2` = chunk prefixes, `$3` = probe series upper bound.
+pub(in crate::adapters::postgres::graph) fn source_ids_probes_cte_sql() -> &'static str {
+    r#"
+            probes AS MATERIALIZED (
+              SELECT probe_id FROM unnest($1::text[]) AS t(probe_id)
+              UNION
+              SELECT (p.prefix || gs.i::text) AS probe_id
+              FROM unnest($2::text[]) AS p(prefix)
+              CROSS JOIN generate_series(0, $3::int - 1) AS gs(i)
+            )
+    "#
+}
+
+/// Count-path prefixes CTE: `$1` = prefixes, `$2` = series upper (chunk only).
+pub(in crate::adapters::postgres::graph) fn source_ids_count_probes_cte_sql() -> &'static str {
+    r#"
+            prefixes AS MATERIALIZED (
+              SELECT prefix, ord
+              FROM unnest($1::text[]) WITH ORDINALITY AS t(prefix, ord)
+            ),
+            probes AS MATERIALIZED (
+              SELECT p.prefix, p.ord, (p.prefix || gs.i::text) AS chunk_id
+              FROM prefixes p
+              CROSS JOIN generate_series(0, $2::int - 1) AS gs(i)
+            )
+    "#
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// Normalize a document / chunk prefix to the `{doc_id}-chunk-` form.
 ///
 /// Accepts either a bare document id or an already-suffixed
@@ -177,4 +276,41 @@ mod tests {
             ]
         );
     }
+<<<<<<< HEAD
+=======
+
+    #[test]
+    fn probe_cte_helpers_are_materialized_and_probe_first() {
+        let p = source_ids_probes_cte_sql();
+        assert!(p.contains("probes AS MATERIALIZED"));
+        assert!(p.contains("unnest($1::text[])"));
+        assert!(p.contains("generate_series"));
+        let c = source_ids_count_probes_cte_sql();
+        assert!(c.contains("prefixes AS MATERIALIZED"));
+        assert!(c.contains("probes AS MATERIALIZED"));
+    }
+
+    #[test]
+    fn spec089_batch_and_timeout_constants() {
+        assert_eq!(SOURCE_PREFIX_BATCH_LIMIT, 32);
+        assert_eq!(SOURCE_COUNT_STATEMENT_TIMEOUT_MS, 300);
+        assert_eq!(SOURCE_DISCOVERY_STATEMENT_TIMEOUT_MS, 2000);
+        assert_eq!(WORKSPACE_STATS_STATEMENT_TIMEOUT_MS, 3_750);
+        const {
+            assert!(WORKSPACE_STATS_STATEMENT_TIMEOUT_MS < 4_000);
+        }
+        assert_eq!(SOURCE_CHUNK_PROBE_LIMIT, 256);
+    }
+
+    #[test]
+    fn spec089_probe_limit_from_chunk_count() {
+        assert_eq!(source_count_probe_limit(0), SOURCE_CHUNK_PROBE_LIMIT);
+        assert_eq!(source_count_probe_limit(5), 5);
+        assert_eq!(source_count_probe_limit(1), 1);
+        assert_eq!(
+            source_count_probe_limit(SOURCE_CHUNK_PROBE_LIMIT + 50),
+            SOURCE_CHUNK_PROBE_LIMIT
+        );
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

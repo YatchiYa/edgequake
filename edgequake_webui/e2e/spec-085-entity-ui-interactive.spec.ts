@@ -18,7 +18,12 @@ import { API_V1_URL, BACKEND_URL } from "./helpers/backend-url";
 import {
   bootstrapDeterministicUiContext,
   openCreateWorkspaceDialog,
+<<<<<<< HEAD
 } from "./helpers/bootstrap-ui";
+=======
+  wizardGoNext,
+} from "./helpers/spec013-bootstrap";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { skipUnlessLiveStack } from "./helpers/live-stack";
 
 test.describe('SPEC-085: Entity Type Selector — Interactive UI', () => {
@@ -29,10 +34,16 @@ test.describe('SPEC-085: Entity Type Selector — Interactive UI', () => {
 
   async function openDialog(page: Page): Promise<void> {
     await openCreateWorkspaceDialog(page);
+<<<<<<< HEAD
     const entityTrigger = page.locator('[role="dialog"] button').filter({ hasText: /entity types/i }).first();
     if (await entityTrigger.isVisible({ timeout: 3000 }).catch(() => false)) {
       await entityTrigger.click();
     }
+=======
+    await page.getByTestId('wizard-workspace-name').fill('spec085-entities');
+    await wizardGoNext(page); // models
+    await wizardGoNext(page); // extraction
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     await page.waitForSelector('[data-testid="entity-type-selector"]', { timeout: 10_000 });
   }
   test('entity-type-selector renders with preset buttons and chip list', async ({ page }) => {

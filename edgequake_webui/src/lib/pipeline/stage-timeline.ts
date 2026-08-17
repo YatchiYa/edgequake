@@ -2,7 +2,11 @@
  * SPEC-048: Stage timeline SSOT — per-step status + detail progress.
  *
  * Projects IngestionRunView → ordered steps with:
+<<<<<<< HEAD
  *   pending | active | done | skipped | failed
+=======
+ *   pending | active | done | skipped | failed | cancelled
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  *
  * Edge cases covered:
  * - Non-PDF: converting skipped
@@ -10,6 +14,10 @@
  * - mode=entities: uploading/converting skipped
  * - gleaning / summarizing / preprocessing: first-class steps
  * - queued admission: no server step active
+<<<<<<< HEAD
+=======
+ * - stopping / cancelled: freeze at cancelledAtStage; Cancelled chip (never Failed)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  * - failed: failed step marked; prior done; later pending
  * - completed: all applicable steps done
  */
@@ -28,7 +36,12 @@ export type StageStepStatus =
   | "active"
   | "done"
   | "skipped"
+<<<<<<< HEAD
   | "failed";
+=======
+  | "failed"
+  | "cancelled";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 export interface StageStepDetail {
   current?: number;
@@ -144,7 +157,15 @@ export function computeWeightedOverallProgress(
     weightSum += w;
     if (step.status === "done") {
       progressSum += w;
+<<<<<<< HEAD
     } else if (step.status === "active" || step.status === "failed") {
+=======
+    } else if (
+      step.status === "active" ||
+      step.status === "failed" ||
+      step.status === "cancelled"
+    ) {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       const frac = resolveActiveFraction(step.detail);
       progressSum += w * frac;
       stageProgress01 = frac;
@@ -206,6 +227,13 @@ export function expectedUnitForStage(
   }
 }
 
+<<<<<<< HEAD
+=======
+/**
+ * Converting (PDF→Markdown) applies only to PDFs.
+ * markdown / text / image / unknown skip the stage entirely (SPEC-086 + LAW-IS per-type).
+ */
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 function shouldSkipConverting(
   sourceType: IngestionRunView["sourceType"],
 ): boolean {
@@ -231,8 +259,14 @@ function shouldSkipForMode(
 
 function applicableSteps(run: IngestionRunView): IngestionRunStage[] {
   return PROCESSING_STAGES.filter((step) => {
+<<<<<<< HEAD
     if (step === "converting" && shouldSkipConverting(run.sourceType)) {
       return true; // still list as skipped (muted), not omit — contract: show skip
+=======
+    // SPEC-086 ops: omit converting entirely for non-PDF (no "Converting PDF").
+    if (step === "converting" && shouldSkipConverting(run.sourceType)) {
+      return false;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
     return true;
   }).concat(["completed"]);
@@ -241,10 +275,18 @@ function applicableSteps(run: IngestionRunView): IngestionRunStage[] {
 function formatDetail(run: IngestionRunView): StageStepDetail | undefined {
   const hasCounts = Boolean(run.counts);
   const hasProgress = typeof run.progress01 === "number";
+<<<<<<< HEAD
   const hasMessage =
     Boolean(run.message) &&
     run.message !== stageDisplayName(run.stage) &&
     !run.message.toLowerCase().startsWith(stageDisplayName(run.stage).toLowerCase());
+=======
+  const stageLabel = stageDisplayName(run.stage, run.sourceType);
+  const hasMessage =
+    Boolean(run.message) &&
+    run.message !== stageLabel &&
+    !run.message.toLowerCase().startsWith(stageLabel.toLowerCase());
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   if (!hasCounts && !hasProgress && !hasMessage) {
     // Still expose expected unit so UI can show "… chunks" indeterminate hint
@@ -304,11 +346,28 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
   const steps = applicableSteps(run);
   const current = run.stage;
   const currentRank = rank(current);
+<<<<<<< HEAD
   const isFailed = run.stageStatus === "failed" || current === "failed";
+=======
+  const isStopping =
+    run.stageStatus === "stopping" || current === "stopping";
+  const isCancelled =
+    run.stageStatus === "cancelled" || current === "cancelled";
+  // Cancel branches must run before failed — never paint Cancelled as Failed.
+  const isFailed =
+    !isStopping &&
+    !isCancelled &&
+    (run.stageStatus === "failed" || current === "failed");
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const isComplete =
     run.stageStatus === "complete" || current === "completed";
 
   const detail = !isAdmission ? formatDetail(run) : undefined;
+<<<<<<< HEAD
+=======
+  const freezeStage = run.cancelledAtStage;
+  const freezeRank = freezeStage ? rank(freezeStage) : -1;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   const timelineSteps: StageTimelineStep[] = steps.map((step) => {
     const skipped =
@@ -318,7 +377,11 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
     if (skipped) {
       return {
         id: step,
+<<<<<<< HEAD
         label: stageDisplayName(step),
+=======
+        label: stageDisplayName(step, run.sourceType),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         status: "skipped" as const,
       };
     }
@@ -326,15 +389,108 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
     if (isComplete) {
       return {
         id: step,
+<<<<<<< HEAD
         label: stageDisplayName(step),
+=======
+        label: stageDisplayName(step, run.sourceType),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         status: "done" as const,
+      };
+    }
+
+<<<<<<< HEAD
+    if (isAdmission) {
+      return {
+        id: step,
+        label: stageDisplayName(step),
+=======
+    // Terminal cancel: freeze prior steps; completed chip = Cancelled (never Failed).
+    if (isCancelled) {
+      if (step === "completed") {
+        return {
+          id: step,
+          label: "Cancelled",
+          status: "cancelled" as const,
+          detail,
+        };
+      }
+      if (freezeRank >= 0) {
+        const stepRank = rank(step);
+        if (stepRank < freezeRank) {
+          return {
+            id: step,
+            label: stageDisplayName(step, run.sourceType),
+            status: "done" as const,
+          };
+        }
+        if (step === freezeStage) {
+          return {
+            id: step,
+            label: stageDisplayName(step, run.sourceType),
+            status: "cancelled" as const,
+            detail,
+          };
+        }
+        return {
+          id: step,
+          label: stageDisplayName(step, run.sourceType),
+          status: "pending" as const,
+        };
+      }
+      // Unknown freeze point — mark processing steps done, terminal Cancelled.
+      return {
+        id: step,
+        label: stageDisplayName(step, run.sourceType),
+        status: "done" as const,
+      };
+    }
+
+    // Transitional Stopping: keep last known stage active; no Failed chip.
+    if (isStopping) {
+      if (step === "completed") {
+        return {
+          id: step,
+          label: stageDisplayName(step, run.sourceType),
+          status: "pending" as const,
+        };
+      }
+      const stopAt = freezeStage;
+      if (stopAt && step === stopAt) {
+        return {
+          id: step,
+          label: stageDisplayName(step, run.sourceType),
+          status: "active" as const,
+          detail,
+        };
+      }
+      if (freezeRank >= 0) {
+        const stepRank = rank(step);
+        if (stepRank < freezeRank) {
+          return {
+            id: step,
+            label: stageDisplayName(step, run.sourceType),
+            status: "done" as const,
+          };
+        }
+        return {
+          id: step,
+          label: stageDisplayName(step, run.sourceType),
+          status: "pending" as const,
+        };
+      }
+      // No freeze stage — admission-style mute (all pending).
+      return {
+        id: step,
+        label: stageDisplayName(step, run.sourceType),
+        status: "pending" as const,
       };
     }
 
     if (isAdmission) {
       return {
         id: step,
-        label: stageDisplayName(step),
+        label: stageDisplayName(step, run.sourceType),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         status: "pending" as const,
       };
     }
@@ -349,7 +505,11 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
       if (failedId && step === failedId) {
         return {
           id: step,
+<<<<<<< HEAD
           label: stageDisplayName(step),
+=======
+          label: stageDisplayName(step, run.sourceType),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           status: "failed" as const,
           detail,
         };
@@ -358,7 +518,11 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
       if (failedId && stepRank < rank(failedId)) {
         return {
           id: step,
+<<<<<<< HEAD
           label: stageDisplayName(step),
+=======
+          label: stageDisplayName(step, run.sourceType),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           status: "done" as const,
         };
       }
@@ -372,7 +536,11 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
       }
       return {
         id: step,
+<<<<<<< HEAD
         label: stageDisplayName(step),
+=======
+        label: stageDisplayName(step, run.sourceType),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         status: "pending" as const,
       };
     }
@@ -381,7 +549,11 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
     if (step === current) {
       return {
         id: step,
+<<<<<<< HEAD
         label: stageDisplayName(step),
+=======
+        label: stageDisplayName(step, run.sourceType),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         status: "active" as const,
         detail,
       };
@@ -391,14 +563,22 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
     if (currentRank >= 0 && stepRank >= 0 && stepRank < currentRank) {
       return {
         id: step,
+<<<<<<< HEAD
         label: stageDisplayName(step),
+=======
+        label: stageDisplayName(step, run.sourceType),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         status: "done" as const,
       };
     }
 
     return {
       id: step,
+<<<<<<< HEAD
       label: stageDisplayName(step),
+=======
+      label: stageDisplayName(step, run.sourceType),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       status: "pending" as const,
     };
   });
@@ -410,6 +590,7 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
     stageCountsLabel,
   } = computeWeightedOverallProgress(timelineSteps, {
     isComplete,
+<<<<<<< HEAD
     admissionQueued,
     admissionCleaning,
   });
@@ -417,6 +598,25 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
   const activeStepId =
     timelineSteps.find((s) => s.status === "active" || s.status === "failed")
       ?.id ?? null;
+=======
+    admissionQueued: isAdmission ? admissionQueued : false,
+    admissionCleaning: isAdmission ? admissionCleaning : false,
+  });
+
+  const activeStepId =
+    timelineSteps.find(
+      (s) =>
+        s.status === "active" ||
+        s.status === "failed" ||
+        s.status === "cancelled",
+    )?.id ?? null;
+
+  // Terminal cancel: freeze overall bar (no fake completion).
+  const frozenOverall =
+    isCancelled || isStopping
+      ? Math.min(0.99, overall01)
+      : overall01;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   return {
     steps: timelineSteps,
@@ -424,7 +624,11 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
     admissionQueued,
     admissionCleaning,
     admissionPhase,
+<<<<<<< HEAD
     overallProgress01: overall01,
+=======
+    overallProgress01: frozenOverall,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     overallIsEstimate: !isComplete,
     stageProgress01,
     stageCountsLabel,

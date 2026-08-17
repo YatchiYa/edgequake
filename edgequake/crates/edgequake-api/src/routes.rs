@@ -222,6 +222,12 @@ fn api_v1_routes() -> Router<AppState> {
         .route("/auth/me", get(handlers::get_me))
         .route("/auth/oidc/login", get(handlers::oidc_login))
         .route("/auth/oidc/callback", get(handlers::oidc_callback))
+<<<<<<< HEAD
+=======
+        // SPEC-101: Secure first-run setup (public)
+        .route("/setup/status", get(handlers::setup_status))
+        .route("/setup/initialize", post(handlers::setup_initialize))
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // Users (Phase 3)
         .route("/users", post(handlers::create_user))
         .route("/users", get(handlers::list_users))
@@ -253,6 +259,28 @@ fn api_v1_routes() -> Router<AppState> {
         .route("/admin/storage/repair", post(handlers::storage_repair))
         // SPEC-071: Wave-2 ANN warmup (admin/ops — not chat UX)
         .route("/admin/ann/warmup", post(handlers::ann_warmup))
+<<<<<<< HEAD
+=======
+        // SPEC-091: automatic migration progress (progressive operator information)
+        .route("/admin/migration-jobs", get(handlers::list_migration_jobs))
+        // SPEC-091 P1: job detail + operator control (pause/resume/cancel)
+        .route(
+            "/admin/migration-jobs/{job_id}",
+            get(handlers::get_migration_job),
+        )
+        .route(
+            "/admin/migration-jobs/{job_id}/pause",
+            post(handlers::pause_migration_job),
+        )
+        .route(
+            "/admin/migration-jobs/{job_id}/resume",
+            post(handlers::resume_migration_job),
+        )
+        .route(
+            "/admin/migration-jobs/{job_id}/cancel",
+            post(handlers::cancel_migration_job),
+        )
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // SPEC-021 P-G1b: legacy entity reconciliation (admin-gated, dry-run + confirm).
         .route(
             "/admin/entities/reconcile",
@@ -343,6 +371,10 @@ fn api_v1_routes() -> Router<AppState> {
         .route("/documents", post(handlers::upload_document))
         .route("/documents", get(handlers::list_documents))
         .route("/documents", delete(handlers::delete_all_documents))
+        // SPEC-094: Stateless PDF → Markdown parse (no ingestion)
+        .route("/parse", post(handlers::parse_document))
+        .route("/parse/backends", get(handlers::list_parse_backends))
+        .route("/parse/jobs/{id}", get(handlers::get_parse_job))
         // Track Status (Phase 2) - MUST come before /documents/{document_id}
         .route(
             "/documents/track/{track_id}",
@@ -398,6 +430,11 @@ fn api_v1_routes() -> Router<AppState> {
         .route("/documents/search", get(handlers::search_documents))
         // Reprocess Failed Documents (GAP-039) - MUST come before /documents/{document_id}
         .route("/documents/reprocess", post(handlers::reprocess_failed))
+        // Selected multi-delete (SPEC-084 / GH-317) — before /documents/{document_id}
+        .route(
+            "/documents/batch-delete",
+            post(handlers::batch_delete_documents),
+        )
         // Recover Stuck Processing Documents - MUST come before /documents/{document_id}
         .route("/documents/recover-stuck", post(handlers::recover_stuck))
         // Document deletion impact analysis - MUST come before /documents/{document_id}

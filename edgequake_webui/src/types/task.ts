@@ -34,6 +34,17 @@ export interface TaskResponse {
   metadata?: Record<string, unknown>;
 }
 
+<<<<<<< HEAD
+=======
+/** SPEC-120: POST /operations/{id}/cancel accepted body. */
+export interface OperationCancelResponse {
+  /** `cancelling` while a worker drains; `cancelled` once terminal. */
+  state: string;
+  cancel_requested_at?: string | null;
+  expected_stop_by?: string | null;
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 export interface TaskListResponse {
   tasks: TaskResponse[];
   pagination: {
@@ -60,6 +71,13 @@ export interface PipelineStatus {
   failed_tasks: number;
   tasks: TaskResponse[];
   statistics?: TaskListResponse["statistics"];
+<<<<<<< HEAD
+=======
+  /** Alias used by EnhancedPipelineStatus / SPEC-086 queue helpers. */
+  pending_tasks?: number;
+  /** Alias used by EnhancedPipelineStatus / SPEC-086 queue helpers. */
+  processing_tasks?: number;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 // Health types
@@ -105,4 +123,12 @@ export interface HealthResponse {
   };
   /** Whether PDF storage is enabled */
   pdf_storage_enabled?: boolean;
+<<<<<<< HEAD
+=======
+  /** Operator discovery hints (OpenAPI URLs, auth posture, serving fence). */
+  capabilities?: {
+    serving_fence_enabled?: boolean | null;
+    [key: string]: unknown;
+  };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

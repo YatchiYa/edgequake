@@ -2,7 +2,12 @@
 
 use edgequake_storage::adapters::memory::MemoryGraphStorage;
 use edgequake_storage::traits::{
+<<<<<<< HEAD
     EdgeListFilter, GraphScanOps, GraphStorageMutateOps, NodeListFilter,
+=======
+    collect_source_references, is_topology_entity_ref, EdgeListFilter, GraphScanOps,
+    GraphStorageMutateOps, NodeListFilter,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -132,3 +137,102 @@ async fn graph_scan_ops_find_edge_by_relationship_id() {
     assert_eq!(found.source, "ALICE");
     assert_eq!(found.target, "GOOGLE");
 }
+<<<<<<< HEAD
+=======
+
+/// SPEC-098 Symptom F: edge topology `source_id` must not count as provenance.
+#[test]
+fn collect_source_references_ignores_edge_endpoint_topology() {
+    let mut props = HashMap::new();
+    props.insert(
+        "source_id".to_string(),
+        json!("510ac733-c3b8-45c8-874c-7b811d209261::JSON"),
+    );
+    props.insert(
+        "target_id".to_string(),
+        json!("510ac733-c3b8-45c8-874c-7b811d209261::CONFIG"),
+    );
+    props.insert(
+        "source_ids".to_string(),
+        json!(["510ac733-c3b8-45c8-874c-7b811d209261::JSON"]),
+    );
+    props.insert(
+        "source_chunk_id".to_string(),
+        json!("019fbb91-5ac3-7e67-86a9-49015aa06eed-chunk-27"),
+    );
+    props.insert(
+        "source_document_id".to_string(),
+        json!("019fbb91-5ac3-7e67-86a9-49015aa06eed"),
+    );
+
+    assert!(is_topology_entity_ref(
+        "510ac733-c3b8-45c8-874c-7b811d209261::JSON"
+    ));
+    let refs = collect_source_references(&props);
+    assert!(
+        refs.iter().all(|r| !r.contains("::")),
+        "topology entity ids must be filtered: {refs:?}"
+    );
+    assert!(refs.iter().any(|r| r.ends_with("-chunk-27")));
+    assert!(refs
+        .iter()
+        .any(|r| r == "019fbb91-5ac3-7e67-86a9-49015aa06eed"));
+}
+
+#[test]
+fn collect_source_references_keeps_legacy_node_pipe_join() {
+    let mut props = HashMap::new();
+    props.insert("source_id".to_string(), json!("docA-chunk-0|docB-chunk-1"));
+    let refs = collect_source_references(&props);
+    assert_eq!(
+        refs,
+        vec!["docA-chunk-0".to_string(), "docB-chunk-1".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn find_edges_by_source_prefixes_matches_singular_chunk_id() {
+    let storage = MemoryGraphStorage::new("singular-prov");
+    storage
+        .upsert_node(
+            "A",
+            HashMap::from([
+                ("tenant_id".to_string(), json!(TENANT)),
+                ("workspace_id".to_string(), json!(WORKSPACE)),
+            ]),
+        )
+        .await
+        .unwrap();
+    storage
+        .upsert_node(
+            "B",
+            HashMap::from([
+                ("tenant_id".to_string(), json!(TENANT)),
+                ("workspace_id".to_string(), json!(WORKSPACE)),
+            ]),
+        )
+        .await
+        .unwrap();
+    let mut props = HashMap::new();
+    props.insert("tenant_id".to_string(), json!(TENANT));
+    props.insert("workspace_id".to_string(), json!(WORKSPACE));
+    props.insert("relation_type".to_string(), json!("USES"));
+    // Poisoned arrays + singular citation (science_one shape).
+    props.insert("source_id".to_string(), json!("ws::A"));
+    props.insert("source_ids".to_string(), json!(["ws::A"]));
+    props.insert("source_chunk_id".to_string(), json!("doc-singular-chunk-3"));
+    storage.upsert_edge("A", "B", props).await.unwrap();
+
+    let filter = EdgeListFilter {
+        tenant_id: Some(TENANT.to_string()),
+        workspace_id: Some(WORKSPACE.to_string()),
+        relationship_type: None,
+    };
+    let found = storage
+        .find_edges_by_source_prefixes(&filter, &["doc-singular".to_string()])
+        .await
+        .unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].source, "A");
+}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042

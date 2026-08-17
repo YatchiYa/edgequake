@@ -2,7 +2,11 @@
 title: "Frequently Asked Questions"
 ---
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Contract: [OpenAPI snapshot](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
+=======
+> **Product: v0.23.0** · Contract: [OpenAPI snapshot](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # Frequently Asked Questions
 
@@ -53,7 +57,11 @@ Key differences:
 - 4 GB RAM
 - 2 CPU cores
 - Rust 1.95+
+<<<<<<< HEAD
 - PostgreSQL **16, 17, or 18** with pgvector and Apache AGE (Docker image: `ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0`)
+=======
+- PostgreSQL **16, 17, or 18** with pgvector and Apache AGE (Docker image: `ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0`)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 **Production (minimum to boot)**:
 
@@ -84,10 +92,17 @@ cargo test
 For **production-style deployments**, use prebuilt GHCR images:
 
 ```bash
+<<<<<<< HEAD
 EDGEQUAKE_VERSION=0.19.0 docker compose -f docker-compose.quickstart.yml up -d
 ```
 
 Images: `ghcr.io/raphaelmansuy/edgequake:0.19.0`, `ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg18` (also `-pg16`, `-pg17`).
+=======
+EDGEQUAKE_VERSION=0.23.0 docker compose -f docker-compose.quickstart.yml up -d
+```
+
+Images: `ghcr.io/raphaelmansuy/edgequake:0.23.0`, `ghcr.io/raphaelmansuy/edgequake-postgres:0.23.0-pg18` (also `-pg16`, `-pg17`).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ### Can I run EdgeQuake without an LLM?
 
@@ -394,9 +409,15 @@ Cancelling convert **or** an in-flight ingest cancels both linked tasks for the 
 | -------- | -------------------------------- |
 | `naive`  | Simple vector search             |
 | `local`  | Entity-focused queries           |
+<<<<<<< HEAD
 | `global` | High-level summaries             |
 | `hybrid` | Best of all modes (DEFAULT)      |
 | `mix`    | Custom weighted blend            |
+=======
+| `global` | Relationship-centric search      |
+| `hybrid` | Local + Global + Naive (round-robin) |
+| `mix`    | Weighted blend of all arms (**DEFAULT**) |
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 | `bypass` | Direct LLM, no retrieval (debug) |
 
 ---

@@ -58,8 +58,13 @@ NNN_descriptive_name.sql
   descriptive_name: snake_case, describes what changed
 ```
 
+<<<<<<< HEAD
 Current max: `095_extend_task_type_workspace_wipe.sql`  
 Next available: `096_*`
+=======
+Current max: `105_pdf_blob_cutover.sql`  
+Next available: `106_*`
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ### Every-boot reconcile SSOT (not checksum-locked)
 

@@ -27,6 +27,17 @@ pub struct TrackStatusResponse {
     /// Whether processing is complete (all docs completed or failed).
     pub is_complete: bool,
 
+<<<<<<< HEAD
+=======
+    /// SPEC-084 / GH-318: expected documents in this client batch (when declared).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_count: Option<usize>,
+
+    /// SPEC-084 / GH-318: documents currently registered for this track.
+    #[serde(default)]
+    pub registered_count: usize,
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Latest processing message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_message: Option<String>,

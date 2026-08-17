@@ -46,7 +46,11 @@
 
     <properties>
         <kotlin.version>2.1.10</kotlin.version>
+<<<<<<< HEAD
         <jackson.version>2.18.3</jackson.version>
+=======
+        <jackson.version>2.18.9</jackson.version>
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         <junit.version>5.11.3</junit.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>

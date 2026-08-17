@@ -15,8 +15,12 @@ import type {
 import type { UploadingFile } from "@/components/documents/types";
 import {
   deleteDocument,
+<<<<<<< HEAD
   uploadPdfDocument,
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   type DocumentsListResult,
+  uploadPdfDocument,
 } from "@/lib/api/edgequake";
 import {
   pinDocumentShell,
@@ -24,21 +28,39 @@ import {
 } from "@/lib/documents/progress-admit";
 import { performFileUpload } from "@/lib/upload/perform-file-upload";
 import {
+<<<<<<< HEAD
+=======
+  createBoundedExecutor,
+  createUploadId,
+  fileUploadFingerprint,
+  MAX_CONCURRENT_FILE_UPLOADS,
+  updateByUploadId,
+} from "@/lib/upload/bounded-file-upload";
+import {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   ADMIT_PROGRESS_PERCENT,
   formatUploadMegabytes,
   transferProgressPercent,
 } from "@/lib/upload/upload-timeout";
 import type { MultipartUploadProgress } from "@/lib/upload/multipart-upload-client";
 import { isImageUploadFile, isPdfUploadFile } from "@/lib/upload/file-kind";
+<<<<<<< HEAD
+=======
+import { waitForDocumentAbsent } from "@/lib/upload/wait-for-document-absent";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import type { Document } from "@/types";
 import {
   getDocumentDisplayStatus,
   isTerminalStatus,
+<<<<<<< HEAD
 } from "@/components/documents/status-badge";
+=======
+} from "@/lib/documents/status-domain";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { useIngestionStore } from "@/stores/use-ingestion-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -51,6 +73,14 @@ export interface UseFileUploadOptions {
   onUploadStart?: () => void;
   /** Optional per-upload PDF parser backend override. */
   pdfParserBackend?: "vision" | "edgeparse";
+<<<<<<< HEAD
+=======
+  /**
+   * SPEC-099 LAW-099-6: when true, skip persistent "Uploading N…" loading toast
+   * because the feedback zone owns the upload session narrative.
+   */
+  demoteLoadingToast?: boolean;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 export interface UseFileUploadReturn {
@@ -86,7 +116,7 @@ export interface UseFileUploadReturn {
  * useFileUpload - Manages file upload state and orchestration
  *
  * Handles:
- * - Sequential file upload with progress tracking
+ * - Bounded concurrent file upload with progress tracking
  * - PDF vs text file routing
  * - Optimistic cache updates
  * - Duplicate detection
@@ -96,10 +126,22 @@ export function useFileUpload(
   options: UseFileUploadOptions = {},
 ): UseFileUploadReturn {
   const { tenantId, workspaceId, onUploadStart } = options;
+<<<<<<< HEAD
   const { pdfParserBackend } = options;
 
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+=======
+  const { pdfParserBackend, demoteLoadingToast = true } = options;
+
+  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const [activeBatchCount, setActiveBatchCount] = useState(0);
+  const inFlightFingerprints = useRef(new Set<string>());
+  const uploadExecutor = useRef(
+    createBoundedExecutor(MAX_CONCURRENT_FILE_UPLOADS),
+  );
+  const isUploading = activeBatchCount > 0;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   // WHY: Duplicates are collected during the upload loop and shown to the
   // user in a single DuplicateUploadDialog after all files are processed.
   const [pendingDuplicates, setPendingDuplicates] = useState<
@@ -110,9 +152,23 @@ export function useFileUpload(
   const router = useRouter();
   const { t } = useTranslation();
 
+  const updateUploadingFile = useCallback(
+    (
+      uploadId: string,
+      update:
+        | Partial<UploadingFile>
+        | ((current: UploadingFile) => Partial<UploadingFile>),
+    ) => {
+      setUploadingFiles((current) =>
+        updateByUploadId(current, uploadId, update),
+      );
+    },
+    [],
+  );
+
   /**
    * Main upload handler with progress tracking
-   * WHY: Process files sequentially for better feedback and error isolation
+   * WHY: Bound transfer/admission concurrency independently from task fairness.
    */
   const handleFilesUpload = useCallback(
     async (
@@ -121,6 +177,7 @@ export function useFileUpload(
     ) => {
       if (files.length === 0) return;
 
+<<<<<<< HEAD
       // FIX-DUPLICATE-BUG: Prevent double-submit when upload is already in progress.
       // WHY: Without this guard, rapid clicks or drag-and-drop events can trigger
       // multiple concurrent uploads of the same file, resulting in duplicate documents
@@ -128,6 +185,26 @@ export function useFileUpload(
       if (isUploading) {
         console.warn(
           "[useFileUpload] Upload already in progress, ignoring duplicate submission",
+=======
+      // Suppress only exact files already in flight. A global isUploading guard
+      // contradicted "Add more files anytime" and silently discarded later batches.
+      const batchFingerprints = new Set<string>();
+      const acceptedFiles = files.filter((file) => {
+        const fingerprint = fileUploadFingerprint(file);
+        if (
+          batchFingerprints.has(fingerprint) ||
+          inFlightFingerprints.current.has(fingerprint)
+        ) {
+          return false;
+        }
+        batchFingerprints.add(fingerprint);
+        inFlightFingerprints.current.add(fingerprint);
+        return true;
+      });
+      if (acceptedFiles.length === 0) {
+        console.warn(
+          "[useFileUpload] All selected files are already uploading",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         );
         return;
       }
@@ -135,30 +212,46 @@ export function useFileUpload(
       // Notify parent (e.g., to switch status filter)
       onUploadStart?.();
 
-      setIsUploading(true);
+      setActiveBatchCount((count) => count + 1);
 
       // Client batch correlation id (shared across files). Progress keys are per-task.
+<<<<<<< HEAD
       const batchTrackId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+=======
+      const batchTrackId = `upload_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
-      // Initialize upload state for all files
-      const initialFiles: UploadingFile[] = files.map((file) => ({
+      // Append new intent rows; never replace a batch already in progress.
+      const initialFiles: UploadingFile[] = acceptedFiles.map((file) => ({
+        uploadId: createUploadId(),
         file,
         progress: 0,
         status: "pending" as const,
         phase: t("common.waiting", "Waiting..."),
       }));
-      setUploadingFiles(initialFiles);
-
-      // Show loading toast
-      const toastId = toast.loading(
-        t("documents.upload.inProgress", { count: files.length }) ||
-          `Uploading ${files.length} file(s)...`,
-        { duration: Infinity },
+      const selectionUploadIds = new Set(
+        initialFiles.map((entry) => entry.uploadId),
       );
+      setUploadingFiles((current) => [...current, ...initialFiles]);
+
+      // SPEC-099 LAW-099-6: toast XOR feedback-zone upload list.
+      // When demoteLoadingToast, skip persistent loading toast; completion
+      // toasts still fire with a stable id.
+      const toastId = `upload-batch-${Date.now()}`;
+      if (!demoteLoadingToast) {
+        toast.loading(
+          t("documents.upload.inProgress", { count: acceptedFiles.length }) ||
+            `Uploading ${acceptedFiles.length} file(s)...`,
+          { id: toastId, duration: Infinity },
+        );
+      }
 
       let successCount = 0;
       let errorCount = 0;
 
+<<<<<<< HEAD
       // Process files sequentially for better feedback
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -481,10 +574,294 @@ export function useFileUpload(
                 : f,
             ),
           );
+=======
+      // Each worker catches its own errors, so one failure cannot stop siblings.
+      await Promise.all(
+        initialFiles.map(({ file, uploadId }) =>
+          uploadExecutor.current.run(async () => {
+            // Phase 1: Reading file
+            updateUploadingFile(uploadId, {
+              status: "reading" as const,
+              progress: 10,
+              phase: t("documents.upload.reading", "Reading file..."),
+            });
 
-          errorCount++;
-        }
-      }
+            try {
+              const applyUploadProgress = (
+                progress: MultipartUploadProgress,
+              ) => {
+                const { loaded, total, phase } = progress;
+                const bytesTotal = total > 0 ? total : file.size;
+                const bytesSent = Math.min(loaded, bytesTotal);
+                const progressPercent =
+                  phase === "admit"
+                    ? ADMIT_PROGRESS_PERCENT
+                    : transferProgressPercent(bytesSent, bytesTotal);
+                const phaseLabel =
+                  phase === "admit"
+                    ? t("documents.upload.saving", "Saving to workspace...")
+                    : t(
+                        "documents.upload.sending",
+                        "Sending {{sent}} / {{total}} MB",
+                        {
+                          sent: formatUploadMegabytes(bytesSent),
+                          total: formatUploadMegabytes(bytesTotal),
+                        },
+                      );
+
+                updateUploadingFile(uploadId, {
+                  status: "uploading" as const,
+                  progress: progressPercent,
+                  phase: phaseLabel,
+                  bytesSent,
+                  bytesTotal,
+                  uploadPhase: phase,
+                });
+              };
+
+              updateUploadingFile(uploadId, {
+                status: "uploading" as const,
+                progress: 5,
+                phase: t(
+                  "documents.upload.sending",
+                  "Sending {{sent}} / {{total}} MB",
+                  {
+                    sent: "0.0",
+                    total: formatUploadMegabytes(file.size),
+                  },
+                ),
+                bytesSent: 0,
+                bytesTotal: file.size,
+                uploadPhase: "transfer" as const,
+              });
+
+              let response: {
+                document_id?: string;
+                pdf_id?: string;
+                duplicate_of?: string;
+                task_id?: string;
+                track_id?: string;
+                isPdf?: boolean;
+                source_type?: "pdf" | "image" | "text" | "markdown";
+              };
+
+              const uploadResult = await performFileUpload(file, {
+                expectedBatchCount: acceptedFiles.length,
+                batchTrackId,
+                pdfParserBackend:
+                  uploadOptions?.pdfParserBackend ?? pdfParserBackend,
+                onUploadProgress: applyUploadProgress,
+              });
+              response = {
+                document_id: uploadResult.document_id,
+                pdf_id: uploadResult.pdf_id,
+                duplicate_of: uploadResult.duplicate_of,
+                task_id: uploadResult.task_id,
+                track_id: uploadResult.track_id,
+                isPdf: uploadResult.isPdf,
+                source_type: uploadResult.source_type,
+              };
+
+              const isPdfDuplicate =
+                !!uploadResult.duplicate_of ||
+                uploadResult.status === "duplicate" ||
+                uploadResult.status === "duplicate_processing";
+
+              if (
+                uploadResult.isPdf &&
+                uploadResult.pdf_id &&
+                !isPdfDuplicate
+              ) {
+                const optimisticId =
+                  uploadResult.document_id ?? uploadResult.pdf_id;
+                const optimisticDoc: Document = {
+                  id: optimisticId,
+                  title: file.name,
+                  file_name: file.name,
+                  file_size: file.size,
+                  source_type: "pdf",
+                  status:
+                    uploadResult.status === "queued" ? "pending" : "processing",
+                  current_stage:
+                    uploadResult.status === "queued" ? "queued" : "converting",
+                  stage_message:
+                    uploadResult.status === "queued"
+                      ? t(
+                          "pipeline.waitingForSlot",
+                          "Waiting for a processing slot",
+                        )
+                      : undefined,
+                  mime_type: "application/pdf",
+                  created_at: new Date().toISOString(),
+                  pdf_id: uploadResult.pdf_id,
+                  track_id: uploadResult.track_id,
+                  tenant_id: tenantId ?? undefined,
+                  workspace_id: workspaceId ?? undefined,
+                };
+
+                pinDocumentShell(optimisticDoc);
+                scheduleDeferredUnpin(optimisticId);
+                queryClient.setQueriesData<DocumentsListResult>(
+                  { predicate: (query) => query.queryKey[0] === "documents" },
+                  (old) => {
+                    if (!old || !old.items || !Array.isArray(old.items)) {
+                      return old;
+                    }
+                    const exists = old.items.some(
+                      (d) =>
+                        d.pdf_id === uploadResult.pdf_id ||
+                        d.id === optimisticId ||
+                        (uploadResult.document_id != null &&
+                          d.id === uploadResult.document_id),
+                    );
+                    if (exists) return old;
+                    return {
+                      ...old,
+                      items: [optimisticDoc, ...old.items],
+                      total: (old.total ?? 0) + 1,
+                    };
+                  },
+                );
+              } else if (
+                !uploadResult.isPdf &&
+                uploadResult.document_id &&
+                !uploadResult.duplicate_of
+              ) {
+                const optimisticDoc: Document = {
+                  id: uploadResult.document_id,
+                  title: file.name,
+                  file_name: file.name,
+                  file_size: file.size,
+                  source_type: uploadResult.source_type ?? "text",
+                  // SPEC-086: align with admit (uploading/queued) — do not hard-code chunking.
+                  status: "pending",
+                  current_stage: "uploading",
+                  // No {{taskId}} — documents.upload.queued requires interpolation.
+                  stage_message: t(
+                    "documents.upload.queuedPending",
+                    "Queued for processing…",
+                  ),
+                  mime_type: file.type || "text/plain",
+                  created_at: new Date().toISOString(),
+                  track_id: uploadResult.track_id,
+                  tenant_id: tenantId ?? undefined,
+                  workspace_id: workspaceId ?? undefined,
+                };
+
+                pinDocumentShell(optimisticDoc);
+                scheduleDeferredUnpin(uploadResult.document_id);
+                queryClient.setQueriesData<DocumentsListResult>(
+                  { predicate: (query) => query.queryKey[0] === "documents" },
+                  (old) => {
+                    if (!old || !old.items || !Array.isArray(old.items)) {
+                      return old;
+                    }
+                    const exists = old.items.some(
+                      (d) => d.id === uploadResult.document_id,
+                    );
+                    if (exists) return old;
+                    return {
+                      ...old,
+                      items: [optimisticDoc, ...old.items],
+                      total: (old.total ?? 0) + 1,
+                    };
+                  },
+                );
+              }
+
+              if (uploadResult.isPdf) {
+                updateUploadingFile(uploadId, { isPdf: true });
+              }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
+
+              // Check for duplicate — collect for dialog instead of showing a toast.
+              // WHY: A dialog gives the user clear choices (replace / skip) and
+              // handles bulk uploads in one interaction rather than N toasts.
+              if (response.duplicate_of) {
+                setPendingDuplicates((prev) => [
+                  ...prev,
+                  {
+                    fileName: file.name,
+                    existingDocId: response.duplicate_of!,
+                    file,
+                  },
+                ]);
+
+                // Mark the file entry as "duplicate/pending decision"
+                updateUploadingFile(uploadId, {
+                  status: "success" as const,
+                  progress: 100,
+                  phase: t(
+                    "documents.upload.duplicateSkipped",
+                    "Duplicate (skipped)",
+                  ),
+                });
+                successCount++;
+                return;
+              }
+
+              // Pipeline tracking: PDF + text/markdown/image share track_id progress (FEAT0602 parity)
+              if (uploadResult.track_id) {
+                const documentId =
+                  uploadResult.document_id ?? uploadResult.pdf_id ?? "";
+                useIngestionStore
+                  .getState()
+                  .startTracking(uploadResult.track_id, documentId, file.name);
+
+                updateUploadingFile(uploadId, (current) => ({
+                  trackId: uploadResult.track_id,
+                  status: "extracting" as const,
+                  progress: uploadResult.isPdf ? current.progress : 85,
+                  phase: response.task_id
+                    ? t(
+                        "documents.upload.queued",
+                        "Queued for extraction (Task: {{taskId}})",
+                        {
+                          taskId: response.task_id.slice(0, 8),
+                        },
+                      )
+                    : t("documents.upload.extracting", "Processing..."),
+                }));
+
+                successCount++;
+                return;
+              }
+
+              // No track_id — mark complete immediately (sync path)
+              updateUploadingFile(uploadId, {
+                status: "extracting" as const,
+                progress: 80,
+                phase: t("documents.upload.extracting", "Processing..."),
+              });
+
+              await new Promise((resolve) => setTimeout(resolve, 300));
+
+              updateUploadingFile(uploadId, {
+                status: "success" as const,
+                progress: 100,
+                phase: t("documents.upload.complete", "Complete!"),
+              });
+
+              successCount++;
+            } catch (error) {
+              const errorMessage =
+                error instanceof Error
+                  ? error.message
+                  : t("documents.upload.uploadFailed", "Upload failed");
+              updateUploadingFile(uploadId, {
+                status: "error" as const,
+                progress: 100,
+                error: errorMessage,
+                phase: t("common.failed", "Failed"),
+              });
+
+              errorCount++;
+            } finally {
+              inFlightFingerprints.current.delete(fileUploadFingerprint(file));
+            }
+          }),
+        ),
+      );
 
       // Update toast with final result
       if (errorCount === 0) {
@@ -510,7 +887,11 @@ export function useFileUpload(
             action: {
               label: t("common.retry", "Retry"),
               onClick: () => {
-                setUploadingFiles([]);
+                setUploadingFiles((current) =>
+                  current.filter(
+                    (entry) => !selectionUploadIds.has(entry.uploadId),
+                  ),
+                );
               },
             },
           },
@@ -541,6 +922,7 @@ export function useFileUpload(
         queryKey: ["documents"],
         type: "active",
       });
+<<<<<<< HEAD
 
       setIsUploading(false);
 
@@ -552,6 +934,32 @@ export function useFileUpload(
       }, 3000);
     },
     [isUploading, onUploadStart, pdfParserBackend, queryClient, router, t, tenantId, workspaceId],
+=======
+
+      setActiveBatchCount((count) => Math.max(0, count - 1));
+
+      // Drop finished HTTP uploads; keep pipeline-tracked rows until onComplete
+      setTimeout(() => {
+        setUploadingFiles((prev) =>
+          prev.filter(
+            (entry) =>
+              !selectionUploadIds.has(entry.uploadId) ||
+              (entry.trackId && entry.status === "extracting"),
+          ),
+        );
+      }, 3000);
+    },
+    [
+      onUploadStart,
+      pdfParserBackend,
+      queryClient,
+      router,
+      t,
+      tenantId,
+      updateUploadingFile,
+      workspaceId,
+    ],
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   );
 
   /**
@@ -597,18 +1005,38 @@ export function useFileUpload(
           const failReplace = (err: unknown) => {
             replaceErrors += 1;
             const message =
+<<<<<<< HEAD
               err instanceof Error ? err.message : t("common.unknownError", "Unknown error");
             toast.error(
               t("documents.upload.replaceFailed", "Failed to replace {{name}}", {
                 name: entry.fileName,
               }),
+=======
+              err instanceof Error
+                ? err.message
+                : t("common.unknownError", "Unknown error");
+            toast.error(
+              t(
+                "documents.upload.replaceFailed",
+                "Failed to replace {{name}}",
+                {
+                  name: entry.fileName,
+                },
+              ),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
               { description: message },
             );
           };
 
           if (isPdf) {
             try {
+<<<<<<< HEAD
               const batchTrackId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+=======
+              const batchTrackId = `upload_${Date.now()}_${Math.random()
+                .toString(36)
+                .slice(2, 10)}`;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
               await uploadPdfDocument(entry.file, {
                 title: entry.file.name,
                 enable_vision: true,
@@ -622,13 +1050,20 @@ export function useFileUpload(
           } else if (isImage) {
             try {
               await performFileUpload(entry.file, {
+<<<<<<< HEAD
                 batchTrackId: `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+=======
+                batchTrackId: `upload_${Date.now()}_${Math.random()
+                  .toString(36)
+                  .slice(2, 10)}`,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
               });
               queryClient.invalidateQueries({ queryKey: ["documents"] });
             } catch (err) {
               failReplace(err);
             }
           } else {
+<<<<<<< HEAD
             try {
               await deleteDocument(entry.existingDocId);
             } catch {
@@ -637,6 +1072,23 @@ export function useFileUpload(
             try {
               await handleFilesUpload([entry.file]);
               queryClient.invalidateQueries({ queryKey: ["documents"] });
+=======
+            // Text/MD Replace: wait until old row is gone before re-admit
+            // (202 async delete race created duplicate completed rows).
+            try {
+              const del = await deleteDocument(entry.existingDocId);
+              await queryClient.invalidateQueries({ queryKey: ["documents"] });
+              if (!del.deleted) {
+                await waitForDocumentAbsent(queryClient, entry.existingDocId);
+              }
+            } catch (err) {
+              failReplace(err);
+              continue;
+            }
+            try {
+              await handleFilesUpload([entry.file]);
+              await queryClient.invalidateQueries({ queryKey: ["documents"] });
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             } catch (err) {
               failReplace(err);
             }
@@ -644,9 +1096,19 @@ export function useFileUpload(
         }
         if (replaceErrors === 0 && replaceEntries.length > 0) {
           toast.success(
+<<<<<<< HEAD
             t("documents.upload.replaceStarted", "Re-upload started for {{count}} file(s)", {
               count: replaceEntries.length,
             }),
+=======
+            t(
+              "documents.upload.replaceStarted",
+              "Re-upload started for {{count}} file(s)",
+              {
+                count: replaceEntries.length,
+              },
+            ),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           );
         }
       };
@@ -659,6 +1121,7 @@ export function useFileUpload(
   /**
    * Mark PDF upload as successful (called by PdfUploadProgress)
    */
+<<<<<<< HEAD
   const handleUploadComplete = useCallback((index: number) => {
     setUploadingFiles((prev) => {
       const completedTrackId = prev[index]?.trackId;
@@ -682,6 +1145,34 @@ export function useFileUpload(
       return next;
     });
   }, [t]);
+=======
+  const handleUploadComplete = useCallback(
+    (index: number) => {
+      setUploadingFiles((prev) => {
+        const completedTrackId = prev[index]?.trackId;
+        const next = prev.map((f, idx) =>
+          idx === index
+            ? {
+                ...f,
+                status: "success" as const,
+                progress: 100,
+                phase: t("documents.upload.complete", "Complete!"),
+              }
+            : f,
+        );
+        if (completedTrackId) {
+          setTimeout(() => {
+            setUploadingFiles((current) =>
+              current.filter((f) => f.trackId !== completedTrackId),
+            );
+          }, 2500);
+        }
+        return next;
+      });
+    },
+    [t],
+  );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   /**
    * Mark PDF upload as failed (called by PdfUploadProgress)

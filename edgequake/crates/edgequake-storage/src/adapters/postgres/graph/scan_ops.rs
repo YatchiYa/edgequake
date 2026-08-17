@@ -6,6 +6,16 @@ use crate::error::{Result, StorageError};
 use crate::traits::{EdgeListFilter, GraphEdge, GraphNode, NodeListFilter, PagedGraphResult};
 use sqlx::Row;
 use std::collections::HashMap;
+<<<<<<< HEAD
+=======
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// SPEC-089 Phase 4 e2e hook: how many source-prefix discovery SQL calls ran.
+///
+/// Incremented once per `pg_find_nodes_by_source_prefixes` /
+/// `pg_find_edges_by_source_prefixes` entry (F-336-12 amp proof).
+pub static SOURCE_PREFIX_DISCOVERY_CALLS: AtomicU64 = AtomicU64::new(0);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 impl PostgresAGEGraphStorage {
     fn build_node_where_clause(filter: &NodeListFilter) -> String {
@@ -216,6 +226,10 @@ impl PostgresAGEGraphStorage {
         if source_prefixes.is_empty() {
             return Ok(Vec::new());
         }
+<<<<<<< HEAD
+=======
+        SOURCE_PREFIX_DISCOVERY_CALLS.fetch_add(1, Ordering::Relaxed);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let (exact_ids, chunk_prefixes) = Self::source_prefix_probe_sets(source_prefixes);
         if exact_ids.is_empty() {
@@ -228,6 +242,7 @@ impl PostgresAGEGraphStorage {
         })?;
 
         // Discovery uses legacy-null workspace match; never require tenant props.
+<<<<<<< HEAD
         let tenant_where = Self::build_node_where_clause_for_discovery(filter);
         let props_expr = "ag_catalog.agtype_to_json(v.properties)";
         let probe_limit = super::helpers::SOURCE_CHUNK_PROBE_LIMIT as i32;
@@ -265,6 +280,79 @@ impl PostgresAGEGraphStorage {
             .map_err(|e| {
                 StorageError::Database(format!("Source-prefix node query failed: {}", e))
             })?;
+=======
+        // Apply tenant filter on the *hits* CTE (alias h), never on the GIN join —
+        // otherwise the planner starts from idx_node_tenant_id (~30k rows) and
+        // rechecks @> as a Join Filter (4s+ on 200k nodes → statement_timeout).
+        let tenant_where_hits = Self::build_vertex_property_where_mode(
+            "h",
+            filter,
+            VertexTenantFilterMode::LegacyNullAsWildcard,
+        );
+        let tenant_where_v = Self::build_node_where_clause_for_discovery(filter);
+        let props_expr = "ag_catalog.agtype_to_json(v.properties)";
+        let probe_limit = super::helpers::SOURCE_CHUNK_PROBE_LIMIT as i32;
+
+        // SPEC-071 / IMP-031-08: probe-first MATERIALIZED CTEs force
+        // idx_node_source_ids_gin Bitmap Index Scan per probe (~100ms @ 200k nodes).
+        let probes_cte = super::helpers::source_ids_probes_cte_sql();
+        let modern_sql = format!(
+            r#"
+            WITH {probes_cte},
+            hits AS MATERIALIZED (
+              SELECT v.properties
+              FROM probes pr
+              INNER JOIN {graph}."Node" v
+                ON (({props})::jsonb -> 'source_ids') @> to_jsonb(pr.probe_id)
+            )
+            SELECT ag_catalog.agtype_to_json(h.properties) AS props
+            FROM hits h
+            WHERE {tenant_where}
+            LIMIT 5000
+            "#,
+            probes_cte = probes_cte.trim(),
+            props = props_expr,
+            graph = self.graph_name,
+            tenant_where = tenant_where_hits,
+        );
+
+        // SPEC-089 Wave 3 / F-336-08 / LAW-H2: kill discovery CROSS JOIN probes.
+        let timeout_ms = super::helpers::SOURCE_DISCOVERY_STATEMENT_TIMEOUT_MS;
+        let legacy_enabled = Self::source_prefix_legacy_enabled();
+        let legacy_sql = if legacy_enabled {
+            let legacy_where = Self::build_source_prefix_clause_legacy(props_expr, source_prefixes);
+            Some(format!(
+                "SELECT {props} AS props
+                 FROM {graph}.\"Node\" v
+                 WHERE {tenant_where} AND ({legacy_where})
+                 LIMIT 5000",
+                props = props_expr,
+                graph = self.graph_name,
+                tenant_where = tenant_where_v,
+                legacy_where = legacy_where
+            ))
+        } else {
+            None
+        };
+
+        let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
+        let mut by_id: HashMap<String, GraphNode> = HashMap::new();
+        let modern_rows = match sqlx::query(&modern_sql)
+            .bind(&exact_ids)
+            .bind(&chunk_prefixes)
+            .bind(probe_limit)
+            .fetch_all(&mut **timed.as_mut())
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = timed.rollback().await;
+                return Err(StorageError::Database(format!(
+                    "Source-prefix node query failed: {e}"
+                )));
+            }
+        };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         for row in modern_rows {
             let props: serde_json::Value = row.get("props");
             let Some(node_id) = props.get("node_id").and_then(|v| v.as_str()) else {
@@ -279,6 +367,7 @@ impl PostgresAGEGraphStorage {
             });
         }
 
+<<<<<<< HEAD
         // SPEC-071: legacy SeqScan only when explicitly enabled (pre-source_ids graphs).
         if Self::source_prefix_legacy_enabled() {
             let legacy_where = Self::build_source_prefix_clause_legacy(props_expr, source_prefixes);
@@ -298,6 +387,22 @@ impl PostgresAGEGraphStorage {
                 .map_err(|e| {
                     StorageError::Database(format!("Source-prefix node query failed: {}", e))
                 })?;
+=======
+        // SPEC-071: legacy SeqScan only when explicitly enabled.
+        if let Some(legacy_sql) = legacy_sql {
+            let legacy_rows = match sqlx::query(&legacy_sql)
+                .fetch_all(&mut **timed.as_mut())
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    let _ = timed.rollback().await;
+                    return Err(StorageError::Database(format!(
+                        "Source-prefix node query failed: {e}"
+                    )));
+                }
+            };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             for row in legacy_rows {
                 let props: serde_json::Value = row.get("props");
                 let Some(node_id) = props.get("node_id").and_then(|v| v.as_str()) else {
@@ -312,6 +417,10 @@ impl PostgresAGEGraphStorage {
                 });
             }
         }
+<<<<<<< HEAD
+=======
+        timed.commit().await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let mut out: Vec<GraphNode> = by_id.into_values().collect();
         out.sort_by(|a, b| a.id.cmp(&b.id));
@@ -326,6 +435,10 @@ impl PostgresAGEGraphStorage {
         if source_prefixes.is_empty() {
             return Ok(Vec::new());
         }
+<<<<<<< HEAD
+=======
+        SOURCE_PREFIX_DISCOVERY_CALLS.fetch_add(1, Ordering::Relaxed);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let (exact_ids, chunk_prefixes) = Self::source_prefix_probe_sets(source_prefixes);
         if exact_ids.is_empty() {
@@ -337,6 +450,7 @@ impl PostgresAGEGraphStorage {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
         })?;
 
+<<<<<<< HEAD
         let tenant_where = Self::build_edge_where_clause_for_discovery(filter);
         let props_expr = "ag_catalog.agtype_to_json(e.properties)";
         let probe_limit = super::helpers::SOURCE_CHUNK_PROBE_LIMIT as i32;
@@ -347,15 +461,38 @@ impl PostgresAGEGraphStorage {
         let eq_present = self.eq_columns_present(&mut conn).await?;
         let src_expr = if eq_present {
             super::helpers::coalesce_endpoint("e", "source")
+=======
+        // Tenant post-filter on hits CTE (alias h) — same probe-first plan fix as nodes.
+        let tenant_where_hits = Self::build_edge_property_where(
+            "h",
+            filter,
+            EdgeTenantFilterMode::LegacyNullAsWildcard,
+        );
+        let tenant_where_e = Self::build_edge_where_clause_for_discovery(filter);
+        let props_expr = "ag_catalog.agtype_to_json(e.properties)";
+        let probe_limit = super::helpers::SOURCE_CHUNK_PROBE_LIMIT as i32;
+
+        // SPEC-083 / X-03: never drop non-backfilled edges (eq_* IS NULL).
+        // Contract: modern path resolves endpoints via eq_source_id / eq_target_id
+        // (coalesce_endpoint) — not AGE parent text-cast JOINs.
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let src_expr = if eq_present {
+            super::helpers::coalesce_endpoint("e", "source") // eq_source_id
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         } else {
             super::helpers::prop_only_endpoint("e", "source")
         };
         let tgt_expr = if eq_present {
+<<<<<<< HEAD
             super::helpers::coalesce_endpoint("e", "target")
+=======
+            super::helpers::coalesce_endpoint("e", "target") // eq_target_id
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         } else {
             super::helpers::prop_only_endpoint("e", "target")
         };
 
+<<<<<<< HEAD
         // SPEC-071: child "EDGE" + eq_* endpoints (GIN on child; no parent text-cast JOINs).
         let modern_sql = format!(
             r#"
@@ -416,6 +553,43 @@ impl PostgresAGEGraphStorage {
             let legacy_where = Self::build_source_prefix_clause_legacy(props_expr, source_prefixes);
             // Legacy enrich: still on child "EDGE"; endpoints via eq_* (no ORDER BY).
             let legacy_sql = format!(
+=======
+        // SPEC-071 / IMP-031-08: MATERIALIZED probe-first → GIN on source_ids.
+        let probes_cte = super::helpers::source_ids_probes_cte_sql();
+        let modern_sql = format!(
+            r#"
+            WITH {probes_cte},
+            hits AS MATERIALIZED (
+              SELECT e.properties,
+                     {src} AS source_id,
+                     {tgt} AS target_id
+              FROM probes pr
+              INNER JOIN {graph}."EDGE" e
+                ON (({props})::jsonb -> 'source_ids') @> to_jsonb(pr.probe_id)
+              WHERE {src} IS NOT NULL
+                AND {tgt} IS NOT NULL
+            )
+            SELECT
+                ag_catalog.agtype_to_json(h.properties) AS props,
+                h.source_id,
+                h.target_id
+            FROM hits h
+            WHERE {tenant_where}
+            LIMIT 5000
+            "#,
+            probes_cte = probes_cte.trim(),
+            props = props_expr,
+            graph = self.graph_name,
+            tenant_where = tenant_where_hits,
+            src = src_expr,
+            tgt = tgt_expr,
+        );
+
+        let timeout_ms = super::helpers::SOURCE_DISCOVERY_STATEMENT_TIMEOUT_MS;
+        let legacy_sql = if Self::source_prefix_legacy_enabled() {
+            let legacy_where = Self::build_source_prefix_clause_legacy(props_expr, source_prefixes);
+            Some(format!(
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 "SELECT
                     {props} AS props,
                     {src} AS source_id,
@@ -428,6 +602,7 @@ impl PostgresAGEGraphStorage {
                  LIMIT 5000",
                 props = props_expr,
                 graph = self.graph_name,
+<<<<<<< HEAD
                 tenant_where = tenant_where,
                 legacy_where = legacy_where,
                 src = src_expr,
@@ -464,6 +639,143 @@ impl PostgresAGEGraphStorage {
         Ok(out)
     }
 
+=======
+                tenant_where = tenant_where_e,
+                legacy_where = legacy_where,
+                src = src_expr,
+                tgt = tgt_expr,
+            ))
+        } else {
+            None
+        };
+
+        let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
+        // SPEC-098 D-30 / Symptom F: collapse on (src, tgt, rel), not (src, tgt).
+        let mut by_key: HashMap<(String, String, String), GraphEdge> = HashMap::new();
+        let modern_rows = match sqlx::query(&modern_sql)
+            .bind(&exact_ids)
+            .bind(&chunk_prefixes)
+            .bind(probe_limit)
+            .fetch_all(&mut **timed.as_mut())
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = timed.rollback().await;
+                return Err(StorageError::Database(format!(
+                    "Source-prefix edge query failed: {e}"
+                )));
+            }
+        };
+        for row in modern_rows {
+            Self::insert_discovered_edge(&mut by_key, row);
+        }
+
+        if let Some(legacy_sql) = legacy_sql {
+            let legacy_rows = match sqlx::query(&legacy_sql)
+                .fetch_all(&mut **timed.as_mut())
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    let _ = timed.rollback().await;
+                    return Err(StorageError::Database(format!(
+                        "Source-prefix edge query failed: {e}"
+                    )));
+                }
+            };
+            for row in legacy_rows {
+                Self::insert_discovered_edge(&mut by_key, row);
+            }
+        }
+
+        // SPEC-098 Symptom F: poisoned source_ids leave singular source_chunk_id /
+        // source_document_id as the only citation. Bounded exact probes (no SeqScan
+        // unnest of source_chunk_ids arrays — SPEC-071).
+        let singular_sql = format!(
+            r#"
+            WITH probes AS (
+              SELECT unnest($1::text[]) AS probe_id
+              UNION ALL
+              SELECT pref || gs.i::text
+              FROM unnest($2::text[]) AS pref
+              CROSS JOIN generate_series(0, $3::int - 1) AS gs(i)
+            )
+            SELECT
+                ag_catalog.agtype_to_json(e.properties) AS props,
+                {src} AS source_id,
+                {tgt} AS target_id
+            FROM {graph}."EDGE" e
+            WHERE {tenant_where}
+              AND {src} IS NOT NULL
+              AND {tgt} IS NOT NULL
+              AND (
+                ({props})::jsonb->>'source_chunk_id' IN (SELECT probe_id FROM probes)
+                OR ({props})::jsonb->>'source_document_id' IN (SELECT probe_id FROM probes)
+              )
+            LIMIT 5000
+            "#,
+            props = props_expr,
+            graph = self.graph_name,
+            tenant_where = tenant_where_e,
+            src = src_expr,
+            tgt = tgt_expr,
+        );
+        let singular_rows = match sqlx::query(&singular_sql)
+            .bind(&exact_ids)
+            .bind(&chunk_prefixes)
+            .bind(probe_limit)
+            .fetch_all(&mut **timed.as_mut())
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = timed.rollback().await;
+                return Err(StorageError::Database(format!(
+                    "Source-prefix singular edge query failed: {e}"
+                )));
+            }
+        };
+        for row in singular_rows {
+            Self::insert_discovered_edge(&mut by_key, row);
+        }
+
+        timed.commit().await?;
+
+        let mut out: Vec<GraphEdge> = by_key.into_values().collect();
+        out.sort_by(|a, b| {
+            let ar = crate::graph_batch_dedupe::normalize_rel_type(&a.properties);
+            let br = crate::graph_batch_dedupe::normalize_rel_type(&b.properties);
+            (&a.source, &a.target, ar).cmp(&(&b.source, &b.target, br))
+        });
+        Ok(out)
+    }
+
+    fn insert_discovered_edge(
+        by_key: &mut HashMap<(String, String, String), GraphEdge>,
+        row: sqlx::postgres::PgRow,
+    ) {
+        let props: serde_json::Value = row.get("props");
+        let source: String = row.get("source_id");
+        let target: String = row.get("target_id");
+        if source.is_empty() || target.is_empty() {
+            return;
+        }
+        let Some(obj) = props.as_object() else {
+            return;
+        };
+        let properties: HashMap<String, serde_json::Value> = obj.clone().into_iter().collect();
+        let rel = crate::graph_batch_dedupe::normalize_rel_type(&properties);
+        by_key
+            .entry((source.clone(), target.clone(), rel))
+            .or_insert(GraphEdge {
+                source,
+                target,
+                properties,
+            });
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub(super) async fn pg_find_edge_by_relationship_id(
         &self,
         filter: &EdgeListFilter,
@@ -579,4 +891,24 @@ mod source_prefix_clause_tests {
         assert_eq!(exact, vec!["doc-a".to_string(), "doc-a-chunk-".to_string()]);
         assert_eq!(chunks, vec!["doc-a-chunk-".to_string()]);
     }
+<<<<<<< HEAD
+=======
+
+    /// IMP-031-08: source contracts force MATERIALIZED probe-first GIN plan.
+    #[test]
+    fn source_prefix_discovery_sql_is_probe_first_materialized() {
+        let src = include_str!("scan_ops.rs");
+        assert!(
+            src.contains("probes AS MATERIALIZED")
+                && src.contains("hits AS MATERIALIZED")
+                && src.contains("IMP-031-08"),
+            "source-prefix discovery must use MATERIALIZED probe-first CTEs"
+        );
+        // Tenant filter must not sit on the GIN join outer scan of Node.
+        assert!(
+            src.contains("FROM hits h") && src.contains("INNER JOIN {graph}.\"Node\" v"),
+            "tenant filter on hits; GIN join on Node from probes"
+        );
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

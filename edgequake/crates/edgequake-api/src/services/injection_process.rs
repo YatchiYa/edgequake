@@ -103,7 +103,15 @@ pub async fn write_injection_status(
         &Utc::now().to_rfc3339(),
         error,
     );
+<<<<<<< HEAD
     let _ = kv_storage.upsert(&[(meta_key.to_string(), meta)]).await;
+=======
+    let _ = kv_storage
+        .upsert(&[(meta_key.to_string(), meta.clone())])
+        .await;
+    // SPEC-091 Wave B6: typed dual-write (warn-only).
+    crate::services::injection_relational::typed_injection_upsert(&meta).await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// Process injection content through the resilient pipeline + shared persister.
@@ -118,6 +126,11 @@ pub async fn run_injection_pipeline(
     relational_sink: Arc<dyn edgequake_pipeline::RelationalEntitySink>,
     lineage_sink: Arc<dyn edgequake_pipeline::LineageSink>,
     text_embedder: Option<Arc<dyn edgequake_storage::TextEmbedder>>,
+<<<<<<< HEAD
+=======
+    relational_chunks: Option<Arc<dyn edgequake_storage::traits::domain::ChunkRepository>>,
+    #[cfg(feature = "postgres")] typed_embedding_pool: Option<sqlx::PgPool>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     doc_id: &str,
     content: &str,
     workspace_id: &str,
@@ -139,6 +152,12 @@ pub async fn run_injection_pipeline(
         relational_sink,
         lineage_sink,
         text_embedder,
+<<<<<<< HEAD
+=======
+        relational_chunks,
+        #[cfg(feature = "postgres")]
+        typed_embedding_pool,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         PersistIngestionParams {
             document_id: doc_id,
             tenant_id,

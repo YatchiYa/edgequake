@@ -12,7 +12,11 @@
  *   - After 2s the worker OVERWRITES `document.track_id` with the actual task UUID
  *   - Old code keyed off the batch ID → pruneTerminalReprocessEntries never found the
  *     document (wrong track_id) → panels never dismissed
+<<<<<<< HEAD
  *   - Old code passed the batch ID to IngestionProgressPanel → no WS events → blank panel
+=======
+ *   - Old code passed the batch ID to progress UI → no WS events → blank panel
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  *
  *   Fix: store `documentId` (stable, never changes) and use it for:
  *     1. Document lookup in pruneTerminalReprocessEntries
@@ -30,7 +34,11 @@
 import {
     getDocumentDisplayStatus,
     isTerminalStatus,
+<<<<<<< HEAD
 } from '@/components/documents/status-badge';
+=======
+} from '@/lib/documents/status-domain';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { isProvisionalReprocessTrackId } from '@/lib/documents/reprocess-cache';
 import type { Document } from '@/types';
 import { useCallback, useRef, useState } from 'react';
@@ -56,12 +64,21 @@ export interface ReprocessEntry {
    * callers must derive the live track_id from the documents cache instead.
    */
   trackId: string;
+<<<<<<< HEAD
   /** True when source_type is "pdf". Drives PdfUploadProgress vs IngestionProgressPanel. */
   isPdf: boolean;
   /**
    * Reprocess mode: "full" | "entities" | "merge".
    * "full" + isPdf → PdfUploadProgress (shows PDF conversion phases).
    * All others → IngestionProgressPanel.
+=======
+  /** True when source_type is "pdf". Drives nested PDF converting detail on IngestionRunCard. */
+  isPdf: boolean;
+  /**
+   * Reprocess mode: "full" | "entities" | "merge".
+   * "full" + isPdf → nest PdfUploadProgress under IngestionRunCard while converting.
+   * All others → IngestionRunCard only.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
    */
   mode: string;
 }
@@ -79,8 +96,13 @@ export interface AddReprocessEntryOptions {
 }
 
 /**
+<<<<<<< HEAD
  * Whether a reprocess entry should mount PdfUploadProgress (conversion phases).
  * Entities-only and non-PDF always use IngestionProgressPanel.
+=======
+ * Whether a reprocess entry should nest PDF converting page detail.
+ * Entities-only and non-PDF use IngestionRunCard without PDF page slot.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  */
 export function shouldUsePdfReprocessPanel(
   isPdf: boolean,

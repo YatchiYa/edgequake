@@ -525,6 +525,7 @@ const AssistantMessage = memo(function AssistantMessage({
             />
           )}
 
+<<<<<<< HEAD
           {/* Source Citations */}
           {message.context && !message.isStreaming && (
             <div className="mt-2">
@@ -556,6 +557,44 @@ const AssistantMessage = memo(function AssistantMessage({
                   router.push(`/graph${params.toString() ? `?${params}` : ''}`);
                 }}
               />
+=======
+          {/* Source Citations — SPEC-100: reserve region until context arrives (no null→tall CLS) */}
+          {!message.isStreaming && displayContent && (
+            <div
+              className="mt-2 min-h-[7.5rem]"
+              data-testid="spec100-query-citations-slot"
+            >
+              {message.context ? (
+                <SourceCitations
+                  context={message.context}
+                  onEntityClick={(entityId) => {
+                    // Use router.push so browser history is preserved (back-button works)
+                    router.push(`/graph?entity=${encodeURIComponent(entityId)}`);
+                  }}
+                  onDocumentClick={(documentId, chunkContent, chunkIndex, startLine, endLine, chunkId, page) => {
+                    const url = buildDocumentCitationUrl({
+                      documentId: encodeURIComponent(documentId),
+                      chunkId,
+                      page,
+                      chunkContent,
+                      startLine,
+                      endLine,
+                    });
+
+                    // router.push preserves browser history so the back-button returns here
+                    router.push(url);
+                  }}
+                  onExploreGraph={(entityLabels) => {
+                    const params = new URLSearchParams();
+                    if (entityLabels.length > 0) {
+                      params.set('entities', entityLabels.join(','));
+                      params.set('focus', entityLabels[0]);
+                    }
+                    router.push(`/graph${params.toString() ? `?${params}` : ''}`);
+                  }}
+                />
+              ) : null}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             </div>
           )}
         </div>

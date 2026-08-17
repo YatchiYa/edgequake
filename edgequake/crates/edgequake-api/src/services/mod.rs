@@ -13,6 +13,11 @@ pub mod auth_memory_store;
 pub mod auth_validation;
 pub mod cancel_facade;
 pub mod cancel_retract;
+<<<<<<< HEAD
+=======
+#[cfg(feature = "postgres")]
+pub mod compensation_drain_applier;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod content_granularity;
 pub mod content_hasher;
 pub mod context_bundle_mapper;
@@ -20,6 +25,10 @@ pub mod converting_subprogress;
 pub mod cost_aggregation;
 pub mod document_assets;
 pub mod document_body_loader;
+<<<<<<< HEAD
+=======
+pub mod document_delete_admit;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod document_deletion;
 pub mod document_graph_cascade;
 pub mod document_graph_lineage;
@@ -44,17 +53,29 @@ pub mod health_schema;
 pub mod identity_storage;
 pub mod include_pdf_assets;
 pub mod ingest_admission;
+<<<<<<< HEAD
+=======
+pub mod ingestion_dedup_store;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod ingestion_persist;
 pub mod ingestion_status;
 pub mod ingestion_status_mapper;
 pub mod injection_list;
 pub mod injection_process;
+<<<<<<< HEAD
+=======
+pub mod injection_relational;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod interrupted_restart;
 pub mod isolation_context;
 pub mod job_registry;
 pub mod knowledge_rebuild;
 pub mod large_document_profile;
 pub mod list_pagination;
+<<<<<<< HEAD
+=======
+pub mod list_run_enrich;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod llm_text_embedder;
 pub mod login_lockout;
 pub mod message_context_mapper;
@@ -65,7 +86,14 @@ pub mod multimodal_markdown;
 pub mod oidc_flow;
 pub mod oidc_pending;
 pub mod orphan_index_retract;
+<<<<<<< HEAD
 pub mod orphan_task_recovery;
+=======
+pub mod orphan_staging_recovery;
+pub mod orphan_task_recovery;
+#[cfg(feature = "postgres")]
+pub mod outbox_drain_applier;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod pdf_admission_registry;
 pub mod pdf_auto_routing;
 pub mod pdf_lineage;
@@ -76,12 +104,20 @@ pub mod pipeline_ws_bridge;
 #[cfg(feature = "postgres")]
 pub mod postgres_chunk_lineage;
 pub mod process_fingerprint;
+<<<<<<< HEAD
+=======
+pub mod progress_counts;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod progress_facade;
 pub mod query_context;
 pub mod query_execution;
 pub mod query_generation;
 pub mod query_request_builder;
 pub mod query_stats_mapper;
+<<<<<<< HEAD
+=======
+pub mod relational_sidecar_store;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod reprocess_admission;
 pub mod reprocess_stage_reset;
 pub mod retract_document_indexes;
@@ -132,9 +168,19 @@ pub use document_assets::{
     document_mm_assets_root, mm_assets_base_dir, multimodal_asset_base_dir,
     multimodal_images_requested, page_drawing_assets_config, page_drawing_assets_config_for_vision,
 };
+<<<<<<< HEAD
 pub use document_deletion::{
     find_active_deletion_track_id, perform_document_deletion, reconcile_stuck_deleting_documents,
     reset_deleting_status, DocumentDeletionResult,
+=======
+pub use document_delete_admit::{
+    admit_document_deleting, admit_documents_deleting, touch_sql_delete_failed,
+};
+pub use document_deletion::{
+    find_active_deletion_track_id, perform_document_deletion, purge_document_list_surfaces,
+    reconcile_stuck_deleting_documents, reset_deleting_status, DocumentDeletionResult,
+    ListSurfacePurgeOpts, ListSurfacePurgeResult,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 pub use document_graph_cascade::{
     analyze_deletion_impact_stats, cascade_remove_document_sources,
@@ -171,15 +217,31 @@ pub use graph_materialization::{
 pub use include_pdf_assets::{include_extracted_pdf_assets, IncludePdfAssetsResult};
 pub use ingest_admission::{
     admit_pdf_processing_enqueue, persist_pdf_task_document_id,
+<<<<<<< HEAD
     provision_queued_pdf_document_shell, resolve_pdf_ingest_document_id,
     resolve_worker_pdf_document_id, QueuedPdfDocumentShell, WorkerPdfDocumentIdRequest,
+=======
+    provision_queued_pdf_document_shell, provision_relational_document_shell,
+    resolve_pdf_ingest_document_id, resolve_worker_pdf_document_id, QueuedPdfDocumentShell,
+    RelationalDocumentShell, WorkerPdfDocumentIdRequest,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 pub use ingestion_persist::{
     build_chunk_kv_records, persist_ingestion_result, persist_with_providers,
     persist_with_providers_and_progress, persist_with_providers_progress_and_embedder,
+<<<<<<< HEAD
     resolve_relational_sink, tag_injection_sources, PersistIngestionParams,
 };
 pub use ingestion_status::{apply_doc_cancelled_fields, pdf_status_for_cancel};
+=======
+    resolve_relational_chunk_repo, resolve_relational_sink, tag_injection_sources,
+    PersistIngestionParams,
+};
+pub use ingestion_status::{
+    apply_doc_cancelled_fields, apply_doc_failed_fields, apply_doc_terminal_fields,
+    capture_cancelled_from_stage, pdf_status_for_cancel, DocTerminalKind,
+};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use ingestion_status_mapper::{
     enrich_document_summaries, enrich_document_summaries_with_cancel,
     enrich_document_summary_status, legacy_status_to_unified_stage, map_ingestion_status,
@@ -229,6 +291,12 @@ pub use orphan_index_retract::{
     is_post_graph_incomplete_stage, orphan_retract_on_recover_enabled,
     retract_indexes_for_orphan_docs,
 };
+<<<<<<< HEAD
+=======
+pub use orphan_staging_recovery::{
+    recover_orphaned_staging_admissions, task_is_live, OrphanStagingRecoveryReport,
+};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use orphan_task_recovery::{recover_orphaned_tasks, OrphanTaskRecoveryReport};
 pub use pdf_admission_registry::PdfAdmissionRegistry;
 pub use pdf_auto_routing::{should_try_edgeparse_before_vision, try_edgeparse_fast_path};
@@ -236,8 +304,22 @@ pub use pdf_workspace_dedup::{
     find_kv_document_id_for_pdf, recycle_orphan_workspace_pdf,
     workspace_has_visible_document_for_pdf,
 };
+<<<<<<< HEAD
 pub use pending_doc_task_reconcile::{ensure_task_for_pending_document, EnsureTaskOutcome};
 pub use pipeline_failure_classify::{classify_from_llm_error, classify_from_pipeline_error};
+=======
+pub use pending_doc_task_reconcile::{
+    ensure_task_for_pending_document, try_heal_cancelled_orphan, CancelHealOutcome,
+    EnsureTaskOutcome,
+};
+pub use pipeline_failure_classify::{classify_from_llm_error, classify_from_pipeline_error};
+pub use progress_counts::{
+    apply_stage_progress_fields, chunks_counts, clear_progress_counts, figures_counts,
+    insert_progress_counts, pages_counts, parse_counts_from_message, progress_counts_from_metadata,
+    progress_counts_from_value, progress_counts_json, resolve_progress_counts,
+    sync_progress_counts_from_message, PROGRESS_COUNTS_KEY,
+};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use query_context::{
     build_legacy_query_response, build_legacy_query_sources, fetch_context_by_id,
     resolve_query_llm_override, retrieve_context, search_context, FetchContextOptions,
@@ -259,18 +341,34 @@ pub use reprocess_admission::{
 pub use retract_document_indexes::{retract_document_indexes, retract_on_cancel_total};
 pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, RetrievalIdCache};
 pub use source_reference_builder::{build_sources_from_context, is_injection_source};
+<<<<<<< HEAD
 pub use staging_admission::{promote_staging_to_final, rollback_staging};
+=======
+pub use staging_admission::{
+    promote_staging_to_final, release_staging_reservation, rollback_staging,
+};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use summary_role::resolve_summary_llm_or_fallback;
 pub use task_cancel::{
     apply_cancel_all_active, apply_cancel_pdf_pipeline_tasks, apply_task_row_cancel,
     is_cancel_error_message, TaskCancelApplyResult,
 };
 pub use task_document_sync::{
+<<<<<<< HEAD
     extract_document_id_from_task, sync_doc_cancelled_by_document_id, sync_doc_cancelled_for_task,
     sync_document_failed_on_orphan_heartbeat,
 };
 pub use text_insert_content::{
     patch_document_metadata, resolve_document_metadata_key, resolve_text_insert_content,
+=======
+    extract_document_id_from_task, resolve_document_id_for_task, sync_doc_cancelled_by_document_id,
+    sync_doc_cancelled_for_task, sync_doc_failed_no_active_task,
+    sync_document_failed_on_orphan_heartbeat, touch_relational_document_status_best_effort,
+};
+pub use text_insert_content::{
+    load_staging_and_final_metadata, load_staging_first_metadata, patch_document_metadata,
+    resolve_document_metadata_key, resolve_text_insert_content, StagingFinalMeta,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 pub use vision_content::{
     describe_image, describe_image_as_markdown, image_analysis_to_markdown,

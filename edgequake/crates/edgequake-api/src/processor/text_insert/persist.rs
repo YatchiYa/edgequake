@@ -1,5 +1,9 @@
 use super::super::*;
 use super::types::{TextInsertExtracted, TextInsertPersisted};
+<<<<<<< HEAD
+=======
+use edgequake_tasks::FairnessPermit;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use tokio_util::sync::CancellationToken;
 
 impl DocumentTaskProcessor {
@@ -8,6 +12,10 @@ impl DocumentTaskProcessor {
         task: &mut Task,
         extracted: TextInsertExtracted,
         cancel_token: CancellationToken,
+<<<<<<< HEAD
+=======
+        fairness: &mut Option<FairnessPermit>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     ) -> TaskResult<TextInsertPersisted> {
         let document_id = extracted.prepared.document_id.clone();
         let text_content = extracted.prepared.text_content.clone();
@@ -18,6 +26,20 @@ impl DocumentTaskProcessor {
         let is_pdf_source = prepared.is_pdf_source;
         let track_id = prepared.track_id.clone();
 
+<<<<<<< HEAD
+=======
+        // SPEC-091 WP1 (LAW-WP3): release fairness before pure DB materialize so
+        // other tenants can claim while this task writes AGE/vectors/fence.
+        if let Some(permit) = fairness.take() {
+            drop(permit);
+            tracing::debug!(
+                document_id = %document_id,
+                track_id = %track_id,
+                "Released fairness permit before materialize"
+            );
+        }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // OODA-17: Update PDF phase progress - chunking complete, start extraction
         if is_pdf_source {
             self.pipeline_state
@@ -48,6 +70,10 @@ impl DocumentTaskProcessor {
         // Get workspace-specific vector storage using the registry
         // WHY: Different workspaces may have different embedding dimensions
         // WHY-OODA223: STRICT mode - fail loudly if workspace storage unavailable
+<<<<<<< HEAD
+=======
+        // (rest of function unchanged below — keep following content)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // to prevent embeddings from being stored in the wrong (global) table
         let workspace_vector_storage = self
             .get_workspace_vector_storage_strict(&workspace_id_meta)
@@ -90,7 +116,12 @@ impl DocumentTaskProcessor {
         }
 
         // Update task progress - extraction (chunk vectors deferred to P-G2 persist below)
+<<<<<<< HEAD
         task.update_progress("extraction".to_string(), 4, 60);
+=======
+        self.bump_task_progress(task, "extraction".to_string(), 4, 60)
+            .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         // ── CANCELLATION GATE: before graph storage (heavy DB writes) ──
         self.check_cancelled(&cancel_token, "pre-graph-storage", &document_id)
@@ -239,6 +270,17 @@ impl DocumentTaskProcessor {
                 // SPEC-032 W-08: lineage sink — resolved from shared AppState pg_pool
                 self.resolve_lineage_sink().await,
                 text_embedder,
+<<<<<<< HEAD
+=======
+                // SPEC-091 W1: relational chunk spine when pool is present
+                #[cfg(feature = "postgres")]
+                crate::services::resolve_relational_chunk_repo(self.pg_pool.as_ref()),
+                #[cfg(not(feature = "postgres"))]
+                crate::services::resolve_relational_chunk_repo(None),
+                // SPEC-091 W3: typed embedding dual-write pool
+                #[cfg(feature = "postgres")]
+                self.pg_pool.clone(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 crate::services::PersistIngestionParams::for_document(
                     &document_id,
                     tenant_id.clone(),
@@ -275,7 +317,12 @@ impl DocumentTaskProcessor {
         );
 
         // Update task progress - indexing complete
+<<<<<<< HEAD
         task.update_progress("indexing".to_string(), 4, 100);
+=======
+        self.bump_task_progress(task, "indexing".to_string(), 4, 100)
+            .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         // SPEC-032/OODA-198: Augment stats with provider lineage before storing
         let mut stats_with_lineage = result.stats.clone();

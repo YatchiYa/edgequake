@@ -13,9 +13,21 @@ mod extraction;
 pub(crate) mod helpers;
 // SPEC-047 P6: unique-before-embed helpers (integration-test surface).
 pub use helpers::unique_embed;
+<<<<<<< HEAD
 mod processing;
 mod types;
 
+=======
+pub mod admission_resolver;
+mod processing;
+mod types;
+
+pub use admission_resolver::{
+    queue_target_wait_secs_from_env, resolve as resolve_admission_plan, AdmissionPlan,
+    ProviderKind, ProviderProfile, DEFAULT_QUEUE_TARGET_WAIT_SECS, QUEUE_TARGET_WAIT_SECS_ENV,
+};
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use std::sync::Arc;
 
 use edgequake_llm::traits::EmbeddingProvider;

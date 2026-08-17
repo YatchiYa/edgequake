@@ -1,7 +1,12 @@
 {
   "spec": "001-benchmark",
+<<<<<<< HEAD
   "updated_at_utc": "2026-07-23T13:45:00Z",
   "honesty": "Split peers \u2014 never merge Acc / L2 / latency / gap-close. Ship product Equal = 083 PRODUCT_QUERY_API_v1. Acc CI = labeled keep only (gap_close_occ E2 / e2_chat_split_fair). Acc Equal mid path STOP (085). Mid Parity unfinished (binding). Acc Beat fishing STOP. Acc headline = P0 medical-mid (publish/latest) = medical-mid-20260723T134124Z (Acc statistical tie EQ 0.770 / LR 0.779). Cold latency SSOT = C1COLD_v1 / smoke-20260723T134452Z (1.02\u00d7). 080\u2013082 packing REJECT. Labeled peers must not overwrite Acc warm.",
+=======
+  "updated_at_utc": "2026-08-02T13:26:30Z",
+  "honesty": "Split peers \u2014 never merge Acc / L2 / latency / gap-close. Ship product Equal = 083 PRODUCT_QUERY_API_v1. Acc CI = labeled keep only (gap_close_occ E2 / e2_chat_split_fair). Acc Equal mid path STOP (085). Mid Parity unfinished (binding). Acc Beat fishing STOP. Acc headline = P0 medical-mid (publish/latest) = medical-mid-20260802T132630Z (Acc point lead EQ 0.811 / LR 0.778; L2 incomplete \u2014 not Beat). Cold latency SSOT = C1COLD_v1 / smoke-20260723T134452Z (1.02\u00d7). 080\u2013082 packing REJECT. Labeled peers must not overwrite Acc warm.",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "claim_surface": {
     "product_equal": "product_query_api",
     "acc_ci_labeled_keep": "gap_close_occ",
@@ -12,6 +17,7 @@
   "peers": {
     "acc_headline": {
       "label": "Acc publish headline (P0 medical-mid)",
+<<<<<<< HEAD
       "workspace_id": "a992e80a-6b1c-4f92-9645-4226b8b82fea",
       "pack": "P0_rrf_bm25",
       "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
@@ -31,6 +37,27 @@
         ],
         "n_questions": 200,
         "verdict": "STATISTICAL_TIE"
+=======
+      "workspace_id": "e3216f05-479e-4770-bdc3-05c5bd94078f",
+      "pack": "P0_rrf_bm25",
+      "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260802T132630Z",
+      "publish": "specs/001-benchmark/e2e/artifacts/publish/latest",
+      "metrics": {
+        "eq_acc": 0.811,
+        "lr_acc": 0.778,
+        "eq_ctx_rel": 0.415,
+        "eq_evidence_recall": 0.904,
+        "lr_ctx_rel": 0.497,
+        "lr_evidence_recall": 0.946,
+        "fact_er": 0.86,
+        "acc_delta_ci": [
+          0.001,
+          0.065
+        ],
+        "n_questions": 200,
+        "verdict": "ACC_POINT_LEAD_L2_INCOMPLETE"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       },
       "use_for": [
         "acc_publish_ssot",
@@ -102,7 +129,11 @@
         "silent_publish_latest",
         "fact_er_gate_pass"
       ],
+<<<<<<< HEAD
       "verdict": "Acc CI labeled KEEP only — Acc tie; ctx 0.491 < 0.50; not Parity/Equal/Beat (085 STOP)"
+=======
+      "verdict": "Acc CI labeled KEEP only \u2014 Acc tie; ctx 0.491 < 0.50; not Parity/Equal/Beat (085 STOP)"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     },
     "gap_close_occ_full": {
       "label": "Gap-close E2 occ medical-full scale check (n=2062) \u2014 LR Acc",
@@ -376,7 +407,11 @@
       ]
     },
     "e2_chat_split": {
+<<<<<<< HEAD
       "label": "084 E2_CHAT_SPLIT_v1 — E2 occ + 083 chat generate (not Acc)",
+=======
+      "label": "084 E2_CHAT_SPLIT_v1 \u2014 E2 occ + 083 chat generate (not Acc)",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
       "pack": "e2-chat-split",
       "profile_id": "E2_CHAT_SPLIT_v1_lrlike_arms_v2",
@@ -388,7 +423,14 @@
         "eq_ctx_rel": 0.473,
         "eq_evidence_recall": 0.952,
         "fact_er": 0.95,
+<<<<<<< HEAD
         "acc_delta_ci": [-0.016, 0.048]
+=======
+        "acc_delta_ci": [
+          -0.016,
+          0.048
+        ]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       },
       "use_for": [
         "generation_role_split_labeled",
@@ -400,10 +442,17 @@
         "parity_claims",
         "silent_publish_latest"
       ],
+<<<<<<< HEAD
       "verdict": "REJECT Parity — Acc CI tie/EQ-ahead vs E2 but ctx 0.473 tax; H4 skipped; Acc latest frozen"
     },
     "e2_chat_split_fair": {
       "label": "085 E2_CHAT_SPLIT_fair_v1 — chat-split + concurrency=4 (not Acc)",
+=======
+      "verdict": "REJECT Parity \u2014 Acc CI tie/EQ-ahead vs E2 but ctx 0.473 tax; H4 skipped; Acc latest frozen"
+    },
+    "e2_chat_split_fair": {
+      "label": "085 E2_CHAT_SPLIT_fair_v1 \u2014 chat-split + concurrency=4 (not Acc)",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
       "pack": "e2-chat-split-fair",
       "profile_id": "E2_CHAT_SPLIT_fair_v1_lrlike_arms_v2",
@@ -415,7 +464,14 @@
         "eq_ctx_rel": 0.488,
         "eq_evidence_recall": 0.94,
         "fact_er": 0.91,
+<<<<<<< HEAD
         "acc_delta_ci": [-0.022, 0.05]
+=======
+        "acc_delta_ci": [
+          -0.022,
+          0.05
+        ]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       },
       "use_for": [
         "fairness_concurrency_attribution",
@@ -427,10 +483,17 @@
         "parity_claims",
         "silent_publish_latest"
       ],
+<<<<<<< HEAD
       "verdict": "REJECT Parity — ctx 0.488 + Fact ER miss; Acc Equal STOP; Acc latest frozen"
     },
     "product_query_api": {
       "label": "083 PRODUCT_QUERY_API_v1 — hl/ll keyword-skip latency (not Acc)",
+=======
+      "verdict": "REJECT Parity \u2014 ctx 0.488 + Fact ER miss; Acc Equal STOP; Acc latest frozen"
+    },
+    "product_query_api": {
+      "label": "083 PRODUCT_QUERY_API_v1 \u2014 hl/ll keyword-skip latency (not Acc)",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
       "pack": "product-query-api",
       "profile_id": "PRODUCT_QUERY_API_v1",
@@ -442,7 +505,11 @@
         "control_keyword_time_ms": 909,
         "override_keyword_time_ms": 0,
         "keyword_skip_pass": true,
+<<<<<<< HEAD
         "closeout_note": "T035417Z both legs 0ms (warm/heuristic env); primary delta remains T035127Z 909→0"
+=======
+        "closeout_note": "T035417Z both legs 0ms (warm/heuristic env); primary delta remains T035127Z 909\u21920"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       },
       "use_for": [
         "product_query_api_law",
@@ -453,7 +520,11 @@
         "beat_claims",
         "silent_publish_latest"
       ],
+<<<<<<< HEAD
       "verdict": "SHIPPED product Equal — hl/ll override keyword_time_ms 909→0; Acc latest frozen; not Acc Beat/Parity"
+=======
+      "verdict": "SHIPPED product Equal \u2014 hl/ll override keyword_time_ms 909\u21920; Acc latest frozen; not Acc Beat/Parity"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     },
     "latency_c1e": {
       "label": "Latency C1e (KEYWORD=ministral-3b env role)",

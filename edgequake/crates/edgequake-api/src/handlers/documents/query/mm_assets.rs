@@ -23,6 +23,10 @@ use tracing::debug;
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
 use crate::services::document_assets::document_mm_assets_root;
+<<<<<<< HEAD
+=======
+#[cfg(not(feature = "postgres"))]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use crate::services::document_metadata_scan::metadata_key_for_document;
 use crate::state::AppState;
 
@@ -72,6 +76,7 @@ fn guess_content_type(path: &Path) -> &'static str {
 }
 
 /// Ensure the document exists in the current workspace (authz via tenant middleware).
+<<<<<<< HEAD
 async fn ensure_document_exists(state: &AppState, document_id: &str) -> ApiResult<()> {
     let key = metadata_key_for_document(document_id);
     let found = state
@@ -88,6 +93,57 @@ async fn ensure_document_exists(state: &AppState, document_id: &str) -> ApiResul
         )));
     }
     Ok(())
+=======
+///
+/// SPEC-091 SSOT: existence is decided by the typed `public.documents` row, NOT the
+/// retired generic KV store — migration 125 dropped the `eq_*_kv` tables, so a KV
+/// `get_by_ids` here 42P01-fails ("relation … does not exist") and turned *every*
+/// mm-asset request into a 500 (the images-not-served defect). The KV read remains only
+/// in the non-postgres build, where the typed table does not exist.
+async fn ensure_document_exists(
+    state: &AppState,
+    tenant: &TenantContext,
+    document_id: &str,
+) -> ApiResult<()> {
+    #[cfg(feature = "postgres")]
+    {
+        // Resolve the workspace exactly as the asset read path does (default-alias
+        // safe) so the scope check and the subsequent byte fetch agree.
+        let mut scoped = tenant.clone();
+        scoped.workspace_id = Some(tenant.workspace_id_or_default());
+        let scope = crate::document_read_model::relational_document_scope(
+            state.pg_pool.as_ref(),
+            document_id,
+            &scoped,
+        )
+        .await?;
+        if scope.is_none() {
+            return Err(ApiError::NotFound(format!(
+                "Document not found: {document_id}"
+            )));
+        }
+        Ok(())
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = tenant;
+        let key = metadata_key_for_document(document_id);
+        let found = state
+            .storage
+            .kv_storage
+            .get_by_ids(&[key])
+            .await
+            .map_err(ApiError::from)?
+            .into_iter()
+            .next();
+        if found.is_none() {
+            return Err(ApiError::NotFound(format!(
+                "Document not found: {document_id}"
+            )));
+        }
+        Ok(())
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 fn binary_asset_response(
@@ -191,7 +247,11 @@ pub async fn list_document_assets(
     tenant: TenantContext,
     AxumPath(document_id): AxumPath<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
+<<<<<<< HEAD
     ensure_document_exists(&state, &document_id).await?;
+=======
+    ensure_document_exists(&state, &tenant, &document_id).await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     #[cfg(feature = "postgres")]
     {
         let workspace_id = uuid::Uuid::parse_str(&tenant.workspace_id_or_default())
@@ -240,7 +300,11 @@ pub async fn include_document_assets_from_pdf(
     tenant: TenantContext,
     AxumPath(document_id): AxumPath<String>,
 ) -> ApiResult<Json<crate::services::IncludePdfAssetsResult>> {
+<<<<<<< HEAD
     ensure_document_exists(&state, &document_id).await?;
+=======
+    ensure_document_exists(&state, &tenant, &document_id).await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let result =
         crate::services::include_extracted_pdf_assets(&state, &tenant, &document_id).await?;
     Ok(Json(result))
@@ -265,7 +329,11 @@ pub async fn download_document_asset_by_id(
     tenant: TenantContext,
     AxumPath((document_id, asset_id)): AxumPath<(String, String)>,
 ) -> ApiResult<Response> {
+<<<<<<< HEAD
     ensure_document_exists(&state, &document_id).await?;
+=======
+    ensure_document_exists(&state, &tenant, &document_id).await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let (bytes, content_type) =
         read_mm_asset_payload_by_id(&state, &tenant, &document_id, &asset_id).await?;
     Ok(binary_asset_response(
@@ -295,7 +363,11 @@ pub async fn download_document_mm_asset(
     tenant: TenantContext,
     AxumPath((document_id, asset_path)): AxumPath<(String, String)>,
 ) -> ApiResult<Response> {
+<<<<<<< HEAD
     ensure_document_exists(&state, &document_id).await?;
+=======
+    ensure_document_exists(&state, &tenant, &document_id).await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let (bytes, content_type) =
         read_mm_asset_payload(&state, &tenant, &document_id, &asset_path).await?;
     Ok(binary_asset_response(
@@ -327,4 +399,37 @@ mod tests {
         assert!(resolved.ends_with("page-0001.png"));
         let _ = fs::remove_dir_all(&root);
     }
+<<<<<<< HEAD
+=======
+
+    /// Contract (realized 2026-07-29): in the postgres build, document existence must
+    /// be decided by the typed `public.documents` SSOT (`relational_document_scope`),
+    /// never the retired generic KV store (`kv_storage.get_by_ids`). Migration 125
+    /// dropped the `eq_*_kv` tables, so the old KV existence check 42P01-failed and
+    /// turned *every* mm-asset request into a 500 (images not served). The KV read is
+    /// confined to the `cfg(not(postgres))` fallback.
+    #[test]
+    fn contract_spec091_existence_uses_typed_ssot_not_kv() {
+        let src = include_str!("mm_assets.rs");
+        let fn_start = src
+            .find("async fn ensure_document_exists")
+            .expect("ensure fn");
+        let fn_body = &src[fn_start..];
+        let pg_cfg = fn_body
+            .find("#[cfg(feature = \"postgres\")]")
+            .expect("postgres branch");
+        let non_pg_cfg = fn_body
+            .find("#[cfg(not(feature = \"postgres\"))]")
+            .expect("non-postgres branch");
+        let pg_region = &fn_body[pg_cfg..non_pg_cfg];
+        assert!(
+            pg_region.contains("relational_document_scope"),
+            "postgres existence path must use the typed documents SSOT"
+        );
+        assert!(
+            !pg_region.contains("kv_storage"),
+            "postgres existence path must not touch the retired KV store"
+        );
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

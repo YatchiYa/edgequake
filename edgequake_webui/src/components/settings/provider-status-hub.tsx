@@ -35,7 +35,13 @@ export function ProviderStatusHub({
 }: ProviderStatusHubProps) {
   const [expanded, setExpanded] = useState<string | null>(selectedProvider ?? null);
 
+<<<<<<< HEAD
   const enabled = providers.filter((p) => p.enabled);
+=======
+  // SPEC-100: tolerate non-array payloads during soft-load / mock drift
+  const providerList = Array.isArray(providers) ? providers : [];
+  const enabled = providerList.filter((p) => p.enabled);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   return (
     <Card data-testid="provider-status-hub">

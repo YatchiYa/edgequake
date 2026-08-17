@@ -29,7 +29,13 @@ export interface EntityPreset {
 }
 
 /**
+<<<<<<< HEAD
  * Preset definitions (DRY: single source of truth for both UI and tests).
+=======
+ * Preset definitions (DRY: canonical English types).
+ * For language-aware tokens use `getPresetTypes(key, language)` from
+ * `@/constants/entity-type-catalog` (SPEC-096 LAW-L6).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
  *
  * @implements SPEC-085: Domain presets for common industries
  */
@@ -176,6 +182,7 @@ export function deduplicateTypes(types: string[]): string[] {
 }
 
 /**
+<<<<<<< HEAD
  * Detect which preset best matches a given list of entity types.
  * Returns 'custom' if no preset matches exactly.
  */
@@ -183,6 +190,17 @@ export function detectPreset(types: string[]): PresetKey {
   const sorted = [...types].sort().join(',');
   for (const [key, preset] of Object.entries(ENTITY_PRESETS)) {
     if ([...preset.types].sort().join(',') === sorted) {
+=======
+ * Detect which preset best matches a given list of entity types (English tokens).
+ * For language-aware matching across catalog locales, use `detectCanonicalPreset`
+ * from `@/constants/entity-type-catalog` (SPEC-096 LAW-L6).
+ * Returns 'custom' if no preset matches exactly.
+ */
+export function detectPreset(types: string[]): PresetKey {
+  const sorted = [...types.map(normalizeEntityType)].filter(Boolean).sort().join(',');
+  for (const [key, preset] of Object.entries(ENTITY_PRESETS)) {
+    if ([...preset.types].map(normalizeEntityType).sort().join(',') === sorted) {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       return key as PresetKey;
     }
   }

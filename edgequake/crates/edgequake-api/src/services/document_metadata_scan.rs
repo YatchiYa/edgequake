@@ -44,12 +44,23 @@ pub async fn load_workspace_metadata_values(
 }
 
 /// Load all `(key, metadata)` pairs via indexed suffix scan (unscoped).
+<<<<<<< HEAD
 pub async fn load_all_document_metadata_entries(
     kv_storage: &(dyn KVStorage + Send + Sync),
 ) -> ApiResult<Vec<(String, serde_json::Value)>> {
     let keys = kv_storage
         .keys_with_suffix(DOCUMENT_METADATA_SUFFIX)
         .await?;
+=======
+///
+/// SPEC-091: when the metadata family is relational, enumerate typed
+/// `documents` shells (`shell_metadata_keys`) — KV suffix scan is empty after
+/// migration 125 and would otherwise make orphan reconcile a no-op.
+pub async fn load_all_document_metadata_entries(
+    kv_storage: &(dyn KVStorage + Send + Sync),
+) -> ApiResult<Vec<(String, serde_json::Value)>> {
+    let keys = load_all_document_metadata_keys(kv_storage).await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     if keys.is_empty() {
         return Ok(vec![]);
     }
@@ -61,6 +72,44 @@ pub async fn load_all_document_metadata_entries(
         .collect())
 }
 
+<<<<<<< HEAD
+=======
+/// Key enumeration for unscoped metadata scans (typed shell → KV fallback).
+async fn load_all_document_metadata_keys(
+    kv_storage: &(dyn KVStorage + Send + Sync),
+) -> ApiResult<Vec<String>> {
+    #[cfg(feature = "postgres")]
+    {
+        use edgequake_storage::kv_family_cutover::{
+            kv_family_mode_from_env, KvFamilyMode, KV_FAMILY_METADATA,
+        };
+        if kv_family_mode_from_env(KV_FAMILY_METADATA) == KvFamilyMode::Relational {
+            if let Some(pool) = crate::services::relational_sidecar_store::sidecar_pool() {
+                // Bound the janitor scan; reconcile already stamps max_documents.
+                match edgequake_storage::adapters::postgres::document_shell::shell_metadata_keys(
+                    pool,
+                    Some(5_000),
+                )
+                .await
+                {
+                    Ok(keys) if !keys.is_empty() => return Ok(keys),
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "typed metadata key scan failed — falling back to KV suffix"
+                        );
+                    }
+                }
+            }
+        }
+    }
+    Ok(kv_storage
+        .keys_with_suffix(DOCUMENT_METADATA_SUFFIX)
+        .await?)
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// Load all document metadata values via indexed suffix scan (unscoped).
 pub async fn load_all_document_metadata(
     kv_storage: &(dyn KVStorage + Send + Sync),
@@ -196,6 +245,7 @@ pub async fn load_scoped_document_metadata(
     )
 }
 
+<<<<<<< HEAD
 /// Progress facade load (068): final workspace docs **plus** in-flight staging metadata.
 ///
 /// Text/MD admits write `staging:{doc}-metadata` only until promote. The wsdoc index
@@ -224,20 +274,158 @@ pub async fn load_scoped_document_metadata_for_progress(
         .collect();
 
     for value in staging_values.into_iter().flatten() {
+=======
+/// Fetch tenant-scoped in-flight staging metadata keys/values (SPEC-086 / 068 SSOT).
+///
+/// Text/MD admits write `staging:{doc}-metadata` only until promote. The wsdoc index
+/// skips staging keys, so interactive list/track/progress must merge these explicitly.
+async fn load_staging_metadata_entries(
+    kv_storage: &(dyn KVStorage + Send + Sync),
+    tenant_ctx: &TenantContext,
+) -> ApiResult<Vec<(String, serde_json::Value)>> {
+    // SPEC-091 Wave C: enumerate staging shells from `documents` in relational
+    // mode (synthesized legacy keys; value fetch below already dispatches
+    // typed-first). KV scan remains the dual-write fallback.
+    #[cfg(feature = "postgres")]
+    let typed_keys: Option<Vec<String>> =
+        match crate::services::relational_sidecar_store::sidecar_pool() {
+            Some(pool)
+                if edgequake_storage::kv_family_cutover::kv_family_mode_from_env(
+                    edgequake_storage::kv_family_cutover::KV_FAMILY_METADATA,
+                ) == edgequake_storage::kv_family_cutover::KvFamilyMode::Relational =>
+            {
+                match edgequake_storage::adapters::postgres::document_shell::shell_staging_keys(
+                    pool,
+                )
+                .await
+                {
+                    Ok(keys) => Some(
+                        keys.into_iter()
+                            .filter(|k| k.ends_with(DOCUMENT_METADATA_SUFFIX))
+                            .collect(),
+                    ),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "typed staging scan failed — falling back to KV");
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
+    #[cfg(not(feature = "postgres"))]
+    let typed_keys: Option<Vec<String>> = None;
+
+    let staging_keys: Vec<String> = match typed_keys {
+        Some(keys) => keys,
+        None => kv_storage
+            .keys_with_prefix("staging:")
+            .await?
+            .into_iter()
+            .filter(|k| k.ends_with(DOCUMENT_METADATA_SUFFIX) && !k.contains(":hash:"))
+            .collect(),
+    };
+    if staging_keys.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let staging_values = kv_storage.get_by_ids_ordered(&staging_keys).await?;
+    let mut out = Vec::new();
+    for (key, maybe_value) in staging_keys.into_iter().zip(staging_values) {
+        let Some(value) = maybe_value else {
+            continue;
+        };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         if !metadata_matches_tenant_context(&value, tenant_ctx) {
             continue;
         }
         let Some(id) = value.get("id").and_then(|i| i.as_str()) else {
             continue;
         };
+<<<<<<< HEAD
         if id.is_empty() || seen_ids.contains(id) {
+=======
+        if id.is_empty() {
+            continue;
+        }
+        out.push((key, value));
+    }
+    Ok(out)
+}
+
+/// Merge staging metadata into final `(key, value)` entries (prefer final on id collision).
+///
+/// Used by documents list (after limited final load) so in-flight MD appears in ActiveRuns.
+pub async fn merge_staging_metadata_entries(
+    kv_storage: &(dyn KVStorage + Send + Sync),
+    tenant_ctx: &TenantContext,
+    mut entries: Vec<(String, serde_json::Value)>,
+) -> ApiResult<Vec<(String, serde_json::Value)>> {
+    let staging = load_staging_metadata_entries(kv_storage, tenant_ctx).await?;
+    if staging.is_empty() {
+        return Ok(entries);
+    }
+
+    let mut seen_ids: std::collections::HashSet<String> = entries
+        .iter()
+        .filter_map(|(_, v)| v.get("id").and_then(|i| i.as_str()).map(str::to_string))
+        .collect();
+
+    for (key, value) in staging {
+        let Some(id) = value.get("id").and_then(|i| i.as_str()) else {
+            continue;
+        };
+        if seen_ids.contains(id) {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             // Prefer final `{doc}-metadata` over staging when both exist.
             continue;
         }
         seen_ids.insert(id.to_string());
+<<<<<<< HEAD
         values.push(value);
     }
     Ok(values)
+=======
+        entries.push((key, value));
+    }
+    Ok(entries)
+}
+
+/// Merge staging metadata into final value list (prefer final on id collision).
+pub async fn merge_staging_metadata_values(
+    kv_storage: &(dyn KVStorage + Send + Sync),
+    tenant_ctx: &TenantContext,
+    values: Vec<serde_json::Value>,
+) -> ApiResult<Vec<serde_json::Value>> {
+    let entries: Vec<(String, serde_json::Value)> = values
+        .into_iter()
+        .map(|v| {
+            let key = v
+                .get("id")
+                .and_then(|i| i.as_str())
+                .map(metadata_key_for_document)
+                .unwrap_or_default();
+            (key, v)
+        })
+        .collect();
+    Ok(
+        merge_staging_metadata_entries(kv_storage, tenant_ctx, entries)
+            .await?
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect(),
+    )
+}
+
+/// Progress / in-flight load (068 + 086): final workspace docs **plus** staging metadata.
+///
+/// Thin wrapper over [`merge_staging_metadata_values`] — one merge implementation (no third loader).
+pub async fn load_scoped_document_metadata_for_progress(
+    kv_storage: &(dyn KVStorage + Send + Sync),
+    tenant_ctx: &TenantContext,
+) -> ApiResult<Vec<serde_json::Value>> {
+    let values = load_scoped_document_metadata(kv_storage, tenant_ctx).await?;
+    merge_staging_metadata_values(kv_storage, tenant_ctx, values).await
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// KV keys to remove when cascade-deleting a workspace's documents.

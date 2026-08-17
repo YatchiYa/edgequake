@@ -59,6 +59,15 @@ export function preferDocumentName(
 const sessions = new Map<string, DeletionSessionEntry>();
 const listeners = new Set<() => void>();
 
+<<<<<<< HEAD
+=======
+/**
+ * SPEC-098 LAW-098-10: pin deleting ids so list polls cannot restore
+ * Completed/Ready while a delete session is active.
+ */
+const deletingPins = new Set<string>();
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /** Cached snapshot for useSyncExternalStore — must be referentially stable. */
 let cachedSnapshot: DeletionSessionEntry[] = [];
 
@@ -93,6 +102,51 @@ export function getDeleteSession(
   return sessions.get(documentId);
 }
 
+<<<<<<< HEAD
+=======
+/** Active delete session ids (for table dimming — one SSOT). */
+export function getActiveDeletingDocumentIds(): Set<string> {
+  const ids = new Set<string>();
+  for (const entry of sessions.values()) {
+    if (!entry.dismissed && entry.status === "active") {
+      ids.add(entry.documentId);
+    }
+  }
+  for (const id of deletingPins) {
+    ids.add(id);
+  }
+  return ids;
+}
+
+export function pinDeletingDocuments(
+  documentIds: string | Iterable<string>,
+): void {
+  const ids =
+    typeof documentIds === "string"
+      ? [documentIds]
+      : Array.from(documentIds);
+  for (const id of ids) {
+    deletingPins.add(id);
+  }
+}
+
+export function unpinDeletingDocuments(
+  documentIds: string | Iterable<string>,
+): void {
+  const ids =
+    typeof documentIds === "string"
+      ? [documentIds]
+      : Array.from(documentIds);
+  for (const id of ids) {
+    deletingPins.delete(id);
+  }
+}
+
+export function isDeletingPinned(documentId: string): boolean {
+  return deletingPins.has(documentId);
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /** Optimistic fields so the table badge shows Deleting immediately. */
 export const DELETE_OPTIMISTIC_FIELDS = {
   status: "deleting",
@@ -103,6 +157,40 @@ export const DELETE_OPTIMISTIC_FIELDS = {
 
 type DocumentsQueryData = { items?: Document[] } | undefined;
 
+<<<<<<< HEAD
+=======
+/**
+ * Re-apply deleting fields when a poll returns terminal success for a pinned id.
+ * If the poll omitted the row (already gone), leave it omitted.
+ */
+export function protectDeletingDocumentsInQueryData<T extends DocumentsQueryData>(
+  data: T,
+): T {
+  if (!data?.items || deletingPins.size === 0) return data;
+  let changed = false;
+  const items = data.items.map((doc) => {
+    if (!deletingPins.has(doc.id)) return doc;
+    const status = (doc.status || "").toLowerCase();
+    if (status === "deleting" || status === "delete_failed") return doc;
+    // Stale Completed/Ready (or other terminal success) must not win mid-delete.
+    if (
+      status === "completed" ||
+      status === "indexed" ||
+      status === "partial_success" ||
+      status === ""
+    ) {
+      changed = true;
+      return {
+        ...doc,
+        ...DELETE_OPTIMISTIC_FIELDS,
+      };
+    }
+    return doc;
+  });
+  return changed ? { ...data, items } : data;
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 export function patchDocumentsDeletingOptimistic(
   queryClient: QueryClient,
   documentIds: string | Iterable<string>,
@@ -143,6 +231,11 @@ export function beginDeleteSession(input: {
   const existing = sessions.get(input.documentId);
   if (existing?.dismissTimer) clearTimeout(existing.dismissTimer);
 
+<<<<<<< HEAD
+=======
+  pinDeletingDocuments(input.documentId);
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const now = Date.now();
   if (existing && !existing.dismissed && existing.status === "active") {
     const documentName = preferDocumentName(
@@ -193,8 +286,20 @@ export function bindDeleteSessionTrackId(
 /** Hide panel only — deletion continues server-side. */
 export function dismissDeleteSession(documentId: string): void {
   const entry = sessions.get(documentId);
+<<<<<<< HEAD
   if (!entry) return;
   if (entry.dismissTimer) clearTimeout(entry.dismissTimer);
+=======
+  if (!entry) {
+    unpinDeletingDocuments(documentId);
+    return;
+  }
+  if (entry.dismissTimer) clearTimeout(entry.dismissTimer);
+  // Abort path (bulk HTTP failed before admit): release pin with dismiss.
+  if (entry.status === "active" && !entry.trackId) {
+    unpinDeletingDocuments(documentId);
+  }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   sessions.set(documentId, { ...entry, dismissed: true });
   notify();
   // Drop after a tick so listeners see dismissed=true once
@@ -271,6 +376,11 @@ export function applyDeletionCompleted(input: {
     error: input.error,
   };
 
+<<<<<<< HEAD
+=======
+  unpinDeletingDocuments(input.documentId);
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   if (!failed) {
     next.dismissTimer = setTimeout(() => {
       sessions.delete(input.documentId);
@@ -289,6 +399,10 @@ export function applyDeletionFailed(
   const entry = sessions.get(documentId);
   if (!entry || entry.dismissed) return;
   if (entry.dismissTimer) clearTimeout(entry.dismissTimer);
+<<<<<<< HEAD
+=======
+  unpinDeletingDocuments(documentId);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   sessions.set(documentId, {
     ...entry,
     status: "failed",
@@ -361,11 +475,57 @@ export function formatDeleteStageMessage(
   return `${entry.phaseLabel} — ${live}`;
 }
 
+<<<<<<< HEAD
+=======
+/** SPEC-098 LAW-098-11: feedback header must not say “Deleting N” when all failed. */
+export function formatDeleteProgressHeader(sessions: {
+  status: DeletionSessionStatus;
+}[]): {
+  text: string;
+  pulse: boolean;
+  activeCount: number;
+  failedCount: number;
+} {
+  const activeCount = sessions.filter((s) => s.status === "active").length;
+  const failedCount = sessions.filter((s) => s.status === "failed").length;
+  const total = sessions.length;
+  if (total === 0) {
+    return { text: "", pulse: false, activeCount: 0, failedCount: 0 };
+  }
+  if (activeCount === 0 && failedCount > 0) {
+    return {
+      text: `Delete failed (${failedCount})`,
+      pulse: false,
+      activeCount,
+      failedCount,
+    };
+  }
+  if (activeCount > 0 && failedCount > 0) {
+    return {
+      text: `Deleting ${activeCount} · failed ${failedCount}`,
+      pulse: true,
+      activeCount,
+      failedCount,
+    };
+  }
+  return {
+    text: `Deleting ${activeCount || total} document(s)`,
+    pulse: activeCount > 0,
+    activeCount,
+    failedCount,
+  };
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /** Test helper. */
 export function clearDeleteSessionsForTests(): void {
   for (const entry of sessions.values()) {
     if (entry.dismissTimer) clearTimeout(entry.dismissTimer);
   }
   sessions.clear();
+<<<<<<< HEAD
+=======
+  deletingPins.clear();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   notify();
 }

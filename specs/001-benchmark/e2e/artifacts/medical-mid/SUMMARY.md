@@ -3,7 +3,11 @@
 > EQ mix vs LR mix on GraphRAG-Bench (mistral/mistral-small-latest + mistral/mistral-embed) — publishable dual-SUT under matched top-k + L2 retrieval metrics. Not UltraDomain win-rates; Acc is not paper Table-2 comparable unless P0_paper ablation pins are used.
 
 - **valid:** `True`
+<<<<<<< HEAD
 - **profile:** `P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2`
+=======
+- **profile:** `ACC_E2OCC_086_v1_lrlike_arms_v2`
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 - **judge:** `generation_eval`
 - **fixture:** `medical_publish_question_ids_v1` (n=200)
 - **dataset revision:** `dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546`
@@ -22,16 +26,25 @@
 
 | SUT | Acc | F1 | cos |
 |-----|-----|----|-----|
+<<<<<<< HEAD
 | EdgeQuake mix | 0.7700 | 0.7043 | 0.9672 |
 | LightRAG mix | 0.7789 | 0.7165 | 0.9663 |
 | Δ (EQ − LR) | -0.0089 | -0.0122 | 0.0008 |
 
 - **Δ Acc 95% CI (bootstrap):** [-0.0449, +0.0258] (n=200)
+=======
+| EdgeQuake mix | 0.8102 | 0.7584 | 0.9656 |
+| LightRAG mix | 0.7807 | 0.7188 | 0.9663 |
+| Δ (EQ − LR) | +0.0295 | 0.0396 | -0.0007 |
+
+- **Δ Acc 95% CI (bootstrap):** [-0.0035, +0.0609] (n=200)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ## Retrieval (L2)
 
 | SUT | evidence_recall | context_relevancy |
 |-----|-----------------|-------------------|
+<<<<<<< HEAD
 | EdgeQuake | 0.9261 | 0.4075 |
 | LightRAG | 0.9502 | 0.5112 |
 
@@ -60,16 +73,54 @@
 - ingest wall s: 598.4
 - EQ/LR p50 ratio: 4.025 (SLO ≤1.5×: FAIL/WAIVE)
 - EQ stage p50 ms: keyword=1011, embed=1064, retrieve=587, rerank=9, generate=2025
+=======
+| EdgeQuake | 0.9055 | 0.4275 |
+| LightRAG | 0.9537 | 0.4938 |
+
+## By question_type (EQ Acc)
+
+- **Fact Retrieval:** 0.7969
+- **Complex Reasoning:** 0.8085
+- **Contextual Summarize:** 0.8290
+- **Creative Generation:** 0.8065
+
+## By question_type (LR Acc)
+
+- **Fact Retrieval:** 0.7752
+- **Complex Reasoning:** 0.7723
+- **Contextual Summarize:** 0.8316
+- **Creative Generation:** 0.7436
+
+## Ops
+
+- EQ empty-answer rate: 0.000
+- LR empty-answer rate: 0.000
+- EQ empty-context rate: 0.000
+- LR empty-context rate: 0.000
+- EQ query p50/p95 ms: 3868 / 8060
+- LR query p50/p95 ms: 698 / 1197
+- ingest wall s: 0.0
+- EQ/LR p50 ratio: 5.542 (SLO ≤1.5×: FAIL/WAIVE)
+- EQ stage p50 ms: keyword=1068, embed=923, retrieve=158, generate=1872
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ## Pins
 
 ```json
 {
+<<<<<<< HEAD
   "edgequake_git_sha": "fa62d6e7",
   "dataset_id": "GraphRAG-Bench/GraphRAG-Bench",
   "dataset_revision": "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546",
   "fixture_id": "medical_publish_question_ids_v1",
   "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
+=======
+  "edgequake_git_sha": "46a62e54e",
+  "dataset_id": "GraphRAG-Bench/GraphRAG-Bench",
+  "dataset_revision": "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546",
+  "fixture_id": "medical_publish_question_ids_v1",
+  "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "llm_provider": "mistral",
   "llm_model": "mistral-small-latest",
   "vision_provider": "mistral",
@@ -106,12 +157,18 @@
   "lr_enable_llm_cache": true,
   "eq_max_results": 30,
   "eq_rerank_top_k": 30,
+<<<<<<< HEAD
   "eq_enable_rerank": true,
   "graph_walk": "ppr",
+=======
+  "eq_enable_rerank": false,
+  "graph_walk": "bfs",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "kg_chunk_pick": "vector",
   "l2_retrieval_required": true,
   "mix_arm_gate": false,
   "eq_mix_arm_gate_env": "false",
+<<<<<<< HEAD
   "mix_fusion": "rrf",
   "rr_order": "local_first",
   "related_chunk_number": 5,
@@ -119,6 +176,15 @@
   "bm25_retrieval": true,
   "kg_chunk_pick_timing": "per_arm",
   "kg_chunk_pick_lr_budget": false,
+=======
+  "mix_fusion": "round_robin",
+  "rr_order": "local_first",
+  "related_chunk_number": 5,
+  "kg_chunk_occurrence_sort": true,
+  "bm25_retrieval": true,
+  "kg_chunk_pick_timing": "per_arm",
+  "kg_chunk_pick_lr_budget": true,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "mix_relevancy_prune": false,
   "mix_relevancy_keep": 12,
   "mix_relevancy_score": "rrf",
@@ -129,7 +195,11 @@
   "path_prune_orphan_entities": false,
   "rerank_protect_first": 0,
   "min_rerank_score": 0.1,
+<<<<<<< HEAD
   "entity_rank": "degree",
+=======
+  "entity_rank": "retrieval",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "relation_select": "default",
   "mix_local_weight": 1.0,
   "mix_global_weight": 1.0,
@@ -147,6 +217,11 @@
   "keyword_mode": "llm",
   "keyword_llm_provider": null,
   "keyword_llm_model": null,
+<<<<<<< HEAD
+=======
+  "extract_llm_provider": null,
+  "extract_llm_model": null,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "fact_protect_bm25": false,
   "coverage_protect_first": 0,
   "topic_entity_admit": false,
@@ -158,9 +233,15 @@
   "topic_materialize_content": false,
   "topic_materialize_types": "",
   "intent_rerank": false,
+<<<<<<< HEAD
   "l2_bm25_union": false,
   "l2_bm25_mix_top_k": 30,
   "l2_bm25_mode": "union",
+=======
+  "l2_bm25_union": true,
+  "l2_bm25_mix_top_k": 30,
+  "l2_bm25_mode": "fact_replace",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "mix_intent_weights": false,
   "intent_factual_bias": false,
   "answer_prompt": "default",
@@ -174,7 +255,11 @@
   "ingest_max_chars": null,
   "eq_query_concurrency": 4,
   "lr_query_concurrency_effective": 1,
+<<<<<<< HEAD
   "fairness_note": "Matched top-k=30 budgets; LR rerank off (no model); L2 Evidence Recall + Context Relevancy required for valid smoke+; EQ Mix arm gate off (LR-like always-on local+global+naive) unless EDGEQUAKE_MIX_ARM_GATE=true on the server; optional EDGEQUAKE_MIX_FUSION=round_robin ablation (default rrf); Acc PATH_PRUNE=0 (022 P0; soft path only with CE+protect); Phase-1 EDGEQUAKE_MIX_RELEVANCY_PRUNE Acc default off; fair Acc ingest: adaptive_chunking off + chunk_token_size=1200 (LightRAG CHUNK_SIZE parity) unless explicitly ablated; smoke-fast Acc may set BENCH001_INGEST_MAX_CHARS for fast force-ingest (full corpus = 0)",
+=======
+  "fairness_note": "Matched top-k=30 budgets; LR rerank off (no model); L2 Evidence Recall + Context Relevancy required for valid smoke+; EQ Mix arm gate off (LR-like always-on local+global+naive) unless EDGEQUAKE_MIX_ARM_GATE=true on the server; Mix fusion default round_robin (SPEC-086 E2-occ; rrf is labeled ablation); Acc PATH_PRUNE=0 (022 P0; soft path only with CE+protect); Phase-1 EDGEQUAKE_MIX_RELEVANCY_PRUNE Acc default off; fair Acc ingest: adaptive_chunking off + chunk_token_size=1200 (LightRAG CHUNK_SIZE parity) unless explicitly ablated; smoke-fast Acc may set BENCH001_INGEST_MAX_CHARS for fast force-ingest (full corpus = 0)",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "eq_query_mode": "mix",
   "lr_query_mode": "mix",
   "chunk_size": 1200,

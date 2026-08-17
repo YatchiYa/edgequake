@@ -32,6 +32,33 @@ impl StorageRuntime {
         self.mode.is_memory()
     }
 
+<<<<<<< HEAD
+=======
+    /// Memory-mode bundle for unit tests (empty in-process auth store; never KV).
+    #[cfg(test)]
+    pub fn for_memory_tests(
+        kv_storage: Arc<dyn edgequake_storage::traits::KVStorage>,
+        vector_storage: Arc<dyn edgequake_storage::traits::VectorStorage>,
+        vector_registry: Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry>,
+        graph_storage: Arc<dyn edgequake_storage::traits::GraphStorage>,
+    ) -> Self {
+        Self {
+            kv_storage,
+            vector_storage,
+            vector_registry,
+            graph_storage,
+            auth_memory: Arc::new(AuthMemoryStore::new()),
+            #[cfg(feature = "postgres")]
+            pdf_storage: None,
+            #[cfg(feature = "postgres")]
+            original_storage: None,
+            #[cfg(feature = "postgres")]
+            mm_asset_storage: None,
+            mode: StorageMode::Memory,
+        }
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Fail closed when PostgreSQL mode is active but PDF storage was not wired (P1-08).
     #[cfg(feature = "postgres")]
     pub fn validate_postgres_adapters(&self) -> Result<(), String> {
@@ -74,6 +101,7 @@ mod tests {
                 Arc::clone(&vector) as Arc<dyn edgequake_storage::traits::VectorStorage>
             ));
 
+<<<<<<< HEAD
         let storage = StorageRuntime {
             kv_storage: Arc::clone(&kv) as Arc<dyn edgequake_storage::traits::KVStorage>,
             vector_storage: Arc::clone(&vector)
@@ -89,6 +117,14 @@ mod tests {
             mm_asset_storage: None,
             mode: StorageMode::Memory,
         };
+=======
+        let storage = StorageRuntime::for_memory_tests(
+            Arc::clone(&kv) as Arc<dyn edgequake_storage::traits::KVStorage>,
+            Arc::clone(&vector) as Arc<dyn edgequake_storage::traits::VectorStorage>,
+            registry,
+            Arc::clone(&graph) as Arc<dyn edgequake_storage::traits::GraphStorage>,
+        );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         assert!(storage.is_memory());
         assert!(!storage.is_postgresql());

@@ -73,8 +73,15 @@
 
 pub mod admission;
 pub mod cancellation;
+<<<<<<< HEAD
 pub mod delivery;
 pub mod error;
+=======
+pub mod config;
+pub mod delivery;
+pub mod error;
+pub mod fairness_hold;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod ingestion_reliability;
 pub mod lease;
 pub mod memory;
@@ -82,8 +89,16 @@ pub mod pipeline_state;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 pub mod progress;
+pub mod provider_budget;
+pub mod provider_class;
 pub mod queue;
+<<<<<<< HEAD
 pub mod shutdown;
+=======
+pub mod queue_estimate;
+pub mod shutdown;
+pub mod state_machine;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod storage;
 pub mod tenant_limiter;
 pub mod types;
@@ -95,6 +110,14 @@ pub use admission::{
     ADMISSION_MAX_BYTES_ENV, DEFAULT_MAX_IN_FLIGHT_BYTES, DEFAULT_TASK_BYTE_COST,
 };
 pub use cancellation::CancellationRegistry;
+<<<<<<< HEAD
+=======
+pub use config::{
+    task_max_workers_from_env, task_retention_days_from_env, CLAIM_SAMPLE_LIMIT,
+    DEFAULT_TASK_MAX_WORKERS, DEFAULT_TASK_RETENTION_DAYS, TASK_MAX_WORKERS_ENV,
+    TASK_RETENTION_DAYS_ENV,
+};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use delivery::{
     delivery_mode_from_env, enqueue_with_delivery, is_multi_replica_deployment,
     parse_delivery_mode, replicas_from_env, validate_delivery_for_replicas, BridgedTaskQueue,
@@ -102,6 +125,12 @@ pub use delivery::{
     TaskDeliveryMode, TaskNotifier, REPLICAS_ENV,
 };
 pub use error::{TaskError, TaskResult};
+<<<<<<< HEAD
+=======
+pub use fairness_hold::{
+    lifecycle_task_type_sql, ClaimFairnessPolicy, DEFAULT_FAIRNESS_HOLD_TTL, LIFECYCLE_TASK_TYPES,
+};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use ingestion_reliability::{
     classify_from_failure_markers, classify_ingestion_failure, failure_step,
     is_cancel_failure_message, is_permanent_ingestion_failure, is_provider_misconfig_message,
@@ -110,17 +139,52 @@ pub use ingestion_reliability::{
 pub use lease::{lease_expires_at, task_lease_ttl_from_env};
 pub use pipeline_state::{PipelineEvent, PipelineMessage, PipelineState, PipelineStatusSnapshot};
 pub use progress::{PdfUploadProgress, PhaseError, PhaseProgress, PhaseStatus, PipelinePhase};
+#[cfg(feature = "postgres")]
+pub use provider_budget::PostgresProviderBudget;
+pub use provider_budget::{
+    provider_budget_from_env, MemoryProviderBudget, ProviderBudget, ProviderSlotGuard,
+    ProviderSlotLease, SharedProviderBudget, DEFAULT_PROVIDER_BUDGET, LOCAL_MAX_INFLIGHT_ENV,
+    MAX_PROVIDER_BUDGET, PROVIDER_BUDGET_ENV,
+};
+pub use provider_class::{
+    SharedTaskProviderClassifier, StaticProviderClassifier, TaskProviderClass,
+    TaskProviderClassifier,
+};
 pub use queue::{ChannelTaskQueue, SharedTaskQueue, TaskQueue, UnboundedChannelTaskQueue};
+<<<<<<< HEAD
 pub use shutdown::{shutdown_drain_budget, DEFAULT_SHUTDOWN_DRAIN_SECS, SHUTDOWN_DRAIN_SECS_ENV};
+=======
+pub use queue_estimate::{
+    estimate_queue, estimate_queues_batch, QueueEstimate, QueueEtaBasis,
+    DEFAULT_ETA_CLAMP_MAX_SECS, DEFAULT_ETA_WINDOW_SECS, ETA_CLAMP_MAX_SECS_ENV,
+    ETA_WINDOW_SECS_ENV,
+};
+pub use shutdown::{shutdown_drain_budget, DEFAULT_SHUTDOWN_DRAIN_SECS, SHUTDOWN_DRAIN_SECS_ENV};
+pub use state_machine::{
+    is_legal as task_transition_is_legal, transition as task_transition, TaskEvent,
+    TransitionError, CLAIM_PENDING_GUARD_SQL, CLAIM_STALE_GUARD_SQL, RELEASE_GUARD_SQL,
+};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use storage::{
     Pagination, SharedTaskStorage, SortField, SortOrder, TaskFilter, TaskList, TaskStatistics,
     TaskStorage,
 };
+<<<<<<< HEAD
 pub use tenant_limiter::{TenantConcurrencyLimiter, TenantLimiterStats, TryAcquireOutcome};
 pub use types::{
     ChunkProgress, DeletionTaskData, DirectoryScanData, DocumentUploadData, FairnessClass,
     KnowledgeInjectionData, PdfProcessingData, ReindexData, ReprocessMode, Task, TaskFailureInfo,
     TaskProgress, TaskStatus, TaskType, TextInsertData, WipeActivePolicy, WorkspaceWipePhase,
     WorkspaceWipeTaskData,
+=======
+pub use tenant_limiter::{
+    FairShareLane, FairnessPermit, TenantConcurrencyLimiter, TenantLimiterStats, TryAcquireOutcome,
+};
+pub use types::{
+    BatchDeletionTaskData, ChunkProgress, DeletionTaskData, DirectoryScanData, DocumentUploadData,
+    FairnessClass, KnowledgeInjectionData, PdfProcessingData, ReindexData, ReprocessMode, Task,
+    TaskFailureInfo, TaskProgress, TaskStatus, TaskType, TextInsertData, WipeActivePolicy,
+    WorkspaceWipePhase, WorkspaceWipeTaskData,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 pub use worker::{SharedTaskProcessor, TaskProcessor, WorkerPool, WorkerPoolConfig};

@@ -26,13 +26,17 @@ import {
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useEntityTypeColors } from "@/hooks/use-entity-type-colors";
 import { searchNodes } from "@/lib/api/edgequake";
 import { focusCameraOnNode } from "@/lib/graph/camera-utils";
 import {
   formatEntityLabel,
   formatEntityType,
   formatMmEntitySubtitle,
+<<<<<<< HEAD
   getEntityTypeColor,
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 } from "@/lib/graph/label-utils";
 import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/stores/use-graph-store";
@@ -74,6 +78,7 @@ const EntityItem = memo(function EntityItem({
   onKeyDown,
 }: EntityItemProps) {
   const itemRef = useRef<HTMLButtonElement>(null);
+  const { colorFor } = useEntityTypeColors();
   const connectionStrength = Math.min((node.degree || 0) / 10, 1); // Normalize to 0-1
   
   // Focus element when isFocused changes
@@ -111,7 +116,7 @@ const EntityItem = memo(function EntityItem({
             : "ring-white dark:ring-gray-800"
         )}
         style={{
-          backgroundColor: getEntityTypeColor(node.node_type ?? "unknown"),
+          backgroundColor: colorFor(node.node_type ?? "unknown"),
         }}
       />
       <div className="flex-1 min-w-0">
@@ -270,6 +275,7 @@ const EntityTypeGroup = memo(function EntityTypeGroup({
 }: EntityTypeGroupProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const { t } = useTranslation();
+  const { colorFor } = useEntityTypeColors();
   const groupId = `entity-group-${type.toLowerCase().replace(/\s+/g, '-')}`;
 
   return (
@@ -284,7 +290,7 @@ const EntityTypeGroup = memo(function EntityTypeGroup({
           <div className="flex items-center gap-2">
             <div
               className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: getEntityTypeColor(type) }}
+              style={{ backgroundColor: colorFor(type) }}
               aria-hidden="true"
             />
             <span className="text-sm font-medium">{formatEntityType(type)}</span>

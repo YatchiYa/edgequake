@@ -44,12 +44,22 @@ fn display_for_stage(stage: &str) -> String {
         "storing" => UnifiedStage::Storing.display_name().to_string(),
         "completed" => UnifiedStage::Completed.display_name().to_string(),
         "failed" => UnifiedStage::Failed.display_name().to_string(),
+<<<<<<< HEAD
+=======
+        "cancelled" => "Cancelled".to_string(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         other => other.to_string(),
     }
 }
 
 fn stage_status_for(stage: &str, status: &str) -> String {
     let s = status.to_lowercase();
+<<<<<<< HEAD
+=======
+    if s == "cancelled" || stage == "cancelled" {
+        return "cancelled".to_string();
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     if s == "failed" || stage == "failed" {
         return "failed".to_string();
     }
@@ -112,7 +122,12 @@ fn build_timeline_stages(
 ) -> Vec<IngestionStageProgressItem> {
     let current_norm = normalize_stage(Some(current), Some(status));
     let admission = current_norm == "queued" || is_queued_status(status);
+<<<<<<< HEAD
     let failed = status.eq_ignore_ascii_case("failed") || current_norm == "failed";
+=======
+    let cancelled = status.eq_ignore_ascii_case("cancelled") || current_norm == "cancelled";
+    let failed = !cancelled && (status.eq_ignore_ascii_case("failed") || current_norm == "failed");
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let complete = status.eq_ignore_ascii_case("completed") || current_norm == "completed";
     let cur_rank = stage_rank(&current_norm);
     let completion_percentage = progress_01
@@ -133,6 +148,24 @@ fn build_timeline_stages(
                     message: Some("Skipped".to_string()),
                 };
             }
+<<<<<<< HEAD
+=======
+            // Terminal cancel: no green complete priors, no Failed chip.
+            if cancelled {
+                return IngestionStageProgressItem {
+                    stage: (*stage).to_string(),
+                    status: "skipped".to_string(),
+                    progress: 0.0,
+                    total_items: 0,
+                    completed_items: 0,
+                    message: if *stage == "completed" {
+                        Some(message.to_string())
+                    } else {
+                        None
+                    },
+                };
+            }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             if complete {
                 return IngestionStageProgressItem {
                     stage: (*stage).to_string(),
@@ -222,6 +255,7 @@ fn build_timeline_stages(
 }
 
 /// Parse `42/351` style counters from free-text stage_message (best-effort).
+<<<<<<< HEAD
 pub fn parse_counts_from_message(message: &str) -> Option<IngestionProgressCounts> {
     let lower = message.to_lowercase();
     let unit = if lower.contains("chunk") {
@@ -251,6 +285,12 @@ pub fn parse_counts_from_message(message: &str) -> Option<IngestionProgressCount
         total,
         unit: unit.to_string(),
     })
+=======
+///
+/// DRY: delegates to [`crate::services::parse_counts_from_message`] (SSOT module).
+pub fn parse_counts_from_message(message: &str) -> Option<IngestionProgressCounts> {
+    crate::services::parse_counts_from_message(message)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 fn meta_str(obj: &serde_json::Map<String, Value>, key: &str) -> Option<String> {
@@ -279,15 +319,31 @@ pub fn progress_from_document_metadata(
         .or_else(|| meta_str(obj, "title"))
         .unwrap_or_else(|| document_id.clone());
     let status = meta_str(obj, "status").unwrap_or_else(|| "processing".to_string());
+<<<<<<< HEAD
     let stage = normalize_stage(
         obj.get("current_stage").and_then(|v| v.as_str()),
         Some(&status),
     );
+=======
+    let mut stage = normalize_stage(
+        obj.get("current_stage").and_then(|v| v.as_str()),
+        Some(&status),
+    );
+    // Terminal cancel wins over stale current_stage (embedding lag).
+    if status.eq_ignore_ascii_case("cancelled") {
+        stage = "cancelled".to_string();
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let message = meta_str(obj, "stage_message")
         .filter(|m| !m.is_empty())
         .unwrap_or_else(|| display_for_stage(&stage));
     let progress_01 = meta_f32(obj, "stage_progress");
+<<<<<<< HEAD
     let counts = parse_counts_from_message(&message);
+=======
+    // LAW-IS1: structured progress_counts is SSOT; message regex is fallback only.
+    let counts = crate::services::resolve_progress_counts(obj, &message);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let mode = meta_str(obj, "reprocess_mode").or_else(|| meta_str(obj, "mode"));
     let cost_usd = meta_f64(obj, "cost_usd");
     let updated_at = meta_str(obj, "updated_at").unwrap_or_else(|| Utc::now().to_rfc3339());
@@ -494,6 +550,29 @@ mod tests {
     }
 
     #[test]
+<<<<<<< HEAD
+=======
+    fn progress_counts_structured_beats_message_regex() {
+        let obj = json!({
+            "id": "doc-ssot",
+            "file_name": "ticket.pdf",
+            "status": "processing",
+            "current_stage": "converting",
+            "stage_message": "chunk 1/99",
+            "stage_progress": 0.44,
+            "source_type": "pdf",
+            "progress_counts": { "unit": "pages", "current": 4, "total": 9 },
+            "updated_at": "2026-07-31T00:00:00Z"
+        });
+        let p = progress_from_document_metadata("t-ssot", obj.as_object().unwrap());
+        let counts = p.counts.expect("structured counts");
+        assert_eq!(counts.unit, "pages");
+        assert_eq!(counts.current, 4);
+        assert_eq!(counts.total, 9);
+    }
+
+    #[test]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     fn timeline_skips_converting_for_markdown() {
         let obj = json!({
             "id": "doc-2",
@@ -543,4 +622,57 @@ mod tests {
             .expect("merging");
         assert_eq!(merging.status, "active");
     }
+<<<<<<< HEAD
+=======
+
+    #[test]
+    fn progress_cancelled_is_not_active_and_skips_timeline() {
+        let obj = json!({
+            "id": "doc-cancel",
+            "file_name": "ticket.pdf",
+            "status": "cancelled",
+            "current_stage": "embedding",
+            "stage_message": "Processing cancelled",
+            "stage_progress": 0.99,
+            "source_type": "pdf",
+            "updated_at": "2026-07-30T00:00:00Z"
+        });
+        let p = progress_from_document_metadata("t-cancel", obj.as_object().unwrap());
+        assert_eq!(p.stage_status, "cancelled");
+        assert_ne!(p.stage_status, "active");
+        assert!(
+            p.progress
+                .stages
+                .iter()
+                .all(|s| s.status == "skipped" || s.status == "pending"),
+            "cancelled must not paint green complete priors: {:?}",
+            p.progress.stages
+        );
+        assert!(
+            p.progress.stages.iter().all(|s| s.status != "failed"),
+            "cancelled must not show Failed chip"
+        );
+        assert!(
+            p.progress.stages.iter().all(|s| s.status != "complete"),
+            "cancelled must not show complete priors"
+        );
+    }
+
+    #[test]
+    fn progress_cancelled_stage_status_even_when_current_stage_lags() {
+        let obj = json!({
+            "id": "doc-lag",
+            "file_name": "lag.pdf",
+            "status": "cancelled",
+            "current_stage": "cancelled",
+            "stage_message": "Task cancelled by user",
+            "stage_progress": 0.0,
+            "source_type": "pdf",
+            "updated_at": "2026-07-30T00:00:00Z"
+        });
+        let p = progress_from_document_metadata("t-lag", obj.as_object().unwrap());
+        assert_eq!(p.stage_status, "cancelled");
+        assert_eq!(p.stage, "cancelled");
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

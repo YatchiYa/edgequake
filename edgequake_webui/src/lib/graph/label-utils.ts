@@ -7,6 +7,7 @@
  * @implements 066 — Drawing/table/equation display_name (identity ≠ presentation)
  */
 
+<<<<<<< HEAD
 // ─── Canonical entity type color palette ────────────────────────────────────
 // Single source of truth used by graph-renderer, graph-legend, and entity-browser.
 // WHY: Multiple components had diverged copies causing visual inconsistency.
@@ -35,6 +36,21 @@ export function getEntityTypeColor(entityType: string | undefined): string {
   if (!entityType) return ENTITY_TYPE_COLORS.DEFAULT;
   return ENTITY_TYPE_COLORS[entityType.toUpperCase()] ?? ENTITY_TYPE_COLORS.DEFAULT;
 }
+=======
+// ─── Entity type colors (SPEC-102) ───────────────────────────────────────────
+// SSOT lives in entity-type-colors.ts; re-exported here for back-compat imports.
+export {
+  ENTITY_TYPE_COLORS,
+  MAX_ENTITY_TYPE_COLORS,
+  canonicalizeEntityTypeHex,
+  getEntityTypeColor,
+  isValidEntityTypeHex,
+  mergeEntityTypeColorMap,
+  normalizeEntityTypeKey,
+  resolveEntityTypeColor,
+  stripDefaultOverrides,
+} from './entity-type-colors';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 /** Strip workspace scope prefix `{uuid}::NAME` → `NAME`. */
 export function bareGraphId(raw: string): string {

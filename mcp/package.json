@@ -1,7 +1,11 @@
 {
   "name": "@edgequake/mcp-server",
   "version": "0.2.0",
+<<<<<<< HEAD
   "description": "MCP server for EdgeQuake Graph-RAG — use EdgeQuake as persistent agent memory",
+=======
+  "description": "MCP server for EdgeQuake Graph-RAG \u2014 use EdgeQuake as persistent agent memory",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -64,5 +68,17 @@
     "tsup": "^8.5.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.0"
+<<<<<<< HEAD
+=======
+  },
+  "overrides": {
+    "hono": ">=4.12.27",
+    "@hono/node-server": ">=2.0.5",
+    "fast-uri": ">=3.1.4",
+    "body-parser": ">=2.3.0",
+    "ip-address": ">=10.1.1",
+    "rollup": ">=4.59.0",
+    "esbuild": ">=0.28.1"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   }
 }

@@ -1,6 +1,16 @@
+<<<<<<< HEAD
 # TypeScript SDK — quickstart
 
 > **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
+=======
+---
+title: "TypeScript SDK — quickstart"
+---
+
+# TypeScript SDK — quickstart
+
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 > **SDK package: ~0.4.0** (≠ product version)
 

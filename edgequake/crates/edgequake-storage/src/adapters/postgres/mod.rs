@@ -34,23 +34,55 @@ mod age_csv_loader;
 mod ann_exact_reorder_policy;
 mod binary_quantize_policy;
 mod capabilities;
+<<<<<<< HEAD
+=======
+pub mod chunk_embedding_index;
+pub(crate) mod chunk_repository;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 mod config;
 mod connection;
 mod conversation;
 mod diskann_runtime_policy;
+<<<<<<< HEAD
 mod filtered_diskann_label_policy;
 mod graph;
 mod hnsw_runtime_policy;
 mod id_allocation;
 mod kv;
+=======
+pub mod document_shell;
+mod filtered_diskann_label_policy;
+pub mod fleet_embedding_index;
+mod graph;
+mod hnsw_manifest;
+mod hnsw_runtime_policy;
+mod id_allocation;
+pub mod ingestion_dedup;
+mod kv;
+mod kv_relation_state;
+pub mod llm_cache;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 mod mm_asset_storage_impl;
 mod original_storage_impl;
 mod pdf_list_query;
 mod pdf_storage_impl;
+mod pool_bundle;
+mod quarantine_sink;
 pub mod rls;
 mod row_count_stats;
+<<<<<<< HEAD
 mod schema;
 mod vector;
+=======
+mod scale_gates;
+mod schema;
+pub(crate) mod serving_fence_query;
+mod statement_timeout;
+pub(crate) mod typed_embedding_dims;
+pub mod vector;
+mod workspace_probe_cache;
+mod workspace_table;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 mod workspace_vector;
 
 pub use age_csv_loader::{load_vertices_from_csv, should_use_copy_loader};
@@ -64,12 +96,29 @@ pub use binary_quantize_policy::{
 pub use capabilities::{
     age_copy_loader_min_rows, age_rls_requested, age_supports_copy_loader, age_supports_rls,
     extension_version_at_least, pgvector_meets_cve_floor, AnnIndexPolicy, DocumentIdGenerator,
+<<<<<<< HEAD
     PostgresCapabilities, VectorStorageMode, HNSW_MAX_DIM_HALFVEC, HNSW_MAX_DIM_VECTOR,
     PGVECTOR_MIN_CVE_SAFE, PGVECTOR_MIN_ITERATIVE_SCAN, SUPPORTED_VECTOR_METRIC,
     VECTOR_COSINE_OPCLASS,
 };
 pub use config::{hnsw_ef_construction_from_env, PostgresConfig, VectorIndexType};
 pub use connection::PostgresPool;
+=======
+    PostgresCapabilities, PostgresCapabilityProbe, VectorStorageMode, HNSW_MAX_DIM_HALFVEC,
+    HNSW_MAX_DIM_VECTOR, PGVECTOR_MIN_CVE_SAFE, PGVECTOR_MIN_ITERATIVE_SCAN,
+    SUPPORTED_VECTOR_METRIC, VECTOR_COSINE_OPCLASS,
+};
+pub use chunk_embedding_index::PgChunkEmbeddingIndex;
+pub use chunk_repository::{
+    ensure_admission_document_row, ensure_admission_document_row_with_track,
+    PostgresChunkRepository,
+};
+pub use config::{
+    hnsw_ef_construction_from_env, qualified_kv_table_name, resolve_pool_max_connections,
+    PostgresConfig, VectorIndexType,
+};
+pub use connection::{with_session_hygiene, PostgresPool};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use conversation::PostgresConversationStorage;
 pub use diskann_runtime_policy::{
     diskann_optin_recipe_statements, diskann_query_tuning_statements, diskann_rescore_for_list,
@@ -80,6 +129,7 @@ pub use filtered_diskann_label_policy::{
     build_filtered_diskann_label_select_sql, build_postfilter_diskann_select_sql,
     FilteredDiskannLabelPolicy, WorkspaceLabelMap, MAX_WORKSPACE_LABELS,
 };
+<<<<<<< HEAD
 pub use graph::PostgresAGEGraphStorage;
 pub use hnsw_runtime_policy::{
     hnsw_partial_by_workspace_enabled, parse_hnsw_iterative_scan_mode, HnswRuntimePolicy,
@@ -89,6 +139,26 @@ pub use kv::PostgresKVStorage;
 pub use mm_asset_storage_impl::PostgresMmAssetStorage;
 pub use original_storage_impl::PostgresOriginalStorage;
 pub use pdf_storage_impl::PostgresPdfStorage;
+=======
+pub use fleet_embedding_index::PgFleetEmbeddingIndex;
+pub use graph::{
+    interactive_statement_timeout_ms, PostgresAGEGraphStorage, LAST_SOURCE_PREFIX_COUNT_LEN,
+    SOURCE_PREFIX_DISCOVERY_CALLS,
+};
+pub use hnsw_manifest::{check_hnsw_index_manifest, HnswIndexManifest, HnswManifestDrift};
+pub use hnsw_runtime_policy::{
+    filtered_ann_gucs_satisfy_contract, hnsw_partial_by_workspace_enabled,
+    parse_hnsw_iterative_scan_mode, parse_partial_by_workspace_env, HnswRuntimePolicy,
+};
+pub use id_allocation::{allocate_document_id, is_uuidv7};
+pub use kv::PostgresKVStorage;
+pub use kv_relation_state::{KvRelationPresence, KvRelationState};
+pub use mm_asset_storage_impl::PostgresMmAssetStorage;
+pub use original_storage_impl::PostgresOriginalStorage;
+pub use pdf_storage_impl::PostgresPdfStorage;
+pub use pool_bundle::{pool_role_max_connections, PgPoolBundle, PoolRole};
+pub use quarantine_sink::PgQuarantineSink;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 #[allow(deprecated)]
 pub use rls::{
     acquire_rls_connection, clear_tenant_context, clear_tenant_context_on_conn,
@@ -99,6 +169,11 @@ pub use rls::{
 // SPEC-046 OPS-P2.16: `RlsContext` is no longer re-exported from `postgres::`.
 // Use `acquire_rls_connection` / `with_acquired_tenant_context` (SEC-014 SSOT).
 // The type remains in `rls` for transitional `#[deprecated]` compile errors.
+<<<<<<< HEAD
+=======
+pub use scale_gates::{partition_allowed, quantization_allowed, ScaleGateEvidence};
+pub use serving_fence_query::{apply_serving_fence, serving_fence_filtered_total};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use vector::{
     allow_vector_table_rebuild, fts_language_from_env, sanitize_fts_language, PgVectorStorage,
     DEFAULT_FTS_LANGUAGE, FTS_LANGUAGE_ENV,

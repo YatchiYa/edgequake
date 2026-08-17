@@ -57,6 +57,11 @@ interface PdfUploadProgressProps {
   filename?: string;
   /** Compact mode (single line) */
   compact?: boolean;
+  /**
+   * SPEC-086: nest under IngestionRunCard — page N/M only (no filename chrome).
+   * Parent card owns filename / stepper; this slot is converting detail only.
+   */
+  nested?: boolean;
   /** Callback when completed */
   onComplete?: () => void;
   /** Callback when failed */
@@ -454,6 +459,7 @@ export function PdfUploadProgress({
   trackId,
   filename,
   compact = false,
+  nested = false,
   onComplete,
   onFailed,
   className,
@@ -461,6 +467,7 @@ export function PdfUploadProgress({
   const {
     progress,
     isLoading,
+    isPolling,
     phases,
     overallPercent,
     etaSeconds,
@@ -512,13 +519,33 @@ export function PdfUploadProgress({
   }
 
   if (error) {
+    const msg = error.message ?? "";
+    const isTaskGone = /task not found/i.test(msg);
+    // Progress is in-memory; after a backend restart the first polls can 404
+    // until the worker reseeds. Prefer reconnecting only while still fetching.
+    const isProgressMiss = /progress not found/i.test(msg);
+    if (isProgressMiss && (isLoading || isPolling)) {
+      return (
+        <Card className={cn("border-muted bg-muted/30", className)}>
+          <CardContent className="flex items-center gap-4 py-4">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
+              Reconnecting to progress…
+            </span>
+          </CardContent>
+        </Card>
+      );
+    }
+    const terminalMessage = isTaskGone
+      ? "Task ended — progress is no longer available. Refresh the document list or retry."
+      : isProgressMiss
+        ? "Progress unavailable — upload may have completed or the task ended."
+        : `Failed to load progress: ${msg}`;
     return (
       <Card className={cn("border-red-200 bg-red-50/50", className)}>
         <CardContent className="flex items-center gap-4 py-4">
           <AlertCircle className="h-5 w-5 text-red-500" />
-          <span className="text-sm text-red-600">
-            Failed to load progress: {error.message}
-          </span>
+          <span className="text-sm text-red-600">{terminalMessage}</span>
         </CardContent>
       </Card>
     );
@@ -532,6 +559,7 @@ export function PdfUploadProgress({
   // Compact mode: progress bar + visible fail/retry (parity with ingestion compact).
   if (compact) {
     const failMessage = progress?.error?.trim() || "Processing failed";
+<<<<<<< HEAD
     return (
       <div className={cn("flex flex-col gap-1 w-full pr-8", className)}>
         <div className="flex items-center gap-3">
@@ -546,6 +574,52 @@ export function PdfUploadProgress({
             </div>
             <Progress value={overallPercent} className="h-2" />
           </div>
+=======
+    const pageLabel =
+      totalPages != null && totalPages > 0
+        ? `Page ${currentPage ?? 0}/${totalPages}`
+        : "Converting pages…";
+
+    // Nested under IngestionRunCard: no second filename / cancel chrome.
+    if (nested) {
+      return (
+        <div
+          className={cn("space-y-0.5 w-full", className)}
+          data-testid="spec086-pdf-page-detail"
+        >
+          <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+            <span data-testid="spec086-pdf-page-label">{pageLabel}</span>
+            <span className="tabular-nums">{overallPercent}%</span>
+          </div>
+          <Progress value={overallPercent} className="h-1.5" />
+          {isFailed ? (
+            <p
+              className="text-xs text-red-600 dark:text-red-400 truncate"
+              data-testid="pdf-progress-compact-error"
+              role="alert"
+            >
+              {failMessage}
+            </p>
+          ) : null}
+        </div>
+      );
+    }
+
+    return (
+      <div className={cn("flex flex-col gap-1 w-full pr-8", className)}>
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1 gap-2">
+              <span className="text-sm font-medium truncate">
+                {displayFilename}
+              </span>
+              <span className="text-xs text-muted-foreground shrink-0">
+                {overallPercent}%
+              </span>
+            </div>
+            <Progress value={overallPercent} className="h-2" />
+          </div>
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           {isProcessing && (
             <Button
               size="sm"

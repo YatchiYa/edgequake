@@ -713,7 +713,15 @@ impl Workspace {
     /// assert_eq!(workspace.llm_full_id(), "ollama/gemma3:12b");
     /// ```
     pub fn llm_full_id(&self) -> String {
+<<<<<<< HEAD
         format!("{}/{}", self.llm_provider, self.llm_model)
+=======
+        if self.llm_model.contains('/') {
+            self.llm_model.clone()
+        } else {
+            format!("{}/{}", self.llm_provider, self.llm_model)
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     /// Get fully qualified embedding model ID in `provider/model` format.
@@ -730,7 +738,15 @@ impl Workspace {
     /// assert_eq!(workspace.embedding_full_id(), "openai/text-embedding-3-small");
     /// ```
     pub fn embedding_full_id(&self) -> String {
+<<<<<<< HEAD
         format!("{}/{}", self.embedding_provider, self.embedding_model)
+=======
+        if self.embedding_model.contains('/') {
+            self.embedding_model.clone()
+        } else {
+            format!("{}/{}", self.embedding_provider, self.embedding_model)
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     /// Parse a full model ID into (provider, model) tuple.
@@ -1080,4 +1096,14 @@ mod tests {
         assert_eq!(model, "text-embedding-3-small");
         assert_eq!(dimension, 1536);
     }
+<<<<<<< HEAD
+=======
+
+    #[test]
+    fn issue255_llm_full_id_no_double_prefix() {
+        let workspace = Workspace::new(Uuid::new_v4(), "Test", "test")
+            .with_llm_config("openai/gpt-4o-mini", "openai");
+        assert_eq!(workspace.llm_full_id(), "openai/gpt-4o-mini");
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

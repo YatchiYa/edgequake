@@ -1,11 +1,19 @@
 use super::super::*;
 use super::types::TextInsertPrepared;
+<<<<<<< HEAD
+=======
+use tokio_util::sync::CancellationToken;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 impl DocumentTaskProcessor {
     pub(super) async fn text_insert_prepare(
         &self,
         task: &mut Task,
         data: TextInsertData,
+<<<<<<< HEAD
+=======
+        cancel_token: CancellationToken,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     ) -> TaskResult<TextInsertPrepared> {
         let document_id = data
             .metadata
@@ -15,6 +23,13 @@ impl DocumentTaskProcessor {
             .unwrap_or(&data.file_source)
             .to_string();
 
+<<<<<<< HEAD
+=======
+        // SPEC-091 WP1: cancel before prepare side effects.
+        self.check_cancelled(&cancel_token, "pre-prepare", &document_id)
+            .await?;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // SPEC-002: Extract source_type from task metadata for unified pipeline tracking
         let source_type = data
             .metadata
@@ -85,12 +100,20 @@ impl DocumentTaskProcessor {
                 .cloned()
                 .or_else(|| Some(json!(source_type)));
 
+<<<<<<< HEAD
             let metadata_key = crate::services::text_insert_content::resolve_document_metadata_key(
                 &document_id,
                 &self.kv_storage,
             )
             .await;
             if let Ok(Some(existing)) = self.kv_storage.get_by_id(&metadata_key).await {
+=======
+            // IMP-075-11: one RT staging+final (not resolve key then re-get).
+            if let Ok(Some((metadata_key, existing))) =
+                crate::services::load_staging_first_metadata(self.kv_storage.as_ref(), &document_id)
+                    .await
+            {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 if let Some(obj) = existing.as_object() {
                     let mut updated = obj.clone();
                     let mut changed = false;
@@ -306,7 +329,12 @@ impl DocumentTaskProcessor {
         );
 
         // Update task progress - chunking
+<<<<<<< HEAD
         task.update_progress("chunking".to_string(), 4, 10);
+=======
+        self.bump_task_progress(task, "chunking".to_string(), 4, 10)
+            .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         // Log to pipeline state
         self.pipeline_state
@@ -425,6 +453,7 @@ impl DocumentTaskProcessor {
                     preprocess_result.duplicates_removed,
                 );
             }
+<<<<<<< HEAD
             let metadata_key = crate::services::text_insert_content::resolve_document_metadata_key(
                 &document_id,
                 &self.kv_storage,
@@ -436,6 +465,17 @@ impl DocumentTaskProcessor {
                 .await
                 .ok()
                 .flatten();
+=======
+            // IMP-075-11: one RT staging+final (not resolve key then re-get).
+            let doc_metadata = crate::services::load_staging_first_metadata(
+                self.kv_storage.as_ref(),
+                &document_id,
+            )
+            .await
+            .ok()
+            .flatten()
+            .map(|(_, v)| v);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
             // SPEC-046 EQ-046-14: stamp / refresh process fingerprint; purge KG when
             // chunking or multimodal options changed vs last successful ingest

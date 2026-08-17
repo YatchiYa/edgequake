@@ -15,6 +15,13 @@ use std::time::Duration;
 use tracing::{debug, warn};
 
 /// Soft ceiling for pdfium inspect during page-count heal (must not hang upload).
+<<<<<<< HEAD
+=======
+///
+/// SPEC-095: this timeout does **not** cancel `spawn_blocking` extract work
+/// inside `edgequake-pdf2md` / `pdfium-auto`. Cache poison is fixed upstream
+/// via atomic publish + size integrity; this remains a soft ceiling only.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 const COUNT_PAGES_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Count pages in a PDF using pdfium via `edgequake-pdf2md::inspect`.

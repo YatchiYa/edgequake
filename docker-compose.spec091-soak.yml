@@ -1,0 +1,69 @@
+# SPEC-091 — disposable v0.22.0 stack for upgrade soak (API + Postgres only).
+#
+# Usage (prefer Makefile):
+#   make spec091-upgrade-soak
+#
+# Manual:
+#   COMPOSE_PROJECT_NAME=spec091soak EDGEQUAKE_VERSION=0.22.0 \
+#     docker compose -f docker-compose.spec091-soak.yml up -d
+#
+# Ports are host-ephemeral (published as 127.0.0.1::<container>) so the soak
+# does not collide with a developer `make stack` / `make dev` on 8080/5432.
+# The soak script reads the mapped ports from `docker compose port`.
+
+services:
+  postgres:
+    image: ghcr.io/raphaelmansuy/edgequake-postgres:${EDGEQUAKE_POSTGRES_TAG:-${EDGEQUAKE_VERSION:-0.22.0}}
+    environment:
+      POSTGRES_USER: edgequake
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-edgequake_secret}
+      POSTGRES_DB: edgequake
+    volumes:
+      - spec091_soak_pg:/var/lib/postgresql
+    ports:
+      - "127.0.0.1::5432"
+    shm_size: "256m"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edgequake -d edgequake"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    networks:
+      - soak
+
+  api:
+    image: ghcr.io/raphaelmansuy/edgequake:${EDGEQUAKE_VERSION:-0.22.0}
+    environment:
+      EDGEQUAKE_HOST: "0.0.0.0"
+      EDGEQUAKE_PORT: "8080"
+      DATABASE_URL: postgres://edgequake:${POSTGRES_PASSWORD:-edgequake_secret}@postgres:5432/edgequake
+      EDGEQUAKE_LLM_PROVIDER: ${EDGEQUAKE_LLM_PROVIDER:-mock}
+      EDGEQUAKE_EMBEDDING_PROVIDER: ${EDGEQUAKE_EMBEDDING_PROVIDER:-mock}
+      EDGEQUAKE_ALLOW_MOCK_PROVIDER: "1"
+      EDGEQUAKE_DEV_MODE: "true"
+      EDGEQUAKE_AUTH_ENABLED: "false"
+      EDGEQUAKE_ALLOW_BOOT_MIGRATE: "1"
+      RUST_LOG: ${RUST_LOG:-info}
+      JWT_SECRET: soak-test-not-for-production
+    ports:
+      - "127.0.0.1::8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 20s
+    networks:
+      - soak
+
+volumes:
+  spec091_soak_pg:
+    driver: local
+
+networks:
+  soak:
+    driver: bridge

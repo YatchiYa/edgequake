@@ -141,7 +141,10 @@ export default function DashboardPage() {
     enabled: _hasHydrated && !!selectedWorkspaceId, // Wait for hydration!
     staleTime: 0, // Always fetch fresh stats to reflect latest document processing
     refetchOnMount: 'always', // Always refetch when component mounts
+    // SPEC-100: soft refresh keeps prior stats (no card skeleton flash)
+    placeholderData: (previous) => previous,
   });
+  const coldStats = isLoadingStats && !stats;
 
 
 
@@ -151,7 +154,10 @@ export default function DashboardPage() {
     queryFn: () => getDocuments({ page: 1, page_size: 10 }),
     enabled: _hasHydrated && !!selectedWorkspaceId, // Wait for hydration
     staleTime: 30000,
+    // SPEC-100: soft refresh keeps prior activity feed
+    placeholderData: (previous) => previous,
   });
+  const coldDocs = isLoadingDocs && !documentsData;
 
   const recentDocuments = documentsData?.items || [];
 
@@ -173,8 +179,16 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold tracking-tight">
             {selectedWorkspace?.name ?? t('dashboard.title', 'Dashboard')}
           </h1>
+<<<<<<< HEAD
           <p className="text-sm text-muted-foreground">
             {isLoadingStats
+=======
+          <p
+            className="min-h-5 text-sm text-muted-foreground"
+            data-testid="spec100-dashboard-subtitle"
+          >
+            {coldStats
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
               ? t('common.loading', 'Loading...')
               : documentValue > 0
                 ? t(
@@ -196,7 +210,11 @@ export default function DashboardPage() {
             zeroHint={t('dashboard.stats.documentsZero', 'Upload documents to get started')}
             icon={FileText}
             variant="documents"
+<<<<<<< HEAD
             isLoading={isLoadingStats || !selectedWorkspaceId}
+=======
+            isLoading={coldStats || !selectedWorkspaceId}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             isStale={statsStale}
           />
           <StatsCard
@@ -206,7 +224,11 @@ export default function DashboardPage() {
             zeroHint={t('dashboard.stats.entitiesZero', 'Process documents to extract entities')}
             icon={Users}
             variant="entities"
+<<<<<<< HEAD
             isLoading={isLoadingStats || !selectedWorkspaceId}
+=======
+            isLoading={coldStats || !selectedWorkspaceId}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             isStale={statsStale}
           />
           <StatsCard
@@ -216,7 +238,11 @@ export default function DashboardPage() {
             zeroHint={t('dashboard.stats.relationshipsZero', 'Relationships appear after processing')}
             icon={GitBranch}
             variant="relationships"
+<<<<<<< HEAD
             isLoading={isLoadingStats || !selectedWorkspaceId}
+=======
+            isLoading={coldStats || !selectedWorkspaceId}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             isStale={statsStale}
           />
           <StatsCard
@@ -226,7 +252,11 @@ export default function DashboardPage() {
             zeroHint={t('dashboard.stats.chunksZero', 'Chunks are created during ingestion')}
             icon={Tags}
             variant="types"
+<<<<<<< HEAD
             isLoading={isLoadingStats || !selectedWorkspaceId}
+=======
+            isLoading={coldStats || !selectedWorkspaceId}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             isStale={statsStale}
           />
         </section>
@@ -241,7 +271,7 @@ export default function DashboardPage() {
           <div className="lg:col-span-2">
             <RecentActivity 
               documents={recentDocuments} 
-              isLoading={isLoadingDocs}
+              isLoading={coldDocs}
             />
           </div>
           <div>

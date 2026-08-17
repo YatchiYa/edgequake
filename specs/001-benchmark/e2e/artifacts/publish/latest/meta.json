@@ -1,10 +1,19 @@
 {
+<<<<<<< HEAD
   "created_at_utc": "2026-07-23T13:41:24Z",
   "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
   "valid": true,
   "verdict": "STATISTICAL TIE on answer quality",
   "git_sha": "fa62d6e7",
   "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T134124Z",
+=======
+  "created_at_utc": "2026-08-02T13:55:13Z",
+  "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
+  "valid": true,
+  "verdict": "STATISTICAL TIE on answer quality",
+  "git_sha": "b9f188de8",
+  "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260802T135513Z",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "task_name": "GraphRAG-Bench/EQ-vs-LR",
   "can_claim_beats_lightrag": false,
   "n_questions": 200,

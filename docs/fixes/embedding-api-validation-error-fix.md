@@ -4,7 +4,11 @@ title: 'Fix: Embedding API Validation Error'
 
 # Fix: Embedding API Validation Error
 
+<<<<<<< HEAD
 > **Historical document.** Incident note from **2026-02-10**. Current product is **v0.19.0**. Prefer [Troubleshooting](../troubleshooting/common-issues.md) and root [CHANGELOG](../../CHANGELOG.md) for living guidance. Not part of the living docs nav.
+=======
+> **Historical document.** Incident note from **2026-02-10**. Current product is **v0.23.0**. Prefer [Troubleshooting](../troubleshooting/common-issues.md) and root [CHANGELOG](../../CHANGELOG.md) for living guidance. Not part of the living docs nav.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 **Date**: 2026-02-10  
 **Issue**: Pipeline processing failed: Embedding error: API error: '$.input' is invalid  

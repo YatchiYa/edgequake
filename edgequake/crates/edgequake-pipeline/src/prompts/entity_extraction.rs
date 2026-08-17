@@ -105,7 +105,11 @@ You are a Knowledge Graph Specialist responsible for extracting entities and rel
             completion_delimiter = self.completion_delimiter,
             max_entity_records = super::ExtractionCaps::from_env().max_entities,
             max_total_records = super::ExtractionCaps::from_env().max_total_records,
+<<<<<<< HEAD
             examples = self.get_examples()
+=======
+            examples = self.get_examples(language)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         )
     }
 
@@ -183,7 +187,13 @@ Based on the last extraction task, identify and extract any **missed or incorrec
     }
 
     /// Get the few-shot examples for the prompt.
-    fn get_examples(&self) -> String {
+    ///
+    /// SPEC-096: omit English few-shots when language ≠ English so models
+    /// follow the target language instead of copying English exemplars.
+    fn get_examples(&self, language: &str) -> String {
+        if !language.eq_ignore_ascii_case("English") {
+            return String::new();
+        }
         format!(
             r#"
 Example 1:
@@ -290,5 +300,15 @@ mod tests {
         assert!(system.contains("Example 3:"));
         assert!(system.contains("Alex"));
         assert!(system.contains("Sarah Chen"));
+    }
+
+    #[test]
+    fn spec096_sota_omits_examples_non_english() {
+        let prompts = EntityExtractionPrompts::default();
+        let system = prompts.system_prompt(&schema(vec!["PERSON"]), "Chinese");
+        assert!(system.contains("written in `Chinese`"));
+        assert!(!system.contains("Example 1:"));
+        assert!(!system.contains("Sarah Chen"));
+        assert!(!system.contains("entity<|#|>Alex"));
     }
 }

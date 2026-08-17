@@ -9,11 +9,15 @@
 use edgequake_tasks::{
     Task, TaskStatus, WipeActivePolicy, WorkspaceWipePhase, WorkspaceWipeTaskData,
 };
+<<<<<<< HEAD
 use serde_json::Value;
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::{resolve_workspace_uuid, TenantContext};
+<<<<<<< HEAD
 use crate::services::document_metadata_scan::{
     document_id_from_metadata_key, load_scoped_document_metadata_entries,
 };
@@ -54,6 +58,12 @@ fn list_all_wipe_docs(scoped_entries: Vec<(String, Value)>) -> Vec<WipeDoc> {
     docs
 }
 
+=======
+use crate::services::document_metadata_scan::load_scoped_document_metadata_entries;
+use crate::services::document_task_cleanup::purge_workspace_tasks_except;
+use crate::state::AppState;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 async fn persist_wipe_checkpoint(
     state: &AppState,
     task: &mut Task,
@@ -97,7 +107,11 @@ async fn clear_graph_fail_closed(
 }
 
 async fn clear_vectors_fail_closed(state: &AppState, workspace_uuid: Uuid) -> ApiResult<usize> {
+<<<<<<< HEAD
     state
+=======
+    let legacy_n = state
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         .storage
         .vector_storage
         .clear_workspace(&workspace_uuid)
@@ -106,6 +120,7 @@ async fn clear_vectors_fail_closed(state: &AppState, workspace_uuid: Uuid) -> Ap
             ApiError::Internal(format!(
                 "workspace wipe vector clear failed (retryable): {e}"
             ))
+<<<<<<< HEAD
         })
 }
 
@@ -175,6 +190,68 @@ async fn purge_one_document_kv(
     }
 
     Ok(chunk_ids.len())
+=======
+        })?;
+
+    // SPEC-091: under typed authority, also clear typed SSOT (legacy clear is write-stopped).
+    let mut typed_n = 0usize;
+    #[cfg(feature = "postgres")]
+    if edgequake_storage::legacy_vector_writes_stopped() {
+        if let Some(ref pool) = state.pg_pool {
+            let model = std::env::var("EDGEQUAKE_EMBEDDING_MODEL")
+                .unwrap_or_else(|_| "text-embedding-3-small".to_string());
+            let chunk_index = edgequake_storage::PgChunkEmbeddingIndex::new(pool.clone(), &model);
+            let fleet = edgequake_storage::PgFleetEmbeddingIndex::new(pool.clone(), &model);
+            let ws = edgequake_storage::traits::domain::WorkspaceId(workspace_uuid);
+            use edgequake_storage::embedding_family::EmbeddingFamily;
+            use edgequake_storage::traits::domain::{EmbeddingIndex, FleetEmbeddingIndex};
+            typed_n += chunk_index.delete_for_workspace(ws).await.map_err(|e| {
+                ApiError::Internal(format!("wipe typed chunk_embeddings failed: {e}"))
+            })? as usize;
+            for family in [
+                EmbeddingFamily::Entity,
+                EmbeddingFamily::Relationship,
+                EmbeddingFamily::Report,
+            ] {
+                typed_n += fleet.delete_for_workspace(family, ws).await.map_err(|e| {
+                    ApiError::Internal(format!(
+                        "wipe typed fleet embeddings ({family:?}) failed: {e}"
+                    ))
+                })? as usize;
+            }
+        }
+    }
+
+    Ok(legacy_n.saturating_add(typed_n))
+}
+
+/// SPEC-091 RM1: set-based chunk delete for a workspace (O(1) SQL, not O(docs)).
+#[cfg(feature = "postgres")]
+async fn delete_chunks_for_workspace(
+    pool: Option<&sqlx::PgPool>,
+    workspace_uuid: Uuid,
+) -> ApiResult<u64> {
+    let Some(pool) = pool else {
+        return Ok(0);
+    };
+    let result = sqlx::query(
+        r#"
+        DELETE FROM public.chunks c
+        USING public.documents d
+        WHERE c.document_id = d.id
+          AND (
+            d.workspace_id = $1
+            OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $2)
+          )
+        "#,
+    )
+    .bind(workspace_uuid)
+    .bind(workspace_uuid.to_string())
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::Internal(format!("wipe typed chunks failed: {e}")))?;
+    Ok(result.rows_affected())
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// Execute (or resume) a durable workspace wipe from the task checkpoint.
@@ -242,6 +319,7 @@ pub async fn run_workspace_wipe_phases(
                     vectors_cleared = vectors,
                     "Workspace wipe cleared vectors once"
                 );
+<<<<<<< HEAD
                 data.phase = WorkspaceWipePhase::PurgingDocumentKv;
                 persist_wipe_checkpoint(state, task, &data).await?;
             }
@@ -291,21 +369,58 @@ pub async fn run_workspace_wipe_phases(
                 data.cursor_metadata_key = batch.last().map(|d| d.metadata_key.clone());
                 persist_wipe_checkpoint(state, task, &data).await?;
                 // Stay in PurgingDocumentKv until a batch returns empty.
+=======
+                // SPEC-091 RM1: skip O(docs) KV purge — typed set-delete in ClearingRelational.
+                data.cursor_metadata_key = None;
+                data.phase = WorkspaceWipePhase::ClearingRelational;
+                persist_wipe_checkpoint(state, task, &data).await?;
+            }
+            WorkspaceWipePhase::PurgingDocumentKv => {
+                // Legacy phase retained for in-flight wipe task checkpoints only.
+                // Post-125 / RM1: no per-doc KV loops — jump to set-based relational clear.
+                tracing::info!(
+                    workspace_id = %workspace_uuid,
+                    "SPEC-091 RM1: skipping PurgingDocumentKv (typed set-delete)"
+                );
+                data.cursor_metadata_key = None;
+                data.phase = WorkspaceWipePhase::ClearingRelational;
+                persist_wipe_checkpoint(state, task, &data).await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }
             WorkspaceWipePhase::ClearingRelational => {
                 #[cfg(feature = "postgres")]
                 {
+<<<<<<< HEAD
+=======
+                    // RM-AC-05: O(families) set deletes — chunks cascade via FK from documents.
+                    let chunks_deleted =
+                        delete_chunks_for_workspace(state.pg_pool.as_ref(), workspace_uuid).await?;
+                    data.total_chunks_deleted = data
+                        .total_chunks_deleted
+                        .saturating_add(chunks_deleted as usize);
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     let relational_deleted =
                         crate::document_read_model::delete_relational_documents_for_workspace(
                             state.pg_pool.as_ref(),
                             &tenant_ctx,
                         )
                         .await?;
+<<<<<<< HEAD
                     if relational_deleted > 0 {
                         tracing::info!(
                             workspace_id = %workspace_uuid,
                             relational_deleted,
                             "Workspace wipe cleared relational document rows"
+=======
+                    data.deleted_count = data.deleted_count.max(relational_deleted as usize);
+                    if relational_deleted > 0 || chunks_deleted > 0 {
+                        tracing::info!(
+                            workspace_id = %workspace_uuid,
+                            relational_deleted,
+                            chunks_deleted,
+                            "Workspace wipe cleared typed document/chunk rows (set-based)"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                         );
                     }
                 }
@@ -333,6 +448,31 @@ pub async fn count_planned_wipe_documents(
     state: &AppState,
     tenant_ctx: &TenantContext,
 ) -> ApiResult<usize> {
+<<<<<<< HEAD
+=======
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = state.pg_pool.as_ref() {
+        if let Some(ws) = tenant_ctx
+            .workspace_id
+            .as_ref()
+            .and_then(|w| Uuid::parse_str(w).ok())
+        {
+            let n: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*) FROM public.documents
+                WHERE workspace_id = $1
+                   OR (workspace_id IS NULL AND metadata->>'workspace_id' = $2)
+                "#,
+            )
+            .bind(ws)
+            .bind(ws.to_string())
+            .fetch_one(pool)
+            .await
+            .map_err(|e| ApiError::Internal(format!("count wipe documents: {e}")))?;
+            return Ok(n.max(0) as usize);
+        }
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let scoped =
         load_scoped_document_metadata_entries(state.storage.kv_storage.as_ref(), tenant_ctx)
             .await?;
@@ -384,6 +524,7 @@ pub fn wipe_is_active(status: TaskStatus) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+<<<<<<< HEAD
     use serde_json::json;
 
     #[test]
@@ -401,6 +542,8 @@ mod tests {
         let docs = list_all_wipe_docs(entries);
         assert_eq!(docs.len(), 2);
     }
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     #[test]
     fn new_wipe_starts_admitted() {

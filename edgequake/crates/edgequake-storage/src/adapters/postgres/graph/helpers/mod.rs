@@ -18,12 +18,28 @@ mod session;
 mod source_lineage_sql;
 mod vertex_filter;
 
+<<<<<<< HEAD
+=======
+pub(in crate::adapters::postgres::graph) use super::super::statement_timeout::{
+    graph_query_statement_timeout_ms, LocalTimeoutTx,
+};
+
+pub use super::super::statement_timeout::interactive_statement_timeout_ms;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub(in crate::adapters::postgres::graph) use eq_id_sql::{
     coalesce_endpoint, eq_id_fallback_env_enabled, prop_only_endpoint,
 };
 
 pub(in crate::adapters::postgres::graph) use source_lineage_sql::{
+<<<<<<< HEAD
     jsonb_matches_doc_source_prefix_legacy, normalize_doc_chunk_prefix, SOURCE_CHUNK_PROBE_LIMIT,
+=======
+    jsonb_matches_doc_source_prefix_legacy, normalize_doc_chunk_prefix, source_count_probe_limit,
+    source_ids_count_probes_cte_sql, source_ids_probes_cte_sql, SOURCE_CHUNK_PROBE_LIMIT,
+    SOURCE_COUNT_STATEMENT_TIMEOUT_MS, SOURCE_DISCOVERY_STATEMENT_TIMEOUT_MS,
+    SOURCE_PREFIX_BATCH_LIMIT, WORKSPACE_STATS_STATEMENT_TIMEOUT_MS,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 
 #[cfg(test)]

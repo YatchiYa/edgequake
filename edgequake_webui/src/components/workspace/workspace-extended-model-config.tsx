@@ -17,6 +17,11 @@ import {
   LLMModelSelector,
   type LLMSelection,
 } from "@/components/workspace/llm-model-selector";
+<<<<<<< HEAD
+=======
+import { useInheritedModelDefaults } from "@/hooks/use-inherited-model-defaults";
+import { useTenantStore } from "@/stores/use-tenant-store";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import type { Workspace } from "@/types";
 import { AlertTriangle, Eye, Gauge, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -42,6 +47,15 @@ export function WorkspaceExtendedModelConfig({
   visionLLMChanged,
 }: WorkspaceExtendedModelConfigProps) {
   const { t } = useTranslation();
+<<<<<<< HEAD
+=======
+  const tenantId = useTenantStore((s) => s.selectedTenantId);
+  const inherited = useInheritedModelDefaults(tenantId);
+  const visionDefaultId =
+    inherited.defaultVisionProvider && inherited.defaultVisionModel
+      ? `${inherited.defaultVisionProvider}/${inherited.defaultVisionModel}`
+      : undefined;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -80,6 +94,7 @@ export function WorkspaceExtendedModelConfig({
             </>
           ) : (
             <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+<<<<<<< HEAD
               <ProviderIcon providerId={workspace.vision_llm_provider} />
               <div>
                 <div className="font-medium">
@@ -96,6 +111,38 @@ export function WorkspaceExtendedModelConfig({
                   {`${workspace.vision_llm_provider}/${workspace.vision_llm_model}`}
                 </Badge>
               )}
+=======
+              <ProviderIcon
+                providerId={
+                  workspace.vision_llm_provider ||
+                  visionDefaultId?.split("/")[0]
+                }
+              />
+              <div>
+                <div className="font-medium">
+                  {workspace.vision_llm_model ||
+                    t("workspace.serverDefaultWithValue", "Server Default ({{value}})", {
+                      value:
+                        visionDefaultId ||
+                        t("workspace.notConfigured", "not configured"),
+                    })}
+                </div>
+                <div className="text-sm text-muted-foreground capitalize">
+                  {workspace.vision_llm_provider ||
+                    (visionDefaultId
+                      ? t("workspace.inheritedDefault", "Inherited default")
+                      : t("workspace.autoDetect", "Auto-detected"))}
+                </div>
+              </div>
+              {(workspace.vision_llm_provider && workspace.vision_llm_model) ||
+              visionDefaultId ? (
+                <Badge variant="outline" className="ml-auto font-mono text-xs">
+                  {workspace.vision_llm_provider && workspace.vision_llm_model
+                    ? `${workspace.vision_llm_provider}/${workspace.vision_llm_model}`
+                    : visionDefaultId}
+                </Badge>
+              ) : null}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             </div>
           )}
         </CardContent>

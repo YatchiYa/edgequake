@@ -143,8 +143,15 @@ pub async fn put_injection_file(
     state
         .storage
         .kv_storage
+<<<<<<< HEAD
         .upsert(&[(meta_key.clone(), meta)])
         .await?;
+=======
+        .upsert(&[(meta_key.clone(), meta.clone())])
+        .await?;
+    // SPEC-091 Wave B6: typed dual-write (warn-only).
+    crate::services::injection_relational::typed_injection_upsert(&meta).await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     info!(
         workspace_id = %workspace_id,

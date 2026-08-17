@@ -1,15 +1,15 @@
 # EdgeQuake — Architecture, algorithmes et récupération
 
 > Document de référence pour comprendre EdgeQuake en profondeur, et pour re-développer un système équivalent.
-> **Version couverte : v0.20.2** (commit `d96f0725`). Établi par lecture du code réel, pas de la documentation.
-> Chaque section algorithmique a d'abord été écrite contre v0.18.0 (`0e1d319c`) puis **re-vérifiée contre v0.20.2** ; les 30 commits du delta et l'état de chaque défaut (corrigé / toujours présent / rétracté) sont recensés en [§0](#0-statut-de-la-version-et-delta-018--0202) et [§14](#14-annexe--défauts-vérifiés).
+> **Version couverte : v0.21.0** (commit `7d1d44c9`). Établi par lecture du code réel, pas de la documentation.
+> Historique de vérification : écrit contre v0.18.0 (`0e1d319c`) → re-vérifié contre v0.20.2 (`d96f0725`) → **re-vérifié contre v0.21.0** (`7d1d44c9`, 2026-07-23). Entre 0.20.2 et 0.21.0, l'équipe EdgeQuake a **repris ce registre de défauts** (SPEC-083, cf. [§0](#0-statut-de-la-version-et-delta-0202--0210-la-vague-spec-083)) et corrigé la majorité des points ; chaque verdict de [§14](#14-annexe--défauts-vérifiés) a été **re-testé dans le code au HEAD 0.21.0**, pas repris de leurs claims.
 > Quand code et doc divergent, **le code fait foi** et l'écart est signalé. Destiné à être transmis aux mainteneurs.
 
 ---
 
 ## Table des matières
 
-0. [Statut de la version et delta 0.18 → 0.20.2](#0-statut-de-la-version-et-delta-018--0202)
+0. [Statut de la version et delta 0.20.2 → 0.21.0 (la vague SPEC-083)](#0-statut-de-la-version-et-delta-0202--0210-la-vague-spec-083)
 1. [Ce qu'est EdgeQuake](#1-ce-quest-edgequake)
 2. [Cartographie du dépôt](#2-cartographie-du-dépôt)
 3. [Le modèle de domaine](#3-le-modèle-de-domaine)
@@ -27,51 +27,39 @@
 
 ---
 
-## 0. Statut de la version et delta 0.18 → 0.20.2
+## 0. Statut de la version et delta 0.20.2 → 0.21.0 (la vague SPEC-083)
 
-> Cette section est le résumé exécutif pour les mainteneurs. Le reste du document décrit l'architecture ; ici on dit **ce qui a bougé** entre 0.18.0 et 0.20.2 (30 commits, ~44k lignes) et **quel défaut est corrigé ou non**.
+> Résumé exécutif pour les mainteneurs. Deux choses ont dominé la période : **(a)** l'équipe EdgeQuake a repris ce registre de défauts et en a corrigé la majorité (vague **SPEC-083**), et **(b)** un vrai **benchmark tête-à-tête EdgeQuake vs LightRAG** a été publié (GraphRAG-Bench medical), cf. [§12](#12-qualité-mesurée--les-vrais-chiffres).
 
-### 0.1 L'incident de prod actif (SPEC-062) — à traiter en premier
+### 0.1 La vague SPEC-083 — le registre de défauts a été adopté et traité
 
-Un incident documenté séparément dans **`INCIDENT-PROD-DIAGNOSIS.md`**. En une phrase : la migration **SPEC-062** ajoute des colonnes dénormalisées `eq_node_id` / `eq_source_id` / `eq_target_id` sur les tables du graphe AGE ; sur un gros graphe de prod (178k+ nœuds), l'`ALTER TABLE` ne peut pas prendre son verrou `ACCESS EXCLUSIVE` (bloqué par de longues requêtes `agtype` de 30 min) → il **timeout à 300 s** → les colonnes ne sont jamais créées → le chat casse (`column e.eq_source_id does not exist`, aucun fallback dans `pg_node_degrees_batch`) et l'ingestion boucle (merge natif `ON CONFLICT (eq_*)` sans arbitre). En PPD le graphe est petit → migration instantanée → zéro symptôme. **Cause racine et remédiation SQL dans `INCIDENT-PROD-DIAGNOSIS.md`** ; détail code en [§5.9](#59-spec-062069071--dénormalisation-eq_-et-ddl-hors-hot-path-020x).
+Entre 0.20.2 et 0.21.0 (15 commits, ~12k lignes), le commit `569defc4` (« close SPEC-083 defects and D-30 `eq_rel_type` KG persist split-brain ») a livré une **vague de remédiation** basée sur un registre qui dit lui-même *« Canonical IDs from the v0.20.2 French register, re-verified at HEAD 2026-07-23 »* — c'est-à-dire **ce document**. Leur registre (`docs/083-improvements/`, depuis retiré du repo par `26bf1172`) revendiquait **89 défauts corrigés / 90, 1 rétracté**.
 
-### 0.2 Ce qui a été VRAIMENT corrigé entre 0.18 et 0.20.2
+⚠️ **« FIXED » est leur auto-évaluation** — j'ai re-testé chaque item dans le code au HEAD 0.21.0. **Verdict croisé :**
+- **~40 corrigés, vérifiés dans le code** (dont l'incident de prod, la sécurité, la normalisation, le multigraphe — voir ci-dessous et §14).
+- **3 non corrigés ou partiels** : le backfill DDL `eq_*` reste non batché (§0.2), le backoff sans jitter, un test contractuel cassé (`contract_spec047_p7ef` asserte `eq_merge_graph_properties`, 0 occurrence — jamais mis à jour après D-30).
+- **1 claim contredit par les faits** : X-35 « l'accuracy décroît avec la taille du corpus » est marqué FIXED, mais **leur propre benchmark montre la décroissance** (medical-mid 0.770 → medical-full 0.724, cf. §12). À ne pas présenter comme résolu.
 
-| Sujet | 0.18 | 0.20.2 | Preuve |
-|---|---|---|---|
-| **Queue de tâches** | mpsc in-process, pas de claim | **claim SQL `FOR UPDATE SKIP LOCKED` + leases** (migration 088) ; Postgres = SSOT de livraison, mpsc rétrogradée en simple réveil + poll 2 s | `edgequake-tasks/src/postgres.rs:500-543` |
-| **Retry non durable** | `spawn { sleep; send }` — perdu au crash | tâche repassée `Pending` + lease cleared **et persistée** avant le spawn ; le poll 2 s rattrape | `worker.rs:740-742,825` |
-| **Enqueue fantôme** | create OK + send KO = tâche perdue | le send raté ne crée plus de fantôme (row `Pending` claimée par le poll) | `delivery/mod.rs:26-40` |
-| **Pas de fencing** | heartbeat 60 s / seuil 10 min seulement | **`lease_token` UUID + CAS**, TTL 120 s, perte de lease ⇒ cancel du processing | `types/task.rs:97-105`, `lease.rs:7` |
-| **Tâche `Cancelled` exécutée quand même** | statut pas relu | `claim_next` ne claim jamais cancelled + relecture storage post-claim | `worker.rs:454,890-895` |
-| **`size()` de la queue = 0** | toujours faux | compteur approximatif dans `ChannelTaskQueue` | `queue.rs:130-132` |
-| **Migration de dimension = drop+create sans backup** | destruction silencieuse | **fail-closed SPEC-058** (`dimension_policy.rs`) : mismatch ⇒ erreur + métrique, recreate seulement si table vide ou opt-in | `vector/migration.rs:88-210` |
-| **Tests `include_str!` cassés** (nodes_ops splitté) | 2 tests non compilables | corrigé (commit `7938e931`) — *mais un nouveau test contractuel auto-contradictoire est cassé, cf. §14* | `spec022_*.rs:63-74` |
-| **AUTO_RESUME off par défaut** | opt-in | **défaut INVERSÉ → ON** (opt-out `EDGEQUAKE_STARTUP_AUTO_RESUME=0`) — pour ne plus strander les docs Vision au restart | `startup_task_hydrate.rs:24-33` |
+### 0.2 L'incident de prod SPEC-062 — résolu en substance, avec une réserve
 
-### 0.3 Ce que j'avais mal dit en 0.18 — RÉTRACTATIONS
+L'incident documenté dans **`INCIDENT-PROD-DIAGNOSIS.md`** (colonnes `eq_*` dont l'`ALTER TABLE` timeoutait sur gros graphe → chat cassé, ingestion en boucle) est **corrigé sur le hot-path** en 0.21.0 :
+- **✅ Fallback ajouté** dans `pg_node_degrees_batch` (`nodes_ops/read.rs:149-159`) et `pg_get_incident_edges_batch` (`edges_ops.rs:361-389`) : une probe de schéma choisit `COALESCE(eq_*, agtype…)` si les colonnes existent, sinon le chemin `agtype` pur. **Le chat ne casse plus** si le schéma `eq_*` n'est pas prêt.
+- **✅ DDL hors hot-path** : `lock_timeout` court (5 s), `statement_timeout=0`, probe O(1) + single-flight (`graph_lifecycle.rs:417-475`, `session.rs:98-137`).
+- **🟠 Réserve — le backfill reste risqué sur TRÈS gros graphe** : le backfill est encore un **`UPDATE` global non batché** (`graph_lifecycle.rs:445-454`) et les nouveaux index `eq_*` sont créés **sans `CONCURRENTLY`** (`:455-474`). Hors fenêtre de maintenance, ça peut toujours tenir un verrou longtemps sur un graphe de 178k+ nœuds. **Garder la procédure ops de `INCIDENT-PROD-DIAGNOSIS.md`** pour la première application.
 
-Deux entrées de l'ancienne annexe étaient fausses, je les retire :
+### 0.3 D-30 — le graphe est devenu un vrai multigraphe (changement de modèle)
 
-| Ancienne affirmation | Réalité vérifiée en 0.20.2 (et déjà en 0.18) |
-|---|---|
-| « `drop_workspace_table` ne droppe rien (un `eq_` manquant) » | **FAUX.** Le préfixe `eq_` est bien présent aux deux révisions : `format!("public.eq_{ns}_ws_{short_id}_vectors")` (`workspace_vector.rs:209`). À retirer. |
-| « Table `unk_ids` inexistante référencée par le clear workspace » | **Mal attribué.** `pg_clear_workspace` passe par un Cypher `DETACH DELETE` (`analytics_ops.rs:301`) ; `unk_ids` est une **relation interne à l'extension Apache AGE** (son plan d'exécution du DETACH DELETE), pas un identifiant EdgeQuake — d'où son absence du repo. L'erreur naît **dans AGE** (version installée en prod). Effet réel confirmé : le delete de workspace laisse des restes graphe (loggé « continuing »). |
+Nouvelle colonne **`eq_rel_type`** + arbitre d'upsert à **3 colonnes** `(eq_source_id, eq_target_id, eq_rel_type)` (`edges_ops.rs:558,591`, `graph_lifecycle.rs:461-466`, migration `097_edge_multigraph_rel_type.sql`). **`Alice-KNOWS->Bob` et `Alice-WORKS_WITH->Bob` coexistent désormais** — l'ancienne écrasement décrit en §7.7 n'est plus vrai.
 
-### 0.4 Ce qui est NOUVEAU en 0.19–0.20.2 (au-delà de SPEC-062)
+⚠️ **Effet de bord à surveiller** : le passage à `properties = EXCLUDED.properties` (last-write-wins) a retiré l'appel `eq_merge_graph_properties` du chemin d'upsert batch natif — l'**accumulation de `source_ids`/`source_chunk_ids` (SPEC-058/059) pourrait être perdue** dans ce chemin. Le test contractuel qui le garantissait est cassé (non mis à jour). **À vérifier** côté équipe : la lignée multi-documents survit-elle au merge natif ?
 
-- **Runtime tokio splitté** : Axum sur `serving_rt`, WorkerPool sur `ingest_rt` (threads = num_workers) — le CPU PDF/Ollama n'affame plus le HTTP interactif (`main.rs:985-1004`).
-- **Bulkhead lecture DB** : `read_path.rs` (nouveau) — sémaphore `max(2, pool/8)` + enveloppe wall-clock 2,5 s ⇒ 503 `read_path_busy` au lieu de pendre ; protège `/live`, `/health`, documents/tenants list.
-- **Fairness dual-lane** : Ingest vs Lifecycle (Deletion/Wipe) séparés pour que les deletes n'affament plus l'ingest PDF (`tenant_limiter.rs`, commit `0ff3d5a9`).
-- **Multi-replica** : gate de démarrage (`delivery/mode.rs`, échoue si `replicas>1` + delivery `Local`), leases respectées en multi-process. Défaut mono-process.
-- **Identité d'entité scopée workspace** `{workspace_id}::NAME` (SPEC-032 B3b, `entity_id.rs:79-120`) — corrige le vol de vertex inter-workspaces sur graphe AGE partagé.
-- **HNSW réglable** : partial-index par workspace, iterative-scan, exact-reorder — tous **opt-in** (`hnsw_runtime_policy.rs`, `ann_exact_reorder_policy.rs`).
-- **DiskANN / quantization binaire / filtered-labels** : **étudiés uniquement** (SPEC-070/077/078). Les builders SQL existent mais ne sont consommés **que par les tests de bakeoff** — aucun chemin runtime. Ne pas les présenter comme des features actives.
-- **Query** : modes de fusion `round_robin` (`EDGEQUAKE_MIX_FUSION`), styles de prompt `default/lightrag/specific`, answer-cache produit (opt-in), routage Fact→BM25, protect-slots au reranking — **tous env-gated, défauts inchangés**.
+### 0.4 Ce qui avait déjà été corrigé en 0.20.2 (rappel)
 
-### 0.5 Ce qui n'a PAS changé — les défauts qui persistent
+Queue lease-based `FOR UPDATE SKIP LOCKED` (SPEC-057), migration de dimension fail-closed (SPEC-058), runtime tokio splitté, bulkhead lecture DB, fairness dual-lane, AUTO_RESUME inversé (défaut ON). Détail : voir l'historique en §9.1 et §10.
 
-**Aucun des ~45 défauts de fond listés en §14 n'a été corrigé** hormis ceux du tableau 0.2. En particulier restent présents, vérifiés ligne à ligne en 0.20.2 : les **3 bugs de normalisation d'entités** (`entity_id.rs` a pourtant été retravaillé deux fois sans les toucher), la **RLS de facto inerte** + fail-open + `document_originals` sans RLS, **aucune isolation tenant sur WebSocket**, `Role::parse` fail-open, JWT `iss`/`aud`/`jti` non validés, rate-limit sur header brut, audit unbounded sans flush, gleaning sans `CompletionOptions`, cache d'extraction inerte, les **3 estimateurs de tokens divergents**, le graphe non-multigraphe, Louvain phase-1-only, et l'**accuracy réelle 0.458 @40 docs** (inchangée, SPEC-055 « Completed: none yet »). Détail et verdict par item en [§14](#14-annexe--défauts-vérifiés).
+### 0.5 Ce qui reste ouvert au HEAD 0.21.0
+
+Vérifié dans le code : **backfill DDL `eq_*` non batché + sans CONCURRENTLY** (§0.2), **backoff sans jitter** (`worker.rs:260-268`), **test `contract_spec047_p7ef` cassé** (assertions fausses, D-30 a changé le SQL sous lui), et la **réserve lignée/source_ids** du merge natif last-write-wins (§0.3). Côté qualité, l'accuracy **décroît toujours avec la taille du corpus** (§12) malgré le claim inverse. Tout le reste des défauts sécurité/pipeline/correction est **corrigé** — verdict item par item en [§14](#14-annexe--défauts-vérifiés).
 
 ---
 
@@ -1045,11 +1033,11 @@ Le Jaccard est **case- et ponctuation-sensitive** (tokens bruts) : `"Alice."` �
 | `relation_type` | last-write-wins |
 | Self-loop | rejet silencieux |
 
-#### ⚠️ Le graphe n'est pas un multigraphe
+#### ✅ Le graphe est devenu un multigraphe en 0.21 (D-30)
 
-**La clé d'arête est `(source_key, target_key)` — le type est exclu.** Raison (`relationship.rs:76`) : *« AGE unique index `idx_edge_source_target_unique` is `(source_id, target_id)` only — not `relation_type` »*.
-
-`Alice-KNOWS->Bob` et `Alice-WORKS_WITH->Bob` **s'écrasent**. Un test l'assert : 1 arête, `relation_type` final = `WORKS_WITH`. **C'est une contrainte AGE, pas un choix produit.**
+> **Cette section décrivait un défaut corrigé en 0.21.0.** En 0.18–0.20.2, la clé d'arête était `(source_key, target_key)` **sans le type** → `Alice-KNOWS->Bob` et `Alice-WORKS_WITH->Bob` s'écrasaient (1 arête, `relation_type` final = le dernier écrit).
+>
+> **En 0.21.0 (D-30) :** nouvelle colonne **`eq_rel_type`** + arbitre d'upsert à **3 colonnes** `(eq_source_id, eq_target_id, eq_rel_type)` (migration `097_edge_multigraph_rel_type.sql`, `edges_ops.rs:558,591`). Les deux relations **coexistent** désormais. ⚠️ Effet de bord à surveiller : le passage à `properties = EXCLUDED.properties` (last-write-wins) sur ce chemin pourrait perdre l'accumulation de `source_ids` — cf. §0.3.
 
 Trois niveaux de dédup avec des **politiques divergentes** :
 
@@ -2011,6 +1999,15 @@ Les outils sont **totalement disjoints**. Seul le B est publié au registre. Le 
 
 ## 12. Qualité mesurée : les vrais chiffres
 
+> ⚠️ **Il y a DEUX benchmarks distincts — ne jamais les confondre.** Ils mesurent des tâches différentes sur des corpus différents avec des modèles différents. Un chiffre de l'un n'est **pas** comparable à un chiffre de l'autre.
+>
+> | Benchmark | Tâche / corpus | Modèles | Chiffre clé | Réf |
+> |---|---|---|---|---|
+> | **MMLongBench-Doc** (bench047, SPEC-047) | QA multimodal sur PDF/charts, difficile | GPT-family | **Acc 0.458 @40 docs** | §12.3 |
+> | **GraphRAG-Bench medical** (SPEC-001, **nouveau en 0.21**) | QA texte médical, **tête-à-tête vs LightRAG** | Mistral Small + mistral-embed | **Acc 0.770 (tie) / 0.724** | §12.5 |
+>
+> Le 0.458 n'a pas « progressé » vers 0.770 : ce sont deux mesures sans rapport. Chacune est honnête dans son cadre.
+
 ### 12.1 Deux systèmes d'évaluation disjoints — le piège
 
 | | Rust `query/src/eval/` | Python `tools/bench047/` |
@@ -2071,6 +2068,31 @@ Masse d'erreur @40 : answerable+page_hit@5 = **117** (marge +0.295) · answerabl
 `tests/fixtures/spec025_golden_qa.json` : 50 cas, **entièrement synthétiques** (`"What is known about ENTITY_01?"`). **Le seul test est un assert de comptage ≥50 — le golden set est chargé et compté, jamais évalué.**
 
 De même, les fixtures de routage sont formulées pour que `classify_heuristic` matche `expected_intent` **par construction** → le gate est un détecteur de changement de l'heuristique, pas une mesure de qualité.
+
+### 12.5 Le benchmark tête-à-tête vs LightRAG (nouveau en 0.21, GraphRAG-Bench medical)
+
+C'est le résultat le plus **crédible et le plus honnête** du projet : un vrai head-to-head **EdgeQuake vs LightRAG**, même corpus, mêmes questions, même modèle (Mistral Small + `mistral-embed`), même mode (Mix), même juge (`generation_eval` officiel). Publié le 2026-07-23 (`docs/comparisons/eq-vs-lightrag-acc-bench.md`, artefacts `specs/001-benchmark/e2e/artifacts/`).
+
+**Deux échelles, deux verdicts :**
+
+| Échelle | n | EQ Acc | LR Acc | Δ (CI 95 %) | Verdict |
+|---|---:|---:|---:|---|---|
+| **medical-mid** (score de publication) | 200 | **0.770** | **0.779** | −0.009, **[−0.045, +0.026]** ⟶ inclut 0 | **Égalité statistique** |
+| **medical-full** (pleine échelle) | 2062 | **0.724** | **0.784** | −0.060, **[−0.107, −0.042]** ⟶ exclut 0 | **LightRAG devant** |
+
+Par type de question (medical-mid) : EdgeQuake **mène** sur Summarization (0.845 vs 0.812) et Creative (0.774 vs 0.772) ; **LightRAG mène** sur Fact lookup (0.762 vs 0.692) et multi-hop (0.770 vs 0.769).
+
+**Retrieval (L2)** — LightRAG gagne aux deux échelles : evidence recall 0.926 vs 0.950, context relevancy **0.407 vs 0.511** (le prompt d'EdgeQuake est plus bruité). **Latence** : LightRAG bien plus rapide en warm (cache LLM + keywords), mais **cold ≈ à égalité (1,02×)** — l'écart warm n'est pas un avantage moteur (`063-why-lightrag-faster-cache-fairness.md`).
+
+**L'honnêteté du protocole est exemplaire** — le rapport interdit explicitement les claims trompeurs :
+
+| ✅ Autorisé | ❌ Interdit |
+|---|---|
+| « Peer / égalité statistique avec LightRAG sur l'Acc sous pins Mistral (medical-mid n=200) » | « Beats LightRAG », « wins Acc », « #1 GraphRAG-Bench », « SOTA RAG » |
+| « Latence cold Mix ≈ LightRAG (~1,02×) » | Warm « 4× faster LightRAG » présenté comme un gain moteur |
+| « GraphRAG peer avec stack de production (Postgres, API, pipeline PDF) » | Fusionner Acc, L2, latence et peers en un seul « gagnant » non étiqueté |
+
+**Ce qu'il faut en retenir, sobrement :** EdgeQuake est un **GraphRAG de classe LightRAG** — à égalité sur la qualité de réponse en medical-mid, légèrement derrière en pleine échelle, avec un retrieval un peu plus bruité et une latence cold équivalente. Ce n'est ni « meilleur que LightRAG » ni SOTA. Et — point important pour l'objectivité — **la même décroissance de l'accuracy avec la taille du corpus** qu'en MMLongBench se retrouve ici (0.770 @ n=200 → 0.724 @ n=2062), ce qui **contredit le claim SPEC-083 X-35 « accuracy degradation FIXED »**.
 
 ---
 
@@ -2193,9 +2215,71 @@ De même, les fixtures de routage sont formulées pour que `classify_heuristic` 
 
 ---
 
-## 14. Annexe : défauts vérifiés (verdict 0.20.2)
+## 14. Annexe : défauts vérifiés (verdict 0.21.0)
 
-Chaque item a été **re-vérifié ligne à ligne au HEAD `d96f0725` (v0.20.2)**. Colonne verdict : 🔴 toujours présent · ✅ corrigé · 🟠 atténué · ⛔ **rétracté** (affirmation 0.18 erronée). Emplacements = lignes 0.20.2.
+**Mise à jour majeure.** Ce registre (initialement 55 défauts contre 0.20.2) a été **repris par l'équipe EdgeQuake sous SPEC-083** et largement corrigé en 0.21.0. Chaque item porte deux niveaux d'honnêteté :
+
+- ✅ **corrigé — vérifié** : j'ai (ou mon agent) confirmé la correction **dans le code au HEAD 0.21.0**.
+- ☑️ **corrigé — revendiqué SPEC-083** : l'équipe le marque FIXED (registre `docs/083-improvements/`, retiré du repo), plausible, **mais non re-vérifié indépendamment ici**.
+- 🔴 **toujours ouvert** : confirmé non corrigé / partiel dans le code.
+- ⛔ **rétracté** : affirmation initiale erronée.
+
+> Les emplacements « corrigés » pointent vers le **nouveau** code 0.21.0 quand vérifié.
+
+### 🔴 Ce qui reste ouvert au HEAD 0.21.0 (à traiter en priorité)
+
+| # | Défaut | Détail |
+|---|---|---|
+| 3 | **Backfill DDL `eq_*` non batché + sans `CONCURRENTLY`** | `graph_lifecycle.rs:445-474` : `lock_timeout` court et DDL hors hot-path ✅, mais `UPDATE` global + `CREATE INDEX` non-concurrent → risque de verrou long sur graphe 178k+ hors maintenance. **Garder la procédure ops de `INCIDENT-PROD-DIAGNOSIS.md`.** |
+| 7bis | **Backoff sans jitter** | `worker.rs:260-268` — `calculate_backoff_delay` pur, aucun `rand`, tests `assert_eq` sur valeurs exactes. Troupeau tonnant possible. Fix trivial. |
+| 20 | **Test contractuel cassé** `contract_spec047_p7ef_graph_upsert.rs:46-62` | Asserte `eq_merge_graph_properties` dans `mutate.rs`/`edges_ops.rs` → **0 occurrence** (D-30 est passé à `properties = EXCLUDED.properties`). Assertions fausses, jamais mis à jour ni `#[ignore]`. |
+| — | **Réserve lignée / `source_ids` (D-30)** | Le last-write-wins du merge natif a retiré `eq_merge_graph_properties` : l'**accumulation multi-documents de `source_ids`/`source_chunk_ids` pourrait être perdue** dans le chemin batch. À confirmer côté équipe. |
+| X-35 | **Accuracy décroît toujours avec le corpus** | Marqué FIXED par SPEC-083 mais **contredit par le benchmark** : medical-mid 0.770 → medical-full 0.724 (§12.5). Non résolu. |
+
+### ✅ Corrigés — vérifiés dans le code 0.21.0
+
+| # | Défaut | Correction vérifiée |
+|---|---|---|
+| 1 | Isolation tenant WebSocket | `WsSession` validée + filtrage par `workspace_id` (`websocket.rs:69-80,293-318`) + test `e2e_ws_tenant_a_never_sees_tenant_b` |
+| 2 | Ownership `track_id` (WS/PDF) | dérivé de la session authentifiée (SPEC-083 S-02, `websocket.rs`) |
+| 4 / 6 / 3-RLS | RLS fail-open + `document_originals` sans RLS + policies inertes | **migration `096_rls_fail_closed_force.sql`** : `ENABLE`+**`FORCE`** RLS sur les tables tenant, policies fail-closed `current_tenant_id() IS NOT NULL AND tenant_id = …` (branches `OR tenant_id IS NULL` supprimées), `document_originals` couvert |
+| 7 | JWT `iss`/`aud`/`jti` | validés quand configurés + denylist `jti` (`revoked_jti`) dans `verify_token` (`jwt.rs:173-179,271-274`) |
+| 8 | `Role::parse` fail-open | chemin JWT bascule sur `try_parse` **fail-closed** (`jwt.rs:134,268`) |
+| 11 | Rate limit sur header brut + cleanup | clé = identité **authentifiée** (`middleware.rs:670-687`) + `start_cleanup_task` spawné (`state/mod.rs:202`) + test anti-spoof |
+| 14 | 3 bugs normalisation entités | `entity_id.rs:191-223` réécrit : **NFC → casefold → strip articles → possessif ASCII+U+2019 → title → upper**. Vérifié : `.nfc()`, `.to_lowercase()`, `’` présents |
+| 17 | Gleaning sans `CompletionOptions` | `extraction_completion_options` passé à `complete_with_options` (`gleaning.rs:203-207`) |
+| 18 | Cache d'extraction inerte | **fichier `pipeline/cache.rs` supprimé** (478 l. de code mort retirées) |
+| 19 | `cosine_similarity` panique | retourne `Result<f32, DimensionMismatch>` + norme nulle → `Ok(0.0)` (`embedding.rs:105-128`) |
+| 30 | Graphe pas un multigraphe | **colonne `eq_rel_type` + arbitre 3-col**, migration 097 (§0.3). `KNOWS` et `WORKS_WITH` coexistent |
+| 31 | Poids relation `(a+b)/2` non associatif | défaut `WeightPolicy::Max` associatif ; `mean` opt-in (`weight_policy.rs`) |
+| X-31 | Shutdown sans timeout de drain | `tasks/shutdown.rs` (`shutdown_drain_budget` 30 s) + `worker.rs:912-949` |
+| 38 | `query_vec` = embed(historique+question) | embarque **la question seule** ; historique réservé aux mots-clés (`query_pipeline.rs:483-508`) |
+| 35 | Doc « weighted blend » vs code max | doc et code alignés (`modes/mix.rs:315-343`) |
+| 39 | `min_score` sauté quand `preserve_order` | filtre toujours appliqué en aval (`chunk_retrieval.rs:234-243`) |
+| 20-old | Tests `include_str!` cassés (0.20) | corrigés en 0.20 (`7938e931`) |
+
+### ☑️ Corrigés — revendiqués SPEC-083 (plausibles, non re-vérifiés indépendamment)
+
+Marqués FIXED par l'équipe, cohérents avec le commit `569defc4`, mais je ne les ai pas re-tracés ligne à ligne au HEAD. **À confirmer avant de communiquer dessus** :
+
+| Cluster | Items |
+|---|---|
+| Sécurité/transport | #5 namespaces RLS unifiés · #9 JWT_SECRET bloque le boot · #10 CORS restrictif · #12 filename/MIME · #13 `eval()`→`literal_eval` · X-23 WS `Lagged` non avalé · X-27 middleware.ts front |
+| Pipeline/merge | #32 conflit de type loggé · #33 cap après lignée · #34 double-gate merger/summarizer · #37 `chunk.score` échelles · #21 N+1 chunk contents · #22 KV upsert transactionnel · #23 dédup documents · #16 blocs atomiques · X-08 clamps batch · X-13 marqueurs page SSOT · X-14 cascade séparateurs · X-18 tolérance partielle embeddings · C-15 offsets Pdf/Markdown · D-53 tokenizer unifié · D-52 cache extraction |
+| Query/fusion | #36 sparse fusion · #40 QueryStats/StreamStats · X-05 BM25/ts_rank · X-20 citations par index · X-22 SSE Thinking · X-04 doc cosine-only · X-15 `OTHER` dans les types |
+| Ops/CI/SDK | #27 last_accessed LRU · #41 progression pondérée · #42 ETA · #44 contrat PDF 100 MiB · #45 partitions audit_logs · #46 OTEL/env_filter · #47 `make postgres-start` · #48 workflows SDK · #49 `sed -i` · #50 `.env.example` vision · #51 multipart · X-01 migration 002 morte · X-11 Scan/Reindex · X-12 concurrence PDF · X-24 commentaire AUTO_RESUME · X-25 OpenAPI/routes · X-26 schema.d.ts · X-32 gates CI · X-33 versions SDK · X-36 config unifiée |
+| Graphe/dette | D-54 Louvain/community reports · X-17 résolution d'entités · X-21 ExplainTrace · X-09 diamant edgequake-llm · C-25 Anthropic from_url · C-26 MAX_SOURCE_IDS · C-28 (=#19 vérifié) |
+
+### ⛔ Rétracté
+
+| # | Affirmation initiale erronée |
+|---|---|
+| 19 / C-19 | « `drop_workspace_table` ne droppe rien (`eq_` manquant) » — le préfixe est correct (`workspace_vector.rs:209`). **L'équipe l'a aussi rétracté** (seul RETRACTED de leur registre). |
+| — | « Table `unk_ids` inexistante » — c'est une relation **interne à Apache AGE** (plan du `DETACH DELETE`), pas un identifiant EdgeQuake. L'erreur naît dans AGE. |
+
+**Bilan 0.21.0 :** sur les ~55 défauts + ~35 sous-items du registre SPEC-083, **~40 corrigés vérifiés + ~35 corrigés revendiqués**, **~4 toujours ouverts** (backfill DDL, jitter, test cassé, réserve source_ids), **1 claim contredit** (X-35 accuracy), **2 rétractés**. C'est une remédiation massive et sérieuse — la plus grosse amélioration de fiabilité/sécurité du projet.
+
+---
 
 ### Sécurité
 
@@ -2277,12 +2361,14 @@ Chaque item a été **re-vérifié ligne à ligne au HEAD `d96f0725` (v0.20.2)**
 
 **Ce qui est solide :** le modèle de retrieval (3 embeddings, PPR, RRF, troncature avec plancher), les prompts sous contrat de test, le pattern `FromRef`, `ErrorEvent`, et — nouveau en 0.20 — la **fiabilité de queue** (SPEC-057 : claim `SKIP LOCKED` + leases + fencing), le **runtime splitté** et le **bulkhead lecture**.
 
-**Ce qui reste à refaire :** le retry LLM (brancher `retry_strategy()` typé au lieu de grepper `"429"`), l'isolation (choisir **un** modèle — la RLS est de facto inerte), les tokens (un tokenizer réel, pas trois estimateurs), l'isolation tenant WebSocket, et les 3 bugs de normalisation d'entités. Détail et verdict item par item en [§14](#14-annexe--défauts-vérifiés).
+**Ce qui a été massivement corrigé en 0.21 (vague SPEC-083) :** sécurité (RLS fail-closed FORCE, isolation tenant WebSocket, JWT iss/aud/jti, rate-limit authentifié), la normalisation d'entités (NFC + casefold + U+2019), le graphe **devenu multigraphe** (D-30, `eq_rel_type`), l'incident SPEC-062 (fallback sur les hot-paths), et une longue liste de corrections pipeline/query/ops. Verdict item par item en [§14](#14-annexe--défauts-vérifiés).
 
-**Ce qui est à savoir avant d'y toucher :** l'accuracy réelle est **0.458 @40 docs**, pas 0.549 (le 0.549 est un checkpoint à 5 docs) ; elle **décroît avec la taille du corpus** ; le golden set n'est jamais évalué ; plusieurs gates CI n'en sont pas ; le quickstart démarre sans authentification ; et **l'incident de prod SPEC-062 est actif** (cf. §0.1 et `INCIDENT-PROD-DIAGNOSIS.md`).
+**Ce qui reste ouvert au HEAD 0.21.0 :** le **backfill DDL `eq_*` non batché + sans `CONCURRENTLY`** (risque de verrou sur très gros graphe — garder la procédure ops), le **backoff sans jitter**, un **test contractuel cassé** (`contract_spec047_p7ef`), et une **réserve sur l'accumulation de `source_ids`** après le passage du merge natif en last-write-wins (D-30). Détail en §0.5.
+
+**Ce qui est à savoir sur la qualité :** deux benchmarks distincts, non comparables — **MMLongBench-Doc** (PDF/charts durs) : Acc **0.458 @40 docs** ; **GraphRAG-Bench medical** (nouveau, tête-à-tête vs LightRAG) : **égalité statistique 0.770/0.779 @n=200**, LightRAG devant 0.724/0.784 en pleine échelle. Dans les deux cas, **l'accuracy décroît avec la taille du corpus** — le claim SPEC-083 « X-35 FIXED » est contredit par les faits. EdgeQuake est un **GraphRAG de classe LightRAG**, pas « meilleur que », pas SOTA (§12.5).
 
 ---
 
-*Document établi par analyse du code source EdgeQuake. Base écrite contre v0.18.0 (`0e1d319c`) le 2026-07-17, **re-vérifiée intégralement contre v0.20.2 (`d96f0725`) le 2026-07-22**.
-Chaque affirmation est vérifiée dans le code aux lignes citées ; les défauts portent un verdict (présent / corrigé / rétracté) au HEAD 0.20.2. Les écarts entre documentation interne et implémentation sont signalés explicitement.
-Document compagnon : `INCIDENT-PROD-DIAGNOSIS.md` (diagnostic de l'incident SPEC-062 en production).*
+*Document établi par analyse du code source EdgeQuake. Base écrite contre v0.18.0 (`0e1d319c`, 2026-07-17) → re-vérifiée contre v0.20.2 (`d96f0725`, 2026-07-22) → **re-vérifiée contre v0.21.0 (`7d1d44c9`, 2026-07-23)**.
+Chaque affirmation est vérifiée dans le code aux lignes citées ; les défauts portent un verdict (corrigé-vérifié / corrigé-revendiqué / ouvert / rétracté) au HEAD 0.21.0. L'équipe EdgeQuake a repris ce registre sous SPEC-083 — les « corrigé-vérifié » sont re-testés dans le code, les « corrigé-revendiqué » sont leurs claims non re-tracés ici.
+Documents compagnons : `INCIDENT-PROD-DIAGNOSIS.md` (incident SPEC-062), `FIXES-TODO.md` (backlog, mis à jour 0.21.0).*

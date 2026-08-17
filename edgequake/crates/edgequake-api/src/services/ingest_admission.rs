@@ -23,6 +23,77 @@ use crate::services::document_quota::enforce_max_documents_admission;
 use crate::services::pdf_workspace_dedup::find_kv_document_id_for_pdf;
 use crate::state::AppState;
 
+<<<<<<< HEAD
+=======
+/// Minimal relational projection written at admission so PostgreSQL list/count
+/// queries can see queued work before a worker starts.
+#[derive(Debug, Clone)]
+pub struct RelationalDocumentShell {
+    pub title: String,
+    pub tenant_id: Uuid,
+    pub workspace_id: Uuid,
+    pub track_id: String,
+    pub source_type: String,
+    pub file_size_bytes: i64,
+    pub content_hash: Option<String>,
+    pub content_type: Option<String>,
+}
+
+/// Idempotently expose admitted work on the production relational read path.
+///
+/// The heavy document body remains in staging KV; workers later update this row
+/// through the existing `ensure_document_record` conflict path.
+pub async fn provision_relational_document_shell(
+    state: &AppState,
+    document_id: &str,
+    shell: &RelationalDocumentShell,
+) -> ApiResult<()> {
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = state.pg_pool.as_ref() {
+        let document_id = Uuid::parse_str(document_id)
+            .map_err(|e| crate::error::ApiError::Internal(format!("invalid document id: {e}")))?;
+        let metadata = serde_json::json!({
+            "source_type": shell.source_type,
+            "current_stage": "queued",
+            "stage_message": "Waiting for a processing slot",
+            "admission_staging": true,
+        });
+        sqlx::query(
+            r#"
+            INSERT INTO documents (
+                id, tenant_id, workspace_id, title, content, content_hash,
+                metadata, file_size_bytes, content_type, status, track_id,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, '', $5, $6, $7, $8, 'pending', $9, NOW(), NOW())
+            ON CONFLICT (id) DO NOTHING
+            "#,
+        )
+        .bind(document_id)
+        .bind(shell.tenant_id)
+        .bind(shell.workspace_id)
+        .bind(&shell.title)
+        .bind(&shell.content_hash)
+        .bind(metadata)
+        .bind(shell.file_size_bytes)
+        .bind(&shell.content_type)
+        .bind(&shell.track_id)
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            crate::error::ApiError::Internal(format!(
+                "failed to provision relational document shell: {e}"
+            ))
+        })?;
+    }
+
+    #[cfg(not(feature = "postgres"))]
+    let _ = (state, document_id, shell);
+
+    Ok(())
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// Allocate a document ID — uuidv7 on PG18 when capabilities allow (SPEC-042-E E-03).
 #[cfg(feature = "postgres")]
 pub async fn allocate_new_document_id(state: &AppState) -> String {

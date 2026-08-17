@@ -579,6 +579,15 @@ async fn process_pdf_upload_parts(
                     },
                 },
                 duplicate_of: None,
+<<<<<<< HEAD
+=======
+                queue_position: enqueue.queue.as_ref().map(|q| q.position),
+                eta_seconds: enqueue.queue.as_ref().map(|q| q.eta_seconds),
+                eta_basis: enqueue
+                    .queue
+                    .as_ref()
+                    .map(|q| q.basis.as_str().to_string()),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             });
         }
 
@@ -602,6 +611,12 @@ async fn process_pdf_upload_parts(
                 vision_model: existing.vision_model,
             },
             duplicate_of: Some(existing_pdf_id),
+<<<<<<< HEAD
+=======
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         });
     }
 
@@ -660,6 +675,12 @@ async fn process_pdf_upload_parts(
                             vision_model: existing.vision_model,
                         },
                         duplicate_of: Some(existing_pdf_id),
+<<<<<<< HEAD
+=======
+                        queue_position: None,
+                        eta_seconds: None,
+                        eta_basis: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     });
                 }
             }
@@ -703,6 +724,33 @@ async fn process_pdf_upload_parts(
     .await
     .map_err(|e| ApiError::Internal(format!("Failed to provision queued document: {e}")))?;
 
+<<<<<<< HEAD
+=======
+    if let Err(error) = crate::services::provision_relational_document_shell(
+        state,
+        &enqueue.document_id,
+        &crate::services::RelationalDocumentShell {
+            title: filename.clone(),
+            tenant_id,
+            workspace_id,
+            track_id: enqueue.track_id.clone(),
+            source_type: "pdf".to_string(),
+            file_size_bytes: file_size_bytes.min(i64::MAX as u64) as i64,
+            content_hash: Some(checksum.clone()),
+            content_type: Some("application/pdf".to_string()),
+        },
+    )
+    .await
+    {
+        tracing::warn!(
+            document_id = %enqueue.document_id,
+            track_id = %enqueue.track_id,
+            error = %error,
+            "PDF admitted but relational queue shell could not be projected"
+        );
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     // SPEC-054 / #300: seed progress under server task_id only.
     seed_pdf_job_progress(
         state,
@@ -758,5 +806,11 @@ async fn process_pdf_upload_parts(
             vision_model,
         },
         duplicate_of: None,
+<<<<<<< HEAD
+=======
+        queue_position: enqueue.queue.as_ref().map(|q| q.position),
+        eta_seconds: enqueue.queue.as_ref().map(|q| q.eta_seconds),
+        eta_basis: enqueue.queue.as_ref().map(|q| q.basis.as_str().to_string()),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     })
 }

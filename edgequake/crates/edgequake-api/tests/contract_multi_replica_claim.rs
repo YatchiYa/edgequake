@@ -50,6 +50,11 @@ async fn dual_worker_pool_processes_pending_task_exactly_once() {
         max_tasks_per_tenant: 0,
         max_lifecycle_tasks_per_tenant: 0,
         processing_timeout_secs: 30,
+<<<<<<< HEAD
+=======
+        provider_budget: 0,
+        tenant_lane_weight: 1,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     };
 
     let mut pool_a = WorkerPool::new(

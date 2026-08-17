@@ -11,7 +11,11 @@
  */
 
 import { cn } from '@/lib/utils';
+<<<<<<< HEAD
 import { BrushCleaning, Clock, Loader2, Trash2 } from 'lucide-react';
+=======
+import { BrushCleaning, Check, Clock, Loader2, Trash2, XCircle } from 'lucide-react';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { useTranslation } from 'react-i18next';
 
 /** Admission + delete operation phases sharing one presenter. */
@@ -20,6 +24,11 @@ export type OperationPhaseKind = 'cleaning' | 'queued' | 'deleting';
 /** @deprecated Prefer OperationPhaseKind — kept for reprocess call-site clarity. */
 export type AdmissionPhaseKind = OperationPhaseKind;
 
+<<<<<<< HEAD
+=======
+export type AdmissionSessionStatus = 'active' | 'completed' | 'failed';
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 export interface AdmissionPhaseRowProps {
   phase: OperationPhaseKind;
   /** Optional document name for ProgressPanelRow layout. */
@@ -28,6 +37,11 @@ export interface AdmissionPhaseRowProps {
   stageMessage?: string | null;
   /** Optional N/M counts line (delete phases). */
   countsLabel?: string | null;
+<<<<<<< HEAD
+=======
+  /** SPEC-098: terminal session state for delete feedback (no perpetual spinner). */
+  sessionStatus?: AdmissionSessionStatus;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   /** compact = pill for stepper; row = feedback-zone with filename. */
   variant?: 'row' | 'pill';
   className?: string;
@@ -38,6 +52,10 @@ export function admissionPhaseCopy(
   phase: OperationPhaseKind,
   t: (key: string, fallback: string) => string,
   stageMessage?: string | null,
+<<<<<<< HEAD
+=======
+  sessionStatus?: AdmissionSessionStatus,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ): { title: string; detail: string } {
   if (phase === 'cleaning') {
     const detail =
@@ -55,6 +73,21 @@ export function admissionPhaseCopy(
     const detail =
       (stageMessage && stageMessage.trim()) ||
       t('documents.delete.progressDetail', 'Removing document data…');
+<<<<<<< HEAD
+=======
+    if (sessionStatus === 'completed') {
+      return {
+        title: t('documents.delete.completed', 'Deleted'),
+        detail,
+      };
+    }
+    if (sessionStatus === 'failed') {
+      return {
+        title: t('documents.delete.failed', 'Delete failed'),
+        detail,
+      };
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     return {
       title: t('documents.delete.progress', 'Deleting'),
       detail,
@@ -111,17 +144,35 @@ export function AdmissionPhaseRow({
   documentName,
   stageMessage,
   countsLabel,
+<<<<<<< HEAD
+=======
+  sessionStatus = 'active',
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   variant = 'row',
   className,
   'data-testid': testId,
 }: AdmissionPhaseRowProps) {
   const { t } = useTranslation();
+<<<<<<< HEAD
   const { title, detail } = admissionPhaseCopy(phase, t, stageMessage);
+=======
+  const { title, detail } = admissionPhaseCopy(
+    phase,
+    t,
+    stageMessage,
+    sessionStatus,
+  );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const tone = phaseTone(phase);
   const detailWithCounts =
     countsLabel && countsLabel.trim()
       ? `${detail} · ${countsLabel.trim()}`
       : detail;
+<<<<<<< HEAD
+=======
+  const terminal =
+    sessionStatus === 'completed' || sessionStatus === 'failed';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   if (variant === 'pill') {
     return (
@@ -133,11 +184,23 @@ export function AdmissionPhaseRow({
         )}
         data-testid={testId ?? tone.testId}
         data-admission={phase}
+<<<<<<< HEAD
         data-state="pending"
         role="status"
       >
         <span
           className={cn('h-1.5 w-1.5 rounded-full animate-pulse', tone.dot)}
+=======
+        data-state={sessionStatus}
+        role="status"
+      >
+        <span
+          className={cn(
+            'h-1.5 w-1.5 rounded-full',
+            tone.dot,
+            !terminal && 'animate-pulse',
+          )}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         />
         {phase === 'cleaning' ? (
           <BrushCleaning className="h-3 w-3 shrink-0" aria-hidden />
@@ -161,14 +224,34 @@ export function AdmissionPhaseRow({
         (phase === 'deleting' ? 'delete-progress-row' : 'reprocess-admission-row')
       }
       data-admission={phase}
+<<<<<<< HEAD
+=======
+      data-session-status={sessionStatus}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       role="status"
       aria-live="polite"
       aria-atomic="true"
     >
+<<<<<<< HEAD
       <Loader2
         className={cn('h-4 w-4 animate-spin shrink-0', tone.spinner)}
         aria-hidden
       />
+=======
+      {sessionStatus === 'completed' ? (
+        <Check
+          className="h-4 w-4 shrink-0 text-emerald-600"
+          aria-hidden
+        />
+      ) : sessionStatus === 'failed' ? (
+        <XCircle className="h-4 w-4 shrink-0 text-destructive" aria-hidden />
+      ) : (
+        <Loader2
+          className={cn('h-4 w-4 animate-spin shrink-0', tone.spinner)}
+          aria-hidden
+        />
+      )}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       <div className="min-w-0 flex-1">
         {documentName ? (
           <p className="text-sm font-medium truncate">{documentName}</p>

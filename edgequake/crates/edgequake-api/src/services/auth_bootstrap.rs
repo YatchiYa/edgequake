@@ -6,10 +6,20 @@
 //! PostgreSQL with a real password hash. Fresh installs and upgrades that only had KV
 //! identity rows therefore return 401 until an admin exists.
 //!
+<<<<<<< HEAD
 //! This module closes the gap by:
 //! 1. Importing legacy KV `auth:user:*` records into PostgreSQL when present.
 //! 2. Creating a bootstrap admin from `EDGEQUAKE_BOOTSTRAP_ADMIN_*` when no
 //!    login-capable users remain.
+=======
+//! This module closes the gap by creating a bootstrap admin from
+//! `EDGEQUAKE_BOOTSTRAP_ADMIN_*` when no login-capable users remain.
+//!
+//! SPEC-091 Wave B7: the legacy KV `auth:user:*` import shim is removed —
+//! identity is PostgreSQL-native, and remaining `auth:%` KV keys are purged
+//! by migration 120. Deployments upgrading from the KV-identity era must pass
+//! through an intermediate release that still carried the importer.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 use chrono::Utc;
 use edgequake_auth::Role;
@@ -52,6 +62,7 @@ pub async fn bootstrap_auth_identity_if_needed(
             capabilities: state.postgres_capabilities.clone(),
         };
 
+<<<<<<< HEAD
         let imported = import_legacy_kv_users(state, &pg_runtime).await?;
         if imported > 0 {
             info!(
@@ -60,6 +71,8 @@ pub async fn bootstrap_auth_identity_if_needed(
             );
         }
 
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         let username = std::env::var("EDGEQUAKE_BOOTSTRAP_ADMIN_USERNAME")
             .ok()
             .map(|value| value.trim().to_string())
@@ -178,6 +191,7 @@ pub async fn bootstrap_auth_identity_if_needed(
     }
 }
 
+<<<<<<< HEAD
 #[cfg(feature = "postgres")]
 async fn import_legacy_kv_users(
     state: &AppState,
@@ -232,6 +246,8 @@ async fn import_legacy_kv_users(
     Ok(imported)
 }
 
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 #[cfg(test)]
 mod tests {
     use super::*;

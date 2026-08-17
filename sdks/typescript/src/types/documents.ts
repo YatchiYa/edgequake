@@ -96,6 +96,11 @@ export interface ListDocumentsQuery {
   date_to?: string;
   /** Case-insensitive title substring patterns; comma-separated = OR. */
   document_pattern?: string;
+<<<<<<< HEAD
+=======
+  /** SPEC-084 / GH-319: filter by status before pagination. */
+  status?: string;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /** Status counts for document filtering. */

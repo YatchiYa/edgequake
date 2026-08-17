@@ -1,5 +1,6 @@
 'use client';
 
+<<<<<<< HEAD
 import { EntityTypeSelector } from '@/components/shared/entity-type-selector';
 import { Button } from '@/components/ui/button';
 import {
@@ -48,16 +49,28 @@ import {
     getWorkspaces,
 } from '@/lib/api/edgequake';
 import { cn } from '@/lib/utils';
-import { useTenantStore } from '@/stores/use-tenant-store';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+=======
 import {
-    Building2,
-    Check,
-    ChevronDown,
-    FolderKanban,
-    Loader2,
-    Plus,
-} from 'lucide-react';
+  ContextSelectorPopover,
+  ContextTriggerChip,
+} from '@/components/layout/context-selector';
+import { CreateTenantWizard } from '@/components/onboarding/create-tenant-wizard';
+import { CreateWorkspaceWizard } from '@/components/onboarding/create-workspace-wizard';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { getTenants, getWorkspaces } from '@/lib/api/edgequake';
+import {
+  applyCreatedTenantContext,
+  applyCreatedWorkspaceContext,
+  buildCreatedContextSearchParams,
+} from '@/lib/onboarding/apply-created-workspace-context';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
+import { useTenantStore } from '@/stores/use-tenant-store';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -67,15 +80,31 @@ interface HeaderTenantSelectorProps {
 }
 
 /**
- * Compact tenant/workspace selector designed for header bar placement.
- * Shows current context with a slick dropdown for switching.
- * Includes full create tenant/workspace functionality.
+ * Compact tenant/workspace selector for the header.
+ * SPEC-101: Create flows use shared wizards (LAW-101-1);
+ * context chip is dual-labeled (LAW-101-11).
  */
 export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  
-  // Store state
+  const router = useRouter();
+
+  const syncCreatedContextUrl = useCallback(
+    (
+      workspace: { id: string; name: string; slug?: string | null },
+      tenant?: { id: string; name: string; slug?: string | null },
+    ) => {
+      const search = buildCreatedContextSearchParams(
+        typeof window !== 'undefined' ? window.location.search : '',
+        workspace,
+        tenant,
+      );
+      const path = typeof window !== 'undefined' ? window.location.pathname : '/';
+      router.replace(`${path}?${search}`, { scroll: false });
+    },
+    [router],
+  );
+
   const {
     tenants,
     workspaces,
@@ -90,6 +119,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
     setInitialized,
   } = useTenantStore();
 
+<<<<<<< HEAD
   // Selector popover state
   const [selectorOpen, setSelectorOpen] = useState(false);
 
@@ -117,76 +147,67 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
   const [workspaceEntityTypes, setWorkspaceEntityTypes] = useState<string[]>([...ENTITY_PRESETS.general.types]);
   const [showEntityTypeConfig, setShowEntityTypeConfig] = useState(false);
   const [useServerModelDefaults, setUseServerModelDefaults] = useState(false);
+=======
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const [showCreateTenant, setShowCreateTenant] = useState(false);
+  const [showCreateWorkspace, setShowCreateWorkspace] = useState(false);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
-
-  // Generate URL-safe slug from name
-  const generateSlug = useCallback((name: string): string => {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .substring(0, 50)
-      .replace(/^-|-$/g, '');
-  }, []);
-
-  // Initialize from storage on mount
   useEffect(() => {
     initializeFromStorage();
   }, [initializeFromStorage]);
 
-  // Fetch tenants
   const { data: tenantsData, isLoading: isLoadingTenants } = useQuery({
     queryKey: ['tenants'],
     queryFn: getTenants,
     staleTime: 60000,
   });
 
-  // Update store when tenants are fetched - ENHANCED WITH AUTO-SELECTION
   useEffect(() => {
     if (tenantsData) {
       setTenants(tenantsData);
-      
-      // Auto-select logic: prioritize existing selection, then first available
       if (!selectedTenantId && tenantsData.length > 0) {
         selectTenant(tenantsData[0].id);
       }
-      
-      // Mark as initialized once we have tenant data
       if (!isInitialized) {
         setInitialized(true);
       }
     }
-  }, [tenantsData, setTenants, selectedTenantId, selectTenant, isInitialized, setInitialized]);
+  }, [
+    tenantsData,
+    setTenants,
+    selectedTenantId,
+    selectTenant,
+    isInitialized,
+    setInitialized,
+  ]);
 
-  // Fetch workspaces for selected tenant
-  const { data: workspacesData, isLoading: isLoadingWorkspaces } = useQuery({
+  const {
+    data: workspacesData,
+    isLoading: isLoadingWorkspaces,
+    isFetching: isFetchingWorkspaces,
+  } = useQuery({
     queryKey: ['workspaces', selectedTenantId],
-    queryFn: () => selectedTenantId ? getWorkspaces(selectedTenantId) : Promise.resolve([]),
+    queryFn: () => (selectedTenantId ? getWorkspaces(selectedTenantId) : Promise.resolve([])),
     enabled: !!selectedTenantId,
     staleTime: 60000,
   });
 
-  // Update store when workspaces are fetched - ENHANCED WITH AUTO-SELECTION
   useEffect(() => {
-    if (workspacesData) {
-      setWorkspaces(workspacesData);
-      
-      // Auto-select first workspace if none selected
-      if (!selectedWorkspaceId && workspacesData.length > 0) {
-        selectWorkspace(workspacesData[0].id);
-        
-        // Show success toast for first-time auto-selection
-        if (isInitialized && !localStorage.getItem('edgequake-workspace-initialized')) {
-          toast.success(t('workspace.autoSelected', `Workspace "${workspacesData[0].name}" selected`), {
-            description: t('workspace.autoSelectedDesc', 'You can change this anytime from the selector above'),
-          });
-          localStorage.setItem('edgequake-workspace-initialized', 'true');
-        }
-      }
-    }
-  }, [workspacesData, setWorkspaces, selectedWorkspaceId, selectWorkspace, isInitialized, t]);
+    if (!workspacesData) return;
 
+    // Merge server list with optimistic create entries so a just-created workspace
+    // is not wiped when refetch returns a slightly stale list.
+    const storeWorkspaces = useTenantStore.getState().workspaces;
+    const byId = new Map<string, (typeof workspacesData)[number]>();
+    for (const w of workspacesData) byId.set(w.id, w);
+    for (const w of storeWorkspaces) {
+      if (!byId.has(w.id)) byId.set(w.id, w);
+    }
+    const merged = Array.from(byId.values());
+    setWorkspaces(merged);
+
+<<<<<<< HEAD
   // Create tenant mutation
   // SPEC-032/SPEC-041: Updated to include LLM, embedding, and vision configuration
   const createTenantMutation = useMutation({
@@ -237,14 +258,89 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
         });
       }
       setShowCreateWorkspace(true);
-    },
-    onError: (error) => {
-      toast.error(t('tenant.createFailed', 'Failed to create tenant'), {
-        description: error instanceof Error ? error.message : 'Unknown error',
-      });
-    },
-  });
+=======
+    const exists =
+      selectedWorkspaceId && merged.some((w) => w.id === selectedWorkspaceId);
 
+    if (!selectedWorkspaceId && merged.length > 0) {
+      selectWorkspace(merged[0].id);
+      if (isInitialized && !localStorage.getItem('edgequake-workspace-initialized')) {
+        toast.success(
+          t('workspace.autoSelected', `Workspace "${merged[0].name}" selected`),
+          {
+            description: t(
+              'workspace.autoSelectedDesc',
+              'You can change this anytime from the selector above',
+            ),
+          },
+        );
+        localStorage.setItem('edgequake-workspace-initialized', 'true');
+      }
+    } else if (selectedWorkspaceId && !exists && !isFetchingWorkspaces && merged.length > 0) {
+      selectWorkspace(merged[0].id);
+    }
+  }, [
+    workspacesData,
+    setWorkspaces,
+    selectedWorkspaceId,
+    selectWorkspace,
+    isInitialized,
+    isFetchingWorkspaces,
+    t,
+  ]);
+
+  const handleTenantSelect = useCallback(
+    (tenantId: string) => {
+      if (tenantId === selectedTenantId) return;
+      selectTenant(tenantId);
+      const tenant = tenants.find((te) => te.id === tenantId);
+      if (tenant) {
+        toast.info(t('tenant.switched', `Switched to tenant "{{name}}"`, { name: tenant.name }), {
+          id: 'tenant-switch',
+          duration: 2000,
+        });
+      }
+      // LAW-101-11: keep popover open so Workspaces list stays reachable.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
+    },
+    [selectTenant, selectedTenantId, tenants, t],
+  );
+
+  const handleWorkspaceSelect = useCallback(
+    (workspaceId: string) => {
+      const workspace = workspaces.find((w) => w.id === workspaceId);
+      if (!workspace) {
+        setSelectorOpen(false);
+        return;
+      }
+      const changed = workspaceId !== selectedWorkspaceId;
+      if (changed) {
+        selectWorkspace(workspaceId);
+        toast.info(
+          t('workspace.switched', `Switched to workspace "{{name}}"`, { name: workspace.name }),
+          { id: 'workspace-switch', duration: 2000 },
+        );
+      }
+      // Always sync URL (auto-select after tenant switch may already match id).
+      syncCreatedContextUrl(
+        workspace,
+        tenants.find((te) => te.id === selectedTenantId) ??
+          useTenantStore.getState().tenants.find((te) => te.id === selectedTenantId),
+      );
+      setSelectorOpen(false);
+    },
+    [
+      selectWorkspace,
+      selectedWorkspaceId,
+      workspaces,
+      t,
+      syncCreatedContextUrl,
+      tenants,
+      selectedTenantId,
+    ],
+  );
+
+<<<<<<< HEAD
   // Create workspace mutation
   // SPEC-032/SPEC-041: Updated to include LLM, embedding, and vision configuration
   const createWorkspaceMutation = useMutation({
@@ -357,10 +453,17 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
     ? `${selectedTenant.name} / ${selectedWorkspace.name}`
     : selectedTenant?.name || t('tenant.selectContext', 'Select workspace');
 
+=======
+  const selectedTenant = tenants.find((te) => te.id === selectedTenantId);
+  const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
+  const isLoading = isLoadingTenants || isLoadingWorkspaces;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   return (
     <>
       <Popover open={selectorOpen} onOpenChange={setSelectorOpen}>
         <PopoverTrigger asChild>
+<<<<<<< HEAD
           <Button
             data-testid="workspace-selector"
             variant="ghost"
@@ -742,6 +845,75 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+=======
+          <ContextTriggerChip
+            className={className}
+            tenantName={selectedTenant?.name}
+            workspaceName={selectedWorkspace?.name}
+            isLoading={isLoading}
+            open={selectorOpen}
+          />
+        </PopoverTrigger>
+
+        <PopoverContent align="start" className="w-80 p-0" sideOffset={6}>
+          <ContextSelectorPopover
+            tenants={tenants}
+            workspaces={workspaces}
+            selectedTenantId={selectedTenantId}
+            selectedWorkspaceId={selectedWorkspaceId}
+            selectedTenantName={selectedTenant?.name}
+            selectedWorkspaceName={selectedWorkspace?.name}
+            isLoadingWorkspaces={isLoadingWorkspaces}
+            onTenantSelect={handleTenantSelect}
+            onWorkspaceSelect={handleWorkspaceSelect}
+            onCreateTenant={() => {
+              setSelectorOpen(false);
+              setShowCreateTenant(true);
+            }}
+            onCreateWorkspace={() => {
+              setSelectorOpen(false);
+              setShowCreateWorkspace(true);
+            }}
+          />
+        </PopoverContent>
+      </Popover>
+
+      <CreateTenantWizard
+        open={showCreateTenant}
+        onOpenChange={setShowCreateTenant}
+        onCreated={(tenant, workspace) => {
+          applyCreatedTenantContext(tenant, workspace, syncCreatedContextUrl);
+          void queryClient.invalidateQueries({ queryKey: ['tenants'] });
+          void queryClient.invalidateQueries({ queryKey: ['workspaces', tenant.id] });
+          toast.success(t('tenant.createSuccess', 'Tenant created successfully'), {
+            action: {
+              label: t('onboarding.uploadDocuments', 'Upload documents'),
+              onClick: () => {
+                window.location.href = '/documents';
+              },
+            },
+          });
+        }}
+      />
+
+      <CreateWorkspaceWizard
+        open={showCreateWorkspace}
+        onOpenChange={setShowCreateWorkspace}
+        tenantId={selectedTenantId}
+        onCreated={(workspace) => {
+          applyCreatedWorkspaceContext(workspace, syncCreatedContextUrl);
+          void queryClient.invalidateQueries({ queryKey: ['workspaces', selectedTenantId] });
+          toast.success(t('workspace.createSuccess', 'Workspace created successfully'), {
+            action: {
+              label: t('onboarding.uploadDocuments', 'Upload documents'),
+              onClick: () => {
+                window.location.href = '/documents';
+              },
+            },
+          });
+        }}
+      />
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     </>
   );
 }

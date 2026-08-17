@@ -152,8 +152,47 @@ pub fn role_capability_hint(role: LlmRole) -> &'static str {
 ///
 /// Precedence at query time: **env → workspace `llm_roles.keyword` → Query LLM**.
 pub fn env_keyword_role_llm() -> Option<ResolvedRoleLlm> {
+<<<<<<< HEAD
     let model = non_empty_env("EDGEQUAKE_KEYWORD_LLM_MODEL");
     let provider = non_empty_env("EDGEQUAKE_KEYWORD_LLM_PROVIDER");
+=======
+    env_role_llm(
+        "EDGEQUAKE_KEYWORD_LLM_PROVIDER",
+        "EDGEQUAKE_KEYWORD_LLM_MODEL",
+        /* mistral_default */ "ministral-3b-latest",
+    )
+}
+
+/// Process-env EXTRACT role (LightRAG EXTRACT≠QUERY / SPEC-086 Idea F).
+///
+/// Env (either MODEL or PROVIDER non-empty enables the override):
+/// - `EDGEQUAKE_EXTRACT_LLM_MODEL` — schema-strong extract model (empty = unset)
+/// - `EDGEQUAKE_EXTRACT_LLM_PROVIDER` — optional; falls back to `EDGEQUAKE_LLM_PROVIDER`
+///   then `"mistral"` when only the model is set
+///
+/// Precedence at ingest: **env → workspace `llm_roles.extract` → workspace LLM**.
+/// Acc QUERY pin stays on workspace `llm_model` (unchanged).
+pub fn env_extract_role_llm() -> Option<ResolvedRoleLlm> {
+    env_role_llm(
+        "EDGEQUAKE_EXTRACT_LLM_PROVIDER",
+        "EDGEQUAKE_EXTRACT_LLM_MODEL",
+        /* mistral_default */ "mistral-medium-latest",
+    )
+}
+
+/// Resolve Extract role with env-first precedence (SPEC-086 Phase B).
+pub fn resolve_extract_role_llm(ws: &Workspace) -> ResolvedRoleLlm {
+    env_extract_role_llm().unwrap_or_else(|| resolve_role_llm(ws, LlmRole::Extract))
+}
+
+fn env_role_llm(
+    provider_key: &str,
+    model_key: &str,
+    mistral_default_model: &str,
+) -> Option<ResolvedRoleLlm> {
+    let model = non_empty_env(model_key);
+    let provider = non_empty_env(provider_key);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     match (provider, model) {
         (None, None) => None,
         (Some(provider), Some(model)) => Some(ResolvedRoleLlm { provider, model }),
@@ -163,9 +202,14 @@ pub fn env_keyword_role_llm() -> Option<ResolvedRoleLlm> {
             Some(ResolvedRoleLlm { provider, model })
         }
         (Some(provider), None) => {
+<<<<<<< HEAD
             // Provider-only: use that provider's conventional default model name.
             let model = match provider.to_ascii_lowercase().as_str() {
                 "mistral" => "ministral-3b-latest".to_string(),
+=======
+            let model = match provider.to_ascii_lowercase().as_str() {
+                "mistral" => mistral_default_model.to_string(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 "openai" => "gpt-5.4-nano".to_string(),
                 "ollama" => "gemma3:latest".to_string(),
                 other => other.to_string(),
@@ -317,4 +361,33 @@ mod tests {
         std::env::remove_var("EDGEQUAKE_KEYWORD_LLM_PROVIDER");
         std::env::remove_var("EDGEQUAKE_KEYWORD_LLM_MODEL");
     }
+<<<<<<< HEAD
+=======
+
+    #[test]
+    #[serial]
+    fn env_extract_role_and_resolve_precedence() {
+        std::env::remove_var("EDGEQUAKE_EXTRACT_LLM_PROVIDER");
+        std::env::remove_var("EDGEQUAKE_EXTRACT_LLM_MODEL");
+        assert!(env_extract_role_llm().is_none());
+
+        let mut meta = HashMap::new();
+        meta.insert(
+            "llm_roles".into(),
+            serde_json::json!({
+                "extract": { "provider": "mistral", "model": "ministral-8b-latest" }
+            }),
+        );
+        let ws = sample_workspace(meta);
+        let from_ws = resolve_extract_role_llm(&ws);
+        assert_eq!(from_ws.model, "ministral-8b-latest");
+
+        std::env::set_var("EDGEQUAKE_EXTRACT_LLM_MODEL", "mistral-medium-latest");
+        let from_env = resolve_extract_role_llm(&ws);
+        assert_eq!(from_env.model, "mistral-medium-latest");
+        assert_eq!(from_env.provider, "mistral");
+        std::env::remove_var("EDGEQUAKE_EXTRACT_LLM_MODEL");
+        std::env::remove_var("EDGEQUAKE_EXTRACT_LLM_PROVIDER");
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }

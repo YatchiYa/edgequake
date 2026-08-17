@@ -42,6 +42,11 @@ path = "examples/graph_exploration.rs"
 name = "multi_tenant"
 path = "examples/multi_tenant.rs"
 
+[[example]]
+name = "parse_scorecard"
+path = "examples/parse_scorecard.rs"
+required-features = []
+
 [features]
 default = ["postgres", "vision"]
 otel = ["edgequake-observability/otel", "edgequake-api/otel"]
@@ -57,6 +62,7 @@ edgequake-query = { workspace = true }
 edgequake-api = { workspace = true }
 edgequake-observability = { workspace = true, features = ["metrics"] }
 edgequake-tasks = { workspace = true }
+edgequake-pdf = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -70,6 +76,24 @@ chrono = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 tokio-test = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+serde = { workspace = true, features = ["derive"] }
+
+[[bench]]
+name = "chunking_bench"
+harness = false
+
+[[bench]]
+name = "storage_bench"
+harness = false
+
+[[bench]]
+name = "graph_performance"
+harness = false
+
+[[bench]]
+name = "graphrag_bench"
+harness = false
 
 [[bench]]
 name = "chunking_bench"
@@ -88,7 +112,11 @@ name = "graphrag_bench"
 harness = false
 
 [workspace.package]
+<<<<<<< HEAD
 version = "0.21.0"
+=======
+version = "0.24.1"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 edition = "2021"
 rust-version = "1.95"
 license = "Apache-2.0"
@@ -152,7 +180,7 @@ async-openai = { version = "0.32", features = ["chat-completion", "embedding"] }
 tiktoken-rs = "0.6"
 
 # Utilities
-uuid = { version = "1.11", features = ["v4", "serde"] }
+uuid = { version = "1.11", features = ["v4", "v5", "serde"] }
 dotenvy = "0.15"
 config = "0.14"
 
@@ -165,17 +193,27 @@ edgequake-api = { path = "crates/edgequake-api" }
 edgequake-auth = { path = "crates/edgequake-auth" }
 edgequake-core = { path = "crates/edgequake-core" }
 edgequake-pdf = { path = "crates/edgequake-pdf" }
+<<<<<<< HEAD
 # Workspace pin. Transitive diamond: edgequake-pdf2md@0.9.7 still pulls edgequake-llm 0.6.x
 # (X-09). Contract allows that documented pair until pdf2md upgrades; no third version.
 edgequake-llm = "0.10.1"
+=======
+# SSOT with pdf2md 0.9.10 (llm ≥0.10.3 / OTEL 0.32 — no 0.6.x diamond).
+edgequake-llm = "0.10.3"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 edgequake-pipeline = { path = "crates/edgequake-pipeline" }
 edgequake-query = { path = "crates/edgequake-query" }
 edgequake-storage = { path = "crates/edgequake-storage" }
 edgequake-tasks = { path = "crates/edgequake-tasks" }
 edgequake-observability = { path = "crates/edgequake-observability" }
 edgeparse-core = "0.2.5"
+<<<<<<< HEAD
 # Published to crates.io as v0.9.7 — use registry version now.
 edgequake-pdf2md = { version = "0.9.7", default-features = false, features = [
+=======
+# SSOT with published pdf2md 0.9.10 (pdfium-auto 0.3.1: atomic extract + chromium/7961).
+edgequake-pdf2md = { version = "0.9.10", default-features = false, features = [
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     "bundled",
 ] }
 
@@ -185,7 +223,7 @@ num_cpus = "1.16"
 # Authentication
 argon2 = "0.5"
 password-hash = "0.5"
-jsonwebtoken = "9.3"
+jsonwebtoken = { version = "10.3", features = ["aws_lc_rs"] }
 rand = "0.9"
 
 [profile.release]

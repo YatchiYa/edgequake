@@ -1,0 +1,238 @@
+{
+  "archive": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/history/medical-mid-20260802T141536Z",
+  "n_eq_preds": 200,
+  "n_lr_preds": 200,
+  "n_paired_eval": 199,
+  "scorecard": {
+    "eq_acc": 0.7856817014567021,
+    "lr_acc": 0.7812871077413082,
+    "eq_ctx": 0.43125,
+    "lr_ctx": 0.495,
+    "eq_er": 0.9236729430700019,
+    "lr_er": 0.9584725491012256,
+    "eq_fact_er": 0.87,
+    "lr_fact_er": 0.98,
+    "eq_empty_answer_rate": 0.0,
+    "lr_empty_answer_rate": 0.0
+  },
+  "by_type_acc": {
+    "Complex Reasoning": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": -0.0043,
+      "eq_ahead": 17,
+      "lr_ahead": 21,
+      "near_tie": 12
+    },
+    "Contextual Summarize": {
+      "n": 49,
+      "mean_acc_delta_eq_minus_lr": 0.0119,
+      "eq_ahead": 26,
+      "lr_ahead": 19,
+      "near_tie": 4
+    },
+    "Creative Generation": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": 0.0261,
+      "eq_ahead": 25,
+      "lr_ahead": 16,
+      "near_tie": 9
+    },
+    "Fact Retrieval": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": -0.0163,
+      "eq_ahead": 13,
+      "lr_ahead": 17,
+      "near_tie": 20
+    }
+  },
+  "empty_answers": {
+    "eq_count": 0,
+    "lr_count": 0,
+    "eq_ids_sample": []
+  },
+  "snr_proxy": {
+    "eq_mean_jaccard_gold_vs_context": 0.0126,
+    "lr_mean_jaccard_gold_vs_context": 0.0154,
+    "eq_lt_lr_count": 188
+  },
+  "fact_lr_wins_top": [
+    {
+      "id": "Medical-e05d0922",
+      "eq_acc": 0.239,
+      "lr_acc": 0.9896,
+      "delta": -0.7506,
+      "eq_snr": 0.004,
+      "lr_snr": 0.0065,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which procedure is performed if cancer cells are found in the cerebrospinal fluid?"
+    },
+    {
+      "id": "Medical-9797af69",
+      "eq_acc": 0.2407,
+      "lr_acc": 0.925,
+      "delta": -0.6843,
+      "eq_snr": 0.0051,
+      "lr_snr": 0.0082,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is recurrence in the context of BCC?"
+    },
+    {
+      "id": "Medical-3c025533",
+      "eq_acc": 0.2327,
+      "lr_acc": 0.7352,
+      "delta": -0.5026,
+      "eq_snr": 0.0039,
+      "lr_snr": 0.0056,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which diagnostic methods are listed for liver cancer in the ontology?"
+    },
+    {
+      "id": "Medical-7a495600",
+      "eq_acc": 0.2379,
+      "lr_acc": 0.7012,
+      "delta": -0.4632,
+      "eq_snr": 0.005,
+      "lr_snr": 0.0052,
+      "gold_token_coverage": 0.9,
+      "miss_class": "generation",
+      "question": "What are the main risk factors for bone cancer?"
+    },
+    {
+      "id": "Medical-2bef6940",
+      "eq_acc": 0.5415,
+      "lr_acc": 0.9862,
+      "delta": -0.4448,
+      "eq_snr": 0.0024,
+      "lr_snr": 0.0041,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Are tanning beds considered a risk factor for BCC?"
+    },
+    {
+      "id": "Medical-adb77b8f",
+      "eq_acc": 0.4514,
+      "lr_acc": 0.8801,
+      "delta": -0.4287,
+      "eq_snr": 0.0031,
+      "lr_snr": 0.0036,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is the role of imaging in NPC management?"
+    },
+    {
+      "id": "Medical-20454e30",
+      "eq_acc": 0.5656,
+      "lr_acc": 0.8806,
+      "delta": -0.3149,
+      "eq_snr": 0.0038,
+      "lr_snr": 0.0066,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which factors are considered risk factors for head and neck cancers?"
+    },
+    {
+      "id": "Medical-a2555661",
+      "eq_acc": 0.7291,
+      "lr_acc": 0.9954,
+      "delta": -0.2663,
+      "eq_snr": 0.0029,
+      "lr_snr": 0.0049,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which genetic syndromes increase the risk for CSCC?"
+    },
+    {
+      "id": "Medical-ba2c8007",
+      "eq_acc": 0.7416,
+      "lr_acc": 0.9882,
+      "delta": -0.2466,
+      "eq_snr": 0.0022,
+      "lr_snr": 0.003,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Is autoimmune disease associated with increased BCC risk?"
+    },
+    {
+      "id": "Medical-0ce3e959",
+      "eq_acc": 0.6537,
+      "lr_acc": 0.8093,
+      "delta": -0.1556,
+      "eq_snr": 0.0114,
+      "lr_snr": 0.0134,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What are the treatment options for platinum-resistant ovarian cancer?"
+    },
+    {
+      "id": "Medical-198aa7f0",
+      "eq_acc": 0.8408,
+      "lr_acc": 0.9948,
+      "delta": -0.154,
+      "eq_snr": 0.003,
+      "lr_snr": 0.0046,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is the purpose of follow-up MRI in glioma patients?"
+    },
+    {
+      "id": "Medical-788a228f",
+      "eq_acc": 0.5367,
+      "lr_acc": 0.6675,
+      "delta": -0.1308,
+      "eq_snr": 0.0024,
+      "lr_snr": 0.0029,
+      "gold_token_coverage": 0.8333,
+      "miss_class": "generation",
+      "question": "How does immunosuppression, such as HIV infection, affect cervical cancer risk?"
+    },
+    {
+      "id": "Medical-3785154c",
+      "eq_acc": 0.8894,
+      "lr_acc": 0.9981,
+      "delta": -0.1087,
+      "eq_snr": 0.0039,
+      "lr_snr": 0.0058,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What treatment is an option for some patients with stage I, II, or III pancreatic cancer?"
+    },
+    {
+      "id": "Medical-14c841bc",
+      "eq_acc": 0.7442,
+      "lr_acc": 0.8073,
+      "delta": -0.0631,
+      "eq_snr": 0.0045,
+      "lr_snr": 0.0053,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "On what basis is bile duct cancer staging determined?"
+    }
+  ],
+  "fact_miss_split": {
+    "fact_lr_wins_n": 14,
+    "membership_n": 0,
+    "generation_n": 14,
+    "membership_share": 0.0,
+    "generation_share": 1.0,
+    "note": "081 F1: membership = gold token coverage <0.15 in EQ Acc context; generation = coverage \u22650.15 but Acc still lags LR"
+  },
+  "ranked_failure_modes": [
+    {
+      "mode": "Fact_Acc_LR_ahead",
+      "count": 17,
+      "mean_delta": -0.0163,
+      "note": "Primary Acc type gap \u2014 often R6 list split / evidence miss"
+    },
+    {
+      "mode": "Fact_ER_gap",
+      "eq_fact_er": 0.87,
+      "lr_fact_er": 0.98,
+      "note": "Supports D1 R6 Acc/L2 unify before packing retries"
+    }
+  ],
+  "recommended_next_phase": "F4_generation_after_F3",
+  "honesty": "Labeled forensics only \u2014 not Acc Beat; Acc publish/latest stays P0 mid"
+}

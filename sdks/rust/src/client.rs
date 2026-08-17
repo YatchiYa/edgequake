@@ -122,6 +122,13 @@ impl EdgeQuakeClient {
         crate::resources::pdf::PdfResource { client: self }
     }
 
+<<<<<<< HEAD
+=======
+    pub fn parse(&self) -> crate::resources::parse::ParseResource<'_> {
+        crate::resources::parse::ParseResource { client: self }
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub fn lineage(&self) -> crate::resources::lineage::LineageResource<'_> {
         crate::resources::lineage::LineageResource { client: self }
     }

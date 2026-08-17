@@ -1,0 +1,12 @@
+EdgeQuake vs LightRAG — GraphRAG-Bench Acc (EXEC SUMMARY)
+Verdict: EdgeQuake Acc point lead (CI excludes 0; L2 not yet publishable win)
+Sample: n=200 medical (publish mid)
+Acc: EQ 0.811 · LR 0.778
+Context cleanliness (ctx_rel): EQ 0.415 · LR 0.497
+Evidence coverage (recall): EQ 0.904 · LR 0.946
+Query p50 ms: EQ 4438 · LR 726 · ratio 6.113×
+Publishable claim: Acc point estimates only (no CI or L2 incomplete) — not a beat claim.
+Not paper Table-2 / UltraDomain; Mistral Acc pins. HippoRAG2 = aspirational retrieval SOTA.
+Reproduce: make bench  (n=200 medical-mid)
+Publish: specs/001-benchmark/e2e/artifacts/publish/latest/
+Valid: True · 2026-08-02T13:26:30Z

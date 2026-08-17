@@ -655,7 +655,98 @@ async fn test_delete_pending_document_succeeds() {
     );
 }
 
+/// SPEC-091 hardening regression (delete-while-queued edge case):
+/// an upload admitted as a staging shell stores metadata under the RESOLVED
+/// default-tenant UUID. An anonymous delete (no X-Tenant-ID header) must
+/// still match it (no 404), wipe the shell, and DURABLY cancel the queued
+/// ingest task (row → Cancelled), not just signal the process-local registry.
 #[tokio::test]
+<<<<<<< HEAD
+=======
+async fn test_delete_staging_shell_anonymous_cancels_queued_task() {
+    let state = AppState::test_state();
+    let server = Server::new(create_test_config(), state.clone());
+    let app = server.build_router();
+
+    let doc_id = "staging-doc-queued-001";
+
+    // Queued ingest task whose row must be durably cancelled by the delete.
+    let workspace_uuid = edgequake_core::default_workspace_uuid();
+    let task = Task::new(
+        edgequake_api::middleware::default_tenant_uuid(),
+        workspace_uuid,
+        TaskType::Insert,
+        serde_json::json!({
+            "text": "staged body",
+            "file_source": "staging-doc-queued-001.txt",
+            "workspace_id": workspace_uuid.to_string(),
+            "metadata": { "document_id": doc_id },
+        }),
+    );
+    let track_id = task.track_id.clone();
+    state
+        .tasks
+        .storage
+        .create_task(&task)
+        .await
+        .expect("seed queued task");
+
+    // Staging admission shell: tenant_id stored as the RESOLVED UUID (this is
+    // what the upload path writes), workspace as the legacy alias.
+    let staging_key = edgequake_storage::kv_keys::staging_doc_metadata(doc_id);
+    let metadata = serde_json::json!({
+        "id": doc_id,
+        "title": "Queued Upload",
+        "status": "processing",
+        "created_at": "2026-07-28T00:00:00Z",
+        "workspace_id": "default",
+        "tenant_id": edgequake_api::middleware::default_tenant_uuid().to_string(),
+        "track_id": track_id,
+        "content_hash": "hash-001",
+    });
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(staging_key.clone(), metadata)])
+        .await
+        .expect("seed staging shell");
+
+    // Anonymous DELETE (no X-Tenant-ID / X-Workspace-ID headers).
+    let (status, body) = delete_document_http(&app, doc_id).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "anonymous delete of staging shell must not 404: {body}"
+    );
+    assert_eq!(body.get("deleted").and_then(|v| v.as_bool()), Some(true));
+
+    // Durable cancel: the queued task row is Cancelled (survives restarts).
+    let row = state
+        .tasks
+        .storage
+        .get_task(&track_id)
+        .await
+        .expect("get task")
+        .expect("task row must still exist");
+    assert_eq!(
+        row.status,
+        TaskStatus::Cancelled,
+        "queued ingest task must be durably cancelled, got {:?}",
+        row.status
+    );
+
+    // Staging shell metadata is gone.
+    let leftover = state
+        .storage
+        .kv_storage
+        .get_by_id(&staging_key)
+        .await
+        .expect("kv read");
+    assert!(leftover.is_none(), "staging shell must be wiped");
+}
+
+#[tokio::test]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 async fn test_delete_processing_document_succeeds() {
     // First Principle: a user must always be able to delete their document.
     // Documents with status "processing" should be deletable — the handler
@@ -5856,4 +5947,252 @@ async fn test_complete_add_delete_cycle() {
 
     println!("✅ OODA-50 TEST PASSED: Complete add/delete cycle verified");
     println!("🎉 50 OODA ITERATIONS COMPLETE!");
+}
+
+/// SPEC-084 / GH-317: selected multi-delete admits one BatchDeletion task.
+#[tokio::test]
+async fn issue317_batch_delete_unselected_remain() {
+    let workers = create_worker_app().await;
+    let app = workers.app();
+    let kv = &workers.kv_storage;
+
+    let mut keep_ids = Vec::new();
+    let mut delete_ids = Vec::new();
+    for i in 0..5 {
+        let id = format!("issue317-keep-{i}");
+        kv.upsert(&[(
+            format!("{id}-metadata"),
+            with_tenant_scope(json!({
+                "id": id,
+                "title": format!("Keep {i}"),
+                "status": "completed",
+                "created_at": "2026-01-01T00:00:00Z",
+            })),
+        )])
+        .await
+        .expect("seed keep");
+        keep_ids.push(id);
+    }
+    for i in 0..3 {
+        let id = format!("issue317-del-{i}");
+        kv.upsert(&[(
+            format!("{id}-metadata"),
+            with_tenant_scope(json!({
+                "id": id,
+                "title": format!("Del {i}"),
+                "status": "completed",
+                "created_at": "2026-01-02T00:00:00Z",
+            })),
+        )])
+        .await
+        .expect("seed del");
+        delete_ids.push(id);
+    }
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/documents/batch-delete")
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                .body(Body::from(
+                    serde_json::to_string(&json!({ "document_ids": delete_ids })).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let body = extract_json(response).await;
+    assert_eq!(body["accepted"], true);
+    assert_eq!(body["planned_delete_count"], 3);
+    let track = body["batch_track_id"].as_str().expect("batch_track_id");
+    assert!(!track.is_empty());
+
+    // Drain batch task via worker loop
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let mut all_gone = true;
+        for id in &delete_ids {
+            if kv
+                .get_by_id(&format!("{id}-metadata"))
+                .await
+                .ok()
+                .flatten()
+                .is_some()
+            {
+                all_gone = false;
+                break;
+            }
+        }
+        if all_gone {
+            break;
+        }
+    }
+
+    for id in &delete_ids {
+        assert!(
+            kv.get_by_id(&format!("{id}-metadata"))
+                .await
+                .ok()
+                .flatten()
+                .is_none(),
+            "selected {id} must be deleted"
+        );
+    }
+
+    for id in &keep_ids {
+        assert!(
+            kv.get_by_id(&format!("{id}-metadata"))
+                .await
+                .ok()
+                .flatten()
+                .is_some(),
+            "unselected {id} must remain"
+        );
+    }
+}
+
+/// Ghost documents: incomplete cascade left wsdoc/content after metadata wipe.
+/// Batch already-absent path must still purge list surfaces (not count bare success).
+#[tokio::test]
+async fn batch_delete_purges_orphan_list_surfaces_after_incomplete_cascade() {
+    use edgequake_storage::kv_keys;
+
+    let workers = create_worker_app().await;
+    let app = workers.app();
+    let kv = &workers.kv_storage;
+
+    let doc_id = "ghost-areal-md-001";
+    let meta_key = format!("{doc_id}-metadata");
+    let content_key = format!("{doc_id}-content");
+    let wsdoc = kv_keys::workspace_doc_index(TEST_WORKSPACE_ID, doc_id);
+
+    // Seed list surfaces as a completed MD doc, then wipe only metadata
+    // (historical incomplete cascade that left UI ghosts on refresh).
+    kv.upsert(&[
+        (
+            meta_key.clone(),
+            with_tenant_scope(json!({
+                "id": doc_id,
+                "title": "areal ghost.md",
+                "status": "completed",
+                "created_at": "2026-07-01T00:00:00Z",
+            })),
+        ),
+        (content_key.clone(), json!("# areal body")),
+        (
+            wsdoc.clone(),
+            json!({
+                "metadata_key": meta_key,
+                "document_id": doc_id,
+                "workspace_id": TEST_WORKSPACE_ID,
+            }),
+        ),
+    ])
+    .await
+    .expect("seed ghost surfaces");
+
+    kv.delete(std::slice::from_ref(&meta_key))
+        .await
+        .expect("wipe meta only");
+    assert!(
+        kv.get_by_id(&wsdoc).await.ok().flatten().is_some(),
+        "precondition: orphan wsdoc remains (ghost list source)"
+    );
+    assert!(
+        kv.get_by_id(&content_key).await.ok().flatten().is_some(),
+        "precondition: orphan content remains"
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/documents/batch-delete")
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                .body(Body::from(
+                    serde_json::to_string(&json!({ "document_ids": [doc_id] })).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let body = extract_json(response).await;
+    let track = body["batch_track_id"].as_str().expect("batch_track_id");
+
+    // has_content true ⇒ full cascade path; either way list surfaces must clear.
+    let mut purged = false;
+    for _ in 0..60 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let wsdoc_gone = kv.get_by_id(&wsdoc).await.ok().flatten().is_none();
+        let content_gone = kv.get_by_id(&content_key).await.ok().flatten().is_none();
+        let meta_gone = kv.get_by_id(&meta_key).await.ok().flatten().is_none();
+        if wsdoc_gone && content_gone && meta_gone {
+            purged = true;
+            break;
+        }
+    }
+
+    assert!(
+        purged,
+        "list surfaces must be empty after batch delete; track={track} \
+         wsdoc_present={} content_present={}",
+        kv.get_by_id(&wsdoc).await.ok().flatten().is_some(),
+        kv.get_by_id(&content_key).await.ok().flatten().is_some(),
+    );
+
+    // Pure orphan path: only wsdoc remains (metadata+content already gone).
+    let doc_orphan = "ghost-wsdoc-only-002";
+    let wsdoc_orphan = kv_keys::workspace_doc_index(TEST_WORKSPACE_ID, doc_orphan);
+    kv.upsert(&[(
+        wsdoc_orphan.clone(),
+        json!({
+            "metadata_key": format!("{doc_orphan}-metadata"),
+            "document_id": doc_orphan,
+            "workspace_id": TEST_WORKSPACE_ID,
+        }),
+    )])
+    .await
+    .expect("seed wsdoc-only orphan");
+
+    let response2 = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/documents/batch-delete")
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                .body(Body::from(
+                    serde_json::to_string(&json!({ "document_ids": [doc_orphan] })).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response2.status(), StatusCode::ACCEPTED);
+
+    let mut orphan_purged = false;
+    for _ in 0..60 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        if kv.get_by_id(&wsdoc_orphan).await.ok().flatten().is_none() {
+            orphan_purged = true;
+            break;
+        }
+    }
+    assert!(
+        orphan_purged,
+        "wsdoc-only orphan must be purged on Ok(None) list-surface path"
+    );
 }

@@ -29,6 +29,11 @@ export function useWorkspaceDetailQueries(
     queryFn: () => getWorkspace(tenantId!, workspaceId!),
     enabled,
     staleTime: 30_000,
+<<<<<<< HEAD
+=======
+    // SPEC-100: keep cached workspace painted during soft refetch
+    placeholderData: (previous) => previous,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   });
 
   const statsQuery = useQuery({
@@ -37,6 +42,10 @@ export function useWorkspaceDetailQueries(
     enabled: enabled && !!workspaceId,
     staleTime: 0,
     refetchOnMount: "always",
+<<<<<<< HEAD
+=======
+    placeholderData: (previous) => previous,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   });
 
   const providerHealthQuery = useQuery({
@@ -45,15 +54,26 @@ export function useWorkspaceDetailQueries(
     enabled,
     staleTime: 60_000,
     retry: 1,
+<<<<<<< HEAD
+=======
+    placeholderData: (previous) => previous,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   });
 
   return {
     workspace: workspaceQuery.data,
     stats: statsQuery.data,
     providerHealth: providerHealthQuery.data,
+<<<<<<< HEAD
     isLoadingWorkspace: workspaceQuery.isLoading,
     isLoadingStats: statsQuery.isLoading,
     isLoadingHealth: providerHealthQuery.isLoading,
+=======
+    // SPEC-100: full-page skeleton only on cold load (no cached workspace)
+    isLoadingWorkspace: workspaceQuery.isLoading && !workspaceQuery.data,
+    isLoadingStats: statsQuery.isLoading && !statsQuery.data,
+    isLoadingHealth: providerHealthQuery.isLoading && !providerHealthQuery.data,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     refetchWorkspace: workspaceQuery.refetch,
   };
 }

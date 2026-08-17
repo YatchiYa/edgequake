@@ -202,6 +202,7 @@ mod postgres_backend_contract {
         };
     }
 
+<<<<<<< HEAD
     postgres_backend_contract!(
         postgres_kv_basic_crud_e2e_contract,
         require_postgres_kv,
@@ -222,6 +223,44 @@ mod postgres_backend_contract {
         require_postgres_vector,
         vector_e2e_contract::assert_vector_query
     );
+=======
+    // SPEC-091 migrations 125/126 drop generic `eq_*_kv` / `eq_*_vectors`.
+    // Unclassified-key / legacy-vector contracts are superseded by
+    // `e2e_spec091_*` / `contract_spec091_*` (typed homes + chunk_embeddings).
+
+    #[tokio::test]
+    #[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_* / contract_spec091_*"]
+    async fn postgres_kv_basic_crud_e2e_contract() {
+        let storage = require_postgres_kv!();
+        kv_e2e_contract::assert_kv_basic_crud(&storage).await;
+        let _ = storage.clear().await;
+    }
+
+    #[tokio::test]
+    #[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_* / contract_spec091_*"]
+    async fn postgres_kv_bulk_e2e_contract() {
+        let storage = require_postgres_kv!();
+        kv_e2e_contract::assert_kv_bulk_operations(&storage).await;
+        let _ = storage.clear().await;
+    }
+
+    #[tokio::test]
+    #[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_* / contract_spec091_*"]
+    async fn postgres_vector_basic_crud_e2e_contract() {
+        let storage = require_postgres_vector!();
+        vector_e2e_contract::assert_vector_basic_crud(&storage).await;
+        let _ = storage.clear().await;
+    }
+
+    #[tokio::test]
+    #[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_* / contract_spec091_*"]
+    async fn postgres_vector_query_e2e_contract() {
+        let storage = require_postgres_vector!();
+        vector_e2e_contract::assert_vector_query(&storage).await;
+        let _ = storage.clear().await;
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     postgres_backend_contract!(
         postgres_graph_node_crud_e2e_contract,
         require_postgres_graph,
@@ -254,6 +293,10 @@ mod postgres_backend_contract {
     }
 
     #[tokio::test]
+<<<<<<< HEAD
+=======
+    #[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_* / contract_spec091_*"]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     async fn postgres_vector_chart_modality_filter_e2e_contract() {
         let storage = require_postgres_vector!();
         super::metadata_filter_modality_contract::assert_query_filtered_chart_modality(&storage)
@@ -262,6 +305,10 @@ mod postgres_backend_contract {
     }
 
     #[tokio::test]
+<<<<<<< HEAD
+=======
+    #[ignore = "SPEC-091: legacy eq_*_kv / eq_*_vectors dropped (migrations 125/126); see e2e_spec091_* / contract_spec091_*"]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     async fn postgres_vector_native_fts_chart_modality_e2e_contract() {
         let storage = require_postgres_vector!();
         super::metadata_filter_modality_contract::assert_text_search_chart_modality_when_supported(

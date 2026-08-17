@@ -440,16 +440,46 @@ export function usePdfProgress(
       }
     });
 
+<<<<<<< HEAD
     // Handle connection errors
     eventSource.onerror = () => {
       setSseConnected(false);
       // Don't close — EventSource auto-reconnects by default
       // If the server closed the connection (readyState === CLOSED), clean up
       if (eventSource.readyState === EventSource.CLOSED) {
+=======
+    // Handle connection errors — 4xx (task gone) closes permanently; stop spinning.
+    eventSource.onerror = () => {
+      setSseConnected(false);
+      if (eventSource.readyState === EventSource.CLOSED) {
+        eventSource.close();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         sseRef.current = null;
       }
     };
 
+<<<<<<< HEAD
+=======
+    eventSource.addEventListener("timeout", () => {
+      eventSource.close();
+      sseRef.current = null;
+      setSseConnected(false);
+    });
+
+    // Application-level failure stream (cancelled/failed skeleton)
+    eventSource.addEventListener("error", (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data) as PdfProgressResponse;
+        queryClient.setQueryData(["pdf-progress", trackId], data);
+      } catch {
+        queryClient.invalidateQueries({ queryKey: ["pdf-progress", trackId] });
+      }
+      eventSource.close();
+      sseRef.current = null;
+      setSseConnected(false);
+    });
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     return () => {
       eventSource.close();
       sseRef.current = null;
@@ -495,7 +525,20 @@ export function usePdfProgress(
           : pollingInterval;
     },
     staleTime: 500, // Consider data stale quickly
-    retry: 2,
+    // Progress map can miss briefly after restart; keep retrying instead of
+    // locking the UI on a permanent "Progress not found" error.
+    // Task-not-found is terminal (cancelled/purged) — do not spin forever.
+    retry: (failureCount, err) => {
+      const msg = err instanceof Error ? err.message : String(err ?? "");
+      if (/task not found/i.test(msg)) {
+        return false;
+      }
+      if (/progress not found/i.test(msg)) {
+        return failureCount < 8;
+      }
+      return failureCount < 2;
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
 
   // Retry mutation
@@ -577,8 +620,14 @@ export function usePdfProgress(
       }));
     }
 
+    // SPEC-086: tolerate incomplete poll payloads (missing phases) — never throw.
+    const rawPhases = Array.isArray(progress.phases) ? progress.phases : [];
     return PHASE_ORDER.map((phase, index) => {
+<<<<<<< HEAD
       const phaseData = progress.phases[index];
+=======
+      const phaseData = rawPhases[index];
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       return {
         phase,
         label: PHASE_LABELS[phase].label,

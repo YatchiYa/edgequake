@@ -1,8 +1,10 @@
 'use client';
 
+import { FirstRunWizard } from '@/components/onboarding/first-run-wizard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { useSetupStatus } from '@/hooks/use-setup-status';
 import { login } from '@/lib/api/edgequake';
 import { getRuntimeConfig } from '@/lib/runtime-config';
 import { useAuthStore } from '@/stores/use-auth-store';
@@ -14,13 +16,26 @@ import { toast } from 'sonner';
 export default function LoginPage() {
   const router = useRouter();
   const authLogin = useAuthStore((s) => s.login);
-  
+  const { data: setupStatus, isLoading: setupLoading } = useSetupStatus();
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { authEnabled, disableDemoLogin } = getRuntimeConfig();
   const showDemoLogin = !disableDemoLogin && !authEnabled;
+<<<<<<< HEAD
+=======
+
+  // SPEC-101: empty auth-on install → first-run wizard instead of login form
+  if (!setupLoading && setupStatus?.needs_setup && setupStatus.auth_enabled) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto bg-gradient-to-br from-background to-muted/50 p-4">
+        <FirstRunWizard surface="login" />
+      </div>
+    );
+  }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +62,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/50 p-4">
+    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto bg-gradient-to-br from-background to-muted/50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">

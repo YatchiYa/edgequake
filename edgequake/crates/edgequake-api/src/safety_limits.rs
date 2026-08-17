@@ -1119,6 +1119,38 @@ pub fn create_safe_vision_provider_for_pass_b(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+<<<<<<< HEAD
+=======
+const GATEWAY_MODEL_IDS_ENV: &str = "EDGEQUAKE_ALLOW_GATEWAY_MODEL_IDS";
+
+/// True when slash-separated gateway model IDs (e.g. `deepinfra/minimax-m2.5`) should
+/// pass through COMPAT-GUARD without rewrite.
+fn gateway_slash_models_allowed() -> bool {
+    if std::env::var(GATEWAY_MODEL_IDS_ENV)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    if std::env::var("EDGEQUAKE_CHAT_BASE_URL")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    if let Ok(base_url) = std::env::var("OPENAI_BASE_URL") {
+        let trimmed = base_url.trim();
+        if !trimmed.is_empty() && !trimmed.contains("api.openai.com") {
+            return true;
+        }
+    }
+
+    false
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// Detect whether a model name is clearly incompatible with the given provider.
 ///
 /// WHY: Stale task data or misconfigured workspaces can store a model name that
@@ -1172,7 +1204,14 @@ pub fn is_model_provider_mismatch(provider_name: &str, model: &str) -> bool {
         }
         "openai" | "anthropic" | "gemini" | "xai" | "minimax" => {
             // Cloud providers should not inherit self-hosted model names.
+<<<<<<< HEAD
             is_local_style_model || model.contains('/')
+=======
+            // WHY: slash in model is also valid for gateway routing keys — allow when
+            // a custom OpenAI-compatible base URL or explicit gateway flag is set.
+            let slash_mismatch = model.contains('/') && !gateway_slash_models_allowed();
+            is_local_style_model || slash_mismatch
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
         "mistral" => {
             // Mismatch when using a model from a different cloud or a purely local namespace.
@@ -1309,3 +1348,38 @@ mod vision_outer_timeout_tests {
         assert_eq!(effective_page_count_for_vision_budget(42), 42);
     }
 }
+<<<<<<< HEAD
+=======
+
+#[cfg(test)]
+mod issue255_gateway_model_tests {
+    use super::*;
+    use serial_test::serial;
+
+    fn clear_gateway_env() {
+        std::env::remove_var(GATEWAY_MODEL_IDS_ENV);
+        std::env::remove_var("EDGEQUAKE_CHAT_BASE_URL");
+        std::env::remove_var("OPENAI_BASE_URL");
+    }
+
+    #[test]
+    #[serial]
+    fn issue255_gateway_slash_model_not_rewritten() {
+        clear_gateway_env();
+        std::env::set_var(GATEWAY_MODEL_IDS_ENV, "1");
+        assert!(!is_model_provider_mismatch(
+            "openai",
+            "deepinfra/minimax-m2.5"
+        ));
+        clear_gateway_env();
+    }
+
+    #[test]
+    #[serial]
+    fn issue255_local_model_on_openai_still_guarded() {
+        clear_gateway_env();
+        assert!(is_model_provider_mismatch("openai", "gemma3:latest"));
+        clear_gateway_env();
+    }
+}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042

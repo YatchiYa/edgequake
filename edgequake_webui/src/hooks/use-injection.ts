@@ -33,6 +33,11 @@ export function useInjections(workspaceId: string | null) {
     queryFn: () => listInjections(workspaceId!),
     enabled: !!workspaceId,
     staleTime: 30_000,
+<<<<<<< HEAD
+=======
+    // SPEC-100: soft refresh keeps grid painted
+    placeholderData: (previous) => previous,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   });
 }
 
@@ -44,6 +49,10 @@ export function useInjectionDetail(
     queryKey: injectionKeys.detail(workspaceId ?? "", injectionId ?? ""),
     queryFn: () => getInjection(workspaceId!, injectionId!),
     enabled: !!workspaceId && !!injectionId,
+<<<<<<< HEAD
+=======
+    placeholderData: (previous) => previous,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   });
 }
 

@@ -44,9 +44,16 @@ pub use trace_context::{extract_from_headers, inject_current_context};
 pub use metrics::{
     init_metrics, record_chunk_strategy_degraded, record_community_sampled,
     record_compensate_shared_entity_skipped, record_compensation_quarantine, record_db_pool_stats,
+<<<<<<< HEAD
     record_document_processing, record_document_processing_with_labels, record_faithfulness_sample,
     record_graph_quality, record_http_request, record_ingest_stage_duration,
     record_ingestion_failure, record_llm_request, record_pipeline_error,
+=======
+    record_db_pool_stats_for_role, record_document_processing,
+    record_document_processing_with_labels, record_faithfulness_sample, record_graph_quality,
+    record_http_request, record_ingest_stage_duration, record_ingestion_failure,
+    record_llm_request, record_migration_progress, record_pipeline_error,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     record_popular_node_fallback, record_query_arm_duration, record_query_completed,
     record_rate_limit_exceeded, record_retract_on_cancel, record_sparse_retrieval_outcome,
     record_storage_drift, record_storage_error, record_storage_op_duration,

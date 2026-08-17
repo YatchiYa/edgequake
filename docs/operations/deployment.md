@@ -2,7 +2,11 @@
 title: 'Deployment Guide'
 ---
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # Deployment Guide
 
@@ -52,12 +56,20 @@ EDGEQUAKE_LLM_PROVIDER=openai OPENAI_API_KEY=sk-... make stack
 
 **Pin to a specific version:**
 ```bash
+<<<<<<< HEAD
 EDGEQUAKE_VERSION=0.19.0 make stack
+=======
+EDGEQUAKE_VERSION=0.23.0 make stack
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ```
 
 **Production auth** (auth is on by default; quickstart uses `EDGEQUAKE_DEV_MODE=true` for open API):
 ```bash
+<<<<<<< HEAD
 EDGEQUAKE_VERSION=0.19.0 \
+=======
+EDGEQUAKE_VERSION=0.23.0 \
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 EDGEQUAKE_DEV_MODE=false \
 EDGEQUAKE_AUTH_ENABLED=true \
 EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD='ChangeMe123!' \
@@ -222,7 +234,11 @@ OLLAMA_EMBEDDING_MODEL=embeddinggemma:latest
 # Server (optional)
 EDGEQUAKE_PORT=8080
 FRONTEND_PORT=3000
+<<<<<<< HEAD
 EDGEQUAKE_VERSION=0.19.0
+=======
+EDGEQUAKE_VERSION=0.23.0
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # Auth (production — auth is ON by default; quickstart sets EDGEQUAKE_DEV_MODE=true)
 EDGEQUAKE_DEV_MODE=false
@@ -371,7 +387,11 @@ spec:
     spec:
       containers:
         - name: edgequake
+<<<<<<< HEAD
           image: ghcr.io/raphaelmansuy/edgequake:0.19.0
+=======
+          image: ghcr.io/raphaelmansuy/edgequake:0.23.0
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           ports:
             - containerPort: 8080
           envFrom:
@@ -447,7 +467,11 @@ See [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md) for multi
 
 ## Auth Bootstrap (SPEC-027)
 
+<<<<<<< HEAD
 Auth is **enabled by default** in v0.19.0. On a fresh PostgreSQL database, set bootstrap credentials before first boot:
+=======
+Auth is **enabled by default** in v0.23.0. On a fresh PostgreSQL database, set bootstrap credentials before first boot:
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ```bash
 EDGEQUAKE_AUTH_ENABLED=true

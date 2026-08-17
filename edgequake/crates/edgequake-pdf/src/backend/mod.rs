@@ -63,6 +63,11 @@ pub struct VisionConversionConfig {
     pub progress_callback: Option<Arc<dyn edgequake_pdf2md::ConversionProgressCallback>>,
     /// Fired between OCR complete and markdown return (viewer PNG / chart crops).
     pub status_hook: Option<VisionStatusHook>,
+<<<<<<< HEAD
+=======
+    /// Optional page selection forwarded to pdf2md (SPEC-094).
+    pub pages: Option<edgequake_pdf2md::PageSelection>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 impl std::fmt::Debug for VisionConversionConfig {
@@ -82,6 +87,10 @@ impl std::fmt::Debug for VisionConversionConfig {
                 "status_hook",
                 &self.status_hook.as_ref().map(|_| "<status_hook>"),
             )
+<<<<<<< HEAD
+=======
+            .field("pages", &self.pages)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             .finish()
     }
 }
@@ -128,6 +137,11 @@ pub struct PdfConversionConfig {
     pub filename: Option<String>,
     pub vision: Option<VisionConversionConfig>,
     pub page_drawing_assets: Option<PageDrawingAssetsConfig>,
+<<<<<<< HEAD
+=======
+    /// Optional page selection (vision backends; EdgeParse ignores for now).
+    pub pages: Option<edgequake_pdf2md::PageSelection>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 #[async_trait]

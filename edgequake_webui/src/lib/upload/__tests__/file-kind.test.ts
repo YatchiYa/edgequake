@@ -3,7 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   classifyUploadFile,
   isImageUploadFile,
+<<<<<<< HEAD
   isPdfUploadFile,
+=======
+  isMarkdownUploadFile,
+  isPdfUploadFile,
+  sourceTypeFromFileName,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 } from "../file-kind";
 
 function file(name: string, type: string): File {
@@ -33,6 +39,22 @@ describe("file-kind", () => {
     );
   });
 
+<<<<<<< HEAD
+=======
+  it("detects markdown for source_type taxonomy (SPEC-086)", () => {
+    expect(isMarkdownUploadFile(file("notes.md", "text/markdown"))).toBe(true);
+    expect(isMarkdownUploadFile(file("NOTES.MD", ""))).toBe(true);
+    expect(isMarkdownUploadFile(file("notes.txt", "text/plain"))).toBe(false);
+  });
+
+  it("sourceTypeFromFileName distinguishes md vs txt vs pdf", () => {
+    expect(sourceTypeFromFileName("notes.md")).toBe("markdown");
+    expect(sourceTypeFromFileName("notes.txt")).toBe("text");
+    expect(sourceTypeFromFileName("paper.pdf")).toBe("pdf");
+    expect(sourceTypeFromFileName("scan.png")).toBe("image");
+  });
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   it("does not treat PDF as image", () => {
     expect(isImageUploadFile(file("doc.pdf", "application/pdf"))).toBe(false);
   });

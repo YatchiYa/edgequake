@@ -35,6 +35,10 @@ pub fn from_engine_stats(
         generation_time_ms: engine.generation_time_ms,
         ttft_ms: engine.ttft_ms,
         answer_cache_hit: engine.answer_cache_hit,
+<<<<<<< HEAD
+=======
+        keyword_cache_hit: engine.keyword_cache_hit,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         total_time_ms: engine.total_time_ms,
         sources_retrieved: context.chunks.len()
             + context.entities.len()

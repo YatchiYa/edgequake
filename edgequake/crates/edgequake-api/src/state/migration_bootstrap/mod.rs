@@ -16,6 +16,30 @@ pub(super) const SQL_038_APPLY: &str =
 pub(super) const SQL_040_APPLY: &str =
     include_str!("../../../../../migrations/support/040/apply.sql");
 
+<<<<<<< HEAD
+=======
+/// SPEC-098 entity spine ensure — SSOT: `migrations/support/139/apply.sql`
+pub(super) const SQL_139_APPLY: &str =
+    include_str!("../../../../../migrations/support/139/apply.sql");
+
+/// SPEC-098 edge arbiter + relationship spine — SSOT: `migrations/support/140/apply.sql`
+pub(super) const SQL_140_APPLY: &str =
+    include_str!("../../../../../migrations/support/140/apply.sql");
+
+/// SPEC-098 document lifecycle status CHECK — SSOT: `migrations/support/141/apply.sql`
+pub(super) const SQL_141_APPLY: &str =
+    include_str!("../../../../../migrations/support/141/apply.sql");
+
+/// sqlx migration version marker for SPEC-098 spine ensure.
+pub const MIGRATION_139_VERSION: i64 = 139;
+
+/// sqlx migration version marker for SPEC-098 edge arbiter reconcile.
+pub const MIGRATION_140_VERSION: i64 = 140;
+
+/// sqlx migration version for SPEC-098 document lifecycle statuses.
+pub const MIGRATION_141_VERSION: i64 = 141;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// Document stats columns — SSOT: `migrations/041_document_stats_columns.sql`
 pub(super) const SQL_041_APPLY: &str =
     include_str!("../../../../../migrations/041_document_stats_columns.sql");
@@ -796,24 +820,385 @@ pub fn is_ready_for_traffic(report: &Option<MigrationBootstrapReport>) -> bool {
     readiness_blockers(report).is_empty()
 }
 
+<<<<<<< HEAD
+=======
+/// SPEC-091 Doc 17 (LD-15, LAW-B2): distinct exit code for boot-gate refusals
+/// (EX_CONFIG) so orchestrators can branch on "migrate required" vs "crash".
+pub const BOOT_GATE_EXIT_CODE: i32 = 78;
+
+/// Sentinel prefix so the binary can map refusal errors to [`BOOT_GATE_EXIT_CODE`].
+pub const BOOT_GATE_REFUSAL_PREFIX: &str = "BOOT_GATE_REFUSAL:";
+
+/// SPEC-091 irreversible drop versions (LD-07) — human-gated behind `--confirm-drop`.
+pub const IRREVERSIBLE_DROP_VERSIONS: &[i64] = &[125, 126, 131];
+
+/// SPEC-105 LAW-L5 — post-drop empty-residue assert (expandable, but deferred
+/// while durable `eq_*` rows remain so ≤0.22 mid-upgrade `migrate` / boot stay unblocked).
+pub const LEGACY_CUTOVER_ASSERT_VERSION: i64 = 142;
+
+/// True when `version` is an irreversible SPEC-091 drop migration.
+pub fn is_irreversible_drop(version: i64) -> bool {
+    IRREVERSIBLE_DROP_VERSIONS.contains(&version)
+}
+
+/// True when `version` is the SPEC-105 legacy cutover assert migration.
+pub fn is_legacy_cutover_assert(version: i64) -> bool {
+    version == LEGACY_CUTOVER_ASSERT_VERSION
+}
+
+/// True when every pending version is an irreversible drop (no expandable drift).
+pub fn pending_only_irreversible_drops(pending: &[i64]) -> bool {
+    !pending.is_empty() && pending.iter().copied().all(is_irreversible_drop)
+}
+
+/// Serve / soft-exit migrate when only DROP OLD (and optionally deferred 142) remain.
+///
+/// LAW-L5: while legacy rows exist, 142 must not block expandable migrate or boot.
+pub fn pending_ok_to_serve(pending: &[i64], defer_legacy_cutover_assert: bool) -> bool {
+    !pending.is_empty()
+        && pending.iter().copied().all(|v| {
+            is_irreversible_drop(v) || (defer_legacy_cutover_assert && is_legacy_cutover_assert(v))
+        })
+}
+
+/// Expandable apply set: omit irreversible drops; omit 142 when deferred by residue.
+pub fn expandable_apply_versions(pending: &[i64], defer_legacy_cutover_assert: bool) -> Vec<i64> {
+    pending
+        .iter()
+        .copied()
+        .filter(|v| include_in_expandable_apply(*v, defer_legacy_cutover_assert))
+        .collect()
+}
+
+/// True when an embedded migration should run under ExpandableOnly.
+pub fn include_in_expandable_apply(version: i64, defer_legacy_cutover_assert: bool) -> bool {
+    !(is_irreversible_drop(version)
+        || (defer_legacy_cutover_assert && is_legacy_cutover_assert(version)))
+}
+
+/// Highest pending expandable version strictly below the lowest pending irreversible.
+///
+/// Used by `edgequake migrate` to apply safe schema first when a drop gate is closed
+/// (first-principles: consent gates destroy-data steps, not expandable DDL).
+pub fn max_expandable_target(pending: &[(i64, String)]) -> Option<i64> {
+    let lowest_irreversible = pending
+        .iter()
+        .map(|(v, _)| *v)
+        .filter(|v| is_irreversible_drop(*v))
+        .min()?;
+    pending
+        .iter()
+        .map(|(v, _)| *v)
+        .filter(|v| !is_irreversible_drop(*v) && *v < lowest_irreversible)
+        .max()
+}
+
+/// Pending expandable versions (SAFE SCHEMA), including those that sit *after*
+/// a pending irreversible drop (sqlx cannot skip the drop in a contiguous train,
+/// so the CLI applies these via a filtered migrator that omits drop versions).
+pub fn pending_expandable_versions(pending: &[(i64, String)]) -> Vec<i64> {
+    pending
+        .iter()
+        .map(|(v, _)| *v)
+        .filter(|v| !is_irreversible_drop(*v))
+        .collect()
+}
+
+/// Single refusal-message builder (LAW-B3) — contract-pinned by
+/// `contract_spec091_boot_gate`. Every element is load-bearing: pending count +
+/// versions, the dry-run preview, the apply command, the runbook path.
+pub fn boot_gate_pending_message(pending: &[i64]) -> String {
+    let irreversible: Vec<i64> = pending
+        .iter()
+        .copied()
+        .filter(|v| is_irreversible_drop(*v))
+        .collect();
+    let expandable: Vec<i64> = pending
+        .iter()
+        .copied()
+        .filter(|v| !is_irreversible_drop(*v))
+        .collect();
+    format!(
+        "{BOOT_GATE_REFUSAL_PREFIX} STOP — database schema is behind this binary: \
+         {} pending migration(s): {pending:?}.\n\
+         \n\
+         First principles: the server will not start until SAFE SCHEMA migrations \
+         are applied. DROP OLD (destroy-data) steps stay human-gated.\n\
+         \n\
+         Breakdown:\n\
+         \x20 SAFE SCHEMA still missing: {expandable:?}\n\
+         \x20 DROP OLD (optional, needs --confirm-drop): {irreversible:?}\n\
+         \n\
+         Next steps:\n\
+         \x20 1. edgequake migrate dry-run     # preview (zero writes)\n\
+         \x20 2. edgequake migrate             # apply SAFE SCHEMA (DROP OLD still needs --confirm-drop)\n\
+         \n\
+         Runbook: docs/operations/spec091-upgrade-from-v0.22.0.md",
+        pending.len(),
+    )
+}
+
+/// Downgrade refusal (LAW-B5): database applied a newer schema than this
+/// binary embeds. Silent downgrade-serve is schema drift by omission.
+pub fn boot_gate_downgrade_message(applied_max: i64, embedded_max: i64) -> String {
+    format!(
+        "{BOOT_GATE_REFUSAL_PREFIX} database is NEWER than this binary \
+         (applied v{applied_max} > embedded v{embedded_max}). Run the binary that \
+         matches the schema, or restore a compatible backup. \
+         (SPEC-091 LAW-B5 downgrade protection.)"
+    )
+}
+
+/// SPEC-091 Doc 17 (LD-15): `EDGEQUAKE_ALLOW_BOOT_MIGRATE` was removed as a
+/// behavior input. One-release warn-and-ignore shim — the gate is fail-closed
+/// regardless. Warns only on a TRUTHY value (someone relying on the old
+/// escape); an explicit `=0` already states the new behavior, so it stays quiet.
+pub fn warn_if_removed_boot_flag_set() {
+    let truthy = matches!(
+        std::env::var("EDGEQUAKE_ALLOW_BOOT_MIGRATE")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    );
+    if truthy {
+        tracing::warn!(
+            target: "edgequake.migration",
+            "EDGEQUAKE_ALLOW_BOOT_MIGRATE was removed (SPEC-091 LD-15) and is ignored — \
+             schema apply is `edgequake migrate` only; serving boot is fail-closed verify-only"
+        );
+    }
+}
+
+/// Set by `edgequake migrate` so support DDL apply runs without the boot escape.
+pub fn migrate_cli_mode() -> bool {
+    matches!(
+        std::env::var("EDGEQUAKE_MIGRATE_CLI")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+/// Schema-vs-binary disagreement (LAW-B2/B3) — one derivation, shared by the
+/// boot gate and `/health` (DRY). `None` when the ledger is unreadable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SchemaDrift {
+    /// Embedded migrations not yet applied.
+    pub pending_count: usize,
+    /// Database applied a version beyond this binary's embedded latest (LAW-B5).
+    pub db_newer_than_binary: bool,
+}
+
+impl SchemaDrift {
+    /// True when serving requires operator action (`edgequake migrate` or a
+    /// matching binary) before the schema agrees with this binary.
+    pub fn migration_required(&self) -> bool {
+        self.pending_count > 0 || self.db_newer_than_binary
+    }
+}
+
+/// Live drift read for `/health` and the boot gate (LAW-B3: same derivation,
+/// no second computation).
+pub async fn schema_drift(pool: &PgPool) -> Option<SchemaDrift> {
+    let applied = fetch_applied_versions(pool).await.ok()?;
+    let embedded_max = MIGRATOR
+        .migrations
+        .iter()
+        .map(|m| m.version)
+        .max()
+        .unwrap_or(0);
+    let applied_max = applied.iter().copied().max().unwrap_or(0);
+    Some(SchemaDrift {
+        pending_count: MIGRATOR
+            .migrations
+            .iter()
+            .filter(|m| !applied.contains(&m.version))
+            .count(),
+        db_newer_than_binary: applied_max > embedded_max,
+    })
+}
+
+/// True when the database has never been migrated (zero successful
+/// `_sqlx_migrations` rows). Used by the CLI to scope irreversible-op consent:
+/// on a fresh install the drop migrations cannot destroy anything (LAW-C5 —
+/// consent is required only when there is something to lose).
+pub async fn is_fresh_database(pool: &PgPool) -> Result<bool, sqlx::Error> {
+    Ok(fetch_applied_versions(pool).await?.is_empty())
+}
+
+/// Serving-boot entry (LAW-B1/B2/B5): never applies versioned migrations.
+/// Fail-closed verify: expandable pending ⇒ refuse (exit 78 contract), database
+/// newer than the binary ⇒ refuse (downgrade protection). Pending **only**
+/// irreversible drops (125/126/131) soft-allow with WARN so local upgrade DBs
+/// can serve on typed defaults while the human-gated drop stays operator-owned.
+/// SPEC-105: pending 142 is soft-allowed while durable legacy rows remain
+/// (deferred assert — LAW-L5 ladder). Only `edgequake migrate` (CLI mode) may
+/// proceed to apply.
+pub async fn bootstrap_for_serving(pool: &PgPool) -> Result<MigrationBootstrapReport, sqlx::Error> {
+    warn_if_removed_boot_flag_set();
+    if !migrate_cli_mode() {
+        let applied_before = fetch_applied_versions(pool).await?;
+        let embedded_max = MIGRATOR
+            .migrations
+            .iter()
+            .map(|m| m.version)
+            .max()
+            .unwrap_or(0);
+        let applied_max = applied_before.iter().copied().max().unwrap_or(0);
+        if applied_max > embedded_max {
+            return Err(sqlx::Error::Protocol(boot_gate_downgrade_message(
+                applied_max,
+                embedded_max,
+            )));
+        }
+        let pending: Vec<i64> = MIGRATOR
+            .migrations
+            .iter()
+            .filter(|m| !applied_before.contains(&m.version))
+            .map(|m| m.version)
+            .collect();
+        if !pending.is_empty() {
+            let defer_142 = edgequake_storage::any_legacy_rows(pool)
+                .await
+                .map_err(|e| sqlx::Error::Protocol(format!("legacy census for boot gate: {e}")))?;
+            if pending_ok_to_serve(&pending, defer_142) {
+                tracing::warn!(
+                    target: "edgequake.migration",
+                    pending = ?pending,
+                    defer_legacy_cutover_assert = defer_142,
+                    "OK TO SERVE — SAFE SCHEMA is complete; only optional DROP OLD \
+                     and/or deferred SPEC-105 assert (142) remain. They delete or \
+                     assert legacy tables after data copy is verified. Do NOT \
+                     --confirm-drop while readiness is RED. Preview: edgequake \
+                     migrate dry-run. Apply drops when GREEN: edgequake migrate \
+                     --confirm-drop (then 142 on next expandable migrate)."
+                );
+            } else {
+                return Err(sqlx::Error::Protocol(boot_gate_pending_message(&pending)));
+            }
+        }
+    }
+    run_postgres_migrations(pool).await
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// Run sqlx migrations plus size-aware 038 apply with structured progression logs.
 pub async fn run_postgres_migrations(
     pool: &PgPool,
 ) -> Result<MigrationBootstrapReport, sqlx::Error> {
+<<<<<<< HEAD
+=======
+    run_postgres_migrations_inner(pool, MigrationApplyMode::All).await
+}
+
+/// Apply only SAFE SCHEMA (expandable) migrations, skipping irreversible drop
+/// versions so later expandables (e.g. 132 behind gated 131) can land without
+/// `--confirm-drop`. CLI-only.
+pub async fn run_postgres_expandable_migrations(
+    pool: &PgPool,
+) -> Result<MigrationBootstrapReport, sqlx::Error> {
+    if !migrate_cli_mode() {
+        return Err(sqlx::Error::Protocol(
+            "run_postgres_expandable_migrations is CLI-only (EDGEQUAKE_MIGRATE_CLI=1)".into(),
+        ));
+    }
+    run_postgres_migrations_inner(pool, MigrationApplyMode::ExpandableOnly).await
+}
+
+/// Apply embedded migrations **through** `max_version` inclusive (CLI only).
+///
+/// Used when an irreversible drop is pending without `--confirm-drop`: apply
+/// expandable migrations that precede the drop, leave the drop pending.
+pub async fn run_postgres_migrations_through(
+    pool: &PgPool,
+    max_version: i64,
+) -> Result<MigrationBootstrapReport, sqlx::Error> {
+    if !migrate_cli_mode() {
+        return Err(sqlx::Error::Protocol(
+            "run_postgres_migrations_through is CLI-only (EDGEQUAKE_MIGRATE_CLI=1)".into(),
+        ));
+    }
+    run_postgres_migrations_inner(pool, MigrationApplyMode::Through(max_version)).await
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MigrationApplyMode {
+    /// Apply every pending migration (confirm-drop / fresh install).
+    All,
+    /// Apply through `max_version` inclusive (legacy partial train).
+    Through(i64),
+    /// Apply every pending expandable; omit irreversible drop versions.
+    ExpandableOnly,
+}
+
+async fn run_postgres_migrations_inner(
+    pool: &PgPool,
+    mode: MigrationApplyMode,
+) -> Result<MigrationBootstrapReport, sqlx::Error> {
+    let max_version = match mode {
+        MigrationApplyMode::Through(v) => Some(v),
+        MigrationApplyMode::All | MigrationApplyMode::ExpandableOnly => None,
+    };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     info!(
         target: "edgequake.migration",
         step = "bootstrap_start",
         total_embedded = MIGRATOR.migrations.len(),
+<<<<<<< HEAD
+=======
+        migrate_cli = migrate_cli_mode(),
+        mode = ?mode,
+        max_version = ?max_version,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         "Database migration bootstrap starting"
     );
 
     let applied_before = fetch_applied_versions(pool).await?;
+<<<<<<< HEAD
+=======
+    let defer_legacy_cutover_assert = edgequake_storage::any_legacy_rows(pool)
+        .await
+        .map_err(|e| sqlx::Error::Protocol(format!("legacy census for migrate filter: {e}")))?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let pending: Vec<_> = MIGRATOR
         .migrations
         .iter()
         .filter(|m| !applied_before.contains(&m.version))
+<<<<<<< HEAD
         .collect();
 
+=======
+        .filter(|m| match mode {
+            MigrationApplyMode::All => true,
+            MigrationApplyMode::Through(cap) => m.version <= cap,
+            MigrationApplyMode::ExpandableOnly => {
+                include_in_expandable_apply(m.version, defer_legacy_cutover_assert)
+            }
+        })
+        .collect();
+
+    // Defense-in-depth (LAW-B1): serving never applies versioned SQL.
+    // Expandable pending ⇒ refuse. Irreversible-only (and deferred 142) pending
+    // ⇒ soft-allow (reconcile-only; drop/assert stay operator-gated).
+    if !migrate_cli_mode() {
+        let all_pending: Vec<i64> = MIGRATOR
+            .migrations
+            .iter()
+            .filter(|m| !applied_before.contains(&m.version))
+            .map(|m| m.version)
+            .collect();
+        if !all_pending.is_empty()
+            && !pending_ok_to_serve(&all_pending, defer_legacy_cutover_assert)
+        {
+            return Err(sqlx::Error::Protocol(boot_gate_pending_message(
+                &all_pending,
+            )));
+        }
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     info!(
         target: "edgequake.migration",
         step = "preflight",
@@ -850,6 +1235,7 @@ pub async fn run_postgres_migrations(
         );
     }
 
+<<<<<<< HEAD
     if pending.is_empty() {
         info!(
             target: "edgequake.migration",
@@ -870,6 +1256,93 @@ pub async fn run_postgres_migrations(
             count = pending.len(),
             "sqlx migrations applied successfully"
         );
+=======
+    let apply_sqlx = migrate_cli_mode() && !pending.is_empty();
+    if !apply_sqlx {
+        info!(
+            target: "edgequake.migration",
+            step = "sqlx_run",
+            "Schema apply skipped (up to date, serving soft-allow, or empty pending set)"
+        );
+    } else {
+        match mode {
+            MigrationApplyMode::All => {
+                info!(
+                    target: "edgequake.migration",
+                    step = "sqlx_run",
+                    count = pending.len(),
+                    "Applying sqlx migrations (advisory lock held)"
+                );
+                MIGRATOR.run(pool).await?;
+                info!(
+                    target: "edgequake.migration",
+                    step = "sqlx_complete",
+                    count = pending.len(),
+                    "sqlx migrations applied successfully"
+                );
+            }
+            MigrationApplyMode::Through(cap) => {
+                let filtered: Vec<_> = MIGRATOR
+                    .migrations
+                    .iter()
+                    .filter(|m| m.version <= cap)
+                    .cloned()
+                    .collect();
+                info!(
+                    target: "edgequake.migration",
+                    step = "sqlx_run",
+                    count = pending.len(),
+                    max_version = cap,
+                    "Applying sqlx migrations through max_version (advisory lock held)"
+                );
+                let partial = sqlx::migrate::Migrator {
+                    migrations: std::borrow::Cow::Owned(filtered),
+                    ignore_missing: MIGRATOR.ignore_missing,
+                    locking: MIGRATOR.locking,
+                    no_tx: MIGRATOR.no_tx,
+                };
+                partial.run(pool).await?;
+                info!(
+                    target: "edgequake.migration",
+                    step = "sqlx_complete",
+                    count = pending.len(),
+                    max_version = cap,
+                    "sqlx migrations applied successfully (partial train)"
+                );
+            }
+            MigrationApplyMode::ExpandableOnly => {
+                // Omit irreversible drop versions so expandables that sit *after*
+                // a gated DROP (e.g. 132 behind 131) still apply without confirm.
+                // SPEC-105: omit 142 while durable legacy rows remain (LAW-L5).
+                let filtered: Vec<_> = MIGRATOR
+                    .migrations
+                    .iter()
+                    .filter(|m| include_in_expandable_apply(m.version, defer_legacy_cutover_assert))
+                    .cloned()
+                    .collect();
+                info!(
+                    target: "edgequake.migration",
+                    step = "sqlx_run",
+                    count = pending.len(),
+                    defer_legacy_cutover_assert,
+                    "Applying expandable sqlx migrations (irreversible drops omitted; 142 deferred if residue)"
+                );
+                let partial = sqlx::migrate::Migrator {
+                    migrations: std::borrow::Cow::Owned(filtered),
+                    ignore_missing: true, // applied drop versions may be absent from this filter
+                    locking: MIGRATOR.locking,
+                    no_tx: MIGRATOR.no_tx,
+                };
+                partial.run(pool).await?;
+                info!(
+                    target: "edgequake.migration",
+                    step = "sqlx_complete",
+                    count = pending.len(),
+                    "expandable sqlx migrations applied successfully"
+                );
+            }
+        }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     let applied_after = fetch_applied_versions(pool).await?;
@@ -1020,6 +1493,33 @@ pub async fn run_postgres_migrations(
         });
     }
 
+<<<<<<< HEAD
+=======
+    // SPEC-098: ensure relational spine for typed fleet FK resolve (AGE → entities).
+    if applied_after.contains(&MIGRATION_139_VERSION) {
+        let pool_clone = pool.clone();
+        tokio::spawn(async move {
+            reconcile::reconcile_migration_139_background(&pool_clone).await;
+        });
+    }
+
+    // SPEC-098 W6: single EDGE arbiter + AGE → relationships spine.
+    if applied_after.contains(&MIGRATION_140_VERSION) {
+        let pool_clone = pool.clone();
+        tokio::spawn(async move {
+            reconcile::reconcile_migration_140_background(&pool_clone).await;
+        });
+    }
+
+    // SPEC-098 W9: documents_valid_status includes deleting / delete_failed.
+    if applied_after.contains(&MIGRATION_141_VERSION) {
+        let pool_clone = pool.clone();
+        tokio::spawn(async move {
+            reconcile::reconcile_migration_141_background(&pool_clone).await;
+        });
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     if migration_038.is_degraded() {
         warn!(
             target: "edgequake.migration",
@@ -1390,8 +1890,37 @@ async fn fetch_applied_versions(pool: &PgPool) -> Result<HashSet<i64>, sqlx::Err
     Ok(rows.into_iter().collect())
 }
 
+<<<<<<< HEAD
 mod helpers;
 mod reconcile;
+=======
+/// Pending sqlx migrations as `(version, description)` for operator console (`edgequake migrate`).
+pub async fn list_pending_migrations(pool: &PgPool) -> Result<Vec<(i64, String)>, sqlx::Error> {
+    let applied = fetch_applied_versions(pool).await?;
+    let mut pending: Vec<(i64, String)> = MIGRATOR
+        .migrations
+        .iter()
+        .filter(|m| !applied.contains(&m.version))
+        .map(|m| (m.version, m.description.to_string()))
+        .collect();
+    pending.sort_by_key(|(v, _)| *v);
+    Ok(pending)
+}
+
+/// Description for an embedded migration version (empty string if unknown).
+pub fn migration_description(version: i64) -> String {
+    MIGRATOR
+        .migrations
+        .iter()
+        .find(|m| m.version == version)
+        .map(|m| m.description.to_string())
+        .unwrap_or_default()
+}
+
+mod helpers;
+mod reconcile;
+mod reconcile_state;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 pub use helpers::large_graph_threshold;
 
@@ -1399,6 +1928,59 @@ pub use helpers::large_graph_threshold;
 mod tests {
     use super::*;
 
+<<<<<<< HEAD
+=======
+    #[test]
+    fn irreversible_drop_helpers_and_expandable_target() {
+        assert!(is_irreversible_drop(125));
+        assert!(is_irreversible_drop(126));
+        assert!(is_irreversible_drop(131));
+        assert!(!is_irreversible_drop(130));
+        assert!(pending_only_irreversible_drops(&[131]));
+        assert!(pending_only_irreversible_drops(&[125, 126, 131]));
+        assert!(!pending_only_irreversible_drops(&[130, 131]));
+        assert!(!pending_only_irreversible_drops(&[]));
+
+        let pending = vec![
+            (128, "listing".into()),
+            (129, "hnsw".into()),
+            (130, "fleet".into()),
+            (131, "drop".into()),
+        ];
+        assert_eq!(max_expandable_target(&pending), Some(130));
+
+        let behind_drop = vec![(131, "drop".into()), (132, "halfvec".into())];
+        assert_eq!(max_expandable_target(&behind_drop), None);
+        assert_eq!(pending_expandable_versions(&behind_drop), vec![132]);
+
+        let blocked_at_125 = vec![
+            (125, "kv".into()),
+            (126, "vec".into()),
+            (128, "listing".into()),
+        ];
+        assert_eq!(max_expandable_target(&blocked_at_125), None);
+        assert_eq!(pending_expandable_versions(&blocked_at_125), vec![128]);
+    }
+
+    #[test]
+    fn e2e_105_07_defer_142_while_legacy_residue() {
+        assert!(is_legacy_cutover_assert(LEGACY_CUTOVER_ASSERT_VERSION));
+        assert!(!is_irreversible_drop(LEGACY_CUTOVER_ASSERT_VERSION));
+
+        // Mid-upgrade: 131 + 142 with residue → OK to serve / soft-exit.
+        assert!(pending_ok_to_serve(&[131, 142], true));
+        // Without residue, 142 is hard expandable — must apply before serve.
+        assert!(!pending_ok_to_serve(&[131, 142], false));
+        assert!(pending_ok_to_serve(&[131], false));
+
+        assert_eq!(expandable_apply_versions(&[131, 132, 142], true), vec![132]);
+        assert_eq!(
+            expandable_apply_versions(&[131, 132, 142], false),
+            vec![132, 142]
+        );
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     fn noop_migration_042() -> Migration042Report {
         Migration042Report {
             pgvector_available: true,
@@ -1830,6 +2412,11 @@ mod tests {
         assert!(helpers::extension_version_at_least("1.7.0", "1.6.0"));
         assert!(!helpers::extension_version_at_least("0.7.4", "0.8.0"));
         assert!(!helpers::extension_version_at_least("1.5.0", "1.6.0"));
+<<<<<<< HEAD
+=======
+        assert!(!helpers::extension_version_at_least("0.8.0-rc1", "0.8.0"));
+        assert!(helpers::extension_version_at_least("0.8.0", "0.8.0-rc1"));
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     #[test]

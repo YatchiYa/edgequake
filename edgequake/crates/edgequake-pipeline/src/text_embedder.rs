@@ -30,6 +30,11 @@ impl TextEmbedder for LlmTextEmbedder {
         &self,
         texts: &[String],
     ) -> edgequake_storage::error::Result<Vec<Vec<f32>>> {
+<<<<<<< HEAD
+=======
+        // SPEC-091 RM2: callers may pass already-preambled strings via
+        // `contextual_chunk::embedding_input`; this adapter stays a thin DIP bridge.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         self.inner
             .embed(texts)
             .await
@@ -37,6 +42,21 @@ impl TextEmbedder for LlmTextEmbedder {
     }
 }
 
+<<<<<<< HEAD
+=======
+/// Apply contextual preamble when flag on (RM-AC-08). Use before embed_texts.
+pub fn prepare_embedding_texts(contents: &[String], preambles: &[Option<String>]) -> Vec<String> {
+    contents
+        .iter()
+        .enumerate()
+        .map(|(i, content)| {
+            let pre = preambles.get(i).and_then(|o| o.as_deref());
+            crate::contextual_chunk::embedding_input(content, pre)
+        })
+        .collect()
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 #[cfg(test)]
 mod tests {
     use super::*;

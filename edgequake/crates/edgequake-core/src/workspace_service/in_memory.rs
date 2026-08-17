@@ -12,6 +12,37 @@ use crate::types::{
 };
 
 use super::{UpdateTenantQuotaResult, WorkspaceService};
+<<<<<<< HEAD
+=======
+
+/// SPEC-096: apply extraction_language to in-memory workspace metadata.
+fn apply_in_memory_extraction_language(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    language: Option<String>,
+) -> Result<()> {
+    let Some(raw) = language else {
+        return Ok(());
+    };
+    if edgequake_pipeline::is_extraction_language_clear(&raw) {
+        metadata.remove("extraction_language");
+        return Ok(());
+    }
+    match edgequake_pipeline::canonicalize_extraction_language(&raw) {
+        Some(canonical) => {
+            metadata.insert(
+                "extraction_language".to_string(),
+                serde_json::json!(canonical),
+            );
+            Ok(())
+        }
+        None => Err(Error::validation(format!(
+            "Unsupported extraction_language '{}'. Allowed values: {}",
+            raw.trim(),
+            edgequake_pipeline::SUPPORTED_LANGUAGES.join(", ")
+        ))),
+    }
+}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 /// In-memory implementation of WorkspaceService for testing.
 pub struct InMemoryWorkspaceService {
@@ -118,12 +149,21 @@ impl WorkspaceService for InMemoryWorkspaceService {
     async fn create_tenant(&self, tenant: Tenant) -> Result<Tenant> {
         let mut tenants = self.tenants.write().await;
 
-        // Check slug uniqueness
-        if tenants.values().any(|t| t.slug == tenant.slug) {
-            return Err(Error::validation(format!(
-                "Tenant with slug '{}' already exists",
-                tenant.slug
-            )));
+        // SPEC-104 A+: same natural-key policy as PostgreSQL path (LAW-I3 / EC-11).
+        // Same slug + same name → idempotent get-or-create; different name → Conflict.
+        if let Some(existing) = tenants.values().find(|t| t.slug == tenant.slug).cloned() {
+            if existing.name.trim() != tenant.name.trim() {
+                return Err(Error::conflict(format!(
+                    "Tenant slug '{}' already exists (tenant_id={})",
+                    existing.slug, existing.tenant_id
+                )));
+            }
+            tracing::info!(
+                tenant_id = %existing.tenant_id,
+                slug = %existing.slug,
+                "Tenant slug already existed — returning existing (SPEC-104)"
+            );
+            return Ok(existing);
         }
 
         tenants.insert(tenant.tenant_id, tenant.clone());
@@ -289,6 +329,38 @@ impl WorkspaceService for InMemoryWorkspaceService {
             );
         }
 
+<<<<<<< HEAD
+=======
+        // SPEC-085: entity types on create
+        if let Some(entity_types) = request.entity_types {
+            let normalized: Vec<String> = entity_types
+                .iter()
+                .map(|t| t.trim().to_uppercase().replace([' ', '-'], "_"))
+                .filter(|t| !t.is_empty())
+                .collect();
+            if !normalized.is_empty() {
+                workspace
+                    .metadata
+                    .insert("entity_types".to_string(), serde_json::json!(normalized));
+            }
+        }
+        if let Some(strict) = request.entity_types_strict {
+            if !strict {
+                workspace
+                    .metadata
+                    .insert("entity_types_strict".to_string(), serde_json::json!(false));
+            }
+        }
+        // SPEC-096: extraction language
+        apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
+        // SPEC-102: entity type colors
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         let mut workspaces = self.workspaces.write().await;
         workspaces.insert(workspace.workspace_id, workspace.clone());
 
@@ -422,6 +494,12 @@ impl WorkspaceService for InMemoryWorkspaceService {
                     .insert("entity_types_strict".to_string(), serde_json::json!(false));
             }
         }
+        apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
 
         workspace.updated_at = chrono::Utc::now();
 
@@ -762,6 +840,11 @@ mod tests {
             pdf_parser_backend: None,
             entity_types: None,
             entity_types_strict: None,
+<<<<<<< HEAD
+=======
+            extraction_language: None,
+            entity_type_colors: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         };
 
         let workspace = service
@@ -850,6 +933,11 @@ mod tests {
                 pdf_parser_backend: None,
                 entity_types: None,
                 entity_types_strict: None,
+<<<<<<< HEAD
+=======
+                extraction_language: None,
+                entity_type_colors: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             };
             service
                 .create_workspace(tenant.tenant_id, request)
@@ -873,6 +961,11 @@ mod tests {
             pdf_parser_backend: None,
             entity_types: None,
             entity_types_strict: None,
+<<<<<<< HEAD
+=======
+            extraction_language: None,
+            entity_type_colors: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         };
         let result = service.create_workspace(tenant.tenant_id, request).await;
         assert!(result.is_err());

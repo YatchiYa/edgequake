@@ -145,6 +145,7 @@ export function useQueryStreaming({
               }
               break;
 
+<<<<<<< HEAD
             case "context":
               if (chunk.sources?.length) {
                 accumulator = applyStreamContext(
@@ -153,6 +154,25 @@ export function useQueryStreaming({
                 );
               }
               break;
+=======
+            case "context": {
+              // SPEC-073: apply when sources OR subgraph present (soft-labels live on subgraph).
+              const hasSources = (chunk.sources?.length ?? 0) > 0;
+              const hasSubgraph =
+                (chunk.subgraph?.entities?.length ?? 0) > 0 ||
+                (chunk.subgraph?.relationships?.length ?? 0) > 0;
+              if (hasSources || hasSubgraph) {
+                accumulator = applyStreamContext(
+                  accumulator,
+                  buildQueryContextFromRetrieval(
+                    chunk.sources ?? [],
+                    chunk.subgraph,
+                  ),
+                );
+              }
+              break;
+            }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
             case "token": {
               const parsed = parseCOTContent(accumulator.fullContent + chunk.content);

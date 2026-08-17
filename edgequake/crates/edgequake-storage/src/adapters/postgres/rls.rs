@@ -68,6 +68,7 @@ pub type RlsTxFuture<'c, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'c
     note = "Pool-level RLS leaks session vars across concurrent checkouts. Use acquire_rls_connection or with_acquired_tenant_context instead (SPEC-027 SEC-014)."
 )]
 #[derive(Debug)]
+#[allow(dead_code)] // deprecated surface retained for API compatibility (SPEC-090 F-090-18)
 pub struct RlsContext {
     pool: PgPool,
     tenant_id: Uuid,
@@ -140,6 +141,7 @@ impl RlsContext {
 #[allow(deprecated)]
 impl Drop for RlsContext {
     fn drop(&mut self) {
+<<<<<<< HEAD
         if self.clear_on_drop {
             // Spawn a task to clear context since Drop can't be async
             let pool = self.pool.clone();
@@ -154,6 +156,9 @@ impl Drop for RlsContext {
                 }
             });
         }
+=======
+        // SPEC-090 F-090-18: no-op — pool-level clear_on_drop raced wrong connections.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 }
 
@@ -391,16 +396,16 @@ impl RlsQueryBuilder {
         self
     }
 
-    /// Get the WHERE clause conditions for manual query building.
+    /// Parameterized WHERE clause for manual query building.
     ///
-    /// Returns a tuple of (condition, parameters).
-    pub fn where_clause(&self) -> String {
+    /// Returns `(sql_with_placeholders, bind_values)` — use `$1`, `$2`, … in order.
+    pub fn where_clause(&self) -> (String, Vec<Uuid>) {
         match self.workspace_id {
-            Some(ws_id) => format!(
-                "(tenant_id = '{}' AND workspace_id = '{}')",
-                self.tenant_id, ws_id
+            Some(ws_id) => (
+                "(tenant_id = $1 AND workspace_id = $2)".to_string(),
+                vec![self.tenant_id, ws_id],
             ),
-            None => format!("tenant_id = '{}'", self.tenant_id),
+            None => ("tenant_id = $1".to_string(), vec![self.tenant_id]),
         }
     }
 
@@ -426,14 +431,14 @@ mod tests {
 
         // Tenant-only scope
         let builder = RlsQueryBuilder::new(tenant_id);
-        let clause = builder.where_clause();
-        assert!(clause.contains(&tenant_id.to_string()));
-        assert!(!clause.contains(&workspace_id.to_string()));
+        let (clause, binds) = builder.where_clause();
+        assert_eq!(clause, "tenant_id = $1");
+        assert_eq!(binds, vec![tenant_id]);
 
         // With workspace scope
         let builder = RlsQueryBuilder::new(tenant_id).workspace(workspace_id);
-        let clause = builder.where_clause();
-        assert!(clause.contains(&tenant_id.to_string()));
-        assert!(clause.contains(&workspace_id.to_string()));
+        let (clause, binds) = builder.where_clause();
+        assert_eq!(clause, "(tenant_id = $1 AND workspace_id = $2)");
+        assert_eq!(binds, vec![tenant_id, workspace_id]);
     }
 }

@@ -662,6 +662,11 @@ mod tests {
                 pdf_parser_backend: None,
                 entity_types: None,
                 entity_types_strict: None,
+<<<<<<< HEAD
+=======
+                extraction_language: None,
+                entity_type_colors: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             };
 
             let workspace = service

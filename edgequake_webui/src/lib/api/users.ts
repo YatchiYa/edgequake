@@ -20,6 +20,11 @@ export interface UserInfo {
   created_at: string;
   updated_at: string;
   last_login_at?: string | null;
+<<<<<<< HEAD
+=======
+  /** SPEC-087: shared guest / legacy anon_* system account */
+  is_anonymous?: boolean;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 export interface ListUsersResponse {
@@ -61,9 +66,17 @@ export async function listUsers(
   page = 1,
   pageSize = 20,
   role?: string,
+<<<<<<< HEAD
 ): Promise<ListUsersResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   if (role) params.set('role', role);
+=======
+  includeAnonymous = false,
+): Promise<ListUsersResponse> {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  if (role) params.set('role', role);
+  if (includeAnonymous) params.set('include_anonymous', 'true');
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   return api.get<ListUsersResponse>(`/users?${params}`);
 }
 

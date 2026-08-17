@@ -40,6 +40,7 @@ jobs:
           chmod +x scripts/check_migration_checksums.sh
           ./scripts/check_migration_checksums.sh --verbose
 
+<<<<<<< HEAD
   check:
     name: Check (fmt + clippy)
     runs-on: ubuntu-latest
@@ -195,6 +196,174 @@ jobs:
           cache-key: docs
           save-if: ${{ github.ref == 'refs/heads/edgequake-main' || github.ref == 'refs/heads/main' }}
 
+=======
+  git-hygiene:
+    name: Git hygiene (SPEC-097)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Block fat bench artifacts / oversized tip blobs
+        run: |
+          chmod +x tools/git-hygiene/check_no_fat_artifacts.sh
+          ./tools/git-hygiene/check_no_fat_artifacts.sh
+
+  check:
+    name: Check (fmt + clippy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [migration-checksum-guard, git-hygiene]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: clippy, rustfmt
+          cache-key: check
+          save-if: ${{ github.ref == 'refs/heads/edgequake-main' || github.ref == 'refs/heads/main' }}
+
+      - name: Check formatting
+        working-directory: edgequake
+        run: cargo fmt --all -- --check
+
+      - name: Check clippy
+        working-directory: edgequake
+        # SPEC-083 / X-32: prefer --all-targets (lib + bins + tests + examples).
+        # Falls back documented: if runner time regresses, keep at least beyond --lib.
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: Test (workspace lib)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: migration-checksum-guard
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-key: test
+          save-if: ${{ github.ref == 'refs/heads/edgequake-main' || github.ref == 'refs/heads/main' }}
+
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      - name: Run workspace lib tests
+        working-directory: edgequake
+        # nextest: faster scheduling than cargo test; --locked: no registry resolve churn.
+        # Cap threads + raise stack: edgequake-api query handler tests are deep/async and
+        # SIGABRT under default nextest parallelism on small runners.
+        run: cargo nextest run --workspace --lib --locked --no-fail-fast --test-threads=4
+        env:
+          RUST_MIN_STACK: "16777216"
+
+  resource-proof:
+    name: SPEC-006 Resource Proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: migration-checksum-guard
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-key: resource-proof
+          save-if: ${{ github.ref == 'refs/heads/edgequake-main' || github.ref == 'refs/heads/main' }}
+
+      - name: Install ripgrep (static gate scripts)
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Run SPEC-006 resource-proof (P0–P9)
+        env:
+          DATABASE_URL: ""
+          POSTGRES_PASSWORD: ""
+        run: make resource-proof
+
+  observability-proof:
+    name: SPEC-018 Observability Proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: migration-checksum-guard
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-key: observability
+          save-if: ${{ github.ref == 'refs/heads/edgequake-main' || github.ref == 'refs/heads/main' }}
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install frontend dependencies
+        working-directory: edgequake_webui
+        run: bun install
+
+      - name: Run SPEC-018 observability proof
+        run: |
+          chmod +x specs/018-observability/e2e/run_observability_proof.sh
+          ./specs/018-observability/e2e/run_observability_proof.sh
+
+  build:
+    name: Build (release libs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: migration-checksum-guard
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-key: build-release
+          save-if: ${{ github.ref == 'refs/heads/edgequake-main' || github.ref == 'refs/heads/main' }}
+
+      - name: Build release
+        working-directory: edgequake
+        run: cargo build --workspace --release --lib --locked
+        env:
+          # Prefer parallel codegen on small runners; LTO is for publish images.
+          CARGO_PROFILE_RELEASE_LTO: "false"
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-key: audit
+          shared-key: edgequake-audit
+          save-if: "false"
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Run security audit
+        working-directory: edgequake
+        # SPEC-083 / X-32: audit is a blocking gate (no continue-on-error).
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0173
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: migration-checksum-guard
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-key: docs
+          save-if: ${{ github.ref == 'refs/heads/edgequake-main' || github.ref == 'refs/heads/main' }}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       - name: Build docs
         working-directory: edgequake
         run: cargo doc --workspace --no-deps --locked

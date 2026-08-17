@@ -105,7 +105,12 @@ impl PgVectorStorage {
                     .clamp(1, 1000);
                 stmts.push(format!("SET LOCAL hnsw.ef_search = {}", ef));
                 if filtered && iterative_scan_supported {
+<<<<<<< HEAD
                     // AWS/pgvector 2026 RAG guidance: relaxed_order for filtered search.
+=======
+                    // IMP-002-01 / pgvector 0.8.x: iterative scans are the product contract
+                    // for filtered ANN (post-filter under-K without them).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     let mode = parse_hnsw_iterative_scan_mode(hnsw_iterative_mode);
                     if mode != "off" {
                         stmts.push(format!("SET LOCAL hnsw.iterative_scan = {}", mode));
@@ -119,6 +124,14 @@ impl PgVectorStorage {
                                 mult.clamp(1, 1000)
                             ));
                         }
+<<<<<<< HEAD
+=======
+                    } else {
+                        tracing::warn!(
+                            target: "edgequake_storage::hnsw",
+                            "filtered ANN with hnsw.iterative_scan=off — recall under-K risk (IMP-002-01)"
+                        );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     }
                 }
             }

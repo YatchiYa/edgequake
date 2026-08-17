@@ -253,6 +253,7 @@ export function useBulkSelection({
     );
 
     try {
+<<<<<<< HEAD
       for (let i = 0; i < idsToDelete.length; i++) {
         const id = idsToDelete[i];
         toast.loading(
@@ -293,6 +294,37 @@ export function useBulkSelection({
           },
         );
       }
+=======
+      // SPEC-084 / GH-317: single batch admit instead of N× DELETE /{id}.
+      const { batchDeleteDocuments } = await import(
+        "@/lib/api/edgequake/documents"
+      );
+      const result = await batchDeleteDocuments(idsToDelete);
+      successCount = result.planned_delete_count;
+      toast.dismiss(toastId);
+      // SPEC-084 / GH-317: 202 Accepted — deletion is async; do not claim "Deleted".
+      toast.success(
+        t(
+          "documents.bulk.deleteQueued",
+          "Queued deletion of {{count}} document(s)",
+          { count: successCount },
+        ),
+      );
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      invalidateKnowledgeGraph(queryClient);
+    } catch (err) {
+      toast.dismiss(toastId);
+      errorCount = idsToDelete.length;
+      lastError =
+        err instanceof Error
+          ? err.message
+          : t("common.unknownError", "Unknown error");
+      toast.error(
+        t("documents.bulk.deleteFailed", { count: errorCount }) ||
+          `Failed to delete ${errorCount} document(s)`,
+        { description: lastError },
+      );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     } finally {
       setIsBulkDeleting(false);
       setSelectedIds(new Set());

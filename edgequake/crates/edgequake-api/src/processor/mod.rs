@@ -76,6 +76,11 @@
 //! - [`BR0472`]: Documents processed with workspace-specific providers
 
 // Sub-modules organized by responsibility (SRP)
+<<<<<<< HEAD
+=======
+mod batch_deletion;
+pub mod cancel_gates;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 mod document_deletion;
 mod injection_processing;
 mod pdf_processing;
@@ -412,6 +417,29 @@ impl DocumentTaskProcessor {
         self
     }
 
+<<<<<<< HEAD
+=======
+    /// SPEC-090 F-090-04: update in-memory progress and persist column-only (no payload rewrite).
+    pub(crate) async fn bump_task_progress(
+        &self,
+        task: &mut edgequake_tasks::Task,
+        current_step: String,
+        total_steps: u32,
+        percent: u8,
+    ) {
+        task.update_progress(current_step, total_steps, percent);
+        if let (Some(storage), Some(progress)) = (&self.task_storage, task.progress.as_ref()) {
+            if let Err(e) = storage.update_task_progress(&task.track_id, progress).await {
+                tracing::warn!(
+                    error = %e,
+                    track_id = %task.track_id,
+                    "SPEC-090: update_task_progress failed"
+                );
+            }
+        }
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// SPEC-057 P2: Wire enqueue ports so Convert can enqueue follow-on Insert.
     pub fn with_task_enqueue(
         mut self,

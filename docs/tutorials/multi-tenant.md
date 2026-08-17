@@ -2,7 +2,11 @@
 title: "Tutorial: Multi-Tenant Setup"
 ---
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # Tutorial: Multi-Tenant Setup
 
@@ -514,7 +518,7 @@ EdgeQuake stores tenant data with workspace isolation:
 ```sql
 -- Workspaces table
 CREATE TABLE workspaces (
-    id UUID PRIMARY KEY,
+    workspace_id UUID PRIMARY KEY,
     tenant_id UUID NOT NULL,
     name VARCHAR(255) NOT NULL,
     llm_provider VARCHAR(50),
@@ -527,7 +531,7 @@ CREATE TABLE workspaces (
 -- Documents always reference workspace
 CREATE TABLE documents (
     id UUID PRIMARY KEY,
-    workspace_id UUID NOT NULL REFERENCES workspaces(id),
+    workspace_id UUID NOT NULL REFERENCES workspaces(workspace_id),
     title VARCHAR(255),
     content TEXT,
     status VARCHAR(50),
@@ -537,7 +541,7 @@ CREATE TABLE documents (
 -- Embeddings scoped to workspace
 CREATE TABLE embeddings (
     id UUID PRIMARY KEY,
-    workspace_id UUID NOT NULL REFERENCES workspaces(id),
+    workspace_id UUID NOT NULL REFERENCES workspaces(workspace_id),
     chunk_id UUID NOT NULL,
     embedding vector(1536)
 );

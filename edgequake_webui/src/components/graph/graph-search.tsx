@@ -40,21 +40,7 @@ import MiniSearch from 'minisearch';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-// Color palette for entity types (matching graph-renderer.tsx)
-const TYPE_COLORS: Record<string, string> = {
-  PERSON: '#3b82f6',
-  ORGANIZATION: '#10b981',
-  LOCATION: '#f59e0b',
-  EVENT: '#ef4444',
-  CONCEPT: '#8b5cf6',
-  DOCUMENT: '#6366f1',
-  DEFAULT: '#64748b',
-};
-
-function getNodeColor(entityType: string | undefined): string {
-  if (!entityType) return TYPE_COLORS.DEFAULT;
-  return TYPE_COLORS[entityType.toUpperCase()] || TYPE_COLORS.DEFAULT;
-}
+import { useEntityTypeColors } from '@/hooks/use-entity-type-colors';
 
 /**
  * Custom debounce hook
@@ -96,6 +82,7 @@ interface GraphSearchProps {
 
 export function GraphSearch({ onSelect }: GraphSearchProps) {
   const { t } = useTranslation();
+  const { colorFor } = useEntityTypeColors();
   const { nodes, sigmaInstance, selectNode, isTruncated, addNodesToGraph } = useGraphStore();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -502,8 +489,8 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
                     <Circle
                       className="h-4 w-4 shrink-0 mt-0.5"
                       style={{ 
-                        color: getNodeColor(result.entityType),
-                        fill: getNodeColor(result.entityType)
+                        color: colorFor(result.entityType),
+                        fill: colorFor(result.entityType)
                       }}
                       aria-hidden="true"
                     />

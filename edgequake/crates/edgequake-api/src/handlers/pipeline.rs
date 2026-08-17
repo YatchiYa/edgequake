@@ -29,6 +29,10 @@ use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
 use crate::services::sync_doc_cancelled_for_task;
 use crate::services::task_cancel::apply_cancel_all_active;
+<<<<<<< HEAD
+=======
+use crate::services::task_scope::task_filter_for_scope;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use crate::state::AppState;
 use std::sync::Arc;
 
@@ -39,21 +43,32 @@ pub use crate::handlers::pipeline_types::{
     QueueMetricsResponse, StoreContentionMetrics,
 };
 
+/// Scope selectors for enhanced status. Explicit values override header context.
+#[derive(Debug, Default, Deserialize, IntoParams)]
+pub struct PipelineStatusQuery {
+    pub tenant_id: Option<String>,
+    pub workspace_id: Option<String>,
+}
+
 /// Get enhanced pipeline status with history messages.
 #[utoipa::path(
     get,
     path = "/api/v1/pipeline/status",
     tag = "Pipeline",
+    params(PipelineStatusQuery),
     responses(
         (status = 200, description = "Pipeline status retrieved", body = EnhancedPipelineStatusResponse)
     )
 )]
 pub async fn get_pipeline_status(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
+    Query(params): Query<PipelineStatusQuery>,
 ) -> ApiResult<Json<EnhancedPipelineStatusResponse>> {
     // Get pipeline state snapshot
     let snapshot = state.tasks.pipeline_state.get_status().await;
 
+<<<<<<< HEAD
     // Get task statistics
     // WHY: Pipeline status shows global statistics across all tenants.
     // This is intentional as pipeline is a shared resource.
@@ -64,9 +79,42 @@ pub async fn get_pipeline_status(
         .get_statistics(edgequake_tasks::storage::TaskFilter::default())
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to get statistics: {}", e)))?;
+=======
+    // Use exactly the same scope precedence as /tasks. Missing context must
+    // never fall back to global counts in a workspace-facing endpoint.
+    let filter = task_filter_for_scope(
+        &tenant_ctx,
+        params.tenant_id.as_deref(),
+        params.workspace_id.as_deref(),
+    );
+    let stats = if filter.tenant_id.is_some() && filter.workspace_id.is_some() {
+        state
+            .tasks
+            .storage
+            .get_statistics(filter)
+            .await
+            .map_err(|e| ApiError::Internal(format!("Failed to get statistics: {}", e)))?
+    } else {
+        tracing::warn!(
+            tenant_id = ?filter.tenant_id,
+            workspace_id = ?filter.workspace_id,
+            "pipeline status: missing tenant context; returning zero task statistics"
+        );
+        edgequake_tasks::storage::TaskStatistics {
+            pending: 0,
+            processing: 0,
+            indexed: 0,
+            failed: 0,
+            cancelled: 0,
+            total: 0,
+        }
+    };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     Ok(Json(EnhancedPipelineStatusResponse {
-        is_busy: snapshot.is_busy || stats.processing > 0,
+        // The process-global snapshot cannot establish workspace ownership.
+        // Task statistics are the scoped SSOT for a workspace monitor.
+        is_busy: stats.processing > 0,
         job_name: snapshot.job_name,
         job_start: snapshot.job_start,
         total_documents: snapshot.total_documents,
@@ -105,7 +153,11 @@ pub async fn get_pipeline_activity(
     tenant_ctx: TenantContext,
 ) -> ApiResult<Json<PipelineActivityResponse>> {
     use crate::handlers::ingestion_types::PipelineActivityTask;
+<<<<<<< HEAD
     use crate::services::document_metadata_scan::load_scoped_document_metadata;
+=======
+    use crate::services::document_metadata_scan::load_scoped_document_metadata_for_progress;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     use crate::services::progress_facade::{assemble_pipeline_activity, classify_activity_doc};
     use crate::services::tenant_guard::has_full_tenant_context;
     use edgequake_tasks::storage::{Pagination, TaskFilter};
@@ -113,8 +165,17 @@ pub async fn get_pipeline_activity(
 
     let mut classified = Vec::new();
     if has_full_tenant_context(&tenant_ctx) {
+<<<<<<< HEAD
         let metadata_values =
             load_scoped_document_metadata(state.storage.kv_storage.as_ref(), &tenant_ctx).await?;
+=======
+        // SPEC-086: staging-aware so in-flight MD counts in queued/working.
+        let metadata_values = load_scoped_document_metadata_for_progress(
+            state.storage.kv_storage.as_ref(),
+            &tenant_ctx,
+        )
+        .await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         for value in metadata_values {
             if let Some(obj) = value.as_object() {
                 if let Some(pair) = classify_activity_doc(obj) {
@@ -342,9 +403,25 @@ pub async fn get_queue_metrics(
     };
 
     #[cfg(feature = "postgres")]
+<<<<<<< HEAD
     let pool_util = state.pg_pool.as_ref().and_then(|pool| {
         crate::store_contention::pool_utilization(pool.size(), pool.num_idle() as u32)
     });
+=======
+    let pool_util = state
+        .pool_bundle
+        .as_ref()
+        .map(crate::store_contention::role_utils_from_bundle)
+        .and_then(|roles| crate::store_contention::max_role_pool_utilization(&roles))
+        .or_else(|| {
+            state.pg_pool.as_ref().and_then(|pool| {
+                crate::store_contention::pool_utilization(
+                    pool.size(),
+                    pool.num_idle().min(u32::MAX as usize) as u32,
+                )
+            })
+        });
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     #[cfg(not(feature = "postgres"))]
     let pool_util: Option<f64> = None;
     let store = crate::store_contention::assess_store_contention(pool_util);
@@ -394,4 +471,61 @@ pub async fn get_queue_metrics(
         max_lifecycle_tasks_per_tenant,
         store_contention,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use edgequake_tasks::{Task, TaskStatus, TaskType};
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn enhanced_status_statistics_are_workspace_scoped() {
+        let state = AppState::test_state();
+        let tenant_a = Uuid::new_v4();
+        let workspace_a = Uuid::new_v4();
+        let tenant_b = Uuid::new_v4();
+        let workspace_b = Uuid::new_v4();
+
+        let pending_a = Task::new(
+            tenant_a,
+            workspace_a,
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        state
+            .tasks
+            .storage
+            .create_task(&pending_a)
+            .await
+            .expect("create tenant A task");
+
+        let mut processing_b = Task::new(
+            tenant_b,
+            workspace_b,
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        processing_b.status = TaskStatus::Processing;
+        state
+            .tasks
+            .storage
+            .create_task(&processing_b)
+            .await
+            .expect("create tenant B task");
+
+        let context = TenantContext {
+            tenant_id: Some(tenant_a.to_string()),
+            workspace_id: Some(workspace_a.to_string()),
+            user_id: None,
+        };
+        let Json(status) =
+            get_pipeline_status(State(state), context, Query(PipelineStatusQuery::default()))
+                .await
+                .expect("scoped status");
+
+        assert_eq!(status.pending_tasks, 1);
+        assert_eq!(status.processing_tasks, 0);
+        assert!(!status.is_busy, "foreign workspace must not make A busy");
+    }
 }

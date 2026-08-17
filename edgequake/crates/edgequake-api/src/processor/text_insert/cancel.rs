@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+use std::sync::Arc;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use super::super::*;
 use tokio_util::sync::CancellationToken;
 
@@ -10,6 +15,7 @@ impl DocumentTaskProcessor {
 
     /// SPEC-058: best-effort unindex on cancel-before-completed.
     async fn retract_indexes_on_cancel(&self, document_id: &str) {
+<<<<<<< HEAD
         let metadata_key =
             crate::services::resolve_document_metadata_key(document_id, &self.kv_storage).await;
         let workspace_id = match self.kv_storage.get_by_id(&metadata_key).await {
@@ -19,6 +25,19 @@ impl DocumentTaskProcessor {
                 .map(|s| s.to_string()),
             _ => None,
         };
+=======
+        // IMP-075-11: one RT staging+final (not resolve key then re-get).
+        let workspace_id =
+            crate::services::load_staging_first_metadata(self.kv_storage.as_ref(), document_id)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|(_, meta)| {
+                    meta.get("workspace_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                });
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let vector = match workspace_id.as_deref() {
             Some(ws) => self
@@ -45,12 +64,22 @@ impl DocumentTaskProcessor {
     }
 
     /// Check if the task has been cancelled and return early if so.
+<<<<<<< HEAD
+=======
+    ///
+    /// `stage` must be a [`crate::processor::cancel_gates::CancelGate`] id
+    /// (SPEC-091 WP1 SSOT).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub(crate) async fn check_cancelled(
         &self,
         cancel_token: &CancellationToken,
         stage: &str,
         document_id: &str,
     ) -> TaskResult<()> {
+<<<<<<< HEAD
+=======
+        let stage = crate::processor::cancel_gates::CancelGate::assert_known(stage);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         if cancel_token.is_cancelled() {
             let post_graph = Self::is_post_graph_stage(stage);
             let msg = format!(
@@ -68,9 +97,46 @@ impl DocumentTaskProcessor {
             );
             // SPEC-058: cancel wins — unindex so cancelled content is not searchable.
             self.retract_indexes_on_cancel(document_id).await;
+<<<<<<< HEAD
             self.update_document_status(document_id, "cancelled", Some(&msg))
                 .await
                 .ok();
+=======
+            // Terminal field SSOT (failure_class + stage_progress=0), same as HTTP cancel.
+            let _ = crate::services::sync_doc_cancelled_by_document_id(
+                Arc::clone(&self.kv_storage),
+                document_id,
+                &msg,
+            )
+            .await;
+            // Free staging hash so cancelled shells do not block same-bytes re-upload.
+            // IMP-075-11: one RT staging+final (not resolve key then re-get).
+            if let Ok(Some((_, meta))) =
+                crate::services::load_staging_first_metadata(self.kv_storage.as_ref(), document_id)
+                    .await
+            {
+                if let (Some(hash), Some(ws)) = (
+                    meta.get("content_hash").and_then(|v| v.as_str()),
+                    meta.get("workspace_id").and_then(|v| v.as_str()),
+                ) {
+                    let _ = crate::services::release_staging_reservation(
+                        &self.kv_storage,
+                        document_id,
+                        ws,
+                        hash,
+                    )
+                    .await;
+                    // SPEC-091 W2: typed ingestion_dedup staging release.
+                    #[cfg(feature = "postgres")]
+                    crate::services::ingestion_dedup_store::dual_release_staging(
+                        self.pg_pool.as_ref(),
+                        ws,
+                        hash,
+                    )
+                    .await;
+                }
+            }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             return Err(TaskError::Cancelled(msg));
         }
         Ok(())

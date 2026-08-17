@@ -83,12 +83,36 @@ while IFS= read -r -d '' sqlfile; do
   fi
 done < <(find "$MIGRATIONS_DIR" -maxdepth 1 -name '*.sql' -print0 | sort -z)
 
+<<<<<<< HEAD
+=======
+# --- SPEC-090 F-090-21: migration numbers must be unique (parallel-branch hazard) ---
+# Historical gaps (e.g. missing 018) are allowed; duplicates are not.
+UNIQUE_FAIL=0
+MIG_NUMS=()
+while IFS= read -r basename_sql; do
+  [[ "$basename_sql" =~ ^([0-9]+)_ ]] || continue
+  MIG_NUMS+=("$((10#${BASH_REMATCH[1]}))")
+done < <(find "$MIGRATIONS_DIR" -maxdepth 1 -name '[0-9][0-9][0-9]_*.sql' | xargs -n1 basename | sort)
+if [[ ${#MIG_NUMS[@]} -gt 0 ]]; then
+  dupes=$(printf '%s\n' "${MIG_NUMS[@]}" | sort -n | uniq -d)
+  if [[ -n "$dupes" ]]; then
+    echo "DUPLICATE migration numbers: $dupes"
+    UNIQUE_FAIL=1
+    FAILED=$((FAILED + 1))
+  fi
+fi
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 echo ""
 echo "Migration checksum check:"
 echo "  Checked : $CHECKED"
 echo "  Modified: $FAILED (excluding missing/new)"
 echo "  Missing : $MISSING"
 echo "  Unlocked: $NEW_FILES"
+<<<<<<< HEAD
+=======
+echo "  Unique# : $([[ $UNIQUE_FAIL -eq 0 ]] && echo OK || echo FAIL)"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 if [[ $FAILED -gt 0 ]]; then
   echo ""

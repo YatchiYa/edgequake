@@ -35,6 +35,10 @@ const CACHE_PATCH_TYPES = new Set([
   "stage_started",
   "stage_progress",
   "stage_completed",
+<<<<<<< HEAD
+=======
+  "StageTransition",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   "ingestion_completed",
   "ingestion_failed",
   "PdfPageProgress",
@@ -57,6 +61,12 @@ export interface ProgressCacheMessage {
     phase?: string;
     chunk_index?: number;
     total_chunks?: number;
+<<<<<<< HEAD
+=======
+    stage?: string;
+    stage_message?: string;
+    stage_progress?: number | null;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   };
 }
 
@@ -94,6 +104,13 @@ function patchFieldsFromMessage(
     if (task_id) fields.track_id = task_id;
     fields.status = "processing";
     fields.current_stage = "converting";
+<<<<<<< HEAD
+=======
+    // SPEC-120: display_status must not remain "queued" or the badge ignores
+    // current_stage (getDocumentDisplayStatus prefers display_status).
+    fields.display_status = "converting";
+    fields.ui_phase = "running";
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     if (typeof progress === "number") {
       fields.stage_progress = Math.round(
         progress <= 1 ? progress * 100 : progress,
@@ -114,6 +131,30 @@ function patchFieldsFromMessage(
   const trackId = resolveTrackId(message);
   if (trackId) fields.track_id = trackId;
 
+<<<<<<< HEAD
+=======
+  if (type === "StageTransition" && message.data) {
+    fields.status = "processing";
+    fields.track_id = message.data.task_id ?? fields.track_id;
+    if (message.data.stage) {
+      fields.current_stage = message.data.stage;
+      fields.display_status = message.data.stage;
+      fields.ui_phase = "running";
+    }
+    if (message.data.stage_message) {
+      fields.stage_message = message.data.stage_message;
+    }
+    if (typeof message.data.stage_progress === "number") {
+      fields.stage_progress = Math.round(
+        message.data.stage_progress <= 1
+          ? message.data.stage_progress * 100
+          : message.data.stage_progress,
+      );
+    }
+    return fields;
+  }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   if (type === "ingestion_started") {
     fields.status = "processing";
     if (message.stage) fields.current_stage = message.stage;

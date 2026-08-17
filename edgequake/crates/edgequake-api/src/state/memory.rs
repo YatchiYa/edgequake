@@ -116,12 +116,21 @@ impl AppState {
             rate_limiter: RateLimiter::new(TokenBucketConfig::default()),
             #[cfg(feature = "postgres")]
             pg_pool: None,
+<<<<<<< HEAD
+=======
+            #[cfg(feature = "postgres")]
+            pool_bundle: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             start_time: std::time::Instant::now(),
             path_validation_config: crate::path_validation::PathValidationConfig::default(),
             audit_logger: None,
             resource_guard,
             graph_materialize,
             pdf_vision,
+<<<<<<< HEAD
+=======
+            parse_jobs: crate::handlers::parse::ParseJobStore::from_env(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             read_path_db,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,
@@ -267,6 +276,11 @@ impl AppState {
             rate_limiter: RateLimiter::new(TokenBucketConfig::default()),
             #[cfg(feature = "postgres")]
             pg_pool: None,
+<<<<<<< HEAD
+=======
+            #[cfg(feature = "postgres")]
+            pool_bundle: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             start_time: std::time::Instant::now(),
             path_validation_config: crate::path_validation::PathValidationConfig {
                 allow_any_path: true,
@@ -276,6 +290,10 @@ impl AppState {
             resource_guard,
             graph_materialize,
             pdf_vision,
+<<<<<<< HEAD
+=======
+            parse_jobs: crate::handlers::parse::ParseJobStore::from_env(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             read_path_db,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,
@@ -382,6 +400,11 @@ impl AppState {
             rate_limiter: RateLimiter::new(TokenBucketConfig::strict(100, 60)),
             #[cfg(feature = "postgres")]
             pg_pool: None,
+<<<<<<< HEAD
+=======
+            #[cfg(feature = "postgres")]
+            pool_bundle: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             start_time: std::time::Instant::now(),
             path_validation_config: crate::path_validation::PathValidationConfig {
                 allow_any_path: true,
@@ -391,6 +414,10 @@ impl AppState {
             resource_guard,
             graph_materialize,
             pdf_vision,
+<<<<<<< HEAD
+=======
+            parse_jobs: crate::handlers::parse::ParseJobStore::from_env(),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             read_path_db,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,

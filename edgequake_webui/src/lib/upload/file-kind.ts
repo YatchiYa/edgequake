@@ -21,6 +21,10 @@ export const IMAGE_UPLOAD_EXTENSIONS = [
   ".webp",
 ] as const;
 
+<<<<<<< HEAD
+=======
+/** Routing kind (API path). Source taxonomy may be finer (e.g. markdown). */
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 export type UploadFileKind = "pdf" | "image" | "text";
 
 /** True when the file should use the PDF vision upload endpoint. */
@@ -29,6 +33,48 @@ export function isPdfUploadFile(file: File): boolean {
   return file.name.toLowerCase().endsWith(".pdf");
 }
 
+<<<<<<< HEAD
+=======
+/** SPEC-086: `.md` / markdown MIME → source_type markdown (still routes as text JSON). */
+export function isMarkdownUploadFile(file: File): boolean {
+  if (file.type === "text/markdown" || file.type === "text/x-markdown") {
+    return true;
+  }
+  return file.name.toLowerCase().endsWith(".md");
+}
+
+/** Taxonomy for progress UI (finer than UploadFileKind routing). */
+export type UploadSourceType = "pdf" | "markdown" | "text" | "image" | "unknown";
+
+/**
+ * Resolve source_type for presenters from a filename (+ optional MIME).
+ * Prefer this over `isPdf ? "pdf" : "markdown"` so `.txt` stays text.
+ */
+export function sourceTypeFromFileName(
+  fileName: string,
+  mimeType?: string,
+): UploadSourceType {
+  const lower = fileName.toLowerCase();
+  const mime = (mimeType || "").toLowerCase();
+  if (mime === "application/pdf" || lower.endsWith(".pdf")) return "pdf";
+  if (
+    mime === "text/markdown" ||
+    mime === "text/x-markdown" ||
+    lower.endsWith(".md")
+  ) {
+    return "markdown";
+  }
+  if (
+    mime.startsWith("image/") ||
+    IMAGE_UPLOAD_EXTENSIONS.some((ext) => lower.endsWith(ext))
+  ) {
+    return "image";
+  }
+  if (lower.endsWith(".txt") || mime.startsWith("text/")) return "text";
+  return "unknown";
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /** True when the file is a raster image for VLM describe-to-text ingest. */
 export function isImageUploadFile(file: File): boolean {
   if (file.type.startsWith("image/")) {

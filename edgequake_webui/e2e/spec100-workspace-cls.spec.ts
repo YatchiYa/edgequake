@@ -1,0 +1,28 @@
+/**
+ * SPEC-100 — Workspace CLS: rebuild banner slot always mounted when actions card paints.
+ */
+import { expect, test } from "@playwright/test";
+import { GOTO_OPTS } from "./helpers/app-ready";
+import {
+  mockSpec038AdmissionRoutes,
+  seedSpec038TenantContext,
+} from "./helpers/spec038-admission-mocks";
+
+test.describe("SPEC-100 workspace CLS", () => {
+  test("rebuild slot remains reserved after workspace loads", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await mockSpec038AdmissionRoutes(page);
+    await seedSpec038TenantContext(page);
+
+    await page.goto("/workspace", GOTO_OPTS);
+
+    const slot = page.getByTestId("spec100-workspace-rebuild-slot");
+    await expect(slot.or(page.getByTestId("spec100-workspace-skeleton"))).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(slot).toBeVisible({ timeout: 45_000 });
+    const box = await slot.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(80);
+  });
+});

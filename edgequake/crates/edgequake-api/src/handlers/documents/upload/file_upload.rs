@@ -104,6 +104,10 @@ pub async fn upload_file(
             content_hash: content_hash.clone(),
             custom_metadata: metadata,
             track_id: None,
+<<<<<<< HEAD
+=======
+            expected_batch_count: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             gleaning: GleaningAdmissionOptions::default(),
             document_type: None,
             chunk_strategy,
@@ -131,6 +135,12 @@ pub async fn upload_file(
                 entity_count: 0,
                 relationship_count: 0,
                 is_duplicate: true,
+<<<<<<< HEAD
+=======
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }),
         )),
         DocumentAdmissionOutcome::Accepted(accepted) => {
@@ -182,6 +192,15 @@ pub async fn upload_file(
                     entity_count: 0,
                     relationship_count: 0,
                     is_duplicate: false,
+<<<<<<< HEAD
+=======
+                    queue_position: accepted.queue.as_ref().map(|q| q.position),
+                    eta_seconds: accepted.queue.as_ref().map(|q| q.eta_seconds),
+                    eta_basis: accepted
+                        .queue
+                        .as_ref()
+                        .map(|q| q.basis.as_str().to_string()),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 }),
             ))
         }

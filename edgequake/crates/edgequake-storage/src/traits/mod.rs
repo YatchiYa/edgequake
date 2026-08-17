@@ -34,18 +34,40 @@ mod kv;
 mod vector;
 mod workspace_vector;
 
+<<<<<<< HEAD
+=======
+pub mod domain;
+
+pub use domain::{
+    Chunk, ChunkCursor, ChunkId, ChunkRepository, ChunkText, DocumentId, DocumentRepository,
+    EmbeddingCapabilities, EmbeddingIndex, EmbeddingRow, FleetEmbeddingIndex, FleetEmbeddingKey,
+    FleetEmbeddingRow, InsertReport, MigrationJobSnapshot, MigrationLedger, MirrorLegacyReport,
+    ModelId, Page, ScoredChunk, ScoredFleet, TenantId, UnitOfWork, UpsertReport, VectorQuery,
+    WorkspaceId,
+};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use embedder::TextEmbedder;
 pub use graph::{GraphEdge, GraphNode, GraphStorage, KnowledgeGraph};
 pub use graph_analytics_ops::GraphStorageAnalyticsOps;
 pub use graph_isp::{GraphStorageAnalyticsCap, GraphStorageMutator, GraphStorageReader};
+<<<<<<< HEAD
 pub use graph_mutate_ops::GraphStorageMutateOps;
+=======
+pub use graph_mutate_ops::{GraphPropertyWriteMode, GraphStorageMutateOps};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use graph_read_ops::GraphStorageReadOps;
 pub use graph_read_view::GraphReadView;
 pub use graph_scan_ops::{
     collect_source_references, edge_matches_list_filter, edge_matches_relationship_id,
     edge_matches_scope_dims, edge_matches_tenant_workspace, edge_relationship_id,
+<<<<<<< HEAD
     node_matches_list_filter, node_matches_tenant_workspace, scope_dim_matches_legacy_null,
     sources_match_prefixes, EdgeListFilter, GraphScanOps, NodeListFilter, PagedGraphResult,
+=======
+    is_topology_entity_ref, node_matches_list_filter, node_matches_tenant_workspace,
+    scope_dim_matches_legacy_null, sources_match_prefixes, EdgeListFilter, GraphScanOps,
+    NodeListFilter, PagedGraphResult,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 pub use kv::{kv_key_matches_like, KVStorage};
 pub use vector::{

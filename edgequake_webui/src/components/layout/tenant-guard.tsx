@@ -1,10 +1,17 @@
 'use client';
 
+<<<<<<< HEAD
 import { ModelSelector } from '@/components/models/model-selector';
 import { EntityTypeSelector } from '@/components/shared/entity-type-selector';
+=======
+import { CreateTenantWizard } from '@/components/onboarding/create-tenant-wizard';
+import { CreateWorkspaceWizard } from '@/components/onboarding/create-workspace-wizard';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { getTenants, getWorkspaces } from '@/lib/api/edgequake';
 import {
+<<<<<<< HEAD
   Dialog,
   DialogContent,
   DialogDescription,
@@ -19,8 +26,15 @@ import { createTenant, createWorkspace, getTenants, getWorkspaces } from '@/lib/
 import { useTenantStore } from '@/stores/use-tenant-store';
 import type { Tenant } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+=======
+  applyCreatedTenantContext,
+  applyCreatedWorkspaceContext,
+} from '@/lib/onboarding/apply-created-workspace-context';
+import { useTenantStore } from '@/stores/use-tenant-store';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { AlertTriangle, Building2, FolderKanban, Loader2, Plus } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -29,15 +43,8 @@ interface TenantGuardProps {
 }
 
 /**
- * TenantGuard ensures a tenant and workspace are always selected.
- * If none exist, it prompts the user to create one.
- * If they exist but none are selected, it auto-selects them.
- * 
- * IMPORTANT: This component handles the race condition between
- * mutation success and query cache invalidation by:
- * 1. Using optimistic updates
- * 2. Awaiting invalidation before allowing children to render
- * 3. Tracking context readiness explicitly
+ * Ensures a tenant and workspace are selected.
+ * SPEC-101: empty states open shared create wizards (LAW-101-1).
  */
 export function TenantGuard({ children }: TenantGuardProps) {
   const { t } = useTranslation();
@@ -53,9 +60,9 @@ export function TenantGuard({ children }: TenantGuardProps) {
     initializeFromStorage,
   } = useTenantStore();
 
-  // Dialog states
   const [showCreateTenant, setShowCreateTenant] = useState(false);
   const [showCreateWorkspace, setShowCreateWorkspace] = useState(false);
+<<<<<<< HEAD
   const [newTenantName, setNewTenantName] = useState('EdgeQuake');
   const [newWorkspaceName, setNewWorkspaceName] = useState('Default Workspace');
   const [newWorkspaceSlug, setNewWorkspaceSlug] = useState('');
@@ -77,35 +84,48 @@ export function TenantGuard({ children }: TenantGuardProps) {
   // Track if we're in the middle of context setup (prevents premature children render)
   const [isSettingUpContext, setIsSettingUpContext] = useState(false);
   // After a long wait, surface the connection card instead of an indefinite spinner.
+=======
+  const [isSettingUpContext, setIsSettingUpContext] = useState(false);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
 
-  // Initialize from localStorage on mount
   useEffect(() => {
     initializeFromStorage();
   }, [initializeFromStorage]);
 
-  // Fetch tenants
-  const { data: tenantsData, isLoading: isLoadingTenants, error: tenantsError } = useQuery({
+  const {
+    data: tenantsData,
+    isLoading: isLoadingTenants,
+    error: tenantsError,
+  } = useQuery({
     queryKey: ['tenants'],
     queryFn: getTenants,
     staleTime: 60000,
   });
 
-  // Fetch workspaces (only if tenant selected)
-  const { data: workspacesData, isLoading: isLoadingWorkspaces } = useQuery({
+  const {
+    data: workspacesData,
+    isLoading: isLoadingWorkspaces,
+    isFetching: isFetchingWorkspaces,
+  } = useQuery({
     queryKey: ['workspaces', selectedTenantId],
-    queryFn: () => selectedTenantId ? getWorkspaces(selectedTenantId) : Promise.resolve([]),
+    queryFn: () => (selectedTenantId ? getWorkspaces(selectedTenantId) : Promise.resolve([])),
     enabled: !!selectedTenantId,
     staleTime: 60000,
   });
 
   const isLoading =
+<<<<<<< HEAD
     isLoadingTenants ||
     (!!selectedTenantId && isLoadingWorkspaces) ||
     isSettingUpContext;
 
   // WHY 8s: BackendStatusBanner already polls /health; a stuck TenantGuard
   // spinner during DB pressure looked like a blank /documents page.
+=======
+    isLoadingTenants || (!!selectedTenantId && isLoadingWorkspaces) || isSettingUpContext;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   useEffect(() => {
     if (!isLoading) {
       setLoadingTimedOut(false);
@@ -115,60 +135,40 @@ export function TenantGuard({ children }: TenantGuardProps) {
     return () => window.clearTimeout(timer);
   }, [isLoading]);
 
+<<<<<<< HEAD
   // Auto-select tenant and validate existing selection
   // WHY: Prevents stale tenant IDs from causing cascading workspace lookup failures
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   useEffect(() => {
     if (tenantsData && tenantsData.length > 0) {
       setTenants(tenantsData);
-      
-      // Validate that selected tenant exists in available tenants
-      const tenantExists = selectedTenantId && 
-        tenantsData.some(t => t.id === selectedTenantId);
-      
+      const tenantExists =
+        selectedTenantId && tenantsData.some((te) => te.id === selectedTenantId);
       if (!selectedTenantId || !tenantExists) {
-        // WHY: Auto-heal stale tenant selection from localStorage
         selectTenant(tenantsData[0].id);
       }
     }
   }, [tenantsData, setTenants, selectedTenantId, selectTenant]);
 
-  // Auto-select workspace and validate existing selection
-  // WHY: Prevents "Workspace Not Found" error when localStorage has stale workspace IDs
   useEffect(() => {
-    if (workspacesData && workspacesData.length > 0) {
-      setWorkspaces(workspacesData);
-      
-      // Validate that selected workspace exists in available workspaces
-      // If not, auto-select the first available workspace
-      const workspaceExists = selectedWorkspaceId && 
-        workspacesData.some(w => w.id === selectedWorkspaceId);
-      
-      if (!selectedWorkspaceId || !workspaceExists) {
-        // WHY: Auto-heal stale workspace selection from localStorage
-        selectWorkspace(workspacesData[0].id);
-      }
-      
-      // Context setup is complete once we have a valid workspace selected
-      // Intentional: Initialization of context state
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsSettingUpContext(false);
+    if (!workspacesData || workspacesData.length === 0) return;
+
+    // Merge server list with any optimistic entries (just-created workspace) so we
+    // do not drop a selection that is not yet in the refetch payload.
+    const storeWorkspaces = useTenantStore.getState().workspaces;
+    const byId = new Map<string, (typeof workspacesData)[number]>();
+    for (const w of workspacesData) byId.set(w.id, w);
+    for (const w of storeWorkspaces) {
+      if (!byId.has(w.id)) byId.set(w.id, w);
     }
-  }, [workspacesData, setWorkspaces, selectedWorkspaceId, selectWorkspace]);
+    const merged = Array.from(byId.values());
+    setWorkspaces(merged);
 
-  /**
-   * Parse a model selector value (format: "provider:model") into separate fields.
-   * SPEC-032: ModelSelector returns combined values, API expects separated fields.
-   */
-  const parseModelValue = useCallback((value: string | undefined): { provider?: string; model?: string } => {
-    if (!value) return {};
-    const colonIndex = value.indexOf(':');
-    if (colonIndex === -1) return { model: value };
-    return {
-      provider: value.substring(0, colonIndex),
-      model: value.substring(colonIndex + 1),
-    };
-  }, []);
+    const workspaceExists =
+      selectedWorkspaceId && merged.some((w) => w.id === selectedWorkspaceId);
 
+<<<<<<< HEAD
   // Generate slug from name
   const generateSlug = useCallback((name: string): string => {
     return name
@@ -345,6 +345,24 @@ export function TenantGuard({ children }: TenantGuardProps) {
       selectWorkspace, setWorkspaces, workspacesData, queryClient, t]);
 
   // Error / long-wait state — prefer connection card over indefinite blank spinner
+=======
+    // While refetching after create, do not snap back to workspacesData[0].
+    if (!selectedWorkspaceId) {
+      selectWorkspace(merged[0].id);
+    } else if (!workspaceExists && !isFetchingWorkspaces) {
+      selectWorkspace(merged[0].id);
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- context ready after heal
+    setIsSettingUpContext(false);
+  }, [
+    workspacesData,
+    setWorkspaces,
+    selectedWorkspaceId,
+    selectWorkspace,
+    isFetchingWorkspaces,
+  ]);
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   if (tenantsError || (isLoading && loadingTimedOut && !isSettingUpContext)) {
     return (
       <div className="flex items-center justify-center h-full p-4">
@@ -370,9 +388,15 @@ export function TenantGuard({ children }: TenantGuardProps) {
             <Button
               onClick={() => {
                 setLoadingTimedOut(false);
+<<<<<<< HEAD
                 queryClient.invalidateQueries({ queryKey: ['tenants'] });
                 if (selectedTenantId) {
                   queryClient.invalidateQueries({
+=======
+                void queryClient.invalidateQueries({ queryKey: ['tenants'] });
+                if (selectedTenantId) {
+                  void queryClient.invalidateQueries({
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     queryKey: ['workspaces', selectedTenantId],
                   });
                 }
@@ -386,6 +410,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
     );
   }
 
+<<<<<<< HEAD
   // Loading state (including context setup after tenant/workspace creation)
   if (isLoading) {
     return (
@@ -397,12 +422,44 @@ export function TenantGuard({ children }: TenantGuardProps) {
               ? t('tenant.settingUp', 'Setting up your workspace...')
               : t('tenant.loading', 'Loading workspace...')}
           </p>
+=======
+  if (isLoading) {
+    const loadingLabel = isSettingUpContext
+      ? t('tenant.settingUp', 'Setting up your workspace...')
+      : t('tenant.loading', 'Loading workspace...');
+    if (selectedTenantId && selectedWorkspaceId && !isSettingUpContext) {
+      return (
+        <div className="relative h-full min-h-0" data-testid="tenant-guard-overlay">
+          {children}
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-background/60"
+            role="status"
+            aria-busy="true"
+            aria-label={loadingLabel}
+          >
+            <div className="text-center">
+              <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{loadingLabel}</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">{loadingLabel}</p>
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         </div>
       </div>
     );
   }
 
+<<<<<<< HEAD
   // No tenants exist - prompt to create one
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   if (tenantsData && tenantsData.length === 0) {
     return (
       <>
@@ -414,17 +471,21 @@ export function TenantGuard({ children }: TenantGuardProps) {
               </div>
               <CardTitle>{t('tenant.welcome', 'Welcome to EdgeQuake')}</CardTitle>
               <CardDescription>
-                {t('tenant.createFirstTenant', 'Create your first tenant to get started. A tenant represents an organization or project.')}
+                {t(
+                  'tenant.createFirstTenant',
+                  'Create your first tenant to get started. A tenant represents an organization or project.',
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent className="text-center">
-              <Button onClick={() => setShowCreateTenant(true)}>
+              <Button onClick={() => setShowCreateTenant(true)} data-testid="guard-create-tenant">
                 <Plus className="h-4 w-4 mr-2" />
                 {t('tenant.createTenant', 'Create Tenant')}
               </Button>
             </CardContent>
           </Card>
         </div>
+<<<<<<< HEAD
 
         <Dialog open={showCreateTenant} onOpenChange={setShowCreateTenant}>
           <DialogContent className="w-[95vw] sm:max-w-190 max-h-[92vh] overflow-hidden grid-rows-[auto_minmax(0,1fr)_auto]">
@@ -511,11 +572,30 @@ export function TenantGuard({ children }: TenantGuardProps) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+=======
+        <CreateTenantWizard
+          open={showCreateTenant}
+          onOpenChange={setShowCreateTenant}
+          onCreated={(tenant, workspace) => {
+            setIsSettingUpContext(true);
+            applyCreatedTenantContext(tenant, workspace);
+            void queryClient.invalidateQueries({ queryKey: ['tenants'] });
+            void queryClient.invalidateQueries({ queryKey: ['workspaces', tenant.id] });
+            toast.success(t('tenant.createSuccess', 'Tenant created successfully'), {
+              action: {
+                label: t('onboarding.uploadDocuments', 'Upload documents'),
+                onClick: () => {
+                  window.location.href = '/documents';
+                },
+              },
+            });
+          }}
+        />
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       </>
     );
   }
 
-  // Tenant selected but no workspaces exist - prompt to create one
   if (selectedTenantId && workspacesData && workspacesData.length === 0) {
     return (
       <>
@@ -527,17 +607,28 @@ export function TenantGuard({ children }: TenantGuardProps) {
               </div>
               <CardTitle>{t('workspace.createFirst', 'Create a Workspace')}</CardTitle>
               <CardDescription>
-                {t('workspace.createFirstDesc', 'Create your first workspace to start uploading documents and building your knowledge graph.')}
+                {t(
+                  'workspace.createFirstDesc',
+                  'Create your first workspace to start uploading documents and building your knowledge graph.',
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent className="text-center">
+<<<<<<< HEAD
               <Button onClick={() => handleOpenCreateWorkspace()}>
+=======
+              <Button
+                onClick={() => setShowCreateWorkspace(true)}
+                data-testid="guard-create-workspace"
+              >
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 <Plus className="h-4 w-4 mr-2" />
                 {t('workspace.createWorkspace', 'Create Workspace')}
               </Button>
             </CardContent>
           </Card>
         </div>
+<<<<<<< HEAD
 
         <Dialog open={showCreateWorkspace} onOpenChange={setShowCreateWorkspace}>
           <DialogContent className="w-[95vw] sm:max-w-190 max-h-[92vh] overflow-hidden grid-rows-[auto_minmax(0,1fr)_auto]">
@@ -659,11 +750,32 @@ export function TenantGuard({ children }: TenantGuardProps) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+=======
+        <CreateWorkspaceWizard
+          open={showCreateWorkspace}
+          onOpenChange={setShowCreateWorkspace}
+          tenantId={selectedTenantId}
+          onCreated={(workspace) => {
+            setIsSettingUpContext(true);
+            applyCreatedWorkspaceContext(workspace);
+            void queryClient.invalidateQueries({
+              queryKey: ['workspaces', selectedTenantId],
+            });
+            toast.success(t('workspace.createSuccess', 'Workspace created successfully'), {
+              action: {
+                label: t('onboarding.uploadDocuments', 'Upload documents'),
+                onClick: () => {
+                  window.location.href = '/documents';
+                },
+              },
+            });
+          }}
+        />
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       </>
     );
   }
 
-  // Context not yet selected (should auto-select, but guard anyway)
   if (!selectedTenantId || !selectedWorkspaceId) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -677,7 +789,6 @@ export function TenantGuard({ children }: TenantGuardProps) {
     );
   }
 
-  // All good - render children
   return <>{children}</>;
 }
 

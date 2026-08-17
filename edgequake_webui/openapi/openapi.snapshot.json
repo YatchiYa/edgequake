@@ -9,7 +9,11 @@
     "license": {
       "name": "Apache-2.0"
     },
+<<<<<<< HEAD
     "version": "0.21.0"
+=======
+    "version": "0.24.1"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   },
   "servers": [
     {
@@ -326,6 +330,220 @@
         ]
       }
     },
+<<<<<<< HEAD
+=======
+    "/api/v1/admin/migration-jobs": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List automatic-migration jobs with progressive completion information.",
+        "description": "Surfaces the same ledger as `edgequake.migration_progress` and the CLI\n(`edgequake migrate status`). Boot never blocks on these jobs.",
+        "operationId": "list_migration_jobs",
+        "responses": {
+          "200": {
+            "description": "Migration job progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationJobsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Admin required"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/migration-jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Job detail: ledger row + recent batches + derived rate/ETA (P1).",
+        "description": "GET /api/v1/admin/migration-jobs/{job_id}",
+        "operationId": "get_migration_job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "description": "Migration job UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Migration job detail (ledger row + recent batches + rate/ETA)"
+          },
+          "404": {
+            "description": "Job not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/migration-jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Cancel a migration job (terminal; committed batches are not rolled back).",
+        "operationId": "cancel_migration_job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "description": "Migration job UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationJobControlResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found"
+          },
+          "409": {
+            "description": "Illegal transition from current state"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/migration-jobs/{job_id}/pause": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Pause a migration job at the next batch boundary.",
+        "operationId": "pause_migration_job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "description": "Migration job UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationJobControlResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found"
+          },
+          "409": {
+            "description": "Illegal transition from current state"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/migration-jobs/{job_id}/resume": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Resume a paused migration job (continues from the committed cursor).",
+        "operationId": "resume_migration_job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "description": "Migration job UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationJobControlResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found"
+          },
+          "409": {
+            "description": "Illegal transition from current state"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     "/api/v1/admin/storage/inspect": {
       "get": {
         "tags": [
@@ -1974,6 +2192,67 @@
         ],
         "summary": "List all documents.",
         "operationId": "list_documents",
+<<<<<<< HEAD
+=======
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number (default 1)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "Page size (default 20, max 100)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "description": "Inclusive start date (ISO 8601)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "description": "Inclusive end date (ISO 8601)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "document_pattern",
+            "in": "query",
+            "description": "Case-insensitive title substring (comma = OR)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by status before pagination (e.g. failed, completed). status_counts remain global (SPEC-084 / GH-319)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         "responses": {
           "200": {
             "description": "Documents retrieved",
@@ -2117,6 +2396,58 @@
         ]
       }
     },
+<<<<<<< HEAD
+=======
+    "/api/v1/documents/batch-delete": {
+      "post": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Delete a selected set of documents (async job — 202 Accepted).",
+        "operationId": "batch_delete_documents",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeleteDocumentsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Batch deletion accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchDeleteDocumentsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty or oversized document_ids"
+          },
+          "409": {
+            "description": "Workspace wipe already in flight"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     "/api/v1/documents/pdf": {
       "get": {
         "tags": [
@@ -2838,8 +3169,13 @@
             "workspace_id": []
           }
         ],
+<<<<<<< HEAD
         "x-edgequake-v2-job-type": "reprocess_failed",
         "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+=======
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_failed"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       }
     },
     "/api/v1/documents/scan": {
@@ -5950,6 +6286,181 @@
         ]
       }
     },
+<<<<<<< HEAD
+=======
+    "/api/v1/parse": {
+      "post": {
+        "tags": [
+          "Parse"
+        ],
+        "summary": "Parse a document to Markdown without ingestion (SPEC-094).",
+        "operationId": "parse_document",
+        "parameters": [
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Send `respond-async` to force a 202 job",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "X-Filename",
+            "in": "header",
+            "description": "Filename for raw application/pdf bodies",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {}
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Parse completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Async job accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseAsyncAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "413": {
+            "description": "Payload or page count too large"
+          },
+          "415": {
+            "description": "Unsupported media type"
+          },
+          "422": {
+            "description": "Document unreadable"
+          },
+          "502": {
+            "description": "Backend unavailable"
+          },
+          "504": {
+            "description": "Parse timeout"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/parse/backends": {
+      "get": {
+        "tags": [
+          "Parse"
+        ],
+        "summary": "List parse backends, reachable vision providers/models, and ceilings.",
+        "operationId": "list_parse_backends",
+        "responses": {
+          "200": {
+            "description": "Available parse backends",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseBackendsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/parse/jobs/{id}": {
+      "get": {
+        "tags": [
+          "Parse"
+        ],
+        "summary": "GET /api/v1/parse/jobs/{id}",
+        "operationId": "get_parse_job",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Parse job id returned by POST /parse",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseJobStatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or expired job"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     "/api/v1/pipeline/activity": {
       "get": {
         "tags": [
@@ -6162,6 +6673,33 @@
         ],
         "summary": "Get enhanced pipeline status with history messages.",
         "operationId": "get_pipeline_status",
+<<<<<<< HEAD
+=======
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         "responses": {
           "200": {
             "description": "Pipeline status retrieved",
@@ -6763,6 +7301,69 @@
         ]
       }
     },
+<<<<<<< HEAD
+=======
+    "/api/v1/setup/initialize": {
+      "post": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "POST /api/v1/setup/initialize",
+        "operationId": "setup_initialize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupInitializeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Initialized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupInitializeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "409": {
+            "description": "Already initialized"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/setup/status": {
+      "get": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "GET /api/v1/setup/status",
+        "operationId": "setup_status",
+        "responses": {
+          "200": {
+            "description": "Setup status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     "/api/v1/shared/{share_id}": {
       "get": {
         "tags": [
@@ -7109,6 +7710,19 @@
           "required": true
         },
         "responses": {
+<<<<<<< HEAD
+=======
+          "200": {
+            "description": "Tenant already existed (idempotent get-or-create by slug)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantResponse"
+                }
+              }
+            }
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "201": {
             "description": "Tenant created",
             "content": {
@@ -7518,6 +8132,18 @@
                 "null"
               ]
             }
+<<<<<<< HEAD
+=======
+          },
+          {
+            "name": "include_anonymous",
+            "in": "query",
+            "description": "Include anonymous/guest system accounts (SPEC-087). Default `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           }
         ],
         "responses": {
@@ -8535,8 +9161,13 @@
             "workspace_id": []
           }
         ],
+<<<<<<< HEAD
         "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
         "x-edgequake-v2-job-type": "reprocess_all"
+=======
+        "x-edgequake-v2-job-type": "reprocess_all",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -9059,8 +9690,13 @@
             "description": "Track not found for this workspace"
           }
         },
+<<<<<<< HEAD
         "x-edgequake-transport": "websocket",
         "x-edgequake-upgrade": "RFC6455"
+=======
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       }
     }
   },
@@ -9225,6 +9861,16 @@
             },
             "description": "Built-in auth mechanisms (`jwt_password`, `api_key`) — SPEC-027 phase 49."
           },
+<<<<<<< HEAD
+=======
+          "byte_admission_process_local": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "SPEC-091 IP0 / F-IP-21: byte admission (`try_admit`) is process-local — not cluster SSOT."
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "dev_mode": {
             "type": [
               "boolean",
@@ -9272,6 +9918,23 @@
             "type": "string",
             "description": "OpenAPI document URL."
           },
+<<<<<<< HEAD
+=======
+          "provider_budget_cluster": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "SPEC-091 IP0 / F-IP-21: provider in-flight budget is cluster-wide (Postgres slot ledger)."
+          },
+          "serving_fence_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "SPEC-091 LD-09: whether `EDGEQUAKE_SERVING_FENCE` is on (Ready vs Indexed badge)."
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "shared_conversations_prefix": {
             "type": "string",
             "description": "Public shared-conversation path prefix."
@@ -9555,6 +10218,52 @@
           "degrees": []
         }
       },
+<<<<<<< HEAD
+=======
+      "BatchDeleteDocumentsRequest": {
+        "type": "object",
+        "required": [
+          "document_ids"
+        ],
+        "properties": {
+          "document_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Document IDs to delete (selected subset)."
+          }
+        },
+        "example": {
+          "document_ids": []
+        }
+      },
+      "BatchDeleteDocumentsResponse": {
+        "type": "object",
+        "required": [
+          "accepted",
+          "batch_track_id",
+          "planned_delete_count"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "batch_track_id": {
+            "type": "string"
+          },
+          "planned_delete_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "accepted": {},
+          "batch_track_id": {},
+          "planned_delete_count": {}
+        }
+      },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       "BatchFileResult": {
         "type": "object",
         "description": "Result for a single file in batch upload.",
@@ -10672,6 +11381,16 @@
             ],
             "description": "SPEC-083 / P0: AGE `eq_*` denorm columns ready (or fallback env enabled).\n\nWhen false, `/ready` refuses traffic unless `EDGEQUAKE_EQ_ID_FALLBACK=1`.\nLiveness `/health` stays HTTP 200 with `status: degraded`."
           },
+<<<<<<< HEAD
+=======
+          "graph_available": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Apache AGE extension available (PostgreSQL only, SPEC-090 F-090-19)."
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "graph_storage": {
             "type": "boolean",
             "description": "Graph storage status."
@@ -10691,6 +11410,10 @@
         },
         "example": {
           "eq_id_schema": {},
+<<<<<<< HEAD
+=======
+          "graph_available": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "graph_storage": {},
           "kv_storage": {},
           "llm_provider": {},
@@ -12609,6 +13332,22 @@
             ],
             "description": "Embedding provider (\"openai\", \"ollama\", \"lmstudio\").\nIf not provided, auto-detected from embedding_model."
           },
+<<<<<<< HEAD
+=======
+          "entity_type_colors": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Custom entity-type → hex color map for graph visualization (SPEC-102).\nKeys UPPERCASE; values `#RGB` / `#RRGGBB`. Empty object clears.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "entity_types": {
             "type": [
               "array",
@@ -12626,6 +13365,16 @@
             ],
             "description": "When true (default), limit extraction to listed types; unknown → OTHER."
           },
+<<<<<<< HEAD
+=======
+          "extraction_language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Natural-language output language for entity/relationship values (SPEC-096).\nAllowlisted names: English, Chinese, Japanese, Korean, Spanish, French,\nGerman, Portuguese, Italian, Russian. Omit to inherit env/default."
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "llm_model": {
             "type": [
               "string",
@@ -13722,6 +14471,17 @@
           "chunk_count"
         ],
         "properties": {
+<<<<<<< HEAD
+=======
+          "cancelled_from_stage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last non-terminal pipeline stage when cancel froze the run (INV-10).\nPresent when `status`/`current_stage` is `cancelled`.",
+            "example": "extracting"
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "chunk_count": {
             "type": "integer",
             "description": "Number of chunks.",
@@ -13795,6 +14555,25 @@
             ],
             "description": "Error message if processing failed."
           },
+<<<<<<< HEAD
+=======
+          "eta_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`measured` | `no_history` — honest uncertainty for ETA chrome."
+          },
+          "eta_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Estimated seconds until claim (measured drain; clamped when unknown).",
+            "minimum": 0
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "file_name": {
             "type": [
               "string",
@@ -13837,6 +14616,36 @@
             "description": "Linked PDF document ID (only set if source_type is \"pdf\").\nUsed to fetch PDF content for viewing.\n@implements SPEC-002",
             "example": "8866e3c3-bbd6-4384-b86f-215c9844914d"
           },
+<<<<<<< HEAD
+=======
+          "progress_counts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IngestionProgressCounts",
+                "description": "Structured stage counts (LAW-IS1 / SPEC-091). Prefer over parsing stage_message."
+              }
+            ]
+          },
+          "query_ready": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "SPEC-091 IS3 / LD-09: when serving fence is on, whether the doc is queryable.\nAbsent when fence is off (UI hides Ready/Indexed badge)."
+          },
+          "queue_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "SPEC-091 IS2 / LAW-IS4: 1-based FCFS queue position for pending admission.",
+            "minimum": 0
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "source_type": {
             "type": [
               "string",
@@ -13915,6 +14724,10 @@
           }
         },
         "example": {
+<<<<<<< HEAD
+=======
+          "cancelled_from_stage": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "chunk_count": {},
           "content_length": {},
           "content_summary": {},
@@ -13925,12 +14738,23 @@
           "embedding_model": {},
           "entity_count": {},
           "error_message": {},
+<<<<<<< HEAD
+=======
+          "eta_basis": {},
+          "eta_seconds": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "file_name": {},
           "id": {},
           "input_tokens": {},
           "llm_model": {},
           "output_tokens": {},
           "pdf_id": {},
+<<<<<<< HEAD
+=======
+          "progress_counts": {},
+          "query_ready": {},
+          "queue_position": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "source_type": {},
           "stage_message": {},
           "stage_progress": {},
@@ -15208,6 +16032,25 @@
             "description": "Number of entities extracted.",
             "minimum": 0
           },
+<<<<<<< HEAD
+=======
+          "eta_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ETA basis: `measured` or `no_history` (honest uncertainty, R-15)."
+          },
+          "eta_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Estimated seconds until claim (measured drain; clamped when unknown).",
+            "minimum": 0
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "filename": {
             "type": "string",
             "description": "Original filename."
@@ -15216,6 +16059,18 @@
             "type": "boolean",
             "description": "Whether this was a duplicate (already processed)."
           },
+<<<<<<< HEAD
+=======
+          "queue_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position\nat admission time. Only set for async uploads.",
+            "minimum": 0
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "relationship_count": {
             "type": "integer",
             "description": "Number of relationships extracted.",
@@ -15250,8 +16105,16 @@
           "content_hash": {},
           "document_id": {},
           "entity_count": {},
+<<<<<<< HEAD
           "filename": {},
           "is_duplicate": {},
+=======
+          "eta_basis": {},
+          "eta_seconds": {},
+          "filename": {},
+          "is_duplicate": {},
+          "queue_position": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "relationship_count": {},
           "size": {},
           "status": {},
@@ -17407,6 +18270,23 @@
         "type": "object",
         "description": "Query parameters for listing tasks.",
         "properties": {
+<<<<<<< HEAD
+=======
+          "after_created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-090 F-090-14: keyset cursor — ISO-8601 `created_at` after which to continue."
+          },
+          "after_track_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-090 F-090-14: keyset cursor — `track_id` tie-break with `after_created_at`."
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "order": {
             "type": [
               "string",
@@ -17469,6 +18349,11 @@
           }
         },
         "example": {
+<<<<<<< HEAD
+=======
+          "after_created_at": {},
+          "after_track_id": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "order": {},
           "page": {},
           "page_size": {},
@@ -18186,6 +19071,122 @@
           "source_ids_indexes_ready": {}
         }
       },
+<<<<<<< HEAD
+=======
+      "MigrationJobControlResponse": {
+        "type": "object",
+        "description": "Response for the control verbs (pause/resume/cancel).",
+        "required": [
+          "job_id",
+          "state",
+          "action",
+          "note"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "action": {},
+          "job_id": {},
+          "note": {},
+          "state": {}
+        }
+      },
+      "MigrationJobItem": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "step_id",
+          "state",
+          "processed_count"
+        ],
+        "properties": {
+          "completion_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "estimated_total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "processed_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "state": {
+            "type": "string"
+          },
+          "step_id": {
+            "type": "string"
+          },
+          "throttle_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "completion_pct": {},
+          "estimated_total": {},
+          "job_id": {},
+          "processed_count": {},
+          "state": {},
+          "step_id": {},
+          "throttle_reason": {}
+        }
+      },
+      "MigrationJobsResponse": {
+        "type": "object",
+        "description": "Response for GET /admin/migration-jobs (progressive migration information).",
+        "required": [
+          "mode",
+          "jobs",
+          "note"
+        ],
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationJobItem"
+            },
+            "description": "Jobs from `edgequake.migration_progress` (empty when table missing or mode=off)."
+          },
+          "mode": {
+            "type": "string",
+            "description": "Current `EDGEQUAKE_MIGRATION_MODE` (`off` | `verify` | `automatic`)."
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "jobs": [],
+          "mode": {},
+          "note": {}
+        }
+      },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       "MixWeightRequest": {
         "type": "object",
         "description": "Per-request Mix mode weight overrides (SPEC-022 P-H6).",
@@ -19599,6 +20600,40 @@
           "task_queue": {}
         }
       },
+<<<<<<< HEAD
+=======
+      "PageTiming": {
+        "type": "object",
+        "description": "Per-page timing row.",
+        "required": [
+          "page",
+          "ms",
+          "chars"
+        ],
+        "properties": {
+          "chars": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "chars": {},
+          "ms": {},
+          "page": {}
+        }
+      },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       "PaginatedConversationsResponse": {
         "type": "object",
         "description": "Paginated conversations response.",
@@ -19752,6 +20787,479 @@
           "offset": {}
         }
       },
+<<<<<<< HEAD
+=======
+      "ParseAsyncAccepted": {
+        "type": "object",
+        "description": "202 Accepted body for async parse jobs.",
+        "required": [
+          "job_id",
+          "status",
+          "request_id"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "job_id": {},
+          "request_id": {},
+          "status": {}
+        }
+      },
+      "ParseBackendInfo": {
+        "type": "object",
+        "required": [
+          "name",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ParseProviderInfo"
+            }
+          }
+        },
+        "example": {
+          "available": {},
+          "name": {},
+          "providers": []
+        }
+      },
+      "ParseBackendsResponse": {
+        "type": "object",
+        "description": "Capability discovery for `/parse/backends`.",
+        "required": [
+          "backends",
+          "limits",
+          "default_backend"
+        ],
+        "properties": {
+          "backends": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ParseBackendInfo"
+            }
+          },
+          "default_backend": {
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ParseLimitsInfo"
+          }
+        },
+        "example": {
+          "backends": [],
+          "default_backend": {},
+          "limits": {}
+        }
+      },
+      "ParseJobErrorBody": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "code": {},
+          "message": {}
+        }
+      },
+      "ParseJobStatusResponse": {
+        "type": "object",
+        "description": "Poll response for async jobs.",
+        "required": [
+          "job_id",
+          "status",
+          "request_id"
+        ],
+        "properties": {
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParseJobErrorBody"
+              }
+            ]
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParseResponse"
+              }
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "error": {},
+          "job_id": {},
+          "request_id": {},
+          "result": {},
+          "status": {}
+        }
+      },
+      "ParseLimitsInfo": {
+        "type": "object",
+        "required": [
+          "sync_max_pages",
+          "sync_max_bytes",
+          "async_max_pages",
+          "async_max_bytes",
+          "max_concurrency",
+          "dpi_min",
+          "dpi_max"
+        ],
+        "properties": {
+          "async_max_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "async_max_pages": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "dpi_max": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "dpi_min": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "max_concurrency": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sync_max_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sync_max_pages": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "async_max_bytes": {},
+          "async_max_pages": {},
+          "dpi_max": {},
+          "dpi_min": {},
+          "max_concurrency": {},
+          "sync_max_bytes": {},
+          "sync_max_pages": {}
+        }
+      },
+      "ParseMetrics": {
+        "type": "object",
+        "description": "Timing / cost metrics for a parse request.",
+        "required": [
+          "total_ms"
+        ],
+        "properties": {
+          "assemble_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "completion_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "estimated_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "ocr_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "pages_per_second": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "prompt_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "render_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "assemble_ms": {},
+          "completion_tokens": {},
+          "estimated_cost_usd": {},
+          "ocr_ms": {},
+          "pages_per_second": {},
+          "prompt_tokens": {},
+          "render_ms": {},
+          "total_ms": {}
+        }
+      },
+      "ParseOptions": {
+        "type": "object",
+        "description": "Per-request parse options (multipart JSON `options` or query params).",
+        "properties": {
+          "allow_fallback": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "When false, vision failures do not fall back to EdgeParse."
+          },
+          "async": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Force async job even under sync ceiling."
+          },
+          "backend": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`\"vision\"` or `\"edgeparse\"`. Default: server `EDGEQUAKE_PDF_PARSER_BACKEND` or vision."
+          },
+          "concurrency": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Vision concurrency (1–16).",
+            "minimum": 0
+          },
+          "dpi": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Render DPI (72–400). Default 150.",
+            "minimum": 0
+          },
+          "emit_assets": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "When true, write page assets under a temp dir (cleaned after response)."
+          },
+          "include_page_timings": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Include per-page timing rows in the response."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Vision model id."
+          },
+          "pages": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Page selection string (`\"1-10\"`, `\"5\"`, `\"1,3,5\"`, `\"all\"`)."
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Vision provider id (e.g. `\"ollama\"`, `\"openai\"`)."
+          },
+          "table_method": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Table extraction method (forwarded to converter)."
+          }
+        },
+        "example": {
+          "allow_fallback": {},
+          "async": {},
+          "backend": {},
+          "concurrency": {},
+          "dpi": {},
+          "emit_assets": {},
+          "include_page_timings": {},
+          "model": {},
+          "pages": {},
+          "provider": {},
+          "table_method": {}
+        }
+      },
+      "ParseProviderInfo": {
+        "type": "object",
+        "required": [
+          "name",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "available": {},
+          "models": [],
+          "name": {}
+        }
+      },
+      "ParseResponse": {
+        "type": "object",
+        "description": "Successful parse response (sync or completed async job).",
+        "required": [
+          "markdown",
+          "backend",
+          "backend_effective",
+          "fallback_applied",
+          "page_count",
+          "metrics",
+          "request_id"
+        ],
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "backend_effective": {
+            "type": "string"
+          },
+          "fallback_applied": {
+            "type": "boolean"
+          },
+          "markdown": {
+            "type": "string"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/ParseMetrics"
+          },
+          "page_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "page_timings": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PageTiming"
+            }
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "backend": {},
+          "backend_effective": {},
+          "fallback_applied": {},
+          "markdown": {},
+          "metrics": {},
+          "page_count": {},
+          "page_timings": [],
+          "request_id": {},
+          "warnings": []
+        }
+      },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       "PdfBatchFileResult": {
         "type": "object",
         "description": "Result for a single file in batch PDF upload.",
@@ -20321,6 +21829,25 @@
             "description": "Estimated processing time in seconds.",
             "minimum": 0
           },
+<<<<<<< HEAD
+=======
+          "eta_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ETA basis: `measured` or `no_history` (honest uncertainty, R-15)."
+          },
+          "eta_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Estimated seconds until claim (measured drain; clamped when unknown).",
+            "minimum": 0
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "ingestion_estimate": {
             "oneOf": [
               {
@@ -20344,6 +21871,18 @@
             "type": "string",
             "description": "Generated PDF ID."
           },
+<<<<<<< HEAD
+=======
+          "queue_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position\nat admission. Only set on a fresh enqueue.",
+            "minimum": 0
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "status": {
             "type": "string",
             "description": "Processing status."
@@ -20364,10 +21903,19 @@
           "document_id": {},
           "duplicate_of": {},
           "estimated_time_seconds": {},
+<<<<<<< HEAD
+=======
+          "eta_basis": {},
+          "eta_seconds": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "ingestion_estimate": {},
           "message": {},
           "metadata": {},
           "pdf_id": {},
+<<<<<<< HEAD
+=======
+          "queue_position": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "status": {},
           "task_id": {},
           "track_id": {}
@@ -20764,6 +22312,61 @@
           "total_entities": {}
         }
       },
+<<<<<<< HEAD
+=======
+      "PostgresCapabilityHealth": {
+        "type": "object",
+        "description": "PostgreSQL runtime capabilities exposed on `/health.schema` (SPEC-091 IW4).",
+        "required": [
+          "postgres_major",
+          "uuidv7_available",
+          "iterative_scan_available",
+          "age_jsonb_agtype_cast_available"
+        ],
+        "properties": {
+          "age_jsonb_agtype_cast_available": {
+            "type": "boolean",
+            "description": "AGE ≥ 1.8 — agtype ↔ jsonb bidirectional casts (SPEC-091 RM3)."
+          },
+          "age_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Installed Apache AGE `extversion`, when the extension is present."
+          },
+          "iterative_scan_available": {
+            "type": "boolean",
+            "description": "pgvector ≥ 0.8.0 — iterative index scan GUCs (`hnsw.iterative_scan`, etc.)."
+          },
+          "pgvector_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Installed pgvector `extversion`, when the extension is present."
+          },
+          "postgres_major": {
+            "type": "integer",
+            "format": "int32",
+            "description": "`current_setting('server_version_num') / 10000`.",
+            "minimum": 0
+          },
+          "uuidv7_available": {
+            "type": "boolean",
+            "description": "Native `uuidv7()` available (PG18+ with function present)."
+          }
+        },
+        "example": {
+          "age_jsonb_agtype_cast_available": {},
+          "age_version": {},
+          "iterative_scan_available": {},
+          "pgvector_version": {},
+          "postgres_major": {},
+          "uuidv7_available": {}
+        }
+      },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       "ProviderAttributionInfo": {
         "type": "object",
         "required": [
@@ -21394,7 +22997,11 @@
         "properties": {
           "answer_cache_hit": {
             "type": "boolean",
+<<<<<<< HEAD
             "description": "True when answer served from product answer cache (064)."
+=======
+            "description": "True when answer served from product answer cache (064 / SPEC-103)."
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           },
           "arm_global_chunks": {
             "type": [
@@ -21481,6 +23088,13 @@
             "description": "Generation time in ms.",
             "minimum": 0
           },
+<<<<<<< HEAD
+=======
+          "keyword_cache_hit": {
+            "type": "boolean",
+            "description": "True when keywords served from LLM response cache (SPEC-103)."
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "keyword_time_ms": {
             "type": "integer",
             "format": "int64",
@@ -21574,6 +23188,10 @@
           "context_truncated": {},
           "embedding_time_ms": {},
           "generation_time_ms": {},
+<<<<<<< HEAD
+=======
+          "keyword_cache_hit": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "keyword_time_ms": {},
           "llm_model": {},
           "llm_provider": {},
@@ -21832,6 +23450,13 @@
             "description": "Generation time in ms.",
             "minimum": 0
           },
+<<<<<<< HEAD
+=======
+          "keyword_cache_hit": {
+            "type": "boolean",
+            "description": "True when keywords served from LLM response cache (SPEC-103)."
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "keyword_time_ms": {
             "type": "integer",
             "format": "int64",
@@ -21935,6 +23560,10 @@
           "context_truncated": {},
           "embedding_time_ms": {},
           "generation_time_ms": {},
+<<<<<<< HEAD
+=======
+          "keyword_cache_hit": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "keyword_time_ms": {},
           "llm_model": {},
           "llm_provider": {},
@@ -23680,11 +25309,43 @@
             "format": "int64",
             "description": "Latest migration version applied (e.g., 15 for 015_add_fulltext_search.sql)."
           },
+<<<<<<< HEAD
+=======
+          "migration_required": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "SPEC-091 Doc 17 (LAW-B3): true when the schema disagrees with this\nbinary (pending or database-newer) — `edgequake migrate` is required."
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "migrations_applied": {
             "type": "integer",
             "description": "Number of successful migrations applied.",
             "minimum": 0
           },
+<<<<<<< HEAD
+=======
+          "pending_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "SPEC-091 Doc 17 (LAW-B3): embedded migrations not yet applied. Serves\npost-boot drift detection (e.g. a replica up while the fleet migrated).",
+            "minimum": 0
+          },
+          "postgres_capabilities": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PostgresCapabilityHealth",
+                "description": "SPEC-091 IW4 (LAW-I6): PostgreSQL / extension runtime capability matrix.\n\nDerived from `edgequake-storage` `PostgresCapabilityProbe` SSOT — same\nfields as the live probe, not recomputed from version strings in handlers."
+              }
+            ]
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "source_ids_indexes": {
             "oneOf": [
               {
@@ -23703,7 +25364,14 @@
           "halfvec_conversion_applied": {},
           "last_applied_at": {},
           "latest_version": {},
+<<<<<<< HEAD
           "migrations_applied": {},
+=======
+          "migration_required": {},
+          "migrations_applied": {},
+          "pending_count": {},
+          "postgres_capabilities": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "source_ids_indexes": {}
         }
       },
@@ -23855,6 +25523,186 @@
           "note": {}
         }
       },
+<<<<<<< HEAD
+=======
+      "SetupInitializeRequest": {
+        "type": "object",
+        "required": [
+          "tenant_name",
+          "workspace_name"
+        ],
+        "properties": {
+          "admin_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "admin_password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "admin_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_embedding_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_embedding_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_llm_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_llm_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_vision_llm_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_vision_llm_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenant_description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenant_name": {
+            "type": "string"
+          },
+          "workspace_description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_name": {
+            "type": "string"
+          },
+          "workspace_slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "admin_email": {},
+          "admin_password": {},
+          "admin_username": {},
+          "default_embedding_model": {},
+          "default_embedding_provider": {},
+          "default_llm_model": {},
+          "default_llm_provider": {},
+          "default_vision_llm_model": {},
+          "default_vision_llm_provider": {},
+          "tenant_description": {},
+          "tenant_name": {},
+          "workspace_description": {},
+          "workspace_name": {},
+          "workspace_slug": {}
+        }
+      },
+      "SetupInitializeResponse": {
+        "type": "object",
+        "required": [
+          "tenant",
+          "workspace",
+          "already_initialized"
+        ],
+        "properties": {
+          "admin_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "already_initialized": {
+            "type": "boolean"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantResponse"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/WorkspaceResponse"
+          }
+        },
+        "example": {
+          "admin_username": {},
+          "already_initialized": {},
+          "tenant": {},
+          "workspace": {}
+        }
+      },
+      "SetupStatusResponse": {
+        "type": "object",
+        "required": [
+          "needs_setup",
+          "has_login_users",
+          "tenant_count",
+          "workspace_count",
+          "auth_enabled",
+          "bootstrap_admin_configured"
+        ],
+        "properties": {
+          "auth_enabled": {
+            "type": "boolean"
+          },
+          "bootstrap_admin_configured": {
+            "type": "boolean"
+          },
+          "has_login_users": {
+            "type": "boolean"
+          },
+          "needs_setup": {
+            "type": "boolean"
+          },
+          "tenant_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "workspace_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "auth_enabled": {},
+          "bootstrap_admin_configured": {},
+          "has_login_users": {},
+          "needs_setup": {},
+          "tenant_count": {},
+          "workspace_count": {}
+        }
+      },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       "Severity": {
         "type": "string",
         "description": "Severity level of an inspection finding.",
@@ -24839,6 +26687,25 @@
             ],
             "description": "Simple error message (backward compatibility)."
           },
+<<<<<<< HEAD
+=======
+          "eta_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ETA basis: `measured` or `no_history` (honest uncertainty, R-15)."
+          },
+          "eta_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Estimated seconds until claim (measured drain; clamped when unknown).",
+            "minimum": 0
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "max_retries": {
             "type": "integer",
             "format": "int32",
@@ -24850,6 +26717,18 @@
           "progress": {
             "description": "Task progress data."
           },
+<<<<<<< HEAD
+=======
+          "queue_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position.\nOnly populated for `pending` tasks on single-task reads.",
+            "minimum": 0
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "result": {
             "description": "Task result data."
           },
@@ -24895,9 +26774,18 @@
           "created_at": {},
           "error": {},
           "error_message": {},
+<<<<<<< HEAD
           "max_retries": {},
           "metadata": {},
           "progress": {},
+=======
+          "eta_basis": {},
+          "eta_seconds": {},
+          "max_retries": {},
+          "metadata": {},
+          "progress": {},
+          "queue_position": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "result": {},
           "retry_count": {},
           "started_at": {},
@@ -25093,6 +26981,17 @@
             },
             "description": "Documents in this batch."
           },
+<<<<<<< HEAD
+=======
+          "expected_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "SPEC-084 / GH-318: expected documents in this client batch (when declared).",
+            "minimum": 0
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "is_complete": {
             "type": "boolean",
             "description": "Whether processing is complete (all docs completed or failed)."
@@ -25104,6 +27003,14 @@
             ],
             "description": "Latest processing message."
           },
+<<<<<<< HEAD
+=======
+          "registered_count": {
+            "type": "integer",
+            "description": "SPEC-084 / GH-318: documents currently registered for this track.",
+            "minimum": 0
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "status_summary": {
             "$ref": "#/components/schemas/StatusCounts",
             "description": "Status summary for the batch."
@@ -25121,8 +27028,15 @@
         "example": {
           "created_at": {},
           "documents": [],
+<<<<<<< HEAD
           "is_complete": {},
           "latest_message": {},
+=======
+          "expected_count": {},
+          "is_complete": {},
+          "latest_message": {},
+          "registered_count": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "status_summary": {},
           "total_count": {},
           "track_id": {}
@@ -25784,6 +27698,22 @@
             ],
             "description": "Update embedding provider."
           },
+<<<<<<< HEAD
+=======
+          "entity_type_colors": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Custom entity-type → hex color map (SPEC-102). Omit = leave unchanged;\nempty object clears the workspace override.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "entity_types": {
             "type": [
               "array",
@@ -25801,6 +27731,16 @@
             ],
             "description": "Strict entity type limit (default true). Set false to allow free-form types."
           },
+<<<<<<< HEAD
+=======
+          "extraction_language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Extraction output language (SPEC-096). Omit = leave unchanged;\nempty string or `\"none\"` clears the workspace override."
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "is_active": {
             "type": [
               "boolean",
@@ -25864,8 +27804,15 @@
           "embedding_dimension": {},
           "embedding_model": {},
           "embedding_provider": {},
+<<<<<<< HEAD
           "entity_types": [],
           "entity_types_strict": {},
+=======
+          "entity_type_colors": {},
+          "entity_types": [],
+          "entity_types_strict": {},
+          "extraction_language": {},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "is_active": {},
           "llm_model": {},
           "llm_provider": {},
@@ -25987,6 +27934,34 @@
             "description": "Number of entities extracted (only set for sync processing).",
             "minimum": 0
           },
+<<<<<<< HEAD
+=======
+          "eta_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ETA basis: `measured` or `no_history` (honest uncertainty, R-15)."
+          },
+          "eta_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Estimated seconds until claim (measured drain; clamped when unknown).",
+            "minimum": 0
+          },
+          "queue_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based position in the FCFS\npending queue at admission time. Only set for async uploads.",
+            "minimum": 0
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "relationship_count": {
             "type": [
               "integer",
@@ -26042,6 +28017,13 @@
             "type": "boolean",
             "description": "Whether the account is active."
           },
+<<<<<<< HEAD
+=======
+          "is_anonymous": {
+            "type": "boolean",
+            "description": "True for shared guest / legacy anon_* system accounts (SPEC-087)."
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "last_login_at": {
             "type": [
               "string",
@@ -26273,6 +28255,22 @@
             "type": "string",
             "description": "Embedding provider (openai, ollama, lmstudio)."
           },
+<<<<<<< HEAD
+=======
+          "entity_type_colors": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Custom entity-type → hex color map for graph visualization (SPEC-102).",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "entity_types": {
             "type": [
               "array",
@@ -26287,6 +28285,16 @@
             "type": "boolean",
             "description": "When true, unknown types are remapped to OTHER/CONCEPT (default true)."
           },
+<<<<<<< HEAD
+=======
+          "extraction_language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Configured extraction language override (SPEC-096).\n`null` / omitted means inherit `EDGEQUAKE_EXTRACTION_LANGUAGE` or English."
+          },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           "id": {
             "type": "string",
             "format": "uuid",
@@ -26481,6 +28489,13 @@
       "description": "Document ingestion endpoints"
     },
     {
+<<<<<<< HEAD
+=======
+      "name": "Parse",
+      "description": "Stateless PDF to Markdown parsing (SPEC-094)"
+    },
+    {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       "name": "Query",
       "description": "Query execution endpoints"
     },
@@ -26581,7 +28596,11 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
+<<<<<<< HEAD
       "version": "0.21.0",
+=======
+      "version": "0.24.1",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455)."
     },
     "defaultContentType": "application/json",

@@ -3,7 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
+<<<<<<< HEAD
 use futures::StreamExt;
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use serde::Deserialize;
 use std::time::Instant;
 use uuid::Uuid;
@@ -43,6 +46,7 @@ pub async fn get_workspace_stats(
     // cached data for workspaces they do not own.
     verify_workspace_tenant_access(&state, workspace_id, &tenant_ctx).await?;
 
+<<<<<<< HEAD
     Ok(Json(cached_workspace_stats(&state, workspace_id).await?))
 }
 
@@ -65,6 +69,19 @@ pub(super) async fn cached_workspace_stats(
     state: &AppState,
     workspace_id: Uuid,
 ) -> Result<WorkspaceStatsResponse, ApiError> {
+=======
+    // HYBRID APPROACH WITH CACHING: 4-tier performance optimization
+    // See: logs/2026-01-26-18-00-storage-architecture-analysis.md
+    // See: specs/021-storage-study/06-first-principles/11-ux-zero-documents-root-cause-assessment.md
+    //
+    // Performance tiers:
+    // 0. Cache (<1ms) - FASTEST, 60s TTL
+    // 1. PostgreSQL documents table (1-5ms) - primary for document_count (SPEC-021 P5-01)
+    // 2. KV storage aggregation (15ms) - fallback for legacy uploads + chunk metrics
+    // 3. AGE graph queries (50-200ms) - authoritative for entity/relationship counts
+
+    use std::time::Instant;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let start = Instant::now();
 
     // Tier 0: Check cache first (fastest path - <1ms)
@@ -80,7 +97,11 @@ pub(super) async fn cached_workspace_stats(
                     age_secs = cached.cached_at.elapsed().as_secs(),
                     "Workspace stats retrieved from cache (fastest path)"
                 );
+<<<<<<< HEAD
                 return Ok(cached.stats.clone());
+=======
+                return Ok(Json(cached.stats.clone()));
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }
         }
     }
@@ -93,11 +114,20 @@ pub(super) async fn cached_workspace_stats(
         cache.get(&workspace_id).map(|c| c.stats.clone())
     };
 
+<<<<<<< HEAD
+=======
+    // SPEC-089 Phase 4 / F-336-14 / LAW-H2: app 4s; AGE counts use
+    // WORKSPACE_STATS_STATEMENT_TIMEOUT_MS=3750 so Postgres cancels first.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     const STATS_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
 
     let fetch_result = tokio::time::timeout(
         STATS_FETCH_TIMEOUT,
+<<<<<<< HEAD
         fetch_workspace_stats_uncached(state, workspace_id, start),
+=======
+        fetch_workspace_stats_uncached(&state, workspace_id, start),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     )
     .await;
 
@@ -111,7 +141,11 @@ pub(super) async fn cached_workspace_stats(
                     error = %e,
                     "Workspace stats fetch failed — serving stale cache (P-G13)"
                 );
+<<<<<<< HEAD
                 return Ok(stale);
+=======
+                return Ok(Json(stale));
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }
             return Err(e);
         }
@@ -123,7 +157,11 @@ pub(super) async fn cached_workspace_stats(
                     timeout_secs = STATS_FETCH_TIMEOUT.as_secs(),
                     "Workspace stats fetch timed out under load — serving stale cache (P-G13)"
                 );
+<<<<<<< HEAD
                 return Ok(stale);
+=======
+                return Ok(Json(stale));
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }
             return Err(ApiError::Internal(
                 "Workspace stats temporarily unavailable — retry shortly".to_string(),
@@ -143,6 +181,7 @@ pub(super) async fn cached_workspace_stats(
         );
     }
 
+<<<<<<< HEAD
     Ok(stats)
 }
 
@@ -246,6 +285,9 @@ pub async fn list_workspaces_with_stats(
 
     let total = items.len();
     Ok(Json(WorkspaceStatsListResponse { items, total }))
+=======
+    Ok(Json(stats))
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// Fetch workspace stats from storage backends (uncached).
@@ -254,9 +296,14 @@ pub async fn list_workspaces_with_stats(
 /// - **document_count / storage_bytes**: `max(postgresql, kv)` — relational primary,
 ///   KV fallback for legacy uploads that never dual-wrote.
 /// - **entity_count / relationship_count / entity_type_count**: AGE graph (always).
+<<<<<<< HEAD
 /// - **chunk_count**: KV document metadata (`chunk_count` field, summed).
 /// - **embedding_count**: O(1) row counter on the workspace vector table (all
 ///   embedded objects — chunks, entities, relationships).
+=======
+/// - **chunk_count / embedding_count**: relational `chunks` COUNT when PG available
+///   (SPEC-087 C-087-02); else one `KVStorage::count_embedded_chunks_for_docs` call.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 async fn fetch_workspace_stats_uncached(
     state: &AppState,
     workspace_id: Uuid,
@@ -265,16 +312,32 @@ async fn fetch_workspace_stats_uncached(
     let mut stats = try_kv_storage_stats(state, workspace_id).await?;
     let kv_document_count = stats.document_count;
     let kv_storage_bytes = stats.storage_bytes;
+<<<<<<< HEAD
 
     let mut method = "kv_storage";
 
     if let Some((pg_docs, pg_bytes)) =
         crate::document_read_model::postgres_document_metrics(state, workspace_id).await
+=======
+    let kv_chunk_count = stats.chunk_count;
+    let kv_embedding_count = stats.embedding_count;
+
+    let mut method = "kv_storage";
+
+    if let Some((pg_docs, pg_bytes, pg_chunks, pg_embeddings)) =
+        crate::document_read_model::postgres_workspace_metrics(state, workspace_id).await
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     {
         stats.document_count =
             crate::document_read_model::merge_document_count(pg_docs, kv_document_count);
         stats.storage_bytes =
             crate::document_read_model::merge_storage_bytes(pg_bytes, kv_storage_bytes);
+<<<<<<< HEAD
+=======
+        // SPEC-087: relational chunks COUNT is the product SSOT when PG is up.
+        stats.chunk_count = pg_chunks.max(kv_chunk_count);
+        stats.embedding_count = pg_embeddings.max(kv_embedding_count);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         method = if pg_docs >= kv_document_count {
             "postgresql+kv"
         } else {
@@ -323,12 +386,24 @@ async fn try_kv_storage_stats(
     // Aggregate stats from documents belonging to this workspace
     let mut document_count = 0;
     let mut storage_bytes: u64 = 0;
+<<<<<<< HEAD
+=======
+    let mut workspace_doc_ids = Vec::new();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let mut chunk_count_from_metadata = 0usize;
 
     for value in metadata_values {
         if let Some(obj) = value.as_object() {
             document_count += 1;
 
+<<<<<<< HEAD
+=======
+            // Collect document ID for per-doc chunk prefix scan
+            if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
+                workspace_doc_ids.push(id.to_string());
+            }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             chunk_count_from_metadata += obj
                 .get("chunk_count")
                 .and_then(|v| v.as_u64())
@@ -360,6 +435,7 @@ async fn try_kv_storage_stats(
         .await
         .unwrap_or(0);
 
+<<<<<<< HEAD
     let chunk_count = chunk_count_from_metadata;
 
     // Embeddings live in the per-workspace vector table, never in KV. Read the
@@ -378,6 +454,17 @@ async fn try_kv_storage_stats(
         .count()
         .await
         .unwrap_or(0);
+=======
+    // SPEC-087 / Issue #334: one trait call (Postgres = single COUNT; Memory = prefix scan).
+    // Do not fetch chunk JSON payloads just to test for an `embedding` field.
+    let embedding_count = state
+        .storage
+        .kv_storage
+        .count_embedded_chunks_for_docs(&workspace_doc_ids)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to count embedded chunks: {}", e)))?;
+    let chunk_count = chunk_count_from_metadata.max(embedding_count);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     // Get distinct entity type count from graph storage.
     // WHY: Dashboard EntityTypes KPI was extremely slow — it fetched ALL graph

@@ -96,6 +96,19 @@ pub(super) fn workspace_to_response(workspace: &Workspace) -> WorkspaceResponse 
             .get("entity_types_strict")
             .and_then(|v| v.as_bool())
             .unwrap_or(true),
+<<<<<<< HEAD
+=======
+        // SPEC-096: extraction language override (null = inherit env/default)
+        extraction_language: workspace
+            .metadata
+            .get("extraction_language")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        // SPEC-102: entity type color overrides
+        entity_type_colors: workspace.metadata.get("entity_type_colors").and_then(|v| {
+            serde_json::from_value::<std::collections::HashMap<String, String>>(v.clone()).ok()
+        }),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         created_at: workspace.created_at.to_rfc3339(),
         updated_at: workspace.updated_at.to_rfc3339(),
     }

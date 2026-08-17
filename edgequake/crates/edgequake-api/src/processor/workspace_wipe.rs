@@ -30,7 +30,12 @@ impl DocumentTaskProcessor {
 
         match run_workspace_wipe_phases(state, task, data).await {
             Ok(final_data) => {
+<<<<<<< HEAD
                 task.update_progress("workspace_wipe_complete".to_string(), 1, 100);
+=======
+                self.bump_task_progress(task, "workspace_wipe_complete".to_string(), 1, 100)
+                    .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 Ok(serde_json::json!({
                     "wipe_track_id": final_data.wipe_track_id,
                     "deleted_count": final_data.deleted_count,

@@ -2,7 +2,11 @@
 title: 'Performance Tuning Guide'
 ---
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # Performance Tuning Guide
 
@@ -63,17 +67,27 @@ Pin models via `EDGEQUAKE_DEFAULT_LLM_MODEL` (or Makefile / `.env.example` — s
 Smaller context = faster LLM processing:
 
 ```bash
-# Query with fewer chunks
+# Query with fewer results (per-query knobs)
 curl -X POST http://localhost:8080/api/v1/query \
-  -d '{"query": "...", "max_chunks": 5, "max_entities": 5}'
+  -d '{"query": "...", "max_results": 5}'
 ```
 
+<<<<<<< HEAD
 **Default vs Optimized**:
 | Setting             | Default | Optimized |
 | ------------------- | ------- | --------- |
 | `max_chunks`        | 20      | 5-10      |
 | `max_entities`      | 10      | 3-5       |
 | `max_relationships` | 20      | 5-10      |
+=======
+**Per-query knobs** (from `QueryRequest`):
+| Setting          | Default | Optimized |
+| ---------------- | ------- | --------- |
+| `max_results`    | 10      | 5-8       |
+| `rerank_top_k`   | 20      | 10        |
+
+Server-side engine defaults (`QueryEngineConfig`, not per-query request fields): `max_chunks` 20, `max_entities` 60, `max_relationships` 60, `max_context_tokens` 30000, `graph_depth` 2.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ### 3. Use Appropriate Query Mode
 

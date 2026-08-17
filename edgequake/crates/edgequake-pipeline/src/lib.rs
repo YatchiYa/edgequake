@@ -59,6 +59,10 @@ pub mod adaptive_chunking;
 pub mod anthropic_images;
 pub mod chunk_storage;
 pub mod chunker;
+<<<<<<< HEAD
+=======
+pub mod contextual_chunk;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod entity_display;
 pub mod error;
 pub mod extractor;
@@ -144,11 +148,20 @@ pub use merger::{
     source_chunk_ids_from_properties, source_document_ids_from_properties,
     source_ids_limit_method_from_env, split_description_fragments, summary_max_tokens_from_env,
     truncate_keep_doc_diverse, DescriptionMergeBackend, DescriptionMergeDecision,
+<<<<<<< HEAD
     DescriptionMergePolicy, EntityLineageLink, KnowledgeGraphMerger, LineageSink, MergeArtifacts,
     MergePhase, MergeProgress, MergeProgressCallback, MergeStats, MergerConfig, NoopEntitySink,
     NoopLineageSink, RelationLineageLink, RelationalEntitySink, SourceIdsLimitMethod,
     DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE, DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC,
     DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP, LOCAL_MERGE_MAX_ASYNC,
+=======
+    DescriptionMergePolicy, EntityLineageLink, EntitySinkRow, KnowledgeGraphMerger, LineageSink,
+    MergeArtifacts, MergePhase, MergeProgress, MergeProgressCallback, MergeStats, MergerConfig,
+    NoopEntitySink, NoopLineageSink, RelationLineageLink, RelationalEntitySink,
+    RelationshipSinkRow, SourceIdsLimitMethod, DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE,
+    DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC, DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP,
+    LOCAL_MERGE_MAX_ASYNC,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 pub use multimodal::{
     bare_entity_id, inject_modality_relations, map_image_type_to_retrieval_modality,
@@ -174,12 +187,22 @@ pub use pipeline::{
     default_max_concurrent_for_provider,
     is_local_extraction_provider,
     is_local_provider_overload_error,
+<<<<<<< HEAD
+=======
+    // SPEC-091 QW2: admission resolver SSOT (LAW-Q1)
+    queue_target_wait_secs_from_env,
+    resolve_admission_plan,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     resolve_extract_provider_name_for_fairness,
     resolve_extract_provider_name_for_fairness_from,
     resolve_gleaning_for_provider,
     resolve_worker_pool_limits,
     resolve_worker_pool_limits_from,
     retry_delay_ms_for_chunk_error,
+<<<<<<< HEAD
+=======
+    AdmissionPlan,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     ChunkErrorInfo,
     ChunkProgressCallback,
     ChunkProgressUpdate,
@@ -191,12 +214,21 @@ pub use pipeline::{
     PipelineConfig,
     ProcessingResult,
     ProcessingStats,
+<<<<<<< HEAD
+=======
+    ProviderKind,
+    ProviderProfile,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     WorkerPoolLimits,
     ALLOW_LOCAL_HIGH_CONCURRENCY_ENV,
     DEFAULT_CHUNK_MAX_RETRIES,
     DEFAULT_CHUNK_TIMEOUT_SECS,
     DEFAULT_INITIAL_RETRY_DELAY_MS,
     DEFAULT_MAX_CONCURRENT_EXTRACTIONS,
+<<<<<<< HEAD
+=======
+    DEFAULT_QUEUE_TARGET_WAIT_SECS,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     LOCAL_CHUNK_TIMEOUT_SECS,
     LOCAL_DEFAULT_LIFECYCLE_TASKS_PER_TENANT,
     LOCAL_ENABLE_GLEANING_ENV,
@@ -210,6 +242,10 @@ pub use pipeline::{
     MAX_GLEANING_CAP,
     MAX_RETRY_DELAY_MS,
     MIN_CHUNK_TIMEOUT_SECS,
+<<<<<<< HEAD
+=======
+    QUEUE_TARGET_WAIT_SECS_ENV,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 pub use progress::{
     default_model_pricing, CostBreakdown, CostTracker, IngestionError, IngestionProgress,
@@ -217,10 +253,21 @@ pub use progress::{
     ProgressTracker, StageProgress, StageStatus, PHASE_WEIGHTS,
 };
 pub use prompts::{
+<<<<<<< HEAD
     default_entity_types, detect_format_markers, format_section_context, normalize_entity_name,
     text_with_section_context, truncate_section_context, EntityExtractionPrompts,
     ExtractionResultParser, HybridExtractionParser, JsonExtractionParser, SummarizationPrompts,
     TupleParser, DEFAULT_COMPLETION_DELIMITER, DEFAULT_TUPLE_DELIMITER, SUPPORTED_LANGUAGES,
+=======
+    canonicalize_extraction_language, default_entity_types, detect_format_markers,
+    extraction_language_from_metadata, format_section_context, is_extraction_language_clear,
+    json_extraction_prompt, json_gleaning_prompt, json_language_instruction, normalize_entity_name,
+    resolve_extraction_language, resolve_extraction_language_from_env, text_with_section_context,
+    truncate_section_context, EntityExtractionPrompts, ExtractionResultParser,
+    HybridExtractionParser, JsonExtractionParser, SummarizationPrompts, TupleParser,
+    DEFAULT_COMPLETION_DELIMITER, DEFAULT_EXTRACTION_LANGUAGE, DEFAULT_TUPLE_DELIMITER,
+    EXTRACTION_LANGUAGE_ENV, SUPPORTED_LANGUAGES,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 pub use sanitizer::{EmojiMode, SanitizeConfig, SanitizeReport, Sanitizer};
 pub use stage_bridge::{

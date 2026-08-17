@@ -19,6 +19,7 @@ pub enum KeywordMode {
     Heuristic,
 }
 
+<<<<<<< HEAD
 /// Keyword LLM result cache (064). Default **on**; set `EDGEQUAKE_KEYWORD_CACHE=0` to disable.
 pub fn keyword_cache_enabled() -> bool {
     !matches!(
@@ -30,6 +31,14 @@ pub fn keyword_cache_enabled() -> bool {
             .as_deref(),
         Some("0") | Some("false") | Some("off") | Some("no")
     )
+=======
+/// Keyword LLM result cache (064 / SPEC-103 LAW-C6).
+///
+/// Default **on** when master `EDGEQUAKE_LLM_CACHE` is on; set
+/// `EDGEQUAKE_KEYWORD_CACHE=0` or `EDGEQUAKE_LLM_CACHE=0` to disable.
+pub fn keyword_cache_enabled() -> bool {
+    crate::cache::llm_response_cache::keyword_cache_enabled_from_flags()
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// `EDGEQUAKE_KEYWORD_MODE=llm|heuristic` (default `llm`).

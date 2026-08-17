@@ -7,6 +7,7 @@ use crate::error::{Result, StorageError};
 use crate::traits::GraphEdge;
 
 impl PostgresAGEGraphStorage {
+<<<<<<< HEAD
     pub(super) async fn pg_has_edge(&self, source: &str, target: &str) -> Result<bool> {
         let cypher = "MATCH (a:Node {node_id: $source_id})-[r:EDGE]->(b:Node {node_id: $target_id}) RETURN r LIMIT 1";
         let params = serde_json::json!({ "source_id": source, "target_id": target });
@@ -14,11 +15,26 @@ impl PostgresAGEGraphStorage {
         Ok(!rows.is_empty())
     }
 
+=======
+    /// IMP-031-03: native edge endpoint lookup — O(log E) via source/target indexes.
+    pub(super) async fn pg_has_edge(&self, source: &str, target: &str) -> Result<bool> {
+        Ok(self.pg_get_edge(source, target).await?.is_some())
+    }
+
+    /**
+     * @dataop      DATA-AGE-GRAPH-GET-EDGE-034
+     * @engine      apache_age (native SQL primary; IMP-031-03)
+     * @intent      Fetch single directed edge by (source_id, target_id) — O(log E).
+     * @indexes     EDGE eq_source/target or expression btree on properties
+     * @complexity  time: O(log E); space: O(1)
+     */
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub(super) async fn pg_get_edge(
         &self,
         source: &str,
         target: &str,
     ) -> Result<Option<GraphEdge>> {
+<<<<<<< HEAD
         let cypher =
             "MATCH (a:Node {node_id: $source_id})-[r:EDGE]->(b:Node {node_id: $target_id}) RETURN r";
         let params = serde_json::json!({ "source_id": source, "target_id": target });
@@ -31,6 +47,40 @@ impl PostgresAGEGraphStorage {
         let json_value: serde_json::Value = rows[0].get("r");
         let agtype_str = json_value.to_string();
         Ok(Self::parse_edge(&agtype_str))
+=======
+        let pool = self.pool.get().await?;
+        let mut conn = pool.acquire().await.map_err(|e| {
+            StorageError::Connection(format!("Failed to acquire connection: {}", e))
+        })?;
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let src = if eq_present {
+            super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::helpers::prop_only_endpoint("e", "source")
+        };
+        let tgt = if eq_present {
+            super::helpers::coalesce_endpoint("e", "target")
+        } else {
+            super::helpers::prop_only_endpoint("e", "target")
+        };
+        let sql = format!(
+            "/* DATA-AGE-GRAPH-GET-EDGE-034 */ \
+             SELECT ag_catalog.agtype_to_json(e.properties) AS props \
+             FROM {graph}.\"EDGE\" e \
+             WHERE {src} = $1 AND {tgt} = $2 \
+             LIMIT 1",
+            graph = self.graph_name,
+            src = src,
+            tgt = tgt,
+        );
+        let rows = sqlx::query(&sql)
+            .bind(source)
+            .bind(target)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("get_edge native failed: {e}")))?;
+        Ok(Self::edges_from_props_rows(&rows).into_iter().next())
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     pub(super) async fn pg_upsert_edge(
@@ -39,10 +89,30 @@ impl PostgresAGEGraphStorage {
         target: &str,
         properties: HashMap<String, serde_json::Value>,
     ) -> Result<()> {
+<<<<<<< HEAD
         let escaped_source = Self::escape_cypher_string(source);
         let escaped_target = Self::escape_cypher_string(target);
 
         // Build properties with source_id and target_id
+=======
+        // IMP-046 / IMP-031: single-edge write uses native batch-of-1 when enabled.
+        if super::native_graph_writes_enabled() {
+            return self
+                .pg_upsert_edges_batch(&[(source.to_string(), target.to_string(), properties)])
+                .await;
+        }
+        tracing::warn!(
+            target: "edgequake_storage::graph",
+            "native graph writes disabled — single edge Cypher MERGE (debug path)"
+        );
+        let escaped_source = Self::escape_cypher_string(source);
+        let escaped_target = Self::escape_cypher_string(target);
+        // LAW-098-7 / D-30: MERGE arbiter includes normalized relation_type.
+        let rel = crate::graph_batch_dedupe::normalize_rel_type(&properties);
+        let escaped_rel = Self::escape_cypher_string(&rel);
+
+        // Build properties with source_id, target_id, and normalized relation_type.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         let mut props_with_ids = properties.clone();
         props_with_ids.insert(
             "source_id".to_string(),
@@ -52,15 +122,26 @@ impl PostgresAGEGraphStorage {
             "target_id".to_string(),
             serde_json::Value::String(target.to_string()),
         );
+<<<<<<< HEAD
+=======
+        props_with_ids.insert("relation_type".to_string(), serde_json::Value::String(rel));
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // WHY: AGE 1.6.0 does NOT support `ON CREATE SET` (apache/age#2347 is
         // unreleased) — "syntax error at or near ON". `SET r = <variable map>`
         // fails (apache/age#1634). The version-safe pattern is per-key
         // `SET r.key = <literal>` expanded inline — verified against AGE 1.6.0
         // to persist on both freshly-MERGEd and existing edges. source_id /
+<<<<<<< HEAD
         // target_id are the MERGE key and are persisted by the MERGE pattern.
         let mut set_clauses: Vec<String> = Vec::with_capacity(props_with_ids.len());
         for (k, v) in &props_with_ids {
             if k == "source_id" || k == "target_id" {
+=======
+        // target_id / relation_type are the MERGE key (persisted by MERGE).
+        let mut set_clauses: Vec<String> = Vec::with_capacity(props_with_ids.len());
+        for (k, v) in &props_with_ids {
+            if k == "source_id" || k == "target_id" || k == "relation_type" {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 continue;
             }
             set_clauses.push(format!("r.{} = {}", k, Self::value_to_cypher(v)));
@@ -73,9 +154,16 @@ impl PostgresAGEGraphStorage {
         let cypher = format!(
             "MERGE (a:Node {{node_id: '{src}'}}) \
              MERGE (b:Node {{node_id: '{tgt}'}}) \
+<<<<<<< HEAD
              MERGE (a)-[r:EDGE {{source_id: '{src}', target_id: '{tgt}'}}]->(b){set_clause}",
             src = escaped_source,
             tgt = escaped_target,
+=======
+             MERGE (a)-[r:EDGE {{source_id: '{src}', target_id: '{tgt}', relation_type: '{rel}'}}]->(b){set_clause}",
+            src = escaped_source,
+            tgt = escaped_target,
+            rel = escaped_rel,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             set_clause = set_clause
         );
         self.cypher_execute(&cypher).await
@@ -84,28 +172,59 @@ impl PostgresAGEGraphStorage {
     /// SC1: batched edge upsert using a single `UNWIND ... MERGE` per chunk.
     ///
     /// WHY: same round-trip collapse as `upsert_nodes_batch`. Each row carries
+<<<<<<< HEAD
     /// `source_id`/`target_id` plus the edge properties; MERGE on the endpoint
     /// nodes then MERGE on the relationship keyed by (source_id, target_id)
     /// guarantees at-most-one edge per pair (no DELETE/CREATE race), and
     /// `SET r.key = e.key` (per-key) applies last-write-wins property updates.
+=======
+    /// `source_id`/`target_id`/`relation_type` plus other edge properties;
+    /// MERGE on endpoints then MERGE on the relationship keyed by
+    /// `(source_id, target_id, relation_type)` (LAW-098-7 / D-30) guarantees
+    /// at-most-one edge per multigraph key, and `SET r.key = e.key` (per-key)
+    /// applies last-write-wins property updates.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     ///
     /// # SPEC-032 W-05: Adaptive UNWIND chunk size (same logic as node batch)
     pub(super) async fn pg_upsert_edges_batch(
         &self,
         edges: &[(String, String, HashMap<String, serde_json::Value>)],
     ) -> Result<()> {
+<<<<<<< HEAD
+=======
+        self.pg_upsert_edges_batch_with_mode(
+            edges,
+            crate::traits::GraphPropertyWriteMode::MergeSources,
+        )
+        .await
+    }
+
+    pub(super) async fn pg_upsert_edges_batch_with_mode(
+        &self,
+        edges: &[(String, String, HashMap<String, serde_json::Value>)],
+        mode: crate::traits::GraphPropertyWriteMode,
+    ) -> Result<()> {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         if edges.is_empty() {
             return Ok(());
         }
 
+<<<<<<< HEAD
         // First Principles: ON CONFLICT / Cypher MERGE keys are (source_id, target_id).
+=======
+        // First Principles / D-30 / LAW-098-7: arbiter is (source, target, rel_type).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         // Collapse duplicates here so every write path (native + Cypher) is safe.
         let edges = crate::graph_batch_dedupe::dedupe_edges_by_endpoints(edges);
         let edges = edges.as_slice();
 
         // SPEC-034 IMP-01: Use native SQL path when feature flag is enabled.
         if super::native_graph_writes_enabled() {
+<<<<<<< HEAD
             return self.pg_upsert_edges_batch_native(edges).await;
+=======
+            return self.pg_upsert_edges_batch_native(edges, mode).await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
 
         // SPEC-032 W-05: adaptive chunk based on estimated row bytes.
@@ -116,6 +235,10 @@ impl PostgresAGEGraphStorage {
                 .iter()
                 .map(|(source, target, properties)| {
                     let mut map = properties.clone();
+<<<<<<< HEAD
+=======
+                    let rel = crate::graph_batch_dedupe::normalize_rel_type(&map);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     map.insert(
                         "source_id".to_string(),
                         serde_json::Value::String(source.clone()),
@@ -124,6 +247,11 @@ impl PostgresAGEGraphStorage {
                         "target_id".to_string(),
                         serde_json::Value::String(target.clone()),
                     );
+<<<<<<< HEAD
+=======
+                    // D-30: keep MERGE key aligned with native arbiter.
+                    map.insert("relation_type".to_string(), serde_json::Value::String(rel));
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                     Self::properties_to_cypher(&map)
                 })
                 .collect();
@@ -133,11 +261,19 @@ impl PostgresAGEGraphStorage {
             // (apache/age#1634). The version-safe pattern is per-key
             // `SET r.key = e.key` referencing the UNWIND row — verified against
             // AGE 1.6.0 to persist on both fresh and existing edges.
+<<<<<<< HEAD
             // source_id/target_id are the MERGE key (persisted by MERGE).
             let mut set_keys: Vec<&str> = Vec::with_capacity(32);
             if let Some((_, _, props)) = chunk.first() {
                 for k in props.keys() {
                     if k != "source_id" && k != "target_id" {
+=======
+            // D-30 / SPEC-098: MERGE key includes relation_type (multigraph).
+            let mut set_keys: Vec<&str> = Vec::with_capacity(32);
+            if let Some((_, _, props)) = chunk.first() {
+                for k in props.keys() {
+                    if k != "source_id" && k != "target_id" && k != "relation_type" {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                         set_keys.push(k.as_str());
                     }
                 }
@@ -155,7 +291,11 @@ impl PostgresAGEGraphStorage {
                 "UNWIND [{}] AS e \
                  MERGE (a:Node {{node_id: e.source_id}}) \
                  MERGE (b:Node {{node_id: e.target_id}}) \
+<<<<<<< HEAD
                  MERGE (a)-[r:EDGE {{source_id: e.source_id, target_id: e.target_id}}]->(b){}",
+=======
+                 MERGE (a)-[r:EDGE {{source_id: e.source_id, target_id: e.target_id, relation_type: e.relation_type}}]->(b){}",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 rows.join(", "),
                 set_clause
             );
@@ -191,34 +331,128 @@ impl PostgresAGEGraphStorage {
         crate::graph_batch_dedupe::resolve_graph_upsert_chunk(MAX_CHUNK)
     }
 
+<<<<<<< HEAD
     pub(super) async fn pg_delete_edge(&self, source: &str, target: &str) -> Result<()> {
+=======
+    /**
+     * @dataop      DATA-AGE-GRAPH-DELETE-EDGE-052
+     * @engine      apache_age (native SQL primary; IMP-031-05)
+     * @intent      Delete directed edge by (source, target) — O(log E).
+     */
+    pub(super) async fn pg_delete_edge(&self, source: &str, target: &str) -> Result<()> {
+        // Public single-edge API: remove ALL rel_types between endpoints.
+        if super::native_graph_writes_enabled() {
+            let pool = self.pool.get().await?;
+            let mut conn = pool.acquire().await.map_err(|e| {
+                StorageError::Connection(format!("Failed to acquire connection: {}", e))
+            })?;
+            let graph = &self.graph_name;
+            let eq_present = self.eq_columns_present(&mut conn).await?;
+            let src = if eq_present {
+                super::helpers::coalesce_endpoint("e", "source")
+            } else {
+                super::helpers::prop_only_endpoint("e", "source")
+            };
+            let tgt = if eq_present {
+                super::helpers::coalesce_endpoint("e", "target")
+            } else {
+                super::helpers::prop_only_endpoint("e", "target")
+            };
+            let del = format!(
+                r#"/* DATA-AGE-GRAPH-DELETE-EDGE */
+                   DELETE FROM {graph}."EDGE" e
+                   WHERE {src} = $1 AND {tgt} = $2"#
+            );
+            sqlx::query(&del)
+                .bind(source)
+                .bind(target)
+                .execute(&mut *conn)
+                .await
+                .map_err(|e| StorageError::Database(format!("native edge delete failed: {e}")))?;
+            return Ok(());
+        }
+        tracing::warn!(
+            target: "edgequake_storage::graph",
+            "native graph writes disabled — Cypher edge DELETE (debug path)"
+        );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         let cypher =
             "MATCH (a:Node {node_id: $source_id})-[r:EDGE]->(b:Node {node_id: $target_id}) DELETE r";
         let params = serde_json::json!({ "source_id": source, "target_id": target });
         self.cypher_execute_bound(cypher, &params).await
     }
 
+<<<<<<< HEAD
     /// Batch-delete edges by `(source, target)` pairs.
     ///
     /// Native path: one SQL DELETE with `= ANY($1)` / `= ANY($2)` on EDGE
     /// property indexes (SPEC-060). Cypher fallback loops when native writes
     /// are disabled.
     pub(super) async fn pg_delete_edges_batch(&self, edges: &[(String, String)]) -> Result<()> {
+=======
+    /// Batch-delete edges by `(source, target, rel_type)` triples (SPEC-098 D-30).
+    ///
+    /// # First principles
+    ///
+    /// Arbiter SSOT is `eq_rel_type` (trigger: `UPPER(COALESCE(NULLIF(TRIM(…))))`).
+    /// Bound `rel_type` may be the raw `properties.relation_type` (including
+    /// accent/case drift like `REPRéSENTE`). Matching applies the **same SQL
+    /// formula** as the trigger — never Rust `to_ascii_uppercase` / dual UPPER
+    /// heuristics.
+    pub(super) async fn pg_delete_edges_batch(
+        &self,
+        edges: &[(String, String, String)],
+    ) -> Result<()> {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         if edges.is_empty() {
             return Ok(());
         }
 
+<<<<<<< HEAD
         let mut unique: Vec<(String, String)> = edges.to_vec();
+=======
+        // Trim only for bind dedupe; SQL UPPER is the equality SSOT.
+        let mut unique: Vec<(String, String, String)> = edges
+            .iter()
+            .map(|(s, t, r)| {
+                let rel = r.trim();
+                (
+                    s.clone(),
+                    t.clone(),
+                    if rel.is_empty() {
+                        "RELATED_TO".to_string()
+                    } else {
+                        rel.to_string()
+                    },
+                )
+            })
+            .collect();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         unique.sort();
         unique.dedup();
 
         if !super::native_graph_writes_enabled() {
+<<<<<<< HEAD
             for (source, target) in &unique {
                 self.pg_delete_edge(source, target).await?;
+=======
+            // Debug path only — native SQL (below) is the production SSOT.
+            for (source, target, rel) in &unique {
+                let rel_n = crate::graph_batch_dedupe::normalize_relation_type_str(rel);
+                let cypher = "MATCH (a:Node {node_id: $source_id})-[r:EDGE]->(b:Node {node_id: $target_id}) \
+                              WHERE coalesce(r.relation_type, 'RELATED_TO') = $rel DELETE r";
+                let params = serde_json::json!({
+                    "source_id": source,
+                    "target_id": target,
+                    "rel": rel_n,
+                });
+                self.cypher_execute_bound(cypher, &params).await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }
             return Ok(());
         }
 
+<<<<<<< HEAD
         let sources: Vec<String> = unique.iter().map(|(s, _)| s.clone()).collect();
         let targets: Vec<String> = unique.iter().map(|(_, t)| t.clone()).collect();
 
@@ -233,17 +467,73 @@ impl PostgresAGEGraphStorage {
                ) pairs
                WHERE ag_catalog.agtype_to_json(e.properties)->>'source_id' = pairs.source_id
                  AND ag_catalog.agtype_to_json(e.properties)->>'target_id' = pairs.target_id"#
+=======
+        let sources: Vec<String> = unique.iter().map(|(s, _, _)| s.clone()).collect();
+        let targets: Vec<String> = unique.iter().map(|(_, t, _)| t.clone()).collect();
+        let rels: Vec<String> = unique.iter().map(|(_, _, r)| r.clone()).collect();
+
+        let pool = self.pool.get().await?;
+        let mut conn = pool.acquire().await.map_err(|e| {
+            StorageError::Connection(format!("Failed to acquire connection: {}", e))
+        })?;
+        let graph = &self.graph_name;
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let src = if eq_present {
+            super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::helpers::prop_only_endpoint("e", "source")
+        };
+        let tgt = if eq_present {
+            super::helpers::coalesce_endpoint("e", "target")
+        } else {
+            super::helpers::prop_only_endpoint("e", "target")
+        };
+        // Trigger-identical arbiter on the bound label (LAW-098-13).
+        let pair_rel = crate::graph_batch_dedupe::sql_eq_rel_type_arbiter_expr("pairs.rel_type");
+        // Row key: prefer stored eq_rel_type (already UPPER); else same formula on props.
+        let row_rel = if eq_present {
+            format!(
+                "COALESCE(NULLIF(TRIM(e.eq_rel_type), ''), {})",
+                crate::graph_batch_dedupe::sql_eq_rel_type_arbiter_expr(
+                    "(ag_catalog.agtype_to_json(e.properties)::jsonb->>'relation_type')"
+                )
+            )
+        } else {
+            crate::graph_batch_dedupe::sql_eq_rel_type_arbiter_expr(
+                "(ag_catalog.agtype_to_json(e.properties)::jsonb->>'relation_type')",
+            )
+        };
+        let del_edges = format!(
+            r#"/* DATA-AGE-GRAPH-DELETE-EDGES-BATCH */
+               DELETE FROM {graph}."EDGE" e
+               USING (
+                 SELECT * FROM unnest($1::text[], $2::text[], $3::text[])
+                   AS t(source_id, target_id, rel_type)
+               ) pairs
+               WHERE {src} = pairs.source_id
+                 AND {tgt} = pairs.target_id
+                 AND {row_rel} = {pair_rel}"#
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         );
         sqlx::query(&del_edges)
             .bind(&sources)
             .bind(&targets)
+<<<<<<< HEAD
             .execute(&pool)
+=======
+            .bind(&rels)
+            .execute(&mut *conn)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             .await
             .map_err(|e| StorageError::Database(format!("native batch edge delete failed: {e}")))?;
         Ok(())
     }
 
+<<<<<<< HEAD
     /// Tenant-scoped edge delete — strict property match on the relationship.
+=======
+    /// Tenant-scoped edge delete — strict match (IMP-031-05 native).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub(super) async fn pg_delete_edge_scoped(
         &self,
         source: &str,
@@ -251,6 +541,7 @@ impl PostgresAGEGraphStorage {
         tenant_id: &str,
         workspace_id: &str,
     ) -> Result<bool> {
+<<<<<<< HEAD
         let src = Self::escape_cypher_string(source);
         let tgt = Self::escape_cypher_string(target);
         let tid = Self::escape_cypher_string(tenant_id);
@@ -262,6 +553,57 @@ impl PostgresAGEGraphStorage {
              RETURN r"
         );
         let rows = self.cypher_query(&cypher, &["r"]).await?;
+=======
+        if !super::native_graph_writes_enabled() {
+            let src = Self::escape_cypher_string(source);
+            let tgt = Self::escape_cypher_string(target);
+            let tid = Self::escape_cypher_string(tenant_id);
+            let wid = Self::escape_cypher_string(workspace_id);
+            let cypher = format!(
+                "MATCH (a:Node {{node_id: '{src}'}})-[r:EDGE]->(b:Node {{node_id: '{tgt}'}}) \
+                 WHERE r.tenant_id = '{tid}' AND r.workspace_id = '{wid}' \
+                 DELETE r \
+                 RETURN r"
+            );
+            let rows = self.cypher_query(&cypher, &["r"]).await?;
+            return Ok(!rows.is_empty());
+        }
+
+        let pool = self.pool.get().await?;
+        let mut conn = pool.acquire().await.map_err(|e| {
+            StorageError::Connection(format!("Failed to acquire connection: {}", e))
+        })?;
+        let graph = &self.graph_name;
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let src_e = if eq_present {
+            super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::helpers::prop_only_endpoint("e", "source")
+        };
+        let tgt_e = if eq_present {
+            super::helpers::coalesce_endpoint("e", "target")
+        } else {
+            super::helpers::prop_only_endpoint("e", "target")
+        };
+        let del = format!(
+            r#"/* DATA-AGE-GRAPH-DELETE-EDGE-SCOPED */
+               DELETE FROM {graph}."EDGE" e
+               WHERE {src_e} = $1 AND {tgt_e} = $2
+                 AND COALESCE(ag_catalog.agtype_to_json(e.properties)->>'tenant_id', '') = $3
+                 AND COALESCE(ag_catalog.agtype_to_json(e.properties)->>'workspace_id', '') = $4
+               RETURNING 1"#
+        );
+        let rows = sqlx::query(&del)
+            .bind(source)
+            .bind(target)
+            .bind(tenant_id)
+            .bind(workspace_id)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("native scoped edge delete failed: {e}"))
+            })?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         Ok(!rows.is_empty())
     }
 
@@ -341,6 +683,34 @@ impl PostgresAGEGraphStorage {
         const CHUNK: usize = 200;
         let mut all_edges = Vec::new();
 
+<<<<<<< HEAD
+=======
+        // SPEC-083 / X-03: COALESCE(eq_*, props) when columns exist; prop-only otherwise.
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let src = if eq_present {
+            super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::helpers::prop_only_endpoint("e", "source")
+        };
+        let tgt = if eq_present {
+            super::helpers::coalesce_endpoint("e", "target")
+        } else {
+            super::helpers::prop_only_endpoint("e", "target")
+        };
+        if !eq_present || super::helpers::eq_id_fallback_env_enabled() {
+            tracing::debug!(
+                target: "edgequake_storage",
+                eq_present,
+                "eq_id_fallback_used: pg_get_incident_edges_batch"
+            );
+        }
+
+        // SPEC-089 / F-336-15 / LAW-H2: BFS expand under run_timed_graph_query —
+        // PG must cancel before tokio abandons (zombie pool).
+        let timeout_ms = super::helpers::graph_query_statement_timeout_ms();
+        let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         for chunk in unique.chunks(CHUNK) {
             let in_list: String = chunk
                 .iter()
@@ -357,6 +727,7 @@ impl PostgresAGEGraphStorage {
             //   deduplicates via equality) raises "could not identify an equality
             //   operator for type json". OR evaluates as a BitmapOr of two index
             //   scans without ever comparing the json column values.
+<<<<<<< HEAD
             // SPEC-083 / X-03: COALESCE(eq_*, props) when columns exist; prop-only otherwise.
             let eq_present = self.eq_columns_present(&mut conn).await?;
             let src = if eq_present {
@@ -376,6 +747,8 @@ impl PostgresAGEGraphStorage {
                     "eq_id_fallback_used: pg_get_incident_edges_batch"
                 );
             }
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             let sql = format!(
                 "SELECT ag_catalog.agtype_to_json(e.properties) AS props \
                  FROM {graph}.\"EDGE\" e \
@@ -388,13 +761,30 @@ impl PostgresAGEGraphStorage {
                 tgt = tgt,
             );
 
+<<<<<<< HEAD
             let rows = sqlx::query(&sql).fetch_all(&mut *conn).await.map_err(|e| {
                 StorageError::Database(format!("Batch incident edges query failed: {}", e))
             })?;
+=======
+            let rows = match sqlx::query(&sql).fetch_all(&mut **timed.as_mut()).await {
+                Ok(r) => r,
+                Err(e) => {
+                    let _ = timed.rollback().await;
+                    return Err(StorageError::Database(format!(
+                        "Batch incident edges query failed: {}",
+                        e
+                    )));
+                }
+            };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
             all_edges.extend(Self::edges_from_props_rows(&rows));
         }
 
+<<<<<<< HEAD
+=======
+        timed.commit().await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         Ok(all_edges)
     }
 
@@ -420,6 +810,7 @@ impl PostgresAGEGraphStorage {
             .collect()
     }
 
+<<<<<<< HEAD
     pub(super) async fn pg_get_all_edges(&self) -> Result<Vec<GraphEdge>> {
         let cypher = "MATCH ()-[r:EDGE]->() RETURN r";
         let rows = self.cypher_query(cypher, &["r"]).await?;
@@ -434,6 +825,23 @@ impl PostgresAGEGraphStorage {
             .collect();
 
         Ok(edges)
+=======
+    /// ADMIN / dump path (FORBIDDEN on hot HTTP) — native scan (IMP-031-07).
+    /// Complexity: O(E) unavoidable; skips AGE Cypher traversal overhead.
+    pub(super) async fn pg_get_all_edges(&self) -> Result<Vec<GraphEdge>> {
+        let pool = self.pool.get().await?;
+        let sql = format!(
+            r#"/* DATA-AGE-GRAPH-GET-ALL-EDGES */
+               SELECT ag_catalog.agtype_to_json(e.properties) AS props
+               FROM {}."EDGE" e"#,
+            self.graph_name
+        );
+        let rows = sqlx::query(&sql)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("get_all_edges native failed: {e}")))?;
+        Ok(Self::edges_from_props_rows(&rows))
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     /// SPEC-034 IMP-01: Native SQL batch edge upsert — O(log G) per edge.
@@ -456,6 +864,10 @@ impl PostgresAGEGraphStorage {
     pub(super) async fn pg_upsert_edges_batch_native(
         &self,
         edges: &[(String, String, HashMap<String, serde_json::Value>)],
+<<<<<<< HEAD
+=======
+        mode: crate::traits::GraphPropertyWriteMode,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     ) -> Result<()> {
         if edges.is_empty() {
             return Ok(());
@@ -484,7 +896,11 @@ impl PostgresAGEGraphStorage {
         let expected = edges.len() as u64;
 
         for chunk in edges.chunks(chunk_size) {
+<<<<<<< HEAD
             inserted_or_updated += self.pg_upsert_edges_batch_native_chunk(chunk).await?;
+=======
+            inserted_or_updated += self.pg_upsert_edges_batch_native_chunk(chunk, mode).await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
 
         // INNER JOIN drops edges whose endpoints are missing — surface that loudly.
@@ -520,6 +936,10 @@ impl PostgresAGEGraphStorage {
     async fn pg_upsert_edges_batch_native_chunk(
         &self,
         edges: &[(String, String, HashMap<String, serde_json::Value>)],
+<<<<<<< HEAD
+=======
+        mode: crate::traits::GraphPropertyWriteMode,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     ) -> Result<u64> {
         let pool = self.pool.get().await?;
         let graph = &self.graph_name;
@@ -548,11 +968,33 @@ impl PostgresAGEGraphStorage {
             props_json.push(serde_json::to_string(&full).unwrap_or_else(|_| "{}".to_string()));
         }
 
+<<<<<<< HEAD
         // D-30 / SPEC-083: arbiter is (eq_source_id, eq_target_id, eq_rel_type)
         // so Alice-KNOWS-Bob and Alice-WORKS_WITH-Bob both persist.
         // DISTINCT ON is a SQL safety net if a caller bypasses Rust dedupe
         // (Postgres forbids ON CONFLICT DO UPDATE affecting a row twice).
         // ORDER BY … ord DESC → last-write-wins, matching Rust policy.
+=======
+        // D-30 / SPEC-083 / LAW-098-7: arbiter is (eq_source_id, eq_target_id, eq_rel_type)
+        // so Alice-KNOWS-Bob and Alice-WORKS_WITH-Bob both persist.
+        // DISTINCT ON uses UPPER(TRIM(rel)) matching the sync trigger normalization
+        // (Postgres forbids ON CONFLICT DO UPDATE affecting a row twice).
+        // ORDER BY … ord DESC → last-write-wins, matching Rust policy.
+        // SPEC-058: MergeSources unions via eq_merge; SPEC-098 Replace sets EXCLUDED.
+        let properties_set = match mode {
+            crate::traits::GraphPropertyWriteMode::MergeSources => format!(
+                r#"properties = (
+                    public.eq_merge_graph_properties(
+                        ag_catalog.agtype_to_json({graph}."EDGE".properties)::jsonb,
+                        ag_catalog.agtype_to_json(EXCLUDED.properties)::jsonb
+                    )
+                )::text::ag_catalog.agtype"#
+            ),
+            crate::traits::GraphPropertyWriteMode::Replace => {
+                "properties = EXCLUDED.properties".to_string()
+            }
+        };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         let sql = format!(
             r#"
             INSERT INTO {graph}."EDGE" (id, start_id, end_id, properties, eq_source_id, eq_target_id, eq_rel_type)
@@ -573,6 +1015,7 @@ impl PostgresAGEGraphStorage {
                     d.target_id_val,
                     d.rel_type_val
                 FROM (
+<<<<<<< HEAD
                     SELECT DISTINCT ON (source_id_val, target_id_val, rel_type_val)
                         source_id_val,
                         target_id_val,
@@ -581,6 +1024,22 @@ impl PostgresAGEGraphStorage {
                     FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
                            WITH ORDINALITY AS p(source_id_val, target_id_val, rel_type_val, props_text, ord)
                     ORDER BY source_id_val, target_id_val, rel_type_val, ord DESC
+=======
+                    SELECT DISTINCT ON (
+                        source_id_val,
+                        target_id_val,
+                        UPPER(COALESCE(NULLIF(TRIM(rel_type_val), ''), 'RELATED_TO'))
+                    )
+                        source_id_val,
+                        target_id_val,
+                        UPPER(COALESCE(NULLIF(TRIM(rel_type_val), ''), 'RELATED_TO')) AS rel_type_val,
+                        props_text
+                    FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
+                           WITH ORDINALITY AS p(source_id_val, target_id_val, rel_type_val, props_text, ord)
+                    ORDER BY source_id_val, target_id_val,
+                             UPPER(COALESCE(NULLIF(TRIM(rel_type_val), ''), 'RELATED_TO')),
+                             ord DESC
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 ) AS d
                 JOIN {graph}."Node" sn
                   ON sn.eq_node_id = d.source_id_val
@@ -591,14 +1050,23 @@ impl PostgresAGEGraphStorage {
             ON CONFLICT (eq_source_id, eq_target_id, eq_rel_type)
                 WHERE eq_source_id IS NOT NULL AND eq_target_id IS NOT NULL AND eq_rel_type IS NOT NULL
             DO UPDATE SET
+<<<<<<< HEAD
                 properties = EXCLUDED.properties,
+=======
+                {properties_set},
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 eq_source_id = EXCLUDED.eq_source_id,
                 eq_target_id = EXCLUDED.eq_target_id,
                 eq_rel_type = EXCLUDED.eq_rel_type,
                 start_id = EXCLUDED.start_id,
                 end_id = EXCLUDED.end_id
             "#,
+<<<<<<< HEAD
             graph = graph
+=======
+            graph = graph,
+            properties_set = properties_set
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         );
 
         let result = sqlx::query(&sql)
@@ -609,6 +1077,20 @@ impl PostgresAGEGraphStorage {
             .execute(&pool)
             .await
             .map_err(|e| {
+<<<<<<< HEAD
+=======
+                let msg = e.to_string();
+                if msg.contains("affect row a second time") || msg.contains("cardinality") {
+                    tracing::error!(
+                        batch = edges.len(),
+                        error = %e,
+                        sample_src = source_ids.first().map(String::as_str).unwrap_or(""),
+                        sample_tgt = target_ids.first().map(String::as_str).unwrap_or(""),
+                        sample_rel = rel_types.first().map(String::as_str).unwrap_or(""),
+                        "SPEC-098: EDGE ON CONFLICT cardinality_violation — check dual UNIQUE / dedupe"
+                    );
+                }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 StorageError::Database(format!("Native SQL edge batch upsert failed: {e}"))
             })?;
 

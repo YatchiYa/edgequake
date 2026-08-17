@@ -4,6 +4,222 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+<<<<<<< HEAD
+=======
+## [0.24.1] — 2026-08-03
+
+Patch: KG persist AGE `graphid` operator fix (SPEC-106 / #356).
+
+### Fixed
+
+- **Issue #356 / SPEC-106 — KG persist `graphid = graphid` operator error** — Relationship merge called `get_edges_for_nodes_batch`, whose SQL still joined raw `ag_catalog.graphid` (`src.vid = e.start_id`). Apache AGE does not register `=` for `graphid`, so persist failed with `operator does not exist: ag_catalog.graphid = ag_catalog.graphid` (still present on **v0.24.0**; #214 had fixed degrees only). Fix: LAW-G1 `::text` casts matching `pg_get_nodes_with_degrees_batch`. E2E: `e2e_spec106_graphid_edges_batch` (wired in `postgres-integration` + `spec091-data-layer` CI). Spec: [`specs/106-kg-persist-bug/`](specs/106-kg-persist-bug/).
+
+## [0.24.0] — 2026-08-03
+
+Minor: production data-layer monitor harden (SPEC-104) and legacy cutover assert (SPEC-105, migration **142**).
+
+### Fixed
+
+- **SPEC-105 legacy cutover harden** — unknown `EDGEQUAKE_VECTOR_BACKEND` → typed (not legacy); shared `legacy_store_census` SSOT; cutover refuses `legacy_tables` when vectors census is empty / 131 applied; migration **142** asserts empty leftovers (aborts if rows — finish 125–131 `--confirm-drop` first); expandable migrate / boot **defer** 142 while durable legacy rows remain (≤0.22 mid-upgrade soft-exit); workspace embedding counts prefer `chunk_embeddings`. Era-aware INV/FTS dual-read preserved for ≤0.22 mid-upgrade. Spec: [`specs/105-fix-legacy/`](specs/105-fix-legacy/).
+- **SPEC-104 production data-layer monitors** — StorageInspector no longer probes `workspaces.id` (42703) or hard-coded `edgequake."Node"` (42P01); AGE graph / KV / vectors names come from `PostgresConfig` SSOT (`eq_*_graph`). INV-03 dual-reads `public.chunks`|legacy KV; INV-01 prefers typed `chunk_embeddings` and fails visible when no store exists; multi-graph M038 GIN visibility. Spec: [`specs/104-fix-datalayer/`](specs/104-fix-datalayer/).
+
+### Changed
+
+- **Tenant create HTTP contract (breaking vs 0.22)** — `POST /api/v1/tenants` is idempotent get-or-create by slug at the service layer (`Error::Conflict`):
+  - **201** — new slug inserted
+  - **200** — same slug + same display name (retry-safe)
+  - **409** — same slug + different display name (was often **400** / unique-violation noise)
+  Spec: [`specs/104-fix-datalayer/06-issue-04-tenant-slug-race.md`](specs/104-fix-datalayer/06-issue-04-tenant-slug-race.md).
+
+## [0.23.0] — 2026-08-02
+
+Minor: SPEC-091 relational data-layer cutover (migrations **106–141**), LD-15 boot never migrates, standalone parse API, LightRAG-parity LLM cache, wizard/onboarding, and Acc honesty refresh.
+
+### Added
+
+- **SPEC-103 LightRAG-parity LLM cache** — unified keyword + answer `LlmResponseCache` (L1 memory + L2 `public.llm_cache`); master `EDGEQUAKE_LLM_CACHE` default **on**; overrides `EDGEQUAKE_KEYWORD_CACHE` / `EDGEQUAKE_QUERY_ANSWER_CACHE`; Acc pins cache off for fair cold peers. Proof: `make spec103-llm-cache-proof`. Spec: [`specs/103-llm-cache/`](specs/103-llm-cache/).
+- **SPEC-101 wizard onboarding** — setup API + context selector + first-run wizard surfaces for provider/workspace bootstrap.
+- **SPEC-099 / SPEC-100 Documents UX + CLS** — stabilize Documents list/detail layout and app-wide cumulative layout shift.
+- **SPEC-098 AGE fleet spine harden** — migrations **139–141** (entity spine ensure, edge arbiter reconcile, document lifecycle status); GH-350 delete honesty + agtype harden. Spec: [`specs/098-data-access-hardening/`](specs/098-data-access-hardening/).
+- **SPEC-096 workspace-scoped multi-language KG extraction** — fleet default + workspace metadata override (`EDGEQUAKE_EXTRACTION_LANGUAGE`). Spec: [`specs/096-multi-language-extraction/`](specs/096-multi-language-extraction/).
+- **Cancel / fairness holds** — migration **138** `tasks.fairness_hold_until`; durable fairness holds + cancel UX honesty so deletes do not starve ingest lanes.
+- **SPEC-102 / FEAT-102 custom entity type colors** — workspace `metadata.entity_type_colors` via create/update APIs; single WebUI resolver (`entity-type-colors.ts`) with expanded defaults; EntityTypeSelector + graph legend pickers; hex validation; OpenAPI refresh; unit/Rust/Playwright gates. Spec: [`specs/102-custom-entity-type-colors/`](specs/102-custom-entity-type-colors/).
+- **SPEC-094 standalone PDF→Markdown parse API** — stateless `POST /api/v1/parse` (multipart or raw `application/pdf`), `GET /api/v1/parse/backends`, and async `GET /api/v1/parse/jobs/{id}` with in-memory TTL jobs (`Prefer: respond-async` / over sync ceiling → 202). Sync ceiling 15 pages + 20 MiB; async up to 1000 pages. Markdown + timing/cost metrics only (no document residue). Optional page selection threaded through vision conversion. OpenAPI + e2e/contract tests; TypeScript/Python/Rust SDK `parse` clients; `parse_scorecard` example harness. Spec: [`specs/94-api-markdown/00-spec.md`](specs/94-api-markdown/00-spec.md).
+- **SPEC-93 v0.22.0 migration assessment (PG16/17/18)** — formal protocol + realism soak matrix (`make spec93-migration-assessment`): 5 tenants × 3 workspaces × 40 docs (=600) from published `ghcr.io/raphaelmansuy/edgequake:0.22.0` + `edgequake-postgres:0.22.0-pg{16,17,18}` → **v0.23.0** migrations **106–141** with `--confirm-drop`; reports under [`specs/93-migration-assessment/reports/`](specs/93-migration-assessment/reports/). Smoke remains `make spec091-upgrade-soak`. Ops: [`docs/operations/spec091-upgrade-from-v0.22.0.md`](docs/operations/spec091-upgrade-from-v0.22.0.md).
+- **SPEC-091 Doc 23 post-drop KV hot-path closure** — `KvRelationState` zero-SQL short-circuit for missing `eq_*_kv` (ping/list/hydrate); honest `/health` `chunk_text_ssot` from authority; admission stamps `documents.track_id`; relational `chunks` count for embedded stats; purge-aware advisor residue aligned with migration 125 verified purge; `MERGE_STRATEGY=relational_primary_kv_fallback`. Spec: [`23-post-drop-kv-hot-path.md`](specs/091-simplify-data-layer/23-post-drop-kv-hot-path.md).
+- **SPEC-091 RM0–RM5 (ingestion × migration reliability train)** — migrations **134–137**; outbox drain worker (default on, SKIP LOCKED + TTL, `contract_spec091_outbox_drain`); set-based workspace wipe (skip O(docs) KV phase); typed write-stop hardens runtime `create_table` / hot-ANN CREATE; citation fail-closed (`EDGEQUAKE_CITATION_REQUIRE`); ER ladder module (`EDGEQUAKE_ENTITY_EMBED_ER` / `EDGEQUAKE_ER_LLM`); contextual chunk preamble (`EDGEQUAKE_CONTEXTUAL_CHUNK`); typed `chunks.content_tsv` FTS; AGE `source_chunk_ids` GIN + edge props/workspace indexes; `/health` `age_jsonb_agtype_cast_available`; RM4 plan-shape artifacts. Spec: [`22-ingestion-migration-system-assessment.md`](specs/091-simplify-data-layer/22-ingestion-migration-system-assessment.md).
+- **SPEC-091 IP0–IP2 pipeline integrity train** — skip legacy `eq_*_vectors` upsert under typed authority (IP-AC-01); batched queue ETA enrichment (`estimate_queues_batch`, ≤2 RTs, IP-AC-02); `/health` two-budget clarity (`provider_budget_cluster` + `byte_admission_process_local`); CQRS `upsert_entities_batch` / `upsert_relationships_batch` UNNEST sinks (LAW-IP2); migration **133** outbox harden + `PostgresOutboxSink` wired on ingest (`chunk_ready` / `merge_done` / `compensate`); serving fence **default on** (explicit `off` escape). Contracts: `contract_spec091_cqrs_batch_sink`, `contract_spec091_outbox_ingest`. Spec: [`21-ingestion-pipeline-data-model-improvement.md`](specs/091-simplify-data-layer/21-ingestion-pipeline-data-model-improvement.md).
+- **SPEC-091 Waves A–D** — typed relational SSOT for chunk text, dedup, quarantine, wsdoc, checkpoints/artifacts, injection, and document shells; migration engine (`EDGEQUAKE_MIGRATION_MODE`) + `edgequake migrate` console (`status|console|plan|guard|family|pause|resume|cancel|dry-run`); migrations **106–125** including irreversible KV drop **125** gated by `--confirm-drop` / `EDGEQUAKE_MIGRATION_CONFIRM_DROP=1`.
+- **`edgequake migrate dry-run`** — preview-only upgrade posture (pending class labels, family/NEXT/guard, operator checklist); zero schema writes. Apply path prints clearer before/during/after stdout (intent summary, per-version applied lines, KV-drop success / Wave D abort hints).
+- **SPEC-091 upgrade soak** — `make spec091-upgrade-soak` seeds multi-tenant data on published `ghcr.io/raphaelmansuy/edgequake:0.22.0`, asserts `migrate dry-run`, then upgrades with v0.23.0 `--confirm-drop` (live tee). Ops runbook: [`docs/operations/spec091-upgrade-from-v0.22.0.md`](docs/operations/spec091-upgrade-from-v0.22.0.md).
+- **SPEC-091 post-cutover assessment** — [`specs/091-simplify-data-layer/16-post-cutover-assessment.md`](specs/091-simplify-data-layer/16-post-cutover-assessment.md) is v0.23.0 data-model/ops truth (SSOT map, A–D↔W mapping, LD-03 partial for vectors, W3–W5 residual); pin-era docs (00/02/03) stay frozen at v0.22.0.
+- **SPEC-091 IW0 CI + decision records** — new `spec091-data-layer` workflow (typed data-layer e2e + contracts on the GHCR AGE image, PR + nightly); `postgres-tests` job re-enabled (the AGE-extension blocker no longer exists) with `e2e_postgres_rls` un-ignored (soft-skip without the rig, enforced in CI); new contracts `contract_spec091_strict_scope_headers`, `contract_spec091_get_by_ids_typed`, `contract_spec091_unknown_family_loud`, `contract_spec091_llm_cache_scope`; `e2e_tenant_isolation` gained the malformed-header attack vector (GAP-091-08). Decision records: [`docs/data-layer/rls-superuser-acceptance.md`](docs/data-layer/rls-superuser-acceptance.md) (GAP-091-12 — RLS is defense-in-depth; the application layer is the isolation boundary) and [`docs/data-layer/llm-cache-scope.md`](docs/data-layer/llm-cache-scope.md) (GAP-091-14).
+- **SPEC-091 IW1 typed-CRUD perf baseline** — Wave-0 scorecard binaries (`e2e_spec091_ingestion_p95_budget`, `e2e_spec091_retrieval_slo_protection`); shell dual-write rewritten as one `unnest` batch (`contract_spec091_shell_batch_write`); migration **128** listing/staging indexes; bounded staging-shell keyset scan; workspace delete rewritten as UNION; migration **129** model-scoped HNSW on `chunk_embeddings` + LD-06 `ef_construction=128` convergence (`e2e_spec091_hnsw_policy_converged`; `docker/init.sql` matched).
+- **SPEC-091 IW2 vector fleet cutover** — migrations **130** (`entity_embeddings` / `relationship_embeddings` / `report_embeddings` + HNSW) and **131** (irreversible full `eq_*_vectors` drop + stats orphans + `eq_hot_ann_workspaces`, `--confirm-drop`); family-aware engine backfill/verify; runtime vector DDL retired when 131 applied; `e2e_spec091_fleet_recall_parity` + `contract_spec091_zero_runtime_ddl`.
+- **SPEC-091 IW3 debt + flag retirement (phased)** — `cutover_flag_guard` refuses stale `kv`/`dual`/`legacy_tables` post-drop (LD-14); real compensation-drain applier; `contract_spec091_no_kv_facade` census allowlist; `PostgresKeywordCache` removed; STAGING_HASH flag retired; SPEC-120 tests explicitly descoped in [`specs/92-task-system/README.md`](specs/92-task-system/README.md); decision records [`docs/data-layer/serving-fence-decision.md`](docs/data-layer/serving-fence-decision.md), [`docs/data-layer/jsonb-envelope-acceptance.md`](docs/data-layer/jsonb-envelope-acceptance.md).
+- **SPEC-091 W3 chunk-embedding cutover (chunks only, flag-gated)** — reversible cutover of **chunk** vectors from `eq_*_vectors` to typed `chunk_embeddings` (migration 108), behind a new `VectorBackend` flag SSOT (`EDGEQUAKE_VECTOR_BACKEND = legacy_tables | chunk_embeddings | typed_embeddings`). New `PgChunkEmbeddingIndex` implements the `EmbeddingIndex` port over `chunk_embeddings`; ingestion **dual-writes** legacy + typed; the query path **dual-reads** typed under the flag with a logged fallback counter (`vector_backend_fallback_total`) and graceful legacy fallback. Migration engine adds `w3-chunk-embedding-backfill` (idempotent, 42P01-safe) + `verify_chunk_embedding_backfill` (coverage + sampled vector equality). `migrate console` / `dry-run` show a **VECTOR** posture row (backend, job state, verify, legacy-vs-typed row counts). E2e: `e2e_spec091_chunk_embeddings`, `e2e_spec091_vector_backfill`, `e2e_spec091_recall_parity` (M-3.1), `e2e_spec091_vector_backend_dual`. **Default is now `typed_embeddings`** (wire-closure 2026-07-30); set `legacy_tables` explicitly for soak rollback. Out of scope at W3 time: entity/relationship/community-report vectors (later IW2 / migrations 130–131).
+
+- **SPEC-091 W4 chunk-vector retirement (chunks only, human-gated)** — the migration server can now **verify fleet-wide → gate → drop** legacy `eq_*_vectors` chunk rows once every chunk is covered in typed `chunk_embeddings`. The `w3-chunk-embedding-backfill` engine job is now **fleet-wide** (enumerates every `public.eq_%_vectors` relation — shared + per-workspace — resumable via a `(table, last_id)` cursor, 42P01-safe), and its verify aggregates coverage + sampled vector equality across the fleet. New `VectorPosture.retirable` predicate + a gated, irreversible `drop vector-legacy` advisor `GuardedAction` (never executed by the CLI — reported only). `migrate console` / `guard` show a **ReadyToRetire** VECTOR phase + the exact `--confirm-drop` command. Guarded migration **126** (`spec091_vector_drop`) runs an in-SQL coverage guard (mirrors `verify_chunk_embedding_backfill`: a chunk row is covered iff `(document_id, chunk_index)` resolves to a `chunks` row with a `chunk_embeddings` row), then **DELETEs covered chunk rows and DROPs chunk-dedicated `eq_%_vectors` tables**, leaving entity/relationship/community-report vectors (different key shapes) fully intact. 126 is gated in the CLI as a second irreversible step behind `--confirm-drop`, alongside 125. Runtime `create_table` skips chunk-dedicated legacy tables once retired (LD-03 for chunks), and boot fails fast when `EDGEQUAKE_VECTOR_BACKEND=chunk_embeddings` but `chunk_embeddings` (108) is missing. E2e: `e2e_spec091_vector_retire` (guard abort, dedicated-drop, shared-table keep, multi-table fleet, advisor↔126 drift-guard contract) + CLI 126 gate test. Out of scope (unchanged): entity/relationship/community-report vectors, their runtime DDL, and the physical drop remains operator-fired (never automatic).
+
+- **SPEC-091 IW4 PG16/17/18 best use** — `/health.schema.postgres_capabilities` exposes the runtime matrix (`postgres_major`, `pgvector_version`, `age_version`, `uuidv7_available`, `iterative_scan_available`) derived from `PostgresCapabilityProbe` SSOT in `capabilities.rs`. PR CI matrix smoke on **pg16 + pg18** (`spec091-pg-matrix-smoke` job: `e2e_spec091_pg_matrix_smoke` + `contract_spec091_capability_health`); full `[pg16, pg17, pg18]` matrix remains nightly (`postgres-matrix-nightly.yml`). Pin-drift gate: `scripts/check_extension_pins.sh all` asserts Makefile/docker README match `extension-pins.sh` (pgvector **0.8.5**). Decision records: [`docs/data-layer/pg17-differential.md`](docs/data-layer/pg17-differential.md) (no PG17-specific SQL — unified path), [`docs/data-layer/pg18-adoption.md`](docs/data-layer/pg18-adoption.md) (uuidv7 via probe; async I/O / virtual generated columns / RETURNING OLD/NEW documented deferrals).
+
+- **SPEC-091 IW5 test hardening + scale proofs** — hermetic `proptest` key-grammar + adaptive batch-clamp suite (`proptest_spec091_key_grammar`); Postgres chaos tests for W3 backfill cancel/resume (`chaos_spec091_crash_mid_batch`) and lease-expiry fencing (`chaos_spec091_lease_expiry_fencing`); cross-tenant graph + typed ANN leak e2e; workspace-delete zero-residue proof (100-row CI gate, `EQ_SCALE_PROOF=1` 10k L3 stand-in on nightly). Wired into `spec091-data-layer` workflow (cheap gates on PR; chaos + scale on nightly job).
+
+### Fixed
+
+- **Typed embedding dimension mismatch (1536 vs 1024)** — migration **132** unconstrained `halfvec` + `CHECK (vector_dims = dimensions)` + dim-scoped HNSW (768/1024/1536) on chunk/entity/relationship/report embeddings; shared pre-write dim gate; ANN queries cast to the model’s dimensions; `expected N dimensions, not M` classifies as `ProviderMisconfigured` (FE no longer suggests transient DB outage). `edgequake migrate` without `--confirm-drop` now applies expandable SAFE SCHEMA even when it sits *after* a gated DROP (132 behind 131). E2e: `e2e_spec091_typed_dim_1024_upsert_search`.
+- **Shell status CHECK + typed fleet FK** — normalize KV statuses (`queued`/`deleting`/stage slugs) to `documents_valid_status` allowlist on shell upsert; force bare-name `PostgresEntitySink` under typed embeddings + relationship spine before fleet mirror; tolerant scoped-name lookup; FE/classifier no longer label these as Retryable Database.
+- **Zombie mid-pipeline documents (dual SSOT)** — list/Active Runs no longer stay Converting/Embedding after tasks are cancelled/missing: shell upserts propagate `metadata.status` to `documents.status`; merge keeps terminal KV over stale relational processing; cancel/fail sync resolves document id via track_id and touches the relational column; mid-pipeline orphan reconcile fail-closes or re-enqueues; FE stops infinite reconnect on task-not-found.
+- **Cancelled-doc zombie at Embedding 99%** — list merge no longer lets in-flight KV beat relational `cancelled`/`failed` (SPEC-054 reprocess exception stays success-only); cancel clears `stage_progress`; orphan reconcile syncs cancelled when the linked task is Cancelled; unscoped metadata janitor scans typed `documents` shells after KV drop (was `scanned=0`); embed start message uses `0/N (0%)` for parseable counts.
+- **Cancel dual-SSOT hardening** — one terminal metadata writer (`apply_doc_terminal_fields`) for cancel+fail (`stage_progress=0`); worker cooperative cancel uses the same sync path; `recover-stuck` heals cancelled-task zombies instead of requeueing; list/detail enrich pass durable `task_status` so Cancelled wins during KV lag; FE terminal `status`/`ui_phase` beat stale `display_status`, with optimistic cancel intent → Stopping….
+- **Cancelled Active Runs UX** — cancelled docs no longer linger forever as Failed/Queued with green pipeline stages; compact Cancelled acknowledgement with 8s auto-dismiss + Dismiss; Stopping… stays until confirmed; progress facade reports `stage_status=cancelled` (not active).
+- **PDF progress 404 after restart** — `GET /documents/pdf/progress/{track_id}` rehydrates an in-memory skeleton from the durable task when the progress map is empty (typical after `make stop` / deploy), so Active runs no longer hard-fail with “Progress not found”; SSE refreshes the task on miss; UI shows “Reconnecting…” and retries instead of a red error banner.
+- **SPEC-091 IW0 isolation + correctness hazards** — fail-closed scope headers (LAW-I4, no flag — ED-1): a malformed `X-Workspace-ID` no longer wildcard-matches every workspace (`isolation_context`, GAP-091-08); task read/cancel checks workspace AND tenant unconditionally with headerless requests resolving to the built-in default scope explicitly (`task_scope`, GAP-091-10); query engine requests are never unscoped — headerless clamps to the default workspace UUID (`query_request_builder`, GAP-091-11); `compensation_quarantine` entries are attributed to their document's workspace and the drain can claim per-workspace (GAP-091-13); KV `get_by_ids` routes through the typed-first merge pipeline (shell/cache/chunk → KV fallback) so document downloads work on post-125 databases (GAP-091-04); unclassified KV keys now ERROR loudly instead of being silently discarded on a dropped KV relation (`kv.rs::classify_key` SSOT, GAP-091-07).
+- **SPEC-091 migration 125** — verified purge of presence-conservative KV keys (`staging:hash` / `doc:hash` / `wsdoc` / `injection`) already represented in typed SSOT before the durable-row guard (upgrade soak was aborting on 6 in-flight `staging:hash` rows after shell backfill). Schema-qualify `public.documents` / `public.workspaces` in backfills 117/118/121/122. Advisor residue no longer false-GREEN when typed SSOT tables are missing (42P01).
+
+### Changed
+
+- **Product Mix default → Acc E2-occ profile** — Smart Mix query path defaults to the Acc E2-occ retrieval profile for product quality. Fair Acc dual-SUT peers still pin the Acc backend profile (`P0_mistral_small_mix_chunk1200_*`); do not merge product Mix and Acc peer claims.
+- **Deps** — `edgequake-llm` **0.10.3** (crates.io); `edgequake-pdf2md` **0.9.10**; `edgeparse-core` **0.2.5**.
+- **SPEC-091 IP2 serving fence default on** — `EDGEQUAKE_SERVING_FENCE` unset → **on** (LAW-IP1); set `off`/`false`/`0` to disable. Decision record: [`docs/data-layer/serving-fence-decision.md`](docs/data-layer/serving-fence-decision.md).
+- **SPEC-091 vector write-stop under typed backend** — with `EDGEQUAKE_VECTOR_BACKEND=typed_embeddings` (default), legacy `eq_*_vectors` upsert/delete/CREATE are write-stopped at `PgVectorStorage` so KG persist no longer 42P01s on missing workspace tables; typed `chunk_embeddings` + fleet fleet index are the write SSOT (fleet wired from API persist, fail-closed when typed). DDL probe no longer treats a never-created table as “retired”. Contract: `contract_spec091_vector_write_stop`.
+- **SPEC-091 typed-vector authority hardening** — complete mutate write-stop (`delete_entity`/`batch`/`relations`/`clear`/`clear_workspace`/`delete_by_document`); typed query path is chunk-only short-circuit + fleet ANN for entity/rel with soft-empty (no hard legacy 42P01); merger graph-before-fleet under typed + 0-mirror fail-closed; persist fails closed when typed indexes missing; boot requires fleet tables (130); cutover refuses `legacy_tables` after migration 131. Proofs: extended write-stop contract, `e2e_spec091_typed_only_ingest`.
+- **SPEC-091 migrate UX (first principles)** — `edgequake migrate` / `dry-run` explain SAFE SCHEMA vs DROP OLD in plain English; soft-exit prints **VERDICT: OK TO START THE SERVER** when only irreversible drops remain; boot refusal prints **STOP** with expandable vs drop breakdown; RED drop-readiness includes a plain-English “do not drop yet” explanation.
+- **SPEC-091 migrate: expandable-first when drop gated** — `edgequake migrate` without `--confirm-drop` now applies expandable migrations that **precede** a pending irreversible drop (125/126/131), then soft-exits 0 with WARN so `make_dev` can start. Serving boot soft-allows when the *only* pending versions are irreversible drops (health still reports `migration_required`). Irreversible drops still require `--confirm-drop` when they block later expandables or when the operator is ready (LD-07). Fixes upgrade DBs stuck at pending 128–130 behind 131.
+- **SPEC-091 wire-closure (typed default + CI expansion)** — `EDGEQUAKE_VECTOR_BACKEND` unset now defaults to **`typed_embeddings`** (explicit `legacy_tables` remains the soak rollback); IW0/IW1/IW2/IW3 acceptance binaries wired into `.github/workflows/spec091-data-layer.yml`; local SSOT `make spec091-gates` (requires Postgres; `EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1`). CLI migrate test no longer depends on a shared DB ledger stuck behind irreversible **131**.
+- **SPEC-091 LD-15 boot migration gating (behavior change)** — server start **never applies versioned schema anymore**. Boot verifies `_sqlx_migrations` and refuses with exit **78** (`EX_CONFIG`) plus an actionable message (`N pending …` → `edgequake migrate dry-run` → `edgequake migrate` → runbook) when the database is behind, and refuses downgrades (database newer than the binary). **`EDGEQUAKE_ALLOW_BOOT_MIGRATE` is removed** (a truthy value now logs one WARN and is ignored); `make dev` / `dev-bg` / `backend-dev` / `backend-db` / `backend-bg` run a **visible `edgequake migrate` step** before starting the server. `/health.schema` gains `pending_count` + `migration_required` for post-boot drift detection and K8s gating. Fresh installs need no `--confirm-drop` (nothing legacy to lose); upgraded databases keep the explicit gate for irreversible 125/126/131. Spec: [`specs/091-simplify-data-layer/17-boot-migration-gating.md`](specs/091-simplify-data-layer/17-boot-migration-gating.md); Docker/K8s one-shot patterns in the upgrade runbook.
+- Dev defaults assume post-drop relational flags (`EDGEQUAKE_CHUNK_TEXT_AUTHORITY`, `EDGEQUAKE_KV_FAMILY_*`, serving fence). Mid-upgrade fleets must follow the SPEC-091 runbook (roll write-stop replicas before/with drop; never leave `kv`/`dual` flags against a dropped store).
+
+### Docs
+
+- Release pin **v0.23.0**; Acc publish SSOT refresh (medical-mid n=200 statistical tie); upgrade runbook v0.22.0 → v0.23.0 (migrations **106–141**).
+- **Plain-language migrate guide** — [`docs/operations/migrate-to-0.23.md`](docs/operations/migrate-to-0.23.md) + README 0.23.0 “Database migration” intro (API never auto-migrates; fresh vs upgrade paths).
+
+### Notes
+
+- **SPEC-120** first-class `/operations` API remains design + orphaned WIP — not wired; production cancel path is still SPEC-057 (`POST /api/v1/tasks/{id}/cancel`). See [`specs/92-task-system/README.md`](specs/92-task-system/README.md).
+- SPEC-091 **IW0–IW5** are **wired + verified** per [`19-improvement-plan.md`](specs/091-simplify-data-layer/19-improvement-plan.md). Residuals: KV facade still present behind a shrinking census allowlist; SPEC-120 `/operations` remains descoped; true 1M residue soak and kill-9 process chaos remain nightly/soak targets; partitioning (original W5) remains measurement-gated (LD-10). Fleet drop **131** is human-gated behind `--confirm-drop` (restore-only rollback). Acc Beat / Acc Equal mid remain **STOP** until [080 promote checklist](specs/001-benchmark/001-edgquake-improvements/080-phase-g-promote-checklist.md) is green.
+
+---
+
+## [0.22.0] — 2026-07-26
+
+Minor: SPEC-090 performance audit closeout — multi-pool, migrate CLI, schema cutovers (M104/M105), boot migrate split.
+
+### Added
+
+- **`PgPoolBundle`** — in-process query / ingest / queue / admin pools with per-role sizes (`EDGEQUAKE_DB_POOL_SIZE_*`) and acquire timeouts; optional `DATABASE_READ_URL` for the query pool.
+- **`edgequake migrate`** — admin-pool sqlx migrate + support reconcile with operator stdout (preflight, applied list, tasks/PDF/HNSW probes).
+- **M104** — monthly range-partitioned `tasks` + `edgequake_ensure_tasks_month_partitions` / detach helpers; `eq_hot_ann_workspaces` registry.
+- **M105** — PDF bytes SSOT in `pdf_document_blobs`; drops `pdf_documents.pdf_data`.
+- **HNSW mutual exclusion** — hot workspaces get partial HNSW; global index rebuilt excluding hot WS rows.
+- **HNSW index manifest** — `check_hnsw_index_manifest` (m=16, ef_construction default 128) at migrate/boot.
+- **Embedding identity** — `embedding_model` / `embedding_dim` / `embedding_norm` columns + metadata on vector upsert; dimension change remains fail-closed (`EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD` escape).
+- **Progress-only updates** — `update_task_progress` wired on hot processor ticks (no full JSONB payload rewrite).
+- **SPEC-090 pack** — [`specs/090-performance/`](specs/090-performance/) + measurements `2026-07-26-after-full-closeout.md`; `e2e_spec090_*` / multi-pool isolation tests; smoke includes SPEC-089 regressions.
+
+### Changed
+
+- **Serving boot** — `bootstrap_for_serving` refuses pending sqlx migrations unless `EDGEQUAKE_ALLOW_BOOT_MIGRATE=1` or `EDGEQUAKE_MIGRATE_CLI=1`; heavy `execute_bootstrap_apply_sql` gated the same way. `make backend-bg` defaults `EDGEQUAKE_ALLOW_BOOT_MIGRATE=1`.
+- **PDF create/get** — writes/reads blob side-table only (post-M105).
+- **DDL session GUCs** — prefer `SET LOCAL` inside TX; CIC path keeps session `SET` + pool `DISCARD ALL`.
+
+### Fixed
+
+- SPEC-090 findings F-090-01…32 (see [`specs/090-performance/01-finding-register.md`](specs/090-performance/01-finding-register.md)), including UNION-ctid relation deletes, claim/prune bounds, and AGE init fail-closed.
+
+### Docs
+
+- Release pin **v0.22.0**; migrate / multi-pool notes in README; ops release-and-cd examples updated.
+
+### GUARD residuals
+
+- Additive binary+float HNSW unless `EDGEQUAKE_BINARY_QUANTIZE=1` with recall gate.
+- True remote replica operations require operator-managed `DATABASE_READ_URL`.
+- S3 PDF storage, HASH-partitioned vector tables, DiskANN product cutover remain out of scope.
+
+---
+
+## [0.21.3] — 2026-07-25
+
+Patch: SPEC-089 / [#336](https://github.com/raphaelmansuy/edgequake/issues/336) — pool-safe health under large corpora; SPEC-088 list-surface delete hardening.
+
+### Fixed
+
+- **#336** — Documents-list entity-count reconcile no longer runs corpus-wide `CROSS JOIN generate_series` before pagination; page-scoped reconcile + batched GIN probes + `SET LOCAL statement_timeout` (LAW-H2) stop zombie pool holders that starved `/health` task-queue stats.
+- **Sibling pool kills** — discovery (`scan_ops`), task `get_statistics`, native graph UI SQL, labels/BFS edges, INV-C, workspace AGE stats use `LocalTimeoutTx` / aligned PG budgets under app timeouts.
+- **Reprocess double-cascade** — admit path uses retract SSOT only (no second `cleanup_document_graph_data` discovery amp).
+- **Ghost documents after multi-delete** — completed MD/PDF rows reappeared on refresh after batch delete when KV metadata was wiped but `wsdoc:` index and/or SQL `documents` remained; list merge re-injected them as Completed.
+- **Batch `Ok(None)` orphan path** — already-absent KV no longer counts as success without purging list surfaces (SQL / wsdoc / content / hash).
+- **Cascade SQL delete** — relational row removal is fail-closed via scoped `delete_relational_document` (no warn-and-leave-ghosts).
+- **IMP-031-08 cascade timeout** — probe-first `MATERIALIZED` GIN discovery for source-prefix node/edge scans (avoids tenant-first Join Filter `@>` plan cliff under statement_timeout).
+
+### Added
+
+- **SPEC-089 health-check pack** — [`specs/089-health-check/`](specs/089-health-check/) (laws, sibling audit, e2e matrix).
+- **`LocalTimeoutTx`** — DRY transaction-scoped `SET LOCAL statement_timeout` helper in edgequake-storage.
+- **E2E / contracts** — `e2e_issue336_node_counts_bounded`, `e2e_spec089_list_page_reconcile`, `e2e_spec089_phase4`, `contract_spec089_*`.
+- **`purge_document_list_surfaces` SSOT** — single list-identity cleanup used by cascade completion, batch orphan, re-ingest wipe, and workspace wipe per-doc path.
+- **SPEC-088 data-layer pack** — inventory, complexity matrix, improvements RCA, version matrix workflow, dataop registry/tests under [`docs/data-layer/`](docs/data-layer/) and [`specs/088-data-layer/`](specs/088-data-layer/).
+- **Data-layer e2e / matrix tests** — `e2e_spec088_improvements`, ops matrix/registry/limits/scaling harness; CI workflow `data-layer-matrix.yml`.
+
+### Changed
+
+- **RT-collapsed KV / staging paths** — ordered batch reads and staging-final SSOT across text insert, status updates, and related API services (IMP-075 family).
+- **Graph scan / expand / claim paths** — index-first and fair-claim hardening aligned with SPEC-088 Phase 6 (native graph, HNSW policy, task claim lease).
+
+### Docs
+
+- Proven improvements and incident RCAs (GH-336 pool exhaustion + cascade timeout + ghost list surfaces) in [`docs/data-layer/improvements.md`](docs/data-layer/improvements.md).
+- Local `make dev` Web UI default port documented as **http://localhost:3010** (Docker quickstart remains **:3000**).
+
+---
+
+## [0.21.2] — 2026-07-24
+
+Patch: SPEC-087 — dashboard stats N+1 timeout (#334) and shared guest identity (#335).
+
+### Fixed
+
+- **#334** — `count_embedded_chunks_for_docs` (Postgres `COUNT`/`LIKE ANY` + relational overlay) replaces per-document KV fan-out in dashboard stats.
+- **#335** — Auth-off shared per-tenant guest (`shared_guest_user_id`); JWT/API-key bind `TenantContext.user_id`; `EDGEQUAKE_ALLOW_ANONYMOUS`; admin `include_anonymous` + FE Guest toggle.
+
+### Added
+
+- **SPEC-087 study pack** — [`specs/087-fix-issues/`](specs/087-fix-issues/README.md).
+- **`e2e_spec087_anonymous_guest`** — shared guest / deny / JWT principal coverage.
+
+### Docs
+
+- Issue studies and e2e notes under [`specs/087-fix-issues/`](specs/087-fix-issues/README.md).
+
+---
+
+## [0.21.1] — 2026-07-24
+
+Patch: SPEC-084 reliability fixes (#331, #319, #317, #255, #318, #316) — pool-safe Node counts, honest list filters, batch delete, gateway slash models, upload readiness, workspace-fair scheduling.
+
+### Added
+
+- **`POST /api/v1/documents/batch-delete`** — one durable `TaskType::BatchDeletion` for selected multi-delete (SPEC-084 / #317); wipe-all `#309` unchanged.
+- **List documents `status` query param** — filter before pagination; `status_counts` stay global (SPEC-084 / #319).
+- **Track `expected_count` / `registered_count`** — `is_complete` waits for expected registration; Query UI soft-gate + “Query anyway” (SPEC-084 / #318).
+- **SPEC-084 study pack** — [`specs/084-reliability-fix/`](specs/084-reliability-fix/README.md).
+- **M098** — `batch_deletion` task type + `idx_tasks_claim_workspace_created` claim index.
+- **`EDGEQUAKE_ALLOW_GATEWAY_MODEL_IDS`** — explicit allow for slash model IDs on pure OpenAI cloud (see `.env.example`).
+
+### Fixed
+
+- **#331** — `node_counts_by_source_prefixes` JOINs child `"Node"` so `idx_node_source_ids_gin` applies (parent GIN rejected).
+- **#319** — Failed (and other status) filters return rows beyond the first page window.
+- **#255** — COMPAT-GUARD allows slash models with custom OpenAI-compatible base / allow flag; `llm_full_id` / `embedding_full_id` no longer double-prefix.
+- **#316** — Workspace-fair `claim_next` (least-loaded then oldest) + nested per-workspace ingest lane under tenant cap.
+
+### Docs
+
+- SPEC-084 register / roadmap / issue studies under [`specs/084-reliability-fix/`](specs/084-reliability-fix/README.md) (6 FIXED; Playwright/opcount deferred).
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 ---
 
 ## [0.21.0] — 2026-07-23

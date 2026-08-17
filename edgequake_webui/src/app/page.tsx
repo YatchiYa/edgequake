@@ -45,7 +45,10 @@ export default function Home() {
     queryFn: () => getDocuments({ page: 1, page_size: 10 }),
     staleTime: 30000,
     enabled: hasContext,
+    // SPEC-100: soft refresh keeps activity feed painted
+    placeholderData: (previous) => previous,
   });
+  const coldDocs = isLoadingDocs && !documentsData;
 
   // WHY: Use getWorkspaceStats() for consistent entity/relationship/entityType counts.
   // Previously the dashboard fetched ALL graph nodes via getGraph({ limit: 1 }) just to
@@ -57,7 +60,10 @@ export default function Home() {
     queryFn: () => getWorkspaceStats(selectedWorkspaceId!),
     staleTime: 30000,
     enabled: hasContext,
+    // SPEC-100: soft refresh keeps stats painted
+    placeholderData: (previous) => previous,
   });
+  const coldStats = isLoadingStats && !statsData;
 
   const documentCount = statsData?.document_count ?? documentsData?.total ?? documentsData?.items?.length ?? 0;
   const entityCount = statsData?.entity_count ?? 0;
@@ -87,8 +93,18 @@ export default function Home() {
                 <h1 className="text-2xl font-bold">
                   {t('dashboard.title', 'Dashboard')}
                 </h1>
+<<<<<<< HEAD
                 <p className="text-muted-foreground">
                   {t('dashboard.welcome', 'Welcome to EdgeQuake - Your Knowledge Graph RAG Platform')}
+=======
+                <p
+                  className="min-h-5 text-muted-foreground"
+                  data-testid="spec100-dashboard-subtitle"
+                >
+                  {coldStats
+                    ? t('common.loading', 'Loading...')
+                    : t('dashboard.welcome', 'Welcome to EdgeQuake - Your Knowledge Graph RAG Platform')}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 </p>
               </div>
 
@@ -99,7 +115,11 @@ export default function Home() {
                   value={documentCount}
                   description={t('dashboard.stats.documentsDesc', 'Uploaded documents')}
                   icon={FileText}
+<<<<<<< HEAD
                   isLoading={isLoadingStats || isLoadingDocs}
+=======
+                  isLoading={coldStats || coldDocs}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                   isStale={statsStale}
                 />
                 <StatsCard
@@ -107,7 +127,11 @@ export default function Home() {
                   value={entityCount}
                   description={t('dashboard.stats.entitiesDesc', 'Extracted entities')}
                   icon={Users}
+<<<<<<< HEAD
                   isLoading={isLoadingStats}
+=======
+                  isLoading={coldStats}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                   isStale={statsStale}
                 />
                 <StatsCard
@@ -115,7 +139,11 @@ export default function Home() {
                   value={relationshipCount}
                   description={t('dashboard.stats.relationshipsDesc', 'Entity connections')}
                   icon={GitMerge}
+<<<<<<< HEAD
                   isLoading={isLoadingStats}
+=======
+                  isLoading={coldStats}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                   isStale={statsStale}
                 />
                 <StatsCard
@@ -123,7 +151,11 @@ export default function Home() {
                   value={entityTypes}
                   description={t('dashboard.stats.entityTypesDesc', 'Unique categories')}
                   icon={Network}
+<<<<<<< HEAD
                   isLoading={isLoadingStats}
+=======
+                  isLoading={coldStats}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                   isStale={statsStale}
                 />
               </div>
@@ -136,7 +168,11 @@ export default function Home() {
                 <div className="lg:col-span-2">
                   <RecentActivity
                     documents={recentDocuments}
+<<<<<<< HEAD
                     isLoading={isLoadingDocs}
+=======
+                    isLoading={coldDocs}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                   />
                 </div>
                 <div>

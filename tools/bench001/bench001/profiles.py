@@ -1,9 +1,17 @@
 """Provider / judge pins for SPEC-001.
 
+<<<<<<< HEAD
 Defaults (headline ``P0_mistral_mix``):
   LLM + vision = mistral / mistral-small-latest
   Embed        = mistral / mistral-embed @ 1024-d
   Judge LLM    = same as SUT LLM (overridable independently)
+=======
+Defaults (headline ``ACC_E2OCC_086_v1`` — SPEC-086 E2-occ Mix law):
+  LLM + vision = mistral / mistral-small-latest
+  Embed        = mistral / mistral-embed @ 1024-d
+  Judge LLM    = same as SUT LLM (overridable independently)
+  Mix law      = round_robin · bfs · retrieval · occ_sort · Fact L2
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 All roles are parameters (CLI + env). Scorecard ``pins`` records full lineage.
 """
@@ -18,7 +26,12 @@ from typing import Any
 # Defaults — locked headline stack
 # ---------------------------------------------------------------------------
 
+<<<<<<< HEAD
 PROFILE_ID_DEFAULT = "P0_mistral_mix"
+=======
+# Headline Acc / publication profile id (SPEC-086 E2-occ Mix law).
+PROFILE_ID_DEFAULT = "ACC_E2OCC_086_v1"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 DEFAULT_LLM_PROVIDER = "mistral"
 DEFAULT_LLM_MODEL = "mistral-small-latest"

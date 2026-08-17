@@ -1,6 +1,16 @@
+<<<<<<< HEAD
 # Ingestion cancel, fairness, and restart semantics
 
 > **Product: v0.19.0** · Contract: [OpenAPI snapshot](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: this document (SPEC-057 SSOT)
+=======
+---
+title: "Ingestion cancel, fairness, and restart semantics"
+---
+
+# Ingestion cancel, fairness, and restart semantics
+
+> **Product: v0.23.0** · Contract: [OpenAPI snapshot](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: this document (SPEC-057 SSOT)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 Operational notes for the task worker pool (P0–P3 remediation).
 
@@ -61,12 +71,17 @@ Cancel is **cooperative**: vision convert, LLM extract, and embed calls abort vi
 
 ## Tenant fairness (no requeue storm)
 
+<<<<<<< HEAD
 Fairness uses **two per-tenant lanes** (operation class):
+=======
+Fairness uses **two per-tenant lanes** (operation class). This is **concurrency fairness with tenant priority at claim time**, not a latency SLA or weighted fair-share % (SPEC-057 INV-06 FP-1…FP-5).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 | Lane | Task types | Env | Local Ollama/LM Studio default |
 | ---- | ---------- | --- | ------------------------------ |
 | **Workers** | pool size | `WORKER_THREADS` | capped at **4** |
 | **Ingest** | PdfProcessing, Insert, Upload, Scan, Reindex, KnowledgeInjection | `MAX_TASKS_PER_TENANT` | **2** (protects LLM/vision) |
+<<<<<<< HEAD
 | **Lifecycle** | Deletion, WorkspaceWipe | `MAX_LIFECYCLE_TASKS_PER_TENANT` | **4** (DB/graph; not shared with ingest) |
 
 When a lane max is `> 0`:
@@ -75,6 +90,23 @@ When a lane max is `> 0`:
 - If at capacity, the task **parks** on `acquire()` in a background waiter (no channel bounce)
 - Process-local park dedupe: a `track_id` already parked is released on reclaim **without** spawning another waiter; the worker **immediately re-claims** (bounded) so newer ingest work is not stuck behind a 2s poll
 - Worker continues serving other tenants’ ready work (and the other lane for the same tenant)
+=======
+| **Lifecycle** | Deletion, BatchDeletion, WorkspaceWipe | `MAX_LIFECYCLE_TASKS_PER_TENANT` | **4** (DB/graph; not shared with ingest) |
+
+When a lane max is `> 0`:
+
+- Workers `try_acquire(tenant, workspace, fairness_class)` on that lane’s semaphore
+- If at capacity, the worker marks durable **`fairness_hold_until`** on the task, releases the claim, and **parks** on `acquire()` in a background waiter (no channel bounce)
+- **`claim_next` excludes active holds** so parked Pending rows do not burn SKIP LOCKED / reclaim loops (FP-1, FP-5)
+- **Claim prefers tenants under their lane cap** (active Processing leases **plus** active fairness holds vs configured max), then workspace-fair FIFO (SPEC-084 LAW-13); within a workspace, under-cap tenants beat older at-cap Pending (FP-2, FP-3)
+- **Hold TTL refresh:** reclaiming an already-parked row re-marks `fairness_hold_until` so expiry cannot restart a reclaim storm
+- **Park handoff:** park wake stages a lane permit by `track_id` before clear/send; cancel/skip after claim drops that permit (no lane leak)
+- Process-local park dedupe remains a safety net against duplicate waiters; it is not the scheduling filter
+- On park wake: stage handoff → clear hold → single queue wake → worker `take_handoff` / `try_acquire`
+- Global byte admission stays **after** the fairness slot (FP-4)
+- Worker continues serving other tenants’ ready work (and the other lane for the same tenant)
+- **Multi-replica note:** durable hold + `claim_next` are cross-replica; process-local park set / semaphore / handoff map are per process — lane accounting is best-effort across replicas until durable lane counters exist
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 Local providers (`ollama` / `lmstudio`) clamp **ingest** to **2** and workers to **4** unless `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`. Do **not** raise that flag just to unblock deletes — use the lifecycle lane. SPEC-057 P2: the ingest clamp uses the **runtime extract provider** (`EDGEQUAKE_EXTRACT_PROVIDER` → `EDGEQUAKE_DEFAULT_EXTRACT_PROVIDER` → `EDGEQUAKE_DEFAULT_LLM_PROVIDER` → `EDGEQUAKE_LLM_PROVIDER`), so hybrid OpenAI LLM + Ollama extract still applies the local ingest clamp.
 

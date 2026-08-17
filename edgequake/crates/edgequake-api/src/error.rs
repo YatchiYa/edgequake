@@ -203,6 +203,17 @@ pub enum ApiError {
     /// Pipeline error.
     #[error("Pipeline error: {0}")]
     Pipeline(#[from] edgequake_pipeline::error::PipelineError),
+<<<<<<< HEAD
+=======
+
+    /// Stateless parse API error (SPEC-094). Carries dotted `parse.*` code + HTTP status.
+    #[error("{message}")]
+    Parse {
+        code: &'static str,
+        message: String,
+        status: StatusCode,
+    },
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 impl ApiError {
@@ -228,6 +239,10 @@ impl ApiError {
             Self::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Llm(_) => StatusCode::BAD_GATEWAY,
             Self::Pipeline(_) => StatusCode::INTERNAL_SERVER_ERROR,
+<<<<<<< HEAD
+=======
+            Self::Parse { status, .. } => *status,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
     }
 
@@ -238,6 +253,12 @@ impl ApiError {
             | Self::Timeout(_)
             | Self::ServiceUnavailable { .. }
             | Self::ReadPathBusy { .. } => true,
+<<<<<<< HEAD
+=======
+            Self::Parse { code, .. } => {
+                matches!(*code, "parse.timeout" | "parse.backend_unavailable")
+            }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             Self::Storage(e) => storage_error_retryable(e),
             Self::Llm(e) => llm_error_retryable(e),
             Self::Pipeline(e) => pipeline_error_retryable(e),
@@ -251,6 +272,10 @@ impl ApiError {
             Self::Storage(_) => "storage",
             Self::Llm(_) => "llm",
             Self::Pipeline(_) => "pipeline",
+<<<<<<< HEAD
+=======
+            Self::Parse { .. } => "parse",
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             Self::Unauthorized(Some(_)) | Self::Forbidden(Some(_)) | Self::AccountLocked => "auth",
             _ => "api",
         }
@@ -337,6 +362,19 @@ impl ApiError {
                 diag
             }
             Self::Pipeline(e) => pipeline_error_diagnostic(e),
+<<<<<<< HEAD
+=======
+            Self::Parse {
+                code,
+                message,
+                status,
+            } => json!({
+                "kind": "parse",
+                "code": code,
+                "message": message,
+                "status": status.as_u16(),
+            }),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
     }
 
@@ -374,6 +412,10 @@ impl ApiError {
             Self::Storage(_) => "STORAGE_ERROR",
             Self::Llm(_) => "LLM_ERROR",
             Self::Pipeline(_) => "PIPELINE_ERROR",
+<<<<<<< HEAD
+=======
+            Self::Parse { code, .. } => code,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
     }
 }
@@ -808,6 +850,10 @@ impl From<edgequake_core::Error> for ApiError {
         match e {
             CoreError::NotFound(msg) => ApiError::NotFound(msg),
             CoreError::Validation(msg) => ApiError::ValidationError(msg),
+<<<<<<< HEAD
+=======
+            CoreError::Conflict(msg) => ApiError::Conflict(msg),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             CoreError::Config(msg) => ApiError::ConfigError(msg),
             CoreError::Storage(se) => ApiError::Storage(se),
             CoreError::Llm(le) => ApiError::Llm(le),
@@ -1120,6 +1166,11 @@ mod tests {
                 feature: "test".into(),
             },
             ApiError::Internal("test".into()),
+            ApiError::Parse {
+                code: "parse.too_large",
+                message: "too big".into(),
+                status: StatusCode::PAYLOAD_TOO_LARGE,
+            },
         ];
 
         for error in errors {

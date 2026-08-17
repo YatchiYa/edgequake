@@ -31,6 +31,10 @@ import {
 } from "@/lib/api/edgequake";
 import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
 import {
+<<<<<<< HEAD
+=======
+    applyDeletionCompleted,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     applyDeletionFailed,
     beginDeleteSession,
     bindDeleteSessionTrackId,
@@ -60,13 +64,21 @@ export interface ReprocessVariables {
   mode?: ReprocessMode;
   /**
    * Human-readable document name for progress panels.
+<<<<<<< HEAD
    * SPEC-050-REPROCESS: passed by the caller so IngestionProgressPanel can show
+=======
+   * SPEC-050-REPROCESS: passed by the caller so ProgressPanelRow / IngestionRunCard can show
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
    * a meaningful filename instead of just the document ID.
    */
   name?: string;
   /**
    * Whether this is a PDF document.
+<<<<<<< HEAD
    * Drives ProgressPanelRow component selection: PdfUploadProgress vs IngestionProgressPanel.
+=======
+   * Drives ProgressPanelRow: nest PDF converting detail when full PDF reprocess.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
    */
   isPdf?: boolean;
 }
@@ -211,6 +223,7 @@ export function useDocumentMutations(
     },
     onSuccess: (data, documentId) => {
       // HTTP 202 admit — WebSocket DeletionCompleted is the terminal SSOT.
+<<<<<<< HEAD
       // Do not toast "deleted" here (cascade may still be running).
       if (data?.track_id) {
         bindDeleteSessionTrackId(documentId, data.track_id);
@@ -224,6 +237,22 @@ export function useDocumentMutations(
           ),
         });
       } else if (data?.deleted) {
+=======
+      // Sync staging dismiss (deleted:true) completes the session immediately.
+      if (data?.track_id) {
+        bindDeleteSessionTrackId(documentId, data.track_id);
+      }
+      if (data?.deleted) {
+        applyDeletionCompleted({
+          documentId,
+          chunksDeleted: data.chunks_deleted ?? 0,
+          entitiesRemoved: data.entities_affected ?? 0,
+          relationshipsRemoved: data.relationships_affected ?? 0,
+          embeddingsDeleted: data.embeddings_deleted ?? 0,
+          partialFailure: Boolean(data.partial_failure),
+          error: data.partial_failure_reason ?? null,
+        });
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         toast.success(t("documents.delete.success", "Document deleted"), {
           duration: 3000,
           description: t(
@@ -232,6 +261,17 @@ export function useDocumentMutations(
           ),
         });
         invalidateKnowledgeGraph(queryClient);
+<<<<<<< HEAD
+=======
+      } else if (data?.accepted) {
+        toast.success(t("documents.delete.accepted", "Deletion started"), {
+          duration: 2500,
+          description: t(
+            "documents.delete.acceptedDesc",
+            "Removing document data in the background…",
+          ),
+        });
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       }
       queryClient.invalidateQueries({ queryKey: ["documents"] });
     },
@@ -413,6 +453,13 @@ export function useDocumentMutations(
   const cancelMutation = useMutation({
     mutationFn: async (trackId: string) => {
       await cancelTask(trackId);
+    },
+    onMutate: async (trackId: string) => {
+      const { pinCancelIntent, patchDocumentsCancelOptimistic } = await import(
+        "@/lib/documents/cancel-intent"
+      );
+      pinCancelIntent(trackId);
+      patchDocumentsCancelOptimistic(queryClient, trackId);
     },
     onSuccess: () => {
       toast.success(

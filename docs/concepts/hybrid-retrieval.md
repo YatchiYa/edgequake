@@ -2,7 +2,11 @@
 title: 'Hybrid Retrieval'
 ---
 
+<<<<<<< HEAD
 > **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+=======
+> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 # Hybrid Retrieval
 
@@ -181,7 +185,7 @@ After retrieval, results are fused into a coherent context:
 │  └── Score by relevance to query                                 │
 │                                                                   │
 │  Step 4: TRUNCATE                                                │
-│  └── Fit within context window (4000 tokens default)            │
+│  └── Fit within context window (30000 tokens default)           │
 │                                                                   │
 │  Step 5: FORMAT                                                  │
 │  └── Structure for LLM consumption                               │
@@ -194,16 +198,17 @@ After retrieval, results are fused into a coherent context:
 EdgeQuake uses intelligent truncation to preserve diversity:
 
 ```rust
-// From truncation.rs
+// From truncation.rs (LightRAG constants, LR_*)
 pub struct TruncationConfig {
-    pub max_context_tokens: usize,  // 4000 default
-    pub chunk_weight: f32,          // 0.4
-    pub entity_weight: f32,         // 0.4
-    pub relationship_weight: f32,   // 0.2
+    pub max_entity_tokens: usize,       // 6000
+    pub max_relation_tokens: usize,     // 8000
+    pub max_total_tokens: usize,        // 30000
+    pub buffer_tokens: usize,           // 200
+    pub min_chunk_budget_ratio: f32,    // 0.40 (EDGEQUAKE_MIN_CHUNK_BUDGET_RATIO, clamp [0.0, 0.9])
 }
 ```
 
-Rather than just taking "top N" of each, it balances across categories.
+Rather than just taking "top N" of each, it balances across categories: the chunk budget is `max_total_tokens − entity_tokens − relation_tokens − buffer`, with a floor that reserves at least 40% of the budget for document chunks.
 
 ---
 
@@ -229,12 +234,12 @@ Is it about broad themes? ───▶ Use GLOBAL
                 No
                 │
                 v
-Is it complex/multi-faceted? ───▶ Use HYBRID (default)
+Is it complex/multi-faceted? ───▶ Use HYBRID
 ("How does X relate to Y?")
                 │
                 │
                 v
-Need custom control? ───▶ Use MIX with weights
+Need weighted control? ───▶ Use MIX (production default, RRF fusion)
 ```
 
 ---
@@ -250,7 +255,7 @@ curl -X POST http://localhost:8080/api/v1/query \
     "mode": "local"
   }'
 
-# Query with hybrid (default)
+# Query with default mode (mix when mode is unset)
 curl -X POST http://localhost:8080/api/v1/query \
   -d '{"query": "Tell me about the research"}'
 ```

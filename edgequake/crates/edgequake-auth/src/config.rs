@@ -63,6 +63,16 @@ pub struct AuthConfig {
     /// Local development mode — authentication disabled (EDGEQUAKE_DEV_MODE).
     pub dev_mode: bool,
 
+<<<<<<< HEAD
+=======
+    /// When auth is off (or request unauthenticated), allow a shared per-tenant
+    /// guest user for chat/conversations (SPEC-087 / Issue #335).
+    ///
+    /// Env: `EDGEQUAKE_ALLOW_ANONYMOUS` (default `true`). When `false`, unauthenticated
+    /// chat/conversation create returns 401/403 and does not INSERT guest rows.
+    pub allow_anonymous: bool,
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     /// Optional bootstrap/master API key for secure first-time setup.
     pub master_api_key: Option<String>,
 
@@ -94,6 +104,10 @@ impl Default for AuthConfig {
             allow_registration: true,
             auth_enabled: true,
             dev_mode: false,
+<<<<<<< HEAD
+=======
+            allow_anonymous: true,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             master_api_key: None,
             api_keys: Vec::new(),
             jwt_issuer: None,
@@ -190,6 +204,10 @@ impl AuthConfig {
         let allow_registration = parse_bool_env("ALLOW_REGISTRATION", true);
         let dev_mode = parse_bool_env("EDGEQUAKE_DEV_MODE", false);
         let auth_enabled = resolve_auth_enabled_from_env(dev_mode);
+<<<<<<< HEAD
+=======
+        let allow_anonymous = parse_bool_env("EDGEQUAKE_ALLOW_ANONYMOUS", true);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let master_api_key = std::env::var("EDGEQUAKE_MASTER_API_KEY")
             .ok()
@@ -244,6 +262,10 @@ impl AuthConfig {
             allow_registration,
             auth_enabled,
             dev_mode,
+<<<<<<< HEAD
+=======
+            allow_anonymous,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             master_api_key,
             api_keys,
             jwt_issuer,

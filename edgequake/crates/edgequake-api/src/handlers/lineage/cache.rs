@@ -49,8 +49,30 @@ pub(super) async fn cached_kv_get(
         }
     }
 
+<<<<<<< HEAD
     // Cache miss — fetch from storage
     let value = kv.get_by_id(key).await?;
+=======
+    // Cache miss — fetch from storage.
+    // SPEC-091 Wave B5: `{doc}-lineage` reads are flag-gated onto the typed
+    // document_artifacts table; KV is the fallback on any gap.
+    let value = if key.ends_with("-lineage")
+        && crate::services::relational_sidecar_store::artifacts_prefer_relational()
+    {
+        let doc_id = key.trim_end_matches("-lineage");
+        match crate::services::relational_sidecar_store::typed_artifact_get(
+            doc_id,
+            crate::services::relational_sidecar_store::ARTIFACT_KIND_LINEAGE,
+        )
+        .await
+        {
+            Some(v) => Some(v),
+            None => kv.get_by_id(key).await?,
+        }
+    } else {
+        kv.get_by_id(key).await?
+    };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     // Populate cache on hit
     if let Some(ref v) = value {

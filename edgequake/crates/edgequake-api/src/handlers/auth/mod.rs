@@ -221,6 +221,14 @@ pub(crate) async fn persist_user_record(
 
 impl From<&UserRecord> for crate::handlers::auth_types::UserInfo {
     fn from(record: &UserRecord) -> Self {
+<<<<<<< HEAD
+=======
+        let is_anonymous = crate::services::identity_storage::is_anonymous_identity(
+            &record.username,
+            &record.email,
+            &record.password_hash,
+        );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         Self {
             user_id: record.user_id.clone(),
             username: record.username.clone(),
@@ -230,6 +238,10 @@ impl From<&UserRecord> for crate::handlers::auth_types::UserInfo {
             created_at: record.created_at.to_rfc3339(),
             updated_at: record.updated_at.to_rfc3339(),
             last_login_at: record.last_login_at.map(|t| t.to_rfc3339()),
+<<<<<<< HEAD
+=======
+            is_anonymous,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }
     }
 }
@@ -352,6 +364,10 @@ mod tests {
                 created_at: "2024-01-01T00:00:00Z".to_string(),
                 updated_at: "2024-01-01T00:00:00Z".to_string(),
                 last_login_at: None,
+<<<<<<< HEAD
+=======
+                is_anonymous: false,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             },
         };
 
@@ -447,6 +463,10 @@ mod tests {
                 created_at: "2024-01-01T00:00:00Z".to_string(),
                 updated_at: "2024-01-01T00:00:00Z".to_string(),
                 last_login_at: None,
+<<<<<<< HEAD
+=======
+                is_anonymous: false,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             }],
             total: 1,
             page: 1,

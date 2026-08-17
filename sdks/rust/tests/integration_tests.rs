@@ -1505,12 +1505,20 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("DELETE"))
             .and(path("/api/v1/documents"))
+<<<<<<< HEAD
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({"deleted": 5})))
+=======
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"deleted_count": 5, "accepted": true})))
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             .mount(&mock_server)
             .await;
         let client = test_client(&mock_server).await;
         let val = client.documents().delete_all().await.unwrap();
+<<<<<<< HEAD
         assert_eq!(val["deleted"], 5);
+=======
+        assert_eq!(val.deleted_count, 5);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     }
 
     #[tokio::test]

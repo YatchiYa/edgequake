@@ -33,6 +33,11 @@ export interface UseUsersReturn {
   page: number;
   totalPages: number;
   isLoading: boolean;
+<<<<<<< HEAD
+=======
+  includeAnonymous: boolean;
+  setIncludeAnonymous: (value: boolean) => void;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   load: (p?: number) => Promise<void>;
   handleCreate: (data: CreateUserRequest) => Promise<boolean>;
   handleRoleChange: (userId: string, role: string) => Promise<void>;
@@ -46,6 +51,7 @@ export function useUsers(): UseUsersReturn {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+<<<<<<< HEAD
 
   // ----- Load ---------------------------------------------------------------
 
@@ -63,6 +69,29 @@ export function useUsers(): UseUsersReturn {
       setIsLoading(false);
     }
   }, []);
+=======
+  const [includeAnonymous, setIncludeAnonymous] = useState(false);
+
+  // ----- Load ---------------------------------------------------------------
+
+  const load = useCallback(
+    async (p = 1) => {
+      setIsLoading(true);
+      try {
+        const res = await listUsers(p, 20, undefined, includeAnonymous);
+        setUsers(res.users);
+        setTotal(res.total);
+        setTotalPages(res.total_pages ?? 1);
+        setPage(res.page);
+      } catch (e) {
+        toast.error(`Failed to load users: ${errMsg(e)}`);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [includeAnonymous],
+  );
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   useEffect(() => {
     load(1);
@@ -127,6 +156,11 @@ export function useUsers(): UseUsersReturn {
     page,
     totalPages,
     isLoading,
+<<<<<<< HEAD
+=======
+    includeAnonymous,
+    setIncludeAnonymous,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     load,
     handleCreate,
     handleRoleChange,

@@ -131,7 +131,24 @@ def test_backend_pin_mismatches(monkeypatch):
         }
     )
     assert ok == []
+<<<<<<< HEAD
     monkeypatch.delenv("BENCH001_ALLOW_ROUND_ROBIN", raising=False)
+=======
+    # SPEC-086: round_robin is Acc default (ALLOW_ROUND_ROBIN defaults on).
+    monkeypatch.delenv("BENCH001_ALLOW_ROUND_ROBIN", raising=False)
+    monkeypatch.delenv("BENCH001_ALLOW_RRF_LEGACY", raising=False)
+    rr_ok = backend_pin_mismatches(
+        {
+            "providers": {
+                "llm": {"name": "mistral", "model": "mistral-small-latest"},
+                "embedding": {"name": "mistral", "model": "mistral-embed"},
+            },
+            "operational": {"query_engine": {"mix_fusion": "round_robin"}},
+        }
+    )
+    assert rr_ok == []
+    monkeypatch.setenv("BENCH001_ALLOW_ROUND_ROBIN", "0")
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     rr_bad = backend_pin_mismatches(
         {
             "providers": {
@@ -143,6 +160,7 @@ def test_backend_pin_mismatches(monkeypatch):
     )
     assert any("mix_fusion" in m for m in rr_bad)
     monkeypatch.setenv("BENCH001_ALLOW_ROUND_ROBIN", "1")
+<<<<<<< HEAD
     rr_ok = backend_pin_mismatches(
         {
             "providers": {
@@ -153,6 +171,20 @@ def test_backend_pin_mismatches(monkeypatch):
         }
     )
     assert rr_ok == []
+=======
+    assert (
+        backend_pin_mismatches(
+            {
+                "providers": {
+                    "llm": {"name": "mistral", "model": "mistral-small-latest"},
+                    "embedding": {"name": "mistral", "model": "mistral-embed"},
+                },
+                "operational": {"query_engine": {"mix_fusion": "round_robin"}},
+            }
+        )
+        == []
+    )
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 
 def test_assert_publication_ingest_fail_closed(monkeypatch):

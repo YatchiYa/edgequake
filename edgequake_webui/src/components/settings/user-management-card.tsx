@@ -40,6 +40,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+<<<<<<< HEAD
+=======
+import { Skeleton } from '@/components/ui/skeleton';
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 import { Switch } from '@/components/ui/switch';
 import {
   Table,
@@ -72,6 +76,10 @@ const EMPTY_FORM: CreateUserRequest = { username: '', email: '', password: '', r
 
 export function UserManagementCard() {
   const currentUser = useAuthStore((s) => s.user);
+<<<<<<< HEAD
+=======
+  const hasHydrated = useAuthStore((s) => s._hasHydrated);
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   const isAdmin = currentUser?.role === 'admin' || currentUser?.roles?.includes('admin') || false;
 
   const {
@@ -80,6 +88,11 @@ export function UserManagementCard() {
     page,
     totalPages,
     isLoading,
+<<<<<<< HEAD
+=======
+    includeAnonymous,
+    setIncludeAnonymous,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     load,
     handleCreate,
     handleRoleChange,
@@ -91,6 +104,26 @@ export function UserManagementCard() {
   const [form, setForm] = useState<CreateUserRequest>(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+<<<<<<< HEAD
+=======
+  // SPEC-100: skeleton while auth hydrates (never null→tall admin card CLS)
+  if (!hasHydrated) {
+    return (
+      <Card data-testid="spec100-user-management-skeleton">
+        <CardHeader>
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-3 w-64" />
+        </CardHeader>
+        <CardContent className="min-h-[12rem] space-y-3">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   if (!isAdmin) return null;
 
   const onSubmitCreate = async () => {
@@ -126,6 +159,20 @@ export function UserManagementCard() {
         <CardDescription className="text-xs">
           {total} user{total !== 1 ? 's' : ''}
         </CardDescription>
+<<<<<<< HEAD
+=======
+        <div className="flex items-center gap-2 pt-2">
+          <Switch
+            id="include-anonymous"
+            checked={includeAnonymous}
+            onCheckedChange={setIncludeAnonymous}
+            aria-label="Show guest and anonymous system accounts"
+          />
+          <Label htmlFor="include-anonymous" className="text-xs text-muted-foreground font-normal">
+            Show guest / anonymous system accounts
+          </Label>
+        </div>
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       </CardHeader>
 
       <CardContent className="px-0 pb-0">
@@ -212,6 +259,14 @@ function UsersTable({ users, onRoleChange, onToggleActive, onDelete }: UsersTabl
                 <span className="flex items-center gap-1.5 text-sm">
                   <UserCog className="h-3 w-3 text-muted-foreground shrink-0" aria-hidden="true" />
                   {u.username}
+<<<<<<< HEAD
+=======
+                  {u.is_anonymous ? (
+                    <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0">
+                      Guest
+                    </Badge>
+                  ) : null}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 </span>
               </TableCell>
               <TableCell className="text-xs text-muted-foreground truncate max-w-[180px]">

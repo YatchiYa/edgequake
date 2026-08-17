@@ -42,23 +42,33 @@ export interface DocumentTableStatesProps {
  * Loading skeleton matching table structure
  * LS-01: aria-busy + aria-label so screen readers announce loading state.
  */
-function LoadingSkeleton({ rowCount = 5 }: { rowCount?: number }) {
+function LoadingSkeleton({ rowCount = 8 }: { rowCount?: number }) {
+  // Fill the inventory scrollport so skeleton → rows does not change flex geometry (CLS).
   return (
     <div
       role="status"
       aria-busy="true"
       aria-label="Loading documents..."
+<<<<<<< HEAD
       className="border rounded-lg overflow-hidden"
+=======
+      className="h-full min-h-[9rem] border border-border rounded-b-lg overflow-hidden bg-background"
+      data-testid="documents-loading-skeleton"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     >
       {[...Array(rowCount)].map((_, i) => (
         <div
           key={i}
+<<<<<<< HEAD
           className="flex items-center gap-4 px-4 py-3 border-b last:border-b-0 animate-pulse"
+=======
+          className="flex h-[52px] items-center gap-4 px-4 border-b last:border-b-0 animate-pulse"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           aria-hidden="true"
         >
           <Skeleton className="h-4 w-4 shrink-0 rounded" />
           <Skeleton className="h-4 w-48 shrink-0" />
-          <Skeleton className="h-5 w-20 rounded-full shrink-0" />
+          <Skeleton className="h-5 w-28 rounded-full shrink-0" />
           <Skeleton className="h-4 w-8 shrink-0" />
           <Skeleton className="h-4 w-12 shrink-0" />
           <Skeleton className="h-4 w-24 shrink-0" />

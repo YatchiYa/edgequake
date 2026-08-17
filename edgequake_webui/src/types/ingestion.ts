@@ -345,6 +345,18 @@ export interface ChunkProgressEvent {
   };
 }
 
+/** SPEC-086: unified-stage transition for all Insert tracks. */
+export interface StageTransitionEvent {
+  type: "StageTransition";
+  data: {
+    document_id: string;
+    task_id: string;
+    stage: string;
+    stage_message: string;
+    stage_progress?: number | null;
+  };
+}
+
 /**
  * Chunk extraction failure event for resilient processing visibility.
  *
@@ -389,6 +401,10 @@ export type WebSocketProgressMessage =
   | StatusSnapshotEvent
   | PdfPageProgressEvent
   | ChunkProgressEvent
+<<<<<<< HEAD
+=======
+  | StageTransitionEvent
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
   | ChunkFailureEvent
   | DeletionStartedEvent
   | DeletionPhaseEvent

@@ -145,6 +145,10 @@ export function QueryScopeBar({
             <button
               type="button"
               disabled={disabled}
+<<<<<<< HEAD
+=======
+              data-testid="query-scope-trigger"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs',
                 'text-muted-foreground/60 hover:text-muted-foreground',
@@ -183,6 +187,7 @@ function ScopePill({
   disabled: boolean;
 }) {
   const { t } = useTranslation();
+<<<<<<< HEAD
   const label = useScopeDocumentLabel(documentId);
 
   const displayLabel = label
@@ -190,10 +195,27 @@ function ScopePill({
       ? `${label.slice(0, MAX_PILL_CHARS)}\u2026`
       : label
     : `${documentId.slice(0, 8)}\u2026`;
+=======
+  const { label, isLoading } = useScopeDocumentLabel(documentId);
+
+  const resolved =
+    label ??
+    (isLoading
+      ? '\u2026'
+      : t('query.scope.unknownDoc', 'Unknown document'));
+  const displayLabel =
+    resolved.length > MAX_PILL_CHARS
+      ? `${resolved.slice(0, MAX_PILL_CHARS)}\u2026`
+      : resolved;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
   return (
     <li role="listitem" className="shrink-0">
       <span
+<<<<<<< HEAD
+=======
+        data-testid="query-scope-document-pill"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         className={cn(
           'group inline-flex items-center gap-1 rounded-full',
           'pl-2.5 pr-1.5 py-0.5 text-xs font-medium',
@@ -201,7 +223,11 @@ function ScopePill({
           'ring-1 ring-primary/20',
           'max-w-[190px]',
         )}
+<<<<<<< HEAD
         title={label ?? documentId}
+=======
+        title={label ?? undefined}
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       >
         <span className="truncate">{displayLabel}</span>
         <button
@@ -215,7 +241,11 @@ function ScopePill({
             'transition-colors',
           )}
           aria-label={t('query.scope.removeDoc', 'Remove {{title}} from scope', {
+<<<<<<< HEAD
             title: label ?? documentId,
+=======
+            title: label ?? resolved,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           })}
         >
           <X className="h-2.5 w-2.5" />

@@ -17,9 +17,15 @@
 //!   │  text_insert pipeline                                    │
 //!   │                                                          │
 //!   │  1. metadata setup                                       │
+<<<<<<< HEAD
 //!   │  2. process_with_resilience()  ← EXPENSIVE (LLM calls)  │
 //!   │     ├─ checkpoint saved after success ←─── SAVE POINT    │
 //!   │  3. store chunks in KV         ← IDEMPOTENT (upserts)   │
+=======
+//!   │  2. process_with_resilience()  ← EXPENSIVE (LLM calls)   │
+//!   │     ├─ checkpoint saved after success ←─── SAVE POINT    │
+//!   │  3. store chunks in KV         ← IDEMPOTENT (upserts)    │
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 //!   │  4. store embeddings in vector ← IDEMPOTENT              │
 //!   │  5. store entities in graph    ← IDEMPOTENT              │
 //!   │  6. store edges in graph       ← IDEMPOTENT              │
@@ -113,7 +119,11 @@ impl PipelineCheckpoint {
 }
 
 /// Build the KV storage key for a document's pipeline checkpoint.
+<<<<<<< HEAD
 fn checkpoint_key(document_id: &str) -> String {
+=======
+pub fn checkpoint_key(document_id: &str) -> String {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     format!("{document_id}{CHECKPOINT_KEY_SUFFIX}")
 }
 
@@ -224,9 +234,27 @@ pub async fn save_pipeline_checkpoint(
         ));
     }
 
+<<<<<<< HEAD
     kv.upsert(&[(key.clone(), value)])
         .await
         .map_err(|e| format!("Failed to save pipeline checkpoint {key}: {e}"))?;
+=======
+    // SPEC-091 WP1 (WP-AC-05): skip KV when relational authority AND typed write lands.
+    // Non-UUID / no-pool paths keep KV so unit tests and degraded boots still resume.
+    let relational = crate::services::relational_sidecar_store::checkpoints_prefer_relational();
+    let wrote_typed = crate::services::relational_sidecar_store::typed_checkpoint_put(
+        document_id,
+        crate::services::relational_sidecar_store::CHECKPOINT_KIND_CRASH,
+        &value,
+    )
+    .await;
+    let skip_kv = relational && wrote_typed;
+    if !skip_kv {
+        kv.upsert(&[(key.clone(), value.clone())])
+            .await
+            .map_err(|e| format!("Failed to save pipeline checkpoint {key}: {e}"))?;
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     info!(
         document_id = %document_id,
@@ -235,6 +263,11 @@ pub async fn save_pipeline_checkpoint(
         relationships = result.stats.relationship_count,
         embeddings_stripped = stripped,
         checkpoint_bytes = approx_bytes,
+<<<<<<< HEAD
+=======
+        kv_write = !skip_kv,
+        typed_write = wrote_typed,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         "Saved pipeline checkpoint (extraction result persisted for resume; embeddings omitted)"
     );
 
@@ -262,6 +295,10 @@ pub async fn load_pipeline_checkpoint(
     load_validated_checkpoint_blob(
         kv,
         &checkpoint_key(document_id),
+<<<<<<< HEAD
+=======
+        crate::services::relational_sidecar_store::CHECKPOINT_KIND_CRASH,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         document_id,
         workspace_id,
         extraction_provider,
@@ -278,6 +315,14 @@ pub async fn load_pipeline_checkpoint(
 /// Called when all storage stages complete successfully, freeing KV space.
 pub async fn clear_pipeline_checkpoint(kv: &Arc<dyn KVStorage>, document_id: &str) {
     let key = checkpoint_key(document_id);
+<<<<<<< HEAD
+=======
+    crate::services::relational_sidecar_store::typed_checkpoint_delete(
+        document_id,
+        crate::services::relational_sidecar_store::CHECKPOINT_KIND_CRASH,
+    )
+    .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     match kv.delete(std::slice::from_ref(&key)).await {
         Ok(_) => debug!(document_id = %document_id, "Cleared pipeline checkpoint"),
         Err(e) => warn!(
@@ -329,9 +374,26 @@ pub async fn save_extraction_snapshot(
         ));
     }
 
+<<<<<<< HEAD
     kv.upsert(&[(key.clone(), value)])
         .await
         .map_err(|e| format!("Failed to save extraction snapshot {key}: {e}"))?;
+=======
+    // SPEC-091 WP1: relational + successful typed write → KV write-stop.
+    let relational = crate::services::relational_sidecar_store::checkpoints_prefer_relational();
+    let wrote_typed = crate::services::relational_sidecar_store::typed_checkpoint_put(
+        document_id,
+        crate::services::relational_sidecar_store::CHECKPOINT_KIND_SNAPSHOT,
+        &value,
+    )
+    .await;
+    let skip_kv = relational && wrote_typed;
+    if !skip_kv {
+        kv.upsert(&[(key.clone(), value.clone())])
+            .await
+            .map_err(|e| format!("Failed to save extraction snapshot {key}: {e}"))?;
+    }
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     info!(
         document_id = %document_id,
@@ -339,6 +401,11 @@ pub async fn save_extraction_snapshot(
         entities = result.stats.entity_count,
         embeddings_stripped = stripped,
         snapshot_bytes = approx_bytes,
+<<<<<<< HEAD
+=======
+        kv_write = !skip_kv,
+        typed_write = wrote_typed,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         "P7e: saved durable extraction snapshot (soft-reprocess / merge-only reuse)"
     );
     Ok(())
@@ -356,6 +423,10 @@ pub async fn load_extraction_snapshot(
     load_validated_checkpoint_blob(
         kv,
         &extraction_snapshot_key(document_id),
+<<<<<<< HEAD
+=======
+        crate::services::relational_sidecar_store::CHECKPOINT_KIND_SNAPSHOT,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         document_id,
         workspace_id,
         extraction_provider,
@@ -370,6 +441,14 @@ pub async fn load_extraction_snapshot(
 /// Clear durable extraction snapshot (Full reprocess / content wipe).
 pub async fn clear_extraction_snapshot(kv: &Arc<dyn KVStorage>, document_id: &str) {
     let key = extraction_snapshot_key(document_id);
+<<<<<<< HEAD
+=======
+    crate::services::relational_sidecar_store::typed_checkpoint_delete(
+        document_id,
+        crate::services::relational_sidecar_store::CHECKPOINT_KIND_SNAPSHOT,
+    )
+    .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     match kv.delete(std::slice::from_ref(&key)).await {
         Ok(_) => debug!(document_id = %document_id, "Cleared extraction snapshot"),
         Err(e) => warn!(
@@ -385,6 +464,10 @@ pub async fn clear_extraction_snapshot(kv: &Arc<dyn KVStorage>, document_id: &st
 async fn load_validated_checkpoint_blob(
     kv: &Arc<dyn KVStorage>,
     key: &str,
+<<<<<<< HEAD
+=======
+    sidecar_kind: &str,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     document_id: &str,
     workspace_id: &str,
     extraction_provider: &str,
@@ -393,6 +476,7 @@ async fn load_validated_checkpoint_blob(
     max_age_secs: u64,
     label: &str,
 ) -> Option<ProcessingResult> {
+<<<<<<< HEAD
     let value = match kv.get_by_id(key).await {
         Ok(Some(v)) => v,
         Ok(None) => {
@@ -409,6 +493,52 @@ async fn load_validated_checkpoint_blob(
             return None;
         }
     };
+=======
+    // SPEC-091 Wave B4: flag-gated typed read first; KV fallback on any gap.
+    let value = if crate::services::relational_sidecar_store::checkpoints_prefer_relational() {
+        match crate::services::relational_sidecar_store::typed_checkpoint_get(
+            document_id,
+            sidecar_kind,
+        )
+        .await
+        {
+            Some(v) => Some(v),
+            None => match kv.get_by_id(key).await {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!(
+                        document_id = %document_id,
+                        error = %e,
+                        %label,
+                        "Failed to read reusable extraction blob — falling through"
+                    );
+                    return None;
+                }
+            },
+        }
+    } else {
+        match kv.get_by_id(key).await {
+            Ok(Some(v)) => Some(v),
+            Ok(None) => {
+                debug!(document_id = %document_id, %label, "No reusable extraction blob found");
+                return None;
+            }
+            Err(e) => {
+                warn!(
+                    document_id = %document_id,
+                    error = %e,
+                    %label,
+                    "Failed to read reusable extraction blob — falling through"
+                );
+                return None;
+            }
+        }
+    };
+    let Some(value) = value else {
+        debug!(document_id = %document_id, %label, "No reusable extraction blob found");
+        return None;
+    };
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     let checkpoint: PipelineCheckpoint = match serde_json::from_value(value) {
         Ok(cp) => cp,
@@ -420,6 +550,14 @@ async fn load_validated_checkpoint_blob(
                 "Corrupt reusable extraction blob — clearing"
             );
             let _ = kv.delete(&[key.to_string()]).await;
+<<<<<<< HEAD
+=======
+            crate::services::relational_sidecar_store::typed_checkpoint_delete(
+                document_id,
+                sidecar_kind,
+            )
+            .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             return None;
         }
     };
@@ -431,6 +569,14 @@ async fn load_validated_checkpoint_blob(
             "Workspace mismatch on reusable extraction blob — ignoring"
         );
         let _ = kv.delete(&[key.to_string()]).await;
+<<<<<<< HEAD
+=======
+        crate::services::relational_sidecar_store::typed_checkpoint_delete(
+            document_id,
+            sidecar_kind,
+        )
+        .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         return None;
     }
 
@@ -443,6 +589,14 @@ async fn load_validated_checkpoint_blob(
             "Provider mismatch on reusable extraction blob — ignoring"
         );
         let _ = kv.delete(&[key.to_string()]).await;
+<<<<<<< HEAD
+=======
+        crate::services::relational_sidecar_store::typed_checkpoint_delete(
+            document_id,
+            sidecar_kind,
+        )
+        .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         return None;
     }
 
@@ -454,6 +608,14 @@ async fn load_validated_checkpoint_blob(
             "Content hash mismatch on reusable extraction blob — ignoring"
         );
         let _ = kv.delete(&[key.to_string()]).await;
+<<<<<<< HEAD
+=======
+        crate::services::relational_sidecar_store::typed_checkpoint_delete(
+            document_id,
+            sidecar_kind,
+        )
+        .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         return None;
     }
 
@@ -471,6 +633,14 @@ async fn load_validated_checkpoint_blob(
             "Reusable extraction blob too old — ignoring"
         );
         let _ = kv.delete(&[key.to_string()]).await;
+<<<<<<< HEAD
+=======
+        crate::services::relational_sidecar_store::typed_checkpoint_delete(
+            document_id,
+            sidecar_kind,
+        )
+        .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         return None;
     }
 
@@ -492,6 +662,14 @@ async fn load_validated_checkpoint_blob(
 /// and removes them. This prevents unbounded storage growth from crashed
 /// processing runs that never completed.
 pub async fn cleanup_stale_checkpoints(kv: &Arc<dyn KVStorage>) {
+<<<<<<< HEAD
+=======
+    // SPEC-091 Wave B4: typed sweep mirrors the KV sweep (no-op without pool).
+    crate::services::relational_sidecar_store::cleanup_stale_typed_checkpoints(
+        CHECKPOINT_MAX_AGE_SECS,
+    )
+    .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let checkpoint_keys = match kv.keys_with_suffix(CHECKPOINT_KEY_SUFFIX).await {
         Ok(keys) => keys,
         Err(e) => {

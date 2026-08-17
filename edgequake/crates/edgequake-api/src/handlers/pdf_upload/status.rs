@@ -265,6 +265,7 @@ pub async fn get_pdf_progress(
     Path(track_id): Path<String>,
 ) -> ApiResult<Json<PdfUploadProgress>> {
     // SPEC-083 S-02: ownership check — foreign track → 404.
+<<<<<<< HEAD
     crate::services::task_scope::get_task_for_context(&state, &track_id, &context).await?;
 
     let progress = state
@@ -277,6 +278,21 @@ pub async fn get_pdf_progress(
                 "Progress not found. Upload may have completed or not yet started.".to_string(),
             )
         })?;
+=======
+    let task =
+        crate::services::task_scope::get_task_for_context(&state, &track_id, &context).await?;
+
+    // After restart the in-memory map is empty while the durable task may still
+    // be live — rehydrate a skeleton so the UI does not hard-404 (SPEC-054).
+    let progress =
+        super::progress_identity::get_or_rehydrate_pdf_progress(&state, &track_id, &task)
+            .await
+            .ok_or_else(|| {
+                ApiError::NotFound(
+                    "Progress not found. Upload may have completed or not yet started.".to_string(),
+                )
+            })?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     Ok(Json(progress))
 }
@@ -338,7 +354,11 @@ pub async fn get_pdf_progress_stream(
     // SPEC-083 S-02: ownership check before opening the SSE stream.
     crate::services::task_scope::get_task_for_context(&state, &track_id, &context).await?;
 
+<<<<<<< HEAD
     let pipeline_state = state.tasks.pipeline_state.clone();
+=======
+    let state_for_stream = state.clone();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let tid = track_id.clone();
 
     // Adaptive poll interval based on whether we've seen progress yet
@@ -350,7 +370,34 @@ pub async fn get_pdf_progress_stream(
         let poll_interval = Duration::from_millis(500);
 
         loop {
+<<<<<<< HEAD
             if let Some(progress) = pipeline_state.get_pdf_progress(&tid).await {
+=======
+            // Prefer live in-memory progress; on miss, reload the durable task so
+            // a terminal Indexed/Failed row rehydrates correctly (not a stale
+            // Processing snapshot from stream-open time).
+            let progress = if let Some(live) = state_for_stream
+                .tasks
+                .pipeline_state
+                .get_pdf_progress(&tid)
+                .await
+            {
+                Some(live)
+            } else if let Ok(Some(fresh_task)) =
+                state_for_stream.tasks.storage.get_task(&tid).await
+            {
+                super::progress_identity::get_or_rehydrate_pdf_progress(
+                    &state_for_stream,
+                    &tid,
+                    &fresh_task,
+                )
+                .await
+            } else {
+                None
+            };
+
+            if let Some(progress) = progress {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 miss_count = 0;
                 let current_pct = progress.overall_percentage;
 

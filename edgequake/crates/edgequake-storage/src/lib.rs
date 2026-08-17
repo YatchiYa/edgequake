@@ -57,6 +57,10 @@
 
 pub mod adapters;
 pub mod chunk_content;
+<<<<<<< HEAD
+=======
+pub mod chunk_text_authority;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub mod community;
 pub mod community_index_service;
 pub mod community_persist;
@@ -66,7 +70,12 @@ pub use compensation::{
     compensate_merge_failure, compensate_merge_failure_with_kv, compensate_orphan_graph_writes,
     compensate_orphan_kv, compensate_orphan_vectors, compensate_shared_entity_skipped_total,
     compensation_quarantine_total, record_compensate_shared_entity_skipped,
+<<<<<<< HEAD
     record_vector_dim_mismatch_rejected, vector_dim_mismatch_rejected_total,
+=======
+    record_vector_dim_mismatch_rejected, set_quarantine_sink, vector_dim_mismatch_rejected_total,
+    QuarantineSink,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 pub mod conversation_storage;
 pub mod conversation_types;
@@ -84,6 +93,7 @@ pub mod filter_column_policy;
 pub use filter_column_policy::{
     ann_exact_max_rows, prefer_denorm_filter_columns, DEFAULT_ANN_EXACT_MAX_ROWS,
 };
+<<<<<<< HEAD
 pub mod graph_batch_dedupe;
 pub mod graph_metrics;
 pub mod kv_key_schema;
@@ -95,6 +105,43 @@ pub mod storage_op_metrics;
 pub mod traits;
 pub mod vector_id;
 
+=======
+pub mod chunk_fts;
+pub mod dataop;
+pub mod dataop_annotations;
+pub mod drain_claim;
+pub mod embedding_family;
+pub mod graph_batch_dedupe;
+pub mod graph_metrics;
+pub mod kv_family_cutover;
+pub mod kv_key_schema;
+#[cfg(feature = "postgres")]
+pub mod legacy_store_census;
+pub mod metadata_filter_sql;
+pub mod mm_asset_storage;
+pub mod namespace_tables;
+pub mod original_storage;
+pub mod outbox;
+#[cfg(feature = "postgres")]
+pub mod outbox_drain;
+pub mod pdf_storage;
+pub mod scorecard;
+pub mod serving_fence;
+pub mod storage_op_metrics;
+pub mod traits;
+pub mod vector_backend;
+pub mod vector_id;
+
+#[cfg(test)]
+pub(crate) mod test_env_lock;
+
+pub use vector_backend::{
+    legacy_vector_writes_stopped, vector_backend_from_env, vector_backend_reads_typed,
+    VectorBackend, VECTOR_BACKEND_ENV,
+};
+
+pub use dataop::{all_ref_ids, is_valid_ref_id, sql_comment};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 pub use storage_op_metrics::TimedStorageOp;
 
 // Re-export entity identity (RC-6 / P-G1): single normalization entry point.
@@ -111,6 +158,7 @@ pub use crate::community_index_service::{
     refresh_community_index_now, refresh_community_index_now_with_extras,
     schedule_community_index_refresh, schedule_community_index_refresh_with_extras,
     CommunityRefreshExtras,
+<<<<<<< HEAD
 };
 pub use chunk_content::{
     batch_fetch_chunk_contents, content_from_kv_value, content_from_metadata_or_kv,
@@ -141,7 +189,52 @@ pub use graph_batch_dedupe::{
 };
 pub use graph_metrics::{
     collect_graph_quality_metrics, log_graph_quality, metrics_from_merge_delta, GraphQualityMetrics,
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
+pub use chunk_content::{
+    batch_fetch_chunk_contents, content_from_kv_value, content_from_metadata_or_kv,
+};
+pub use chunk_text_authority::{
+    chunk_text_authority_from_env, chunk_text_authority_writes_kv,
+    chunk_text_authority_writes_relational, ChunkTextAuthority, CHUNK_TEXT_AUTHORITY_ENV,
+};
+#[cfg(feature = "postgres")]
+pub mod chunk_text_dual_read;
+#[cfg(feature = "postgres")]
+pub mod compensation_drain;
+#[cfg(feature = "postgres")]
+pub mod cutover_flag_guard;
+pub mod migration_engine;
+pub use community::{
+    community_max_nodes_from_env, load_graph_bounded, louvain_hierarchy_enabled, BoundedGraphLoad,
+    Community, CommunityAlgorithm, CommunityConfig, CommunityDetectionResult,
+};
+pub use community_persist::{
+    backfill_communities_if_needed, community_auto_max_nodes, community_features_enabled,
+    detect_and_persist_communities, needs_community_backfill, persist_community_labels,
+    refresh_community_index, spawn_community_backfill_if_needed,
+};
+pub use community_reports::{
+    build_community_report_records, build_extractive_community_report, community_report_vector_id,
+    community_report_vector_metadata, community_reports_enabled,
+    index_community_reports_with_embedder, pack_community_report_vectors,
+    upsert_community_report_vectors, COMMUNITY_REPORT_VECTOR_TYPE,
+};
+pub use document_metadata_integrity::{
+    canonical_document_id, document_id_from_metadata_key, metadata_id_drift,
+    repair_document_metadata_in_place, DOCUMENT_METADATA_SUFFIX,
+};
+pub use failed_chunks::{FailedChunkInsert, FailedChunkRecord, InMemoryFailedChunkStore};
+pub use graph_batch_dedupe::{
+    dedupe_edges_by_endpoints, dedupe_nodes_by_id, graph_upsert_chunk_size, normalize_rel_type,
+    normalize_relation_type_str, parse_graph_upsert_chunk, resolve_graph_upsert_chunk,
+    sql_eq_rel_type_arbiter_expr, DEFAULT_GRAPH_UPSERT_CHUNK,
+};
+pub use graph_metrics::{
+    collect_graph_quality_metrics, log_graph_quality, metrics_from_merge_delta, GraphQualityMetrics,
+};
+pub use migration_engine::{MigrationJobProgress, MigrationMode, MIGRATION_MODE_ENV};
 
 // Re-export PDF storage types
 pub use mm_asset_storage::{
@@ -149,6 +242,17 @@ pub use mm_asset_storage::{
     normalize_mm_asset_path, validate_mm_asset_data, DocumentMmAsset, DocumentMmAssetStorage,
     DocumentMmAssetSummary, StoreMmAssetRequest, ASSET_KIND_EMBEDDED_FIGURE,
     ASSET_KIND_PAGE_CHART_CROP, ASSET_KIND_PAGE_FULL, ASSET_KIND_TABLE_CROP,
+<<<<<<< HEAD
+=======
+};
+pub use original_storage::{
+    validate_original_data, DocumentOriginal, DocumentOriginalStorage, StoreOriginalRequest,
+};
+pub use pdf_storage::{
+    calculate_pdf_checksum, validate_pdf_data, CreatePdfRequest, DocumentStatsUpdate,
+    ExtractionMethod, ListPdfFilter, PdfDocument, PdfDocumentStorage, PdfList, PdfProcessingStatus,
+    UpdatePdfProcessingRequest,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 pub use original_storage::{
     validate_original_data, DocumentOriginal, DocumentOriginalStorage, StoreOriginalRequest,
@@ -162,19 +266,73 @@ pub use pdf_storage::{
 pub use conversation_storage::ConversationStorage;
 pub use conversation_types::{ConversationRow, FolderRow, MessageRow};
 
+pub use conversation_storage::ConversationStorage;
+pub use conversation_types::{ConversationRow, FolderRow, MessageRow};
+
 // Re-export traits
+#[cfg(feature = "postgres")]
+pub use cutover_flag_guard::{
+    detect_cutover_posture, validate_cutover_flags, CutoverSchemaPosture,
+};
 pub use error::StorageError;
+pub use kv_family_cutover::{
+    kv_family_mode_from_env, KvFamilyMode, KV_FAMILY_CHUNK, KV_FAMILY_COMPENSATION_QUARANTINE,
+    KV_FAMILY_ENV_PREFIX, KV_FAMILY_METADATA, KV_FAMILY_WSDOC,
+};
+#[cfg(feature = "postgres")]
+pub use legacy_store_census::{any_legacy_rows, legacy_store_census, LegacyStoreCensus};
+pub use namespace_tables::{
+    age_graph_name_for_namespace, bare_kv_table_for_namespace, bare_vectors_table_for_namespace,
+    sanitize_namespace_segment, table_prefix_for_namespace,
+};
+#[cfg(feature = "postgres")]
+pub use outbox::PostgresOutboxSink;
+pub use outbox::{
+    enqueue_outbox_best_effort, NoopOutboxSink, OutboxSink, OUTBOX_AGGREGATE_DOCUMENT,
+    OUTBOX_EVENT_CHUNK_DECLARED, OUTBOX_EVENT_CHUNK_READY, OUTBOX_EVENT_COMPENSATE,
+    OUTBOX_EVENT_MERGE_DONE,
+};
+#[cfg(feature = "postgres")]
+pub use outbox_drain::{
+    chaos_claim_without_ack, drain_once as outbox_drain_once, outbox_drain_claimed_total,
+    outbox_drain_processed_total, outbox_lag_seconds, spawn_outbox_drain, OutboxDrainConfig,
+    OutboxEvent, OUTBOX_DRAIN_ENV,
+};
+pub use scorecard::{
+    AnnMetrics, FullTextMetrics, IngestionMetrics, Scorecard, ScorecardEnvironment,
+    ScorecardRecorder,
+};
+pub use serving_fence::{
+    chunk_visible_in_query, filter_ready_chunk_ids, serving_fence_enabled_from_env,
+    SERVING_FENCE_ENV, SERVING_STATE_READY,
+};
 pub use traits::{
+<<<<<<< HEAD
     kv_key_matches_like, vector_upsert_chunk_size, GraphEdge, GraphNode, GraphReadView,
     GraphStorage, GraphStorageAnalyticsOps, GraphStorageMutateOps, GraphStorageReadOps, KVStorage,
     KnowledgeGraph, MetadataFilter, TextEmbedder, VectorSearchResult, VectorStorage,
     WorkspaceVectorConfig, WorkspaceVectorRegistry, DEFAULT_VECTOR_UPSERT_CHUNK,
+=======
+    kv_key_matches_like, vector_upsert_chunk_size, Chunk, ChunkCursor, ChunkId, ChunkRepository,
+    ChunkText, DocumentId, DocumentRepository, EmbeddingIndex, FleetEmbeddingIndex, GraphEdge,
+    GraphNode, GraphPropertyWriteMode, GraphReadView, GraphStorage, GraphStorageAnalyticsOps,
+    GraphStorageMutateOps, GraphStorageReadOps, InsertReport, KVStorage, KnowledgeGraph,
+    MetadataFilter, MirrorLegacyReport, ModelId, TextEmbedder, UnitOfWork, VectorSearchResult,
+    VectorStorage, WorkspaceId, WorkspaceVectorConfig, WorkspaceVectorRegistry,
+    DEFAULT_VECTOR_UPSERT_CHUNK,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 
 // Re-export adapters
 pub use adapters::memory::{
+<<<<<<< HEAD
     MemoryConversationStorage, MemoryGraphStorage, MemoryKVStorage, MemoryMmAssetStorage,
     MemoryOriginalStorage, MemoryPdfStorage, MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
+=======
+    MemoryChunkRepository, MemoryConversationStorage, MemoryGraphStorage, MemoryKVStorage,
+    MemoryMmAssetStorage, MemoryOriginalStorage, MemoryPdfStorage, MemoryVectorStorage,
+    MemoryWorkspaceVectorRegistry,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 
 // Conditionally export PostgreSQL adapters
@@ -183,6 +341,7 @@ pub use adapters::postgres::{
     allow_vector_table_rebuild, build_ann_select_sql, build_binary_hnsw_index_sql,
     build_binary_rerank_select_sql, build_diskann_embedding_only_index_sql,
     build_diskann_labels_index_sql, build_filtered_diskann_label_select_sql,
+<<<<<<< HEAD
     build_postfilter_diskann_select_sql, diskann_optin_recipe_statements,
     diskann_query_tuning_statements, diskann_rescore_for_list, hnsw_ef_construction_from_env,
     hnsw_partial_by_workspace_enabled, parse_hnsw_iterative_scan_mode, AnnExactReorderPolicy,
@@ -194,5 +353,30 @@ pub use adapters::postgres::{
     DISKANN_OPTIN_RESCORE, DISKANN_OPTIN_SEARCH_LIST, MAX_WORKSPACE_LABELS,
 };
 
+=======
+    build_postfilter_diskann_select_sql, check_hnsw_index_manifest,
+    diskann_optin_recipe_statements, diskann_query_tuning_statements, diskann_rescore_for_list,
+    ensure_admission_document_row, ensure_admission_document_row_with_track,
+    hnsw_ef_construction_from_env, hnsw_partial_by_workspace_enabled,
+    interactive_statement_timeout_ms, parse_hnsw_iterative_scan_mode, partition_allowed,
+    pool_role_max_connections, quantization_allowed, resolve_pool_max_connections,
+    with_session_hygiene, AnnExactReorderPolicy, BinaryQuantizePolicy, FilteredDiskannLabelPolicy,
+    HnswIndexManifest, HnswRuntimePolicy, PgChunkEmbeddingIndex, PgFleetEmbeddingIndex,
+    PgPoolBundle, PgQuarantineSink, PgVectorStorage, PgWorkspaceVectorRegistry, PoolRole,
+    PostgresAGEGraphStorage, PostgresChunkRepository, PostgresConfig, PostgresConversationStorage,
+    PostgresKVStorage, PostgresMmAssetStorage, PostgresOriginalStorage, PostgresPdfStorage,
+    PostgresPool, ScaleGateEvidence, VectorIndexType, VectorStorageMode, WorkspaceLabelMap,
+    DEFAULT_ANN_REORDER_CANDIDATE_K, DEFAULT_BINARY_CANDIDATE_K, DISKANN_OPTIN_RESCORE,
+    DISKANN_OPTIN_SEARCH_LIST, LAST_SOURCE_PREFIX_COUNT_LEN, MAX_WORKSPACE_LABELS,
+    SOURCE_PREFIX_DISCOVERY_CALLS,
+};
+
+// SPEC-091 W3 dual-read counters.
+#[cfg(feature = "postgres")]
+pub use adapters::postgres::vector::{
+    vector_backend_fallback_total, vector_backend_typed_hit_total,
+};
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 // Re-export KV key schema for use across all crates
 pub use kv_key_schema::kv_keys;

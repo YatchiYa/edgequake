@@ -36,9 +36,15 @@ use crate::state::AppState;
 pub use crate::handlers::health_types::{
     ApiCapabilities, BuildInfo, ComponentHealth, EmbeddingProviderHealth, HealthResponse,
     IngestionHealthSnapshot, LlmProviderHealth, MigrationHealthSnapshot,
+<<<<<<< HEAD
     ObservabilityHealthSnapshot, OperationalHealth, ProvidersHealth, QueryEngineHealthSnapshot,
     ReadModelHealthSnapshot, SchemaHealth, SourceIdsIndexHealth, StorageHealthSnapshot,
     TaskQueueHealthSnapshot,
+=======
+    ObservabilityHealthSnapshot, OperationalHealth, PostgresCapabilityHealth, ProvidersHealth,
+    QueryEngineHealthSnapshot, ReadModelHealthSnapshot, SchemaHealth, SourceIdsIndexHealth,
+    StorageHealthSnapshot, TaskQueueHealthSnapshot,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 };
 
 /// Deep health check with component status.
@@ -96,10 +102,25 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<Healt
     #[cfg(not(feature = "postgres"))]
     let eq_id_schema = None;
 
+<<<<<<< HEAD
+=======
+    #[cfg(feature = "postgres")]
+    let graph_available = state
+        .migration_bootstrap
+        .as_ref()
+        .map(|r| r.migration_092.age_available);
+    #[cfg(not(feature = "postgres"))]
+    let graph_available = None;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     let components = ComponentHealth {
         kv_storage: kv_ok,
         vector_storage: vector_ok,
         graph_storage: graph_ok,
+<<<<<<< HEAD
+=======
+        graph_available,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         llm_provider: true, // Assume available, actual check would require API call
         eq_id_schema,
     };
@@ -199,6 +220,15 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<Healt
             } else {
                 Some(edgequake_auth::EXTERNAL_SSO_PATTERN.to_string())
             },
+<<<<<<< HEAD
+=======
+            serving_fence_enabled: Some(
+                edgequake_storage::serving_fence::serving_fence_enabled_from_env(),
+            ),
+            // SPEC-091 IP0: two budgets — do not conflate (F-IP-21).
+            provider_budget_cluster: Some(true),
+            byte_admission_process_local: Some(true),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         }),
         attribution: Some(crate::attribution::health_attribution_summary()),
     };
@@ -295,10 +325,30 @@ async fn build_operational_health(state: &AppState) -> Option<OperationalHealth>
 
 #[cfg(feature = "postgres")]
 fn build_storage_health_snapshot(state: &AppState) -> StorageHealthSnapshot {
+<<<<<<< HEAD
     let mut snap = StorageHealthSnapshot {
         chunk_text_ssot: "kv".to_string(),
         vector_metadata_ref: "content_ref".to_string(),
         chunk_kv_in_persister: true,
+=======
+    use edgequake_storage::{
+        chunk_text_authority_from_env, chunk_text_authority_writes_kv, ChunkTextAuthority,
+    };
+    // LAW-KVH3: tell the truth from the authority SSOT (post-125 boot refuses
+    // stale kv/dual flags, so relational here means KV is not the chunk SSOT).
+    let authority = chunk_text_authority_from_env();
+    let chunk_text_ssot = match authority {
+        ChunkTextAuthority::Relational => "relational",
+        ChunkTextAuthority::Dual => "dual",
+        ChunkTextAuthority::Kv => "kv",
+    }
+    .to_string();
+    let chunk_kv_in_persister = chunk_text_authority_writes_kv(authority);
+    let mut snap = StorageHealthSnapshot {
+        chunk_text_ssot,
+        vector_metadata_ref: "content_ref".to_string(),
+        chunk_kv_in_persister,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         vector_storage_mode: None,
         document_id_generator: None,
         age_rls_enabled: None,
@@ -315,10 +365,27 @@ fn build_storage_health_snapshot(state: &AppState) -> StorageHealthSnapshot {
 
 #[cfg(not(feature = "postgres"))]
 fn build_storage_health_snapshot(_state: &AppState) -> StorageHealthSnapshot {
+<<<<<<< HEAD
     StorageHealthSnapshot {
         chunk_text_ssot: "kv".to_string(),
         vector_metadata_ref: "content_ref".to_string(),
         chunk_kv_in_persister: true,
+=======
+    use edgequake_storage::{
+        chunk_text_authority_from_env, chunk_text_authority_writes_kv, ChunkTextAuthority,
+    };
+    let authority = chunk_text_authority_from_env();
+    let chunk_text_ssot = match authority {
+        ChunkTextAuthority::Relational => "relational",
+        ChunkTextAuthority::Dual => "dual",
+        ChunkTextAuthority::Kv => "kv",
+    }
+    .to_string();
+    StorageHealthSnapshot {
+        chunk_text_ssot,
+        vector_metadata_ref: "content_ref".to_string(),
+        chunk_kv_in_persister: chunk_text_authority_writes_kv(authority),
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         vector_storage_mode: None,
         document_id_generator: None,
         age_rls_enabled: None,
@@ -423,6 +490,13 @@ async fn get_schema_health_inner(state: &AppState) -> Option<SchemaHealth> {
             (degraded, Some(r.migration_092.fallback_env_enabled))
         });
 
+<<<<<<< HEAD
+=======
+    // SPEC-091 Doc 17 (LAW-B3): same derivation as the boot gate — no second
+    // computation of schema-vs-binary drift.
+    let drift = crate::state::migration_bootstrap::schema_drift(pool).await;
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     Some(SchemaHealth {
         latest_version: stats.latest_version,
         migrations_applied: stats.applied_count as usize,
@@ -431,9 +505,40 @@ async fn get_schema_health_inner(state: &AppState) -> Option<SchemaHealth> {
         halfvec_conversion_applied,
         eq_id_graphs_degraded,
         eq_id_fallback_enabled,
+<<<<<<< HEAD
     })
 }
 
+=======
+        pending_count: drift.map(|d| d.pending_count),
+        migration_required: drift.map(|d| d.migration_required()),
+        postgres_capabilities: derive_postgres_capability_health(state),
+    })
+}
+
+/// SPEC-091 IW4 (LAW-I6): `/health` capability matrix from storage SSOT.
+#[cfg(feature = "postgres")]
+pub fn derive_postgres_capability_health(state: &AppState) -> Option<PostgresCapabilityHealth> {
+    let caps = state.postgres_capabilities.as_ref()?;
+    let pgvector_version = state
+        .migration_bootstrap
+        .as_ref()
+        .and_then(|r| r.migration_042.extversion_after.clone());
+    Some(
+        edgequake_storage::adapters::postgres::PostgresCapabilityProbe::from_runtime(
+            caps,
+            pgvector_version,
+        )
+        .into(),
+    )
+}
+
+#[cfg(not(feature = "postgres"))]
+pub fn derive_postgres_capability_health(_state: &AppState) -> Option<PostgresCapabilityHealth> {
+    None
+}
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 /// Readiness check (for Kubernetes).
 ///
 /// Returns 503 when:
@@ -508,12 +613,28 @@ pub async fn readiness_check(State(state): State<AppState>) -> impl IntoResponse
 
         // SPEC-057 P3: store contention (pool util + compensation quarantine).
         // DRY: reuse readiness_blocked_by_store / assess_store_contention SSOT.
+<<<<<<< HEAD
         let pool_util = state.pg_pool.as_ref().and_then(|pool| {
             crate::store_contention::pool_utilization(
                 pool.size(),
                 pool.num_idle().min(u32::MAX as usize) as u32,
             )
         });
+=======
+        let pool_util = state
+            .pool_bundle
+            .as_ref()
+            .map(crate::store_contention::role_utils_from_bundle)
+            .and_then(|roles| crate::store_contention::max_role_pool_utilization(&roles))
+            .or_else(|| {
+                state.pg_pool.as_ref().and_then(|pool| {
+                    crate::store_contention::pool_utilization(
+                        pool.size(),
+                        pool.num_idle().min(u32::MAX as usize) as u32,
+                    )
+                })
+            });
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         if crate::store_contention::readiness_blocked_by_store(pool_util) {
             let store = crate::store_contention::assess_store_contention(pool_util);
             ready = false;

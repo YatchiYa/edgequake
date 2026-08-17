@@ -119,12 +119,19 @@ export function useDeletionSessions(): DeletionSessionEntry[] {
 
     let cancelled = false;
     const pollOne = async (entry: DeletionSessionEntry) => {
+<<<<<<< HEAD
+=======
+      // SPEC-098 LAW-098-10: never treat shared batch_track_id completion as
+      // per-doc success with zero stats. Prove absence (404) or delete_failed,
+      // or use batch result failed_ids when the task is terminal.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       if (entry.trackId) {
         try {
           const task = await getTaskStatus(entry.trackId);
           if (cancelled) return;
           const status = (task.status || '').toLowerCase();
           if (status === 'failed' || status === 'cancelled') {
+<<<<<<< HEAD
             applyDeletionFailed(
               entry.documentId,
               task.error_message || 'Deletion failed',
@@ -145,6 +152,49 @@ export function useDeletionSessions(): DeletionSessionEntry[] {
             queryClient.invalidateQueries({ queryKey: ['documents'] });
             invalidateKnowledgeGraph(queryClient);
             return;
+=======
+            // Batch/single task failed — still confirm per-doc via GET below.
+          } else if (status === 'indexed' || status === 'completed') {
+            const result = (task.result ?? {}) as {
+              failed_ids?: unknown;
+              failed?: unknown;
+              deleted_count?: unknown;
+            };
+            const failedIds = Array.isArray(result.failed_ids)
+              ? new Set(
+                  result.failed_ids
+                    .filter((x): x is string => typeof x === 'string')
+                    .map((x) => x),
+                )
+              : null;
+            // SPEC-098 LAW-098-11: prefer structured per-id reasons.
+            let reasonFromBatch: string | undefined;
+            if (Array.isArray(result.failed)) {
+              for (const item of result.failed) {
+                if (!item || typeof item !== 'object') continue;
+                const row = item as { document_id?: unknown; reason?: unknown };
+                if (
+                  row.document_id === entry.documentId &&
+                  typeof row.reason === 'string' &&
+                  row.reason.trim()
+                ) {
+                  reasonFromBatch = row.reason.trim();
+                  break;
+                }
+              }
+            }
+            if (failedIds?.has(entry.documentId) || reasonFromBatch) {
+              applyDeletionFailed(
+                entry.documentId,
+                reasonFromBatch ||
+                  task.error_message ||
+                  'Deletion failed',
+              );
+              queryClient.invalidateQueries({ queryKey: ['documents'] });
+              return;
+            }
+            // Fall through to document poll for absence proof.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           }
         } catch {
           // Task may not be visible yet; fall through to document poll.
@@ -155,7 +205,13 @@ export function useDeletionSessions(): DeletionSessionEntry[] {
         const doc = await getDocument(entry.documentId);
         if (cancelled) return;
         const status = (doc.status || '').toLowerCase();
+<<<<<<< HEAD
         if (status === 'delete_failed' || status === 'failed') {
+=======
+        // Only terminal delete_failed — generic `failed` is often an orphan
+        // staging shell (SPEC-086) and must not abort an in-flight dismiss.
+        if (status === 'delete_failed') {
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
           applyDeletionFailed(
             entry.documentId,
             doc.error_message ||
@@ -164,6 +220,10 @@ export function useDeletionSessions(): DeletionSessionEntry[] {
           );
           queryClient.invalidateQueries({ queryKey: ['documents'] });
         }
+<<<<<<< HEAD
+=======
+        // Still deleting / completed in catalog → keep session active (pin holds).
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
       } catch (err) {
         if (cancelled) return;
         // Gone from catalog → treat as successful delete when WS missed terminal.

@@ -324,12 +324,36 @@ impl DocumentTaskProcessor {
             extraction_warning,
         );
 
+<<<<<<< HEAD
         task.update_progress("enqueue_ingest".to_string(), 5, 90);
+=======
+        self.bump_task_progress(task, "enqueue_ingest".to_string(), 5, 90)
+            .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         let ingest_track_id = self
             .enqueue_pdf_ingest_insert(task, data, text_data, ingest_timeout_secs)
             .await?;
 
+<<<<<<< HEAD
         task.update_progress("complete".to_string(), 6, 100);
+=======
+        // Progress/cancel + list enrichment must follow the Insert, not the
+        // completed convert task (otherwise display_status paints as indexed).
+        if let Err(e) = self
+            .retarget_document_ingest_track(early_doc_id, &ingest_track_id)
+            .await
+        {
+            tracing::warn!(
+                document_id = %early_doc_id,
+                ingest_track_id = %ingest_track_id,
+                error = %e,
+                "Failed to retarget document track_id to PDF ingest Insert"
+            );
+        }
+
+        self.bump_task_progress(task, "complete".to_string(), 6, 100)
+            .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         info!(
             pdf_id = %data.pdf_id,
             document_id = %early_doc_id,
@@ -457,7 +481,12 @@ impl DocumentTaskProcessor {
             .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))?;
 
         // == Progress: loading complete, preparing for conversion ==
+<<<<<<< HEAD
         task.update_progress("pdf_loading".to_string(), 1, 5);
+=======
+        self.bump_task_progress(task, "pdf_loading".to_string(), 1, 5)
+            .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         let tenant_ctx = crate::middleware::TenantContext {
             tenant_id: Some(data.tenant_id.to_string()),
@@ -637,7 +666,12 @@ impl DocumentTaskProcessor {
                         "RESUME: Markdown already stored — skipping PDF conversion, enqueueing ingest Insert"
                     );
 
+<<<<<<< HEAD
                     task.update_progress("resume_convert_barrier".to_string(), 3, 45);
+=======
+                    self.bump_task_progress(task, "resume_convert_barrier".to_string(), 3, 45)
+                        .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
                     self.check_cancelled(&cancel_token, "pre-ingest-enqueue-resume", &early_doc_id)
                         .await?;
@@ -722,7 +756,12 @@ impl DocumentTaskProcessor {
         }
 
         // == Progress: starting conversion (this can take 5-10+ minutes) ==
+<<<<<<< HEAD
         task.update_progress("pdf_converting".to_string(), 2, 10);
+=======
+        self.bump_task_progress(task, "pdf_converting".to_string(), 2, 10)
+            .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         // ── CANCELLATION GATE: before vision extraction (most expensive PDF stage) ──
         self.check_cancelled(&cancel_token, "pre-vision-extraction", &early_doc_id)
@@ -921,6 +960,10 @@ impl DocumentTaskProcessor {
             table_method: None,
             filename: Some(filename.clone()),
             page_drawing_assets,
+<<<<<<< HEAD
+=======
+            pages: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             vision: vision_model.clone().map(|model| {
                 let hb = Arc::clone(&vision_heartbeat);
                 let status_hook: edgequake_pdf::VisionStatusHook = {
@@ -947,6 +990,10 @@ impl DocumentTaskProcessor {
                     no_resume: should_cleanup_existing_content,
                     progress_callback: Some(wrapped_progress),
                     status_hook: Some(status_hook),
+<<<<<<< HEAD
+=======
+                    pages: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
                 }
             }),
         };
@@ -1305,7 +1352,12 @@ impl DocumentTaskProcessor {
         );
 
         // == Progress: conversion done, storing markdown ==
+<<<<<<< HEAD
         task.update_progress("storing_markdown".to_string(), 3, 45);
+=======
+        self.bump_task_progress(task, "storing_markdown".to_string(), 3, 45)
+            .await;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         // 5. Store markdown in pdf_documents (convert barrier SSOT — SPEC-057 P2)
         let update_req = UpdatePdfProcessingRequest {

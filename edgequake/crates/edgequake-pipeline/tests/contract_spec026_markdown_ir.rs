@@ -108,7 +108,12 @@ fn extractor_prompt_includes_section_when_present() {
         heading_level: 1,
     };
     let text = text_with_section_context("Body text.", Some(&section));
+<<<<<<< HEAD
     let prompt = json_extraction_prompt(&text, &EntityExtractionSchema::server_default());
+=======
+    let prompt =
+        json_extraction_prompt(&text, &EntityExtractionSchema::server_default(), "English");
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     assert!(prompt.contains("---Section Context---"));
     assert!(prompt.contains("Guide"));
 }

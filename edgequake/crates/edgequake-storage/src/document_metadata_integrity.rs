@@ -107,6 +107,17 @@ mod tests {
     }
 
     #[test]
+<<<<<<< HEAD
+=======
+    fn canonical_id_strips_staging_prefix() {
+        let key = "staging:real-doc-metadata";
+        let meta = json!({ "id": "real-doc", "title": "x.md" });
+        assert_eq!(canonical_document_id(key, &meta), "real-doc");
+        assert!(!metadata_id_drift(key, &meta));
+    }
+
+    #[test]
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     fn detects_id_drift() {
         let key = "doc-a-metadata";
         assert!(metadata_id_drift(

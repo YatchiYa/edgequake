@@ -10,7 +10,14 @@ use crate::{
 };
 
 #[cfg(feature = "postgres")]
+<<<<<<< HEAD
 use super::helpers::{apply_entity_types_metadata, apply_entity_types_strict_metadata};
+=======
+use super::helpers::{
+    apply_entity_types_metadata, apply_entity_types_strict_metadata,
+    apply_extraction_language_metadata,
+};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 #[cfg(feature = "postgres")]
 use super::rows::WorkspaceRow;
 #[cfg(feature = "postgres")]
@@ -153,6 +160,18 @@ impl WorkspaceServiceImpl {
         // Normalize: uppercase, underscored, deduplicated, max 50 types
         apply_entity_types_metadata(&mut workspace.metadata, request.entity_types);
         apply_entity_types_strict_metadata(&mut workspace.metadata, request.entity_types_strict);
+<<<<<<< HEAD
+=======
+        // SPEC-096: Workspace extraction language (future ingestions only)
+        apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
+            .map_err(Error::validation)?;
+        // SPEC-102: entity type color overrides for graph visualization
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
         sqlx::query(
             r#"
@@ -367,6 +386,16 @@ impl WorkspaceServiceImpl {
         }
         apply_entity_types_metadata(&mut workspace.metadata, request.entity_types);
         apply_entity_types_strict_metadata(&mut workspace.metadata, request.entity_types_strict);
+<<<<<<< HEAD
+=======
+        apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
+            .map_err(Error::validation)?;
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         workspace.updated_at = chrono::Utc::now();
 
         // Store all config in metadata JSONB column (database schema uses metadata, not separate columns)
@@ -428,21 +457,33 @@ impl WorkspaceServiceImpl {
             .await?
             .ok_or_else(|| Error::not_found(format!("Workspace {} not found", workspace_id)))?;
 
+<<<<<<< HEAD
         // WHY scalar subqueries: Single round-trip to database, efficient counting.
         // Each subquery uses indexed workspace_id for O(log n) performance.
         // OODA-13: Implements real-time metrics per mission requirement.
+=======
+        // SPEC-091 F-091-11 / Pre-W1: do NOT read the unpopulated `chunks` spine.
+        // LAW-D4 interim projections (distinct facts, labeled as such):
+        //   chunk_count     ← SUM(documents.chunk_count)  (writer-maintained denorm)
+        //   embedding_count ← COUNT on shared vector table by workspace_id
+        // After Wave 1 these re-point to `chunks` / `chunk_serving_state`.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         #[derive(sqlx::FromRow)]
         struct StatsRow {
             document_count: i64,
             chunk_count: i64,
             entity_count: i64,
             relationship_count: i64,
+<<<<<<< HEAD
             embedding_count: i64,
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             storage_bytes: i64,
         }
 
         let stats: StatsRow = sqlx::query_as(
             r#"
+<<<<<<< HEAD
             SELECT 
                 (SELECT COUNT(*) FROM documents WHERE workspace_id = $1) as document_count,
                 (SELECT COUNT(*) FROM chunks WHERE workspace_id = $1) as chunk_count,
@@ -450,6 +491,14 @@ impl WorkspaceServiceImpl {
                 (SELECT COUNT(*) FROM relationships WHERE workspace_id = $1) as relationship_count,
                 (SELECT COUNT(*) FROM chunks WHERE workspace_id = $1) as embedding_count,
                 (SELECT COALESCE(SUM(file_size_bytes), 0)::BIGINT FROM documents WHERE workspace_id = $1) as storage_bytes
+=======
+            SELECT
+                (SELECT COUNT(*) FROM public.documents WHERE workspace_id = $1) AS document_count,
+                (SELECT COALESCE(SUM(chunk_count), 0)::BIGINT FROM public.documents WHERE workspace_id = $1) AS chunk_count,
+                (SELECT COUNT(*) FROM entities WHERE workspace_id = $1) AS entity_count,
+                (SELECT COUNT(*) FROM relationships WHERE workspace_id = $1) AS relationship_count,
+                (SELECT COALESCE(SUM(file_size_bytes), 0)::BIGINT FROM public.documents WHERE workspace_id = $1) AS storage_bytes
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             "#,
         )
         .bind(workspace_id)
@@ -457,13 +506,59 @@ impl WorkspaceServiceImpl {
         .await
         .map_err(|e| Error::internal(format!("Failed to get workspace stats: {}", e)))?;
 
+<<<<<<< HEAD
+=======
+        // SPEC-105: prefer typed `chunk_embeddings` (via chunks.workspace_id).
+        // Fall back to legacy `eq_eq_default_vectors` only when that table exists
+        // (≤0.22 mid-upgrade); missing either → 0.
+        let embedding_count = match sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)::BIGINT
+            FROM public.chunk_embeddings ce
+            INNER JOIN public.chunks c ON c.id = ce.chunk_id
+            WHERE c.workspace_id = $1
+            "#,
+        )
+        .bind(workspace_id)
+        .fetch_one(&self.pool)
+        .await
+        {
+            Ok(n) => n,
+            Err(_) => match sqlx::query_scalar::<_, i64>(
+                r#"
+                SELECT COUNT(*)::BIGINT
+                FROM eq_eq_default_vectors
+                WHERE workspace_id = $1
+                "#,
+            )
+            .bind(workspace_id.to_string())
+            .fetch_one(&self.pool)
+            .await
+            {
+                Ok(n) => n,
+                Err(e) => {
+                    tracing::debug!(
+                        workspace_id = %workspace_id,
+                        error = %e,
+                        "SPEC-105: embedding_count projection unavailable; reporting 0"
+                    );
+                    0
+                }
+            },
+        };
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         Ok(WorkspaceStats {
             workspace_id,
             document_count: stats.document_count as usize,
             entity_count: stats.entity_count as usize,
             relationship_count: stats.relationship_count as usize,
             chunk_count: stats.chunk_count as usize,
+<<<<<<< HEAD
             embedding_count: stats.embedding_count as usize,
+=======
+            embedding_count: embedding_count as usize,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             storage_bytes: stats.storage_bytes as usize,
         })
     }

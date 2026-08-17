@@ -1,6 +1,16 @@
+<<<<<<< HEAD
 # Java SDK
 
 > **Product: v0.19.0** · SDK package: **~0.4.0** (decoupled from server)
+=======
+---
+title: "Java SDK"
+---
+
+# Java SDK
+
+> **Product: v0.23.0** · SDK package: **~0.4.0** (decoupled from server)
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 **Location:** `sdks/java`
 
@@ -26,7 +36,11 @@ For bleeding-edge API changes before a Maven release:
 cd sdks/java && mvn install -DskipTests
 ```
 
+<<<<<<< HEAD
 Point your project at the local `~/.m2` artifact or use a composite build. **Server v0.19.0 may expose fields not yet in the latest published JAR** — compare OpenAPI when in doubt.
+=======
+Point your project at the local `~/.m2` artifact or use a composite build. **Server v0.23.0 may expose fields not yet in the latest published JAR** — compare OpenAPI when in doubt.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ## Example
 
@@ -53,9 +67,17 @@ System.out.println(affected);
 - **Archive:** includes `archive: true`.
 - **Move:** `conversation_ids` plus optional `folder_id`.
 
+<<<<<<< HEAD
 ## v0.19 gaps
 
 Spot-check task cancel, PDF progress, and document `display_status` / `ui_phase` against OpenAPI — Java models may trail Tier 1.
+=======
+## v0.23 gaps
+
+- Spot-check task cancel, PDF progress, and document `display_status` / `ui_phase` against OpenAPI — Java models may trail Tier 1.
+- **Stateless parse (SPEC-094):** no typed `parse` client yet — use raw HTTP `POST /api/v1/parse` (multipart; sync ≤ 15 pages / 20 MiB, async ≤ 1000 pages via `async: true` + poll `GET /api/v1/parse/jobs/{id}`), or `GET /api/v1/parse/backends`.
+- **LLM cache (server-side):** `EDGEQUAKE_LLM_CACHE=1` default; overrides `EDGEQUAKE_KEYWORD_CACHE` / `EDGEQUAKE_QUERY_ANSWER_CACHE`. No client field — set on the server.
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 ```bash
 cd sdks/java && mvn test

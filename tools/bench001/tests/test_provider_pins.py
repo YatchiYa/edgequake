@@ -45,7 +45,11 @@ def test_defaults_are_mistral_small_and_embed(monkeypatch):
     assert pins.judge_embedding_model == DEFAULT_JUDGE_EMBEDDING_MODEL == "mistral-embed"
     assert PAPER_JUDGE_EMBEDDING_MODEL.startswith("BAAI/")
         # Publishable fairness: matched top-k + L2 + LR-like always-on Mix arms.
+<<<<<<< HEAD
     assert pins.profile_id == "P0_mistral_mix_lrlike_arms_v2"
+=======
+    assert pins.profile_id == "ACC_E2OCC_086_v1_lrlike_arms_v2"
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 
 def test_cli_overrides_beat_env(monkeypatch):

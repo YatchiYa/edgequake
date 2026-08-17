@@ -10,7 +10,11 @@ use uuid::Uuid;
 
 use edgequake_pipeline::{ChunkOptions, ChunkStrategy};
 use edgequake_storage::kv_keys;
+<<<<<<< HEAD
 use edgequake_tasks::{Task, TaskType, TextInsertData};
+=======
+use edgequake_tasks::{estimate_queue, QueueEstimate, Task, TaskType, TextInsertData};
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::documents::storage_helpers::{
@@ -23,7 +27,10 @@ use crate::middleware::TenantContext;
 use crate::services::process_fingerprint::{
     apply_fingerprint_to_metadata, ProcessFingerprintInput,
 };
+<<<<<<< HEAD
 use crate::services::ContentHasher;
+=======
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 use crate::services::{
     apply_process_options_to_metadata, metadata_multimodal_patch, persist_manifest,
     resolve_process_options_from_metadata, MultimodalSummary,
@@ -67,6 +74,11 @@ pub struct DocumentAdmissionInput {
     pub content_hash: String,
     pub custom_metadata: Option<Value>,
     pub track_id: Option<String>,
+<<<<<<< HEAD
+=======
+    /// SPEC-084 / GH-318: client-declared batch size for track completeness.
+    pub expected_batch_count: Option<usize>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     pub gleaning: GleaningAdmissionOptions,
     pub document_type: Option<&'static str>,
     /// Explicit chunk strategy; auto-selects markdown for `.md` when None.
@@ -87,6 +99,12 @@ pub struct DocumentAdmissionAccepted {
     pub track_id: String,
     pub task_id: String,
     pub content_hash: String,
+<<<<<<< HEAD
+=======
+    /// SPEC-091 QW2 (LAW-Q4): queue position + ETA at admission time.
+    /// None only if the projection query failed (projection never blocks admission).
+    pub queue: Option<QueueEstimate>,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 }
 
 /// Result when duplicate is still processing (no new task).
@@ -135,11 +153,21 @@ pub async fn admit_document_for_processing(
     // SPEC-066: fail-closed when workspace declares max_documents.
     crate::services::document_quota::enforce_max_documents_admission(state, &workspace_id).await?;
 
+<<<<<<< HEAD
     let hash_key = ContentHasher::workspace_hash_key(&workspace_id, &input.content_hash);
     let staging_hash_key = kv_keys::staging_workspace_hash(&workspace_id, &input.content_hash);
 
     match resolve_workspace_duplicate_for_reingestion(state, tenant_ctx, &hash_key, &workspace_id)
         .await?
+=======
+    match resolve_workspace_duplicate_for_reingestion(
+        state,
+        tenant_ctx,
+        &input.content_hash,
+        &workspace_id,
+    )
+    .await?
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     {
         DuplicateReingestAction::NoDuplicate => {}
         DuplicateReingestAction::ClearedForReingestion { old_document_id } => {
@@ -162,12 +190,21 @@ pub async fn admit_document_for_processing(
     }
 
     // In-flight staging duplicate (P-11)
+<<<<<<< HEAD
     if let Some(staging_doc) = state
         .storage
         .kv_storage
         .get_by_id(&staging_hash_key)
         .await?
         .and_then(|v| v.as_str().map(|s| s.to_string()))
+=======
+    if let Some(staging_doc) = crate::services::ingestion_dedup_store::lookup_staging(
+        state,
+        &workspace_id,
+        &input.content_hash,
+    )
+    .await?
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     {
         return Ok(DocumentAdmissionOutcome::DuplicateProcessing(
             DocumentAdmissionDuplicateProcessing {
@@ -188,12 +225,25 @@ pub async fn admit_document_for_processing(
     let content_summary = crate::validation::generate_content_summary(&input.text_content);
     let content_length = input.text_content.len();
 
+<<<<<<< HEAD
     // P-11: staging KV only until worker promotes on success
     state
         .storage
         .kv_storage
         .upsert(&[(staging_hash_key, json!(document_id))])
         .await?;
+=======
+    // P-11: staging reservation only until worker promotes on success
+    // (SPEC-091 W2: KV + typed ingestion_dedup dual write).
+    crate::services::ingestion_dedup_store::reserve_staging(
+        state,
+        &workspace_id,
+        &input.content_hash,
+        &document_id,
+        Some(&tenant_id),
+    )
+    .await?;
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     let chunk_options_json = input
         .chunk_options
@@ -234,6 +284,52 @@ pub async fn admit_document_for_processing(
     // 068: metadata.track_id == task_id (insert-*) — sole progress / cancel / WS key.
     let track_id = task_id.clone();
 
+<<<<<<< HEAD
+=======
+    // SPEC-091 Wave B3 + Doc 23 LAW-KVH4: admission-time `documents` row with
+    // typed `track_id` so list/cancel/wsdoc read relationally from admission.
+    #[cfg(feature = "postgres")]
+    if let Some(ref pool) = state.pg_pool {
+        if let Ok(doc_uuid) = uuid::Uuid::parse_str(&document_id) {
+            let tenant_uuid = uuid::Uuid::parse_str(&tenant_id).ok();
+            let workspace_uuid = uuid::Uuid::parse_str(&workspace_id).ok();
+            if let Err(e) = edgequake_storage::ensure_admission_document_row_with_track(
+                pool,
+                doc_uuid,
+                tenant_uuid,
+                workspace_uuid,
+                &input.title,
+                Some(track_id.as_str()),
+            )
+            .await
+            {
+                // Wave D write-stop: with WSDOC or METADATA relational the
+                // admission row is the only membership/shell record — escalate.
+                use edgequake_storage::kv_family_cutover::{
+                    kv_family_mode_from_env, KvFamilyMode, KV_FAMILY_METADATA, KV_FAMILY_WSDOC,
+                };
+                let relational = kv_family_mode_from_env(KV_FAMILY_WSDOC)
+                    == KvFamilyMode::Relational
+                    || kv_family_mode_from_env(KV_FAMILY_METADATA) == KvFamilyMode::Relational;
+                if relational {
+                    tracing::error!(
+                        document_id = %document_id,
+                        error = %e,
+                        "SPEC-091: authoritative admission documents row insert FAILED — \
+                         document is not registered relationally; investigate or roll the family flags back to kv"
+                    );
+                } else {
+                    tracing::warn!(
+                        document_id = %document_id,
+                        error = %e,
+                        "admission documents row insert failed (KV membership remains)"
+                    );
+                }
+            }
+        }
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     // SPEC-045 SRE-I03: wire processing timeout for text ingest (parity with PDF metadata).
     let processing_timeout_secs = resolve_text_ingest_timeout_secs(state, &workspace_id).await;
     task.metadata = Some(json!({ "processing_timeout_secs": processing_timeout_secs }));
@@ -262,6 +358,28 @@ pub async fn admit_document_for_processing(
         "admission_staging": true,
     });
 
+<<<<<<< HEAD
+=======
+    // SPEC-084 / GH-318: persist expected batch size under the client track key.
+    let expected_from_meta = input.custom_metadata.as_ref().and_then(|m| {
+        m.get("expected_batch_count")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+    });
+    if let Some(expected) = input.expected_batch_count.or(expected_from_meta) {
+        if expected > 0 {
+            let _ = state
+                .storage
+                .kv_storage
+                .upsert(&[(
+                    format!("track_expected:{client_track_id}"),
+                    json!({ "expected_count": expected }),
+                )])
+                .await;
+        }
+    }
+
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
     if let Some(mime) = &input.mime_type {
         doc_metadata["mime_type"] = json!(mime);
         doc_metadata["file_name"] = json!(input.title);
@@ -337,7 +455,41 @@ pub async fn admit_document_for_processing(
         )])
         .await?;
 
+<<<<<<< HEAD
     state.enqueue_task(task).await?;
+=======
+    let task_created_at = task.created_at;
+    let relational_shell = crate::services::RelationalDocumentShell {
+        title: input.title.clone(),
+        tenant_id: task.tenant_id,
+        workspace_id: task.workspace_id,
+        track_id: track_id.clone(),
+        source_type: input.source_type.to_string(),
+        file_size_bytes: input.raw_byte_size.min(i64::MAX as usize) as i64,
+        content_hash: Some(input.content_hash.clone()),
+        content_type: input.mime_type.clone(),
+    };
+    state.enqueue_task(task).await?;
+    if let Err(error) =
+        crate::services::provision_relational_document_shell(state, &document_id, &relational_shell)
+            .await
+    {
+        // Durable task intent wins. The worker's existing relational persist
+        // path will reconcile the projection even if this immediate shell fails.
+        tracing::warn!(
+            document_id,
+            track_id,
+            error = %error,
+            "Document admitted but relational queue shell could not be projected"
+        );
+    }
+
+    // SPEC-091 QW2 (LAW-Q4): project queue position + ETA at admission.
+    // Best-effort: projection failure never blocks admission.
+    let queue = estimate_queue(state.tasks.storage.as_ref(), task_created_at)
+        .await
+        .ok();
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
 
     Ok(DocumentAdmissionOutcome::Accepted(
         DocumentAdmissionAccepted {
@@ -345,6 +497,10 @@ pub async fn admit_document_for_processing(
             track_id,
             task_id,
             content_hash: input.content_hash,
+<<<<<<< HEAD
+=======
+            queue,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
         },
     ))
 }
@@ -550,6 +706,10 @@ mod tests {
             content_hash: "abc".into(),
             custom_metadata: None,
             track_id: None,
+<<<<<<< HEAD
+=======
+            expected_batch_count: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             gleaning: GleaningAdmissionOptions::default(),
             document_type: Some("markdown"),
             chunk_strategy: None,
@@ -575,6 +735,10 @@ mod tests {
             content_hash: "abc".into(),
             custom_metadata: None,
             track_id: None,
+<<<<<<< HEAD
+=======
+            expected_batch_count: None,
+>>>>>>> 2e2518aa584f496bca65f772ce322563285ab042
             gleaning: GleaningAdmissionOptions::default(),
             document_type: Some("markdown"),
             chunk_strategy: Some(ChunkStrategy::Recursive),
