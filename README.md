@@ -478,4 +478,4 @@ Apache License, Version 2.0 — see [LICENSE](LICENSE).
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=raphaelmansuy/edgequake&type=date&legend=top-left)](https://www.star-history.com/#raphaelmansuy/edgequake&type=date&legend=top-left)
+[![Star History Chart](https://star-history.dera.page/svg?repos=raphaelmansuy/edgequake&type=date&legend=top-left)](https://star-history.dera.page/#raphaelmansuy/edgequake&type=date&legend=top-left)
