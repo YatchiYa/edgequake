@@ -182,13 +182,13 @@ version-tag:
 	git tag v$(VERSION)
 	git push && git push --tags
 
-# Colors for terminal output
-BLUE := \033[34m
-GREEN := \033[32m
-YELLOW := \033[33m
-RED := \033[31m
-BOLD := \033[1m
-RESET := \033[0m
+# Colors for terminal output (printf so ESC bytes work with bash echo)
+BLUE := $(shell printf '\033[34m')
+GREEN := $(shell printf '\033[32m')
+YELLOW := $(shell printf '\033[33m')
+RED := $(shell printf '\033[31m')
+BOLD := $(shell printf '\033[1m')
+RESET := $(shell printf '\033[0m')
 
 # GNU make defaults to /bin/sh (dash on Ubuntu CI); extension-pins.sh needs bash pipefail.
 SHELL := /bin/bash
