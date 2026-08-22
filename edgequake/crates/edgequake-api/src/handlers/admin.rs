@@ -205,7 +205,7 @@ pub async fn update_server_defaults(
 /// GET /api/v1/admin/storage/inspect — full storage health report (admin-only).
 ///
 /// Runs `StorageInspector::inspect()` and returns the full report: schema
-/// drift, invariant violations (INV-01/03/04/05/C/D/D2/04b), and recommended
+/// drift, invariant violations (INV-01/03/04/05/07/C/D/D2/04b), and recommended
 /// repairs. Read-only — never mutates data.
 #[utoipa::path(
     get,

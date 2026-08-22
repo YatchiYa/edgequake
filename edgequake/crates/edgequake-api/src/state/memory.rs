@@ -319,6 +319,22 @@ impl AppState {
         Self::build_test_state_with_graph(Arc::new(MockProvider::new()), graph_storage)
     }
 
+    /// Test state that shares a concrete [`MemoryTaskStorage`] handle (issue #384).
+    ///
+    /// Use this when the test must arm `fail_next_create_task` /
+    /// `fail_next_pdf_processing_create` on the same instance `enqueue_task` uses.
+    pub fn test_state_with_memory_tasks(
+        task_storage: Arc<edgequake_tasks::memory::MemoryTaskStorage>,
+    ) -> Self {
+        use edgequake_llm::MockProvider;
+
+        Self::build_test_state_with_graph_and_tasks(
+            Arc::new(MockProvider::new()),
+            Arc::new(MemoryGraphStorage::new("test")),
+            task_storage,
+        )
+    }
+
     /// Build test state from a pre-configured mock (DRY — worker E2E seeds extraction JSON).
     pub fn build_test_state(mock_provider: Arc<edgequake_llm::MockProvider>) -> Self {
         Self::build_test_state_with_graph(mock_provider, Arc::new(MemoryGraphStorage::new("test")))
@@ -328,6 +344,19 @@ impl AppState {
     pub fn build_test_state_with_graph(
         mock_provider: Arc<edgequake_llm::MockProvider>,
         graph_storage: Arc<MemoryGraphStorage>,
+    ) -> Self {
+        Self::build_test_state_with_graph_and_tasks(
+            mock_provider,
+            graph_storage,
+            Arc::new(edgequake_tasks::memory::MemoryTaskStorage::new()),
+        )
+    }
+
+    /// Build test state with injected graph + task storage.
+    pub fn build_test_state_with_graph_and_tasks(
+        mock_provider: Arc<edgequake_llm::MockProvider>,
+        graph_storage: Arc<MemoryGraphStorage>,
+        task_storage: Arc<edgequake_tasks::memory::MemoryTaskStorage>,
     ) -> Self {
         let kv_storage = Arc::new(MemoryKVStorage::new("test"));
         let vector_storage = Arc::new(MemoryVectorStorage::new("test", 1536)); // Match MockProvider dimension
@@ -342,8 +371,6 @@ impl AppState {
         // Create conversation service
         let conversation_service = memory_conversation_service();
 
-        // Create task infrastructure
-        let task_storage = Arc::new(edgequake_tasks::memory::MemoryTaskStorage::new());
         let task_queue = Arc::new(edgequake_tasks::queue::ChannelTaskQueue::new(100));
 
         // Create SOTA query engine with mock keywords for testing

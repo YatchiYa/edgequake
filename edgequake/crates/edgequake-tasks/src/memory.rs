@@ -4,14 +4,14 @@ use crate::{
     error::{TaskError, TaskResult},
     fairness_hold::ClaimFairnessPolicy,
     storage::*,
-    types::{FairnessClass, Task, TaskStatus},
+    types::{FairnessClass, Task, TaskStatus, TaskType},
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, RwLock,
     },
     time::Duration,
@@ -29,6 +29,10 @@ pub struct MemoryTaskStorage {
     claim_count: Arc<AtomicU64>,
     /// Test / ops instrumentation: successful release_claim calls.
     release_claim_count: Arc<AtomicU64>,
+    /// Test hook: next `create_task` returns Err (issue #384 enqueue-fail e2e).
+    fail_next_create: Arc<AtomicBool>,
+    /// Test hook: next PdfProcessing `create_task` returns Err (issue #384).
+    fail_next_pdf_create: Arc<AtomicBool>,
 }
 
 impl MemoryTaskStorage {
@@ -39,7 +43,19 @@ impl MemoryTaskStorage {
             fairness_parked: Arc::new(RwLock::new(std::collections::HashMap::new())),
             claim_count: Arc::new(AtomicU64::new(0)),
             release_claim_count: Arc::new(AtomicU64::new(0)),
+            fail_next_create: Arc::new(AtomicBool::new(false)),
+            fail_next_pdf_create: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Fail the next `create_task` once (issue #384 task-first e2e).
+    pub fn fail_next_create_task(&self) {
+        self.fail_next_create.store(true, Ordering::SeqCst);
+    }
+
+    /// Fail the next PdfProcessing `create_task` once (issue #384 leftover loop).
+    pub fn fail_next_pdf_processing_create(&self) {
+        self.fail_next_pdf_create.store(true, Ordering::SeqCst);
     }
 
     /// Number of successful `claim_next` / `claim_next_with_policy` picks.
@@ -88,6 +104,19 @@ fn task_matches_filter(task: &Task, filter: &TaskFilter) -> bool {
 #[async_trait]
 impl TaskStorage for MemoryTaskStorage {
     async fn create_task(&self, task: &Task) -> TaskResult<()> {
+        if self.fail_next_create.swap(false, Ordering::SeqCst) {
+            return Err(TaskError::StorageError(
+                "injected create_task failure".to_string(),
+            ));
+        }
+        if task.task_type == TaskType::PdfProcessing
+            && self.fail_next_pdf_create.swap(false, Ordering::SeqCst)
+        {
+            return Err(TaskError::StorageError(
+                "injected pdf create_task failure".to_string(),
+            ));
+        }
+
         let mut tasks = self.tasks.write().unwrap();
 
         if tasks.contains_key(&task.track_id) {

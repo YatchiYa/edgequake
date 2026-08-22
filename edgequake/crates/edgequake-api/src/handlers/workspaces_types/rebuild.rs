@@ -120,6 +120,10 @@ pub struct ReprocessAllResponse {
     pub documents_skipped: usize,
     /// Estimated processing time in seconds.
     pub estimated_time_seconds: Option<u64>,
+    /// Why documents were not queued (issue #384 — `no_content` must not
+    /// leave status pending). Empty map is omitted from JSON.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub skip_reasons: std::collections::HashMap<String, usize>,
 }
 
 // ── Rebuild Knowledge Graph (LLM Model Change) ───────────────────────────

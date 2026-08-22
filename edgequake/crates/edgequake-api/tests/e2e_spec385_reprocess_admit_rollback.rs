@@ -12,15 +12,15 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use edgequake_api::services::extract_document_id_from_task;
 use edgequake_api::{AppState, Server, ServerConfig};
 use edgequake_storage::kv_keys;
 use edgequake_storage::MemoryGraphStorage;
-use edgequake_tasks::storage::{Pagination, TaskFilter};
-use edgequake_tasks::TaskStatus;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
+
+#[path = "common/inflight_task_invariant.rs"]
+mod inflight_task_invariant;
 
 const TEST_TENANT_ID: &str = "00000000-0000-0000-0000-000000000001";
 const TEST_WORKSPACE_ID: &str = "00000000-0000-0000-0000-000000000002";
@@ -110,53 +110,19 @@ async fn doc_metadata(state: &AppState, doc_id: &str) -> Value {
         .expect("document metadata must exist")
 }
 
-fn is_inflight_status(status: &str) -> bool {
-    matches!(
-        status,
-        "pending" | "queued" | "processing" | "waiting" | "cleaning"
-    )
-}
-
 async fn live_tasks_for_doc(state: &AppState, doc_id: &str) -> Vec<String> {
-    let listed = state
-        .tasks
-        .storage
-        .list_tasks(
-            TaskFilter {
-                tenant_id: Some(tenant_uuid()),
-                workspace_id: Some(workspace_uuid()),
-                status: None,
-                task_type: None,
-            },
-            Pagination {
-                page: 1,
-                page_size: 200,
-                ..Default::default()
-            },
-        )
+    inflight_task_invariant::live_task_ids_for_doc(state, tenant_uuid(), workspace_uuid(), doc_id)
         .await
-        .unwrap();
-    listed
-        .tasks
-        .into_iter()
-        .filter(|t| extract_document_id_from_task(t).as_deref() == Some(doc_id))
-        .filter(|t| matches!(t.status, TaskStatus::Pending | TaskStatus::Processing))
-        .map(|t| t.track_id)
-        .collect()
 }
 
 async fn assert_no_processing_without_task(state: &AppState, doc_ids: &[&str]) {
-    for doc_id in doc_ids {
-        let meta = doc_metadata(state, doc_id).await;
-        let status = meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
-        if is_inflight_status(status) {
-            let live = live_tasks_for_doc(state, doc_id).await;
-            assert!(
-                !live.is_empty(),
-                "document {doc_id} is {status} with no live task (issue #385/#384 invariant)"
-            );
-        }
-    }
+    inflight_task_invariant::assert_no_inflight_without_live_task(
+        state,
+        tenant_uuid(),
+        workspace_uuid(),
+        doc_ids,
+    )
+    .await
 }
 
 #[tokio::test]

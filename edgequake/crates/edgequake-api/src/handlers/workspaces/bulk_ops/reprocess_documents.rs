@@ -15,7 +15,7 @@ use crate::handlers::workspaces_types::*;
 use crate::middleware::TenantContext;
 use crate::state::AppState;
 
-use super::{build_reprocess_task, collect_workspace_documents, mark_document_pending};
+use super::{collect_workspace_documents, enqueue_then_bind_pending, BulkReprocessCommit};
 
 // SPEC-032: Reprocess All Documents Endpoint
 // Focus Area 5 — Trigger document reprocessing after rebuild
@@ -142,31 +142,28 @@ pub(crate) async fn run_reprocess_all_documents(
             continue;
         }
 
-        // Mark pending and build task
-        mark_document_pending(&state, &doc.doc_id, &track_id).await;
-
-        let extra_meta = serde_json::Map::new();
-        if let Some((task_type, task_value)) =
-            build_reprocess_task(&state, &workspace, workspace_id, doc, &track_id, extra_meta).await
+        // Mark pending only after a live task exists (issue #384).
+        match enqueue_then_bind_pending(
+            &state,
+            &workspace,
+            workspace_id,
+            doc,
+            &track_id,
+            serde_json::Map::new(),
+        )
+        .await
         {
-            let task = edgequake_tasks::Task::new(
-                workspace.tenant_id,
-                workspace_id,
-                task_type,
-                task_value,
-            );
-
-            if let Err(e) = state.enqueue_task(task).await {
-                info!(error = %e, doc_id = %doc.doc_id, "Failed to enqueue task, skipping");
+            BulkReprocessCommit::Queued => {
+                documents_queued += 1;
+            }
+            BulkReprocessCommit::EnqueueFailed => {
                 documents_skipped += 1;
                 *skip_reasons.entry("task_enqueue_failed").or_insert(0) += 1;
-                continue;
             }
-
-            documents_queued += 1;
-        } else {
-            documents_skipped += 1;
-            *skip_reasons.entry("no_content").or_insert(0) += 1;
+            BulkReprocessCommit::SkippedNoContent => {
+                documents_skipped += 1;
+                *skip_reasons.entry("no_content").or_insert(0) += 1;
+            }
         }
     }
 
@@ -202,6 +199,10 @@ pub(crate) async fn run_reprocess_all_documents(
             "reprocess_all",
             &workspace_id.to_string(),
         )),
+        skip_reasons: skip_reasons
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
     };
 
     info!(

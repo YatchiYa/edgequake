@@ -57,6 +57,57 @@ mod tests {
     }
 
     #[test]
+    fn document_id_prefers_existing_document_id() {
+        let task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::PdfProcessing,
+            serde_json::json!({
+                "existing_document_id": "doc-abc",
+                "document_id": "doc-ignored",
+                "metadata": { "document_id": "doc-also-ignored" }
+            }),
+        );
+        assert_eq!(task.document_id().as_deref(), Some("doc-abc"));
+    }
+
+    #[test]
+    fn document_id_from_insert_metadata() {
+        let task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({
+                "metadata": { "document_id": "  doc-xyz  " }
+            }),
+        );
+        assert_eq!(task.document_id().as_deref(), Some("doc-xyz"));
+    }
+
+    #[test]
+    fn document_id_from_task_metadata_field() {
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::PdfProcessing,
+            serde_json::json!({ "pdf_id": uuid::Uuid::new_v4().to_string() }),
+        );
+        task.metadata = Some(serde_json::json!({ "document_id": "doc-from-meta" }));
+        assert_eq!(task.document_id().as_deref(), Some("doc-from-meta"));
+    }
+
+    #[test]
+    fn document_id_ignores_blank() {
+        let task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({ "document_id": "   " }),
+        );
+        assert_eq!(task.document_id(), None);
+    }
+
+    #[test]
     fn test_task_lifecycle() {
         let data = serde_json::json!({"test": "data"});
         let mut task = Task::new(

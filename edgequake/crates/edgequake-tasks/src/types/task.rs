@@ -133,6 +133,39 @@ impl Task {
             })
     }
 
+    /// Document id from payload / metadata (issue #384 identity SSOT).
+    ///
+    /// Order matches the historical API extractor so PDF reprocess
+    /// (`existing_document_id`) wins over text insert (`metadata.document_id`).
+    /// Trimmed empty strings are treated as absent.
+    pub fn document_id(&self) -> Option<String> {
+        self.task_data
+            .get("existing_document_id")
+            .and_then(|v| v.as_str())
+            .or_else(|| self.task_data.get("document_id").and_then(|v| v.as_str()))
+            .or_else(|| {
+                self.task_data
+                    .get("metadata")
+                    .and_then(|m| m.get("document_id"))
+                    .and_then(|v| v.as_str())
+            })
+            .or_else(|| {
+                self.metadata
+                    .as_ref()
+                    .and_then(|m| m.get("document_id"))
+                    .and_then(|v| v.as_str())
+            })
+            .or_else(|| {
+                self.metadata
+                    .as_ref()
+                    .and_then(|m| m.get("existing_document_id"))
+                    .and_then(|v| v.as_str())
+            })
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    }
+
     /// Create a new task
     pub fn new(
         tenant_id: Uuid,

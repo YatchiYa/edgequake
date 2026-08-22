@@ -17,31 +17,11 @@ use uuid::Uuid;
 use crate::document_metadata::is_terminal_failure_status;
 
 /// Extract document ID from task payload (PDF or text insert paths).
+///
+/// DRY: delegates to [`Task::document_id`] so API + tasks crate share one JSON
+/// walk (issue #384 column populate uses the same extractor).
 pub fn extract_document_id_from_task(task: &Task) -> Option<String> {
-    task.task_data
-        .get("existing_document_id")
-        .and_then(|v| v.as_str())
-        .or_else(|| task.task_data.get("document_id").and_then(|v| v.as_str()))
-        .or_else(|| {
-            task.task_data
-                .get("metadata")
-                .and_then(|m| m.get("document_id"))
-                .and_then(|v| v.as_str())
-        })
-        .or_else(|| {
-            task.metadata
-                .as_ref()
-                .and_then(|m| m.get("document_id"))
-                .and_then(|v| v.as_str())
-        })
-        .or_else(|| {
-            task.metadata
-                .as_ref()
-                .and_then(|m| m.get("existing_document_id"))
-                .and_then(|v| v.as_str())
-        })
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    task.document_id()
 }
 
 /// Resolve document id: task payload → `documents.track_id` / metadata track_id.

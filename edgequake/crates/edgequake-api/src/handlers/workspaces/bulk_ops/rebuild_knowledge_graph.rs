@@ -15,7 +15,7 @@ use crate::handlers::workspaces_types::*;
 use crate::middleware::TenantContext;
 use crate::state::AppState;
 
-use super::{build_reprocess_task, collect_workspace_documents, mark_document_pending};
+use super::{collect_workspace_documents, enqueue_then_bind_pending, BulkReprocessCommit};
 
 /// Rebuild knowledge graph for a workspace after LLM model change.
 ///
@@ -222,9 +222,7 @@ pub(crate) async fn run_rebuild_knowledge_graph(
         extra_meta.insert("is_kg_rebuild".to_string(), serde_json::json!(true));
 
         for doc in &docs {
-            mark_document_pending(&state, &doc.doc_id, &track_id).await;
-
-            if let Some((task_type, task_value)) = build_reprocess_task(
+            match enqueue_then_bind_pending(
                 &state,
                 &workspace,
                 workspace_id,
@@ -234,16 +232,21 @@ pub(crate) async fn run_rebuild_knowledge_graph(
             )
             .await
             {
-                let task = edgequake_tasks::Task::new(
-                    workspace.tenant_id,
-                    workspace_id,
-                    task_type,
-                    task_value,
-                );
-
-                if state.enqueue_task(task).await.is_ok() {
+                BulkReprocessCommit::Queued => {
                     documents_queued += 1;
                     total_chunks += doc.chunk_count;
+                }
+                BulkReprocessCommit::SkippedNoContent => {
+                    tracing::info!(
+                        doc_id = %doc.doc_id,
+                        "Rebuild knowledge graph skipped: no stored content (issue #384)"
+                    );
+                }
+                BulkReprocessCommit::EnqueueFailed => {
+                    tracing::warn!(
+                        doc_id = %doc.doc_id,
+                        "Rebuild knowledge graph skipped: task enqueue failed (issue #384)"
+                    );
                 }
             }
         }

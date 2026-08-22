@@ -12,7 +12,7 @@
 //! - [`collect_workspace_documents`]: Workspace-scoped document discovery
 //! - [`build_pdf_task`]: PDF reprocessing task construction
 //! - [`read_stored_content`]: Text content retrieval from KV storage
-//! - [`mark_document_pending`]: Document status update to "pending"
+//! - [`enqueue_then_bind_pending`]: Task-first enqueue then bind KV (issue #384)
 //! - [`build_reprocess_task`]: SPEC-041 source-type routing (PDF vs text)
 
 mod rebuild_embeddings;
@@ -120,13 +120,64 @@ pub(super) async fn read_stored_content(state: &AppState, doc_id: &str) -> Optio
     }
 }
 
-/// Mark a document as "pending" for reprocessing in KV storage.
+/// Outcome of task-first bulk reprocess (issue #384).
 ///
-/// Updates the document's metadata to set:
-/// - `status` → "pending"
-/// - `track_id` → the batch tracking ID
-/// - `reprocess_at` → current timestamp
-pub(super) async fn mark_document_pending(state: &AppState, doc_id: &str, track_id: &str) {
+/// Status is a projection of a live Task. `no_content` and enqueue failure
+/// must not write `pending`.
+pub(super) enum BulkReprocessCommit {
+    Queued,
+    SkippedNoContent,
+    EnqueueFailed,
+}
+
+/// Persist a reprocess task, then project document KV to pending.
+///
+/// Never writes in-flight status before `create_task` succeeds. Batch
+/// correlation stays on `batch_track_id`; `track_id` is the worker task id.
+pub(super) async fn enqueue_then_bind_pending(
+    state: &AppState,
+    workspace: &edgequake_core::Workspace,
+    workspace_id: Uuid,
+    doc: &DocumentInfo,
+    batch_track_id: &str,
+    extra_metadata: serde_json::Map<String, serde_json::Value>,
+) -> BulkReprocessCommit {
+    let Some((task_type, task_value)) = build_reprocess_task(
+        state,
+        workspace,
+        workspace_id,
+        doc,
+        batch_track_id,
+        extra_metadata,
+    )
+    .await
+    else {
+        return BulkReprocessCommit::SkippedNoContent;
+    };
+
+    let task = edgequake_tasks::Task::new(workspace.tenant_id, workspace_id, task_type, task_value);
+    let task_id = task.track_id.clone();
+
+    if let Err(e) = state.enqueue_task(task).await {
+        tracing::info!(
+            error = %e,
+            doc_id = %doc.doc_id,
+            "Failed to enqueue task, skipping"
+        );
+        return BulkReprocessCommit::EnqueueFailed;
+    }
+
+    bind_document_pending_to_task(state, &doc.doc_id, &task_id, batch_track_id).await;
+    BulkReprocessCommit::Queued
+}
+
+/// Bind KV `pending` + worker `track_id` after the task row exists (issue #384).
+async fn bind_document_pending_to_task(
+    state: &AppState,
+    doc_id: &str,
+    task_id: &str,
+    batch_track_id: &str,
+) {
     use chrono::Utc;
 
     let metadata_key = crate::services::document_metadata_scan::metadata_key_for_document(doc_id);
@@ -140,17 +191,29 @@ pub(super) async fn mark_document_pending(state: &AppState, doc_id: &str, track_
     {
         if let Some(obj) = metadata.as_object_mut() {
             obj.insert("status".to_string(), serde_json::json!("pending"));
-            obj.insert("track_id".to_string(), serde_json::json!(track_id));
+            obj.insert("track_id".to_string(), serde_json::json!(task_id));
+            obj.insert(
+                "batch_track_id".to_string(),
+                serde_json::json!(batch_track_id),
+            );
             obj.insert(
                 "reprocess_at".to_string(),
                 serde_json::json!(Utc::now().to_rfc3339()),
             );
-            let _ = crate::services::upsert_metadata_kv_with_index(
+            if let Err(e) = crate::services::upsert_metadata_kv_with_index(
                 state.storage.kv_storage.as_ref(),
                 &metadata_key,
                 metadata,
             )
-            .await;
+            .await
+            {
+                tracing::error!(
+                    error = %e,
+                    document_id = %doc_id,
+                    task_id = %task_id,
+                    "task persisted but document KV bind failed (SPEC-057 heals orphan tasks)"
+                );
+            }
         }
     }
 }

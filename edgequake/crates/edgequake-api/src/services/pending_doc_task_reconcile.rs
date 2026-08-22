@@ -507,8 +507,12 @@ pub async fn ensure_task_for_pending_document(
     };
 
     // Create task first so document.track_id == progress/WS key (SPEC-054 SSOT).
+    // Persist before rewriting KV so enqueue failure cannot claim in-flight
+    // status with no task row (issue #384).
     let task = Task::new(tenant_id, workspace_id, task_type, task_value);
     let task_id = task.track_id.clone();
+
+    state.enqueue_task(task).await?;
 
     let metadata_key =
         crate::services::document_metadata_scan::metadata_key_for_document(document_id);
@@ -526,16 +530,22 @@ pub async fn ensure_task_for_pending_document(
             );
             // Keep batch id for multi-doc correlation only (not a progress key).
             obj.insert("batch_track_id".to_string(), json!(batch_track_id));
-            let _ = crate::services::upsert_metadata_kv_with_index(
+            if let Err(e) = crate::services::upsert_metadata_kv_with_index(
                 state.storage.kv_storage.as_ref(),
                 &metadata_key,
                 meta_val,
             )
-            .await;
+            .await
+            {
+                tracing::error!(
+                    error = %e,
+                    document_id = %document_id,
+                    task_id = %task_id,
+                    "recovery task persisted but KV bind failed"
+                );
+            }
         }
     }
-
-    state.enqueue_task(task).await?;
 
     // SPEC-054: every PDF enqueue path must seed progress under task_id
     // (upload + full reprocess already do; reconcile/stuck must match).

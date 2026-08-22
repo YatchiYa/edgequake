@@ -151,6 +151,7 @@ impl TaskStorage for PostgresTaskStorage {
             .transpose()
             .map_err(|e| TaskError::StorageError(format!("Failed to serialize progress: {e}")))?;
         let pdf_id = pdf_id_column_value(task);
+        let document_id = task.document_id();
 
         sqlx::query(
             r#"
@@ -158,8 +159,9 @@ impl TaskStorage for PostgresTaskStorage {
                 track_id, tenant_id, workspace_id, task_type, status, created_at, updated_at,
                 started_at, completed_at, error_message, error, retry_count,
                 max_retries, consecutive_timeout_failures, circuit_breaker_tripped,
-                payload, progress, result, lease_owner, lease_token, lease_expires_at, pdf_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                payload, progress, result, lease_owner, lease_token, lease_expires_at, pdf_id,
+                document_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
             "#,
         )
         .bind(&task.track_id)
@@ -184,6 +186,7 @@ impl TaskStorage for PostgresTaskStorage {
         .bind(task.lease_token)
         .bind(task.lease_expires_at)
         .bind(&pdf_id)
+        .bind(&document_id)
         .execute(&*self.pool)
         .await
         .map_err(|e| TaskError::StorageError(format!("Failed to create task: {}", e)))?;

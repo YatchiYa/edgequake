@@ -244,7 +244,6 @@ pub(crate) async fn run_reprocess_failed(
     #[cfg(feature = "postgres")]
     if let Some(ref pdf_storage) = state.storage.pdf_storage {
         use edgequake_storage::{ListPdfFilter, PdfProcessingStatus};
-        use edgequake_tasks::{PdfProcessingData, Task, TaskStatus, TaskType};
 
         let filter_workspace = tenant_ctx
             .workspace_id
@@ -266,226 +265,34 @@ pub(crate) async fn run_reprocess_failed(
                 .map_err(|e| ApiError::Internal(format!("Failed to list failed PDFs: {}", e)))?;
 
             for pdf in failed_pdfs.items {
-                // Determine tenant_id: prefer from context, fall back to a
-                // workspace-scoped default (workspace_id itself as tenant proxy).
-                let tenant_uuid = tenant_ctx
-                    .tenant_id
-                    .as_deref()
-                    .and_then(|s| Uuid::parse_str(s).ok())
-                    .unwrap_or(pdf.workspace_id);
-
-                // Reset PDF status so the worker will process it.
-                pdf_storage
-                    .update_pdf_status(&pdf.pdf_id, PdfProcessingStatus::Pending)
-                    .await
-                    .map_err(|e| {
-                        ApiError::Internal(format!("Failed to reset PDF status: {}", e))
-                    })?;
-
-                // SPEC-051 GAP-051-04: Resolve ALL vision settings from workspace,
-                // not from PdfUploadOptions::default().
-                // WHY: Previously vision_provider and vision_model used default
-                // env-var resolution, ignoring workspace-level overrides. Only
-                // pdf_parser_backend was read from the workspace. Now all three
-                // come from the same workspace.get_workspace() call (DRY).
-                let (vision_provider, vision_model, pdf_parser_backend, vision_ws) = match state
-                    .workspace_service
-                    .get_workspace(pdf.workspace_id)
-                    .await
-                {
-                    Ok(Some(ws)) => {
-                        let vp = ws
-                            .vision_llm_provider
-                            .as_deref()
-                            .filter(|p| !p.is_empty())
-                            .unwrap_or("ollama")
-                            .to_string();
-                        let vm = ws.vision_llm_model.clone().filter(|m| !m.is_empty());
-                        let backend = ws.resolved_pdf_parser_backend();
-                        (vp, vm, backend, Some(ws))
-                    }
-                    Ok(None) | Err(_) => {
-                        // Fallback: env-var defaults (same as upload path default).
-                        let opts = crate::handlers::pdf_upload::types::PdfUploadOptions::default();
-                        let vp = opts.resolved_vision_provider(None, None);
-                        let vm = Some(opts.vision_model(None, None));
-                        let backend = PdfParserBackend::from_env().unwrap_or_default();
-                        (vp, vm, backend, None)
-                    }
-                };
-
-                let vision_model_for_resolve = vision_model.clone().unwrap_or_else(|| {
-                    crate::vision_env::default_vision_model_for_provider(&vision_provider)
-                });
-                let vision_reasoning_effort = crate::services::resolve_vlm_reasoning_effort(
-                    vision_ws.as_ref(),
-                    &vision_provider,
-                    &vision_model_for_resolve,
-                    None,
-                    None,
-                );
-
-                // Edge case: empty-markdown fallback for failed PDFs.
-                // WHY: A failed PDF typically has no/partial markdown. EntitiesOnly
-                // would re-extract over an empty document, so promote to Full when
-                // the cached markdown is missing/empty. Safe superset of work.
-                let mut restart_from_scratch = restart_from_scratch;
-                let mut reprocess_mode = reprocess_mode;
-                if !restart_from_scratch {
-                    let needs_full = match pdf_storage.get_pdf(&pdf.pdf_id).await {
-                        Ok(Some(p)) => super::super::storage_helpers::pdf_needs_full_reconversion(
-                            p.markdown_content.as_deref(),
-                        ),
-                        Ok(None) => true,
-                        Err(e) => {
-                            tracing::warn!(
-                                pdf_id = %pdf.pdf_id,
-                                error = %e,
-                                "Failed to read failed PDF for empty-markdown fallback; defaulting to Full"
-                            );
-                            true
-                        }
-                    };
-                    if needs_full {
-                        tracing::info!(
-                            pdf_id = %pdf.pdf_id,
-                            "Failed PDF has empty cached markdown — upgrading reprocess to full re-conversion"
-                        );
-                        reprocess_mode = edgequake_tasks::ReprocessMode::Full;
-                        restart_from_scratch = true;
-                    }
-                }
-
-                // Full re-conversion: clear any partial cached markdown so the
-                // resume shortcut cannot reuse a failed/partial conversion.
-                if restart_from_scratch {
-                    if let Err(e) = pdf_storage.clear_markdown(&pdf.pdf_id).await {
-                        tracing::warn!(
-                            pdf_id = %pdf.pdf_id,
-                            error = %e,
-                            "Failed to clear markdown for failed-PDF full re-conversion"
-                        );
-                    }
-                }
-
-                let multimodal_process_options = if let Some(document_uuid) = pdf.document_id {
-                    let metadata_key =
-                        edgequake_storage::kv_keys::doc_metadata(&document_uuid.to_string());
-                    state
-                        .storage
-                        .kv_storage
-                        .get_by_id(&metadata_key)
-                        .await
-                        .ok()
-                        .flatten()
-                        .as_ref()
-                        .and_then(resolve_process_options_from_metadata)
-                } else {
-                    None
-                };
-
-                let task_data = PdfProcessingData {
-                    pdf_id: pdf.pdf_id,
-                    tenant_id: tenant_uuid,
-                    workspace_id: pdf.workspace_id,
-                    enable_vision: true,
-                    vision_provider: vision_provider.clone(),
-                    vision_model: vision_model.clone(),
-                    existing_document_id: pdf.document_id.map(|id| id.to_string()),
-                    pdf_parser_backend,
-                    pdf_parser_backend_explicit: true,
-                    restart_from_scratch,
-                    reprocess_mode: Some(reprocess_mode),
-                    multimodal_process_options,
-                    vision_reasoning_effort,
-                    vision_extract: Default::default(),
-                };
-
-                let track_id = format!("pdf-{}", Uuid::new_v4());
-
-                let task = Task {
-                    track_id: track_id.clone(),
-                    tenant_id: tenant_uuid,
-                    workspace_id: pdf.workspace_id,
-                    task_type: TaskType::PdfProcessing,
-                    status: TaskStatus::Pending,
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                    started_at: None,
-                    completed_at: None,
-                    error_message: None,
-                    error: None,
-                    retry_count: 0,
-                    max_retries: 3,
-                    consecutive_timeout_failures: 0,
-                    circuit_breaker_tripped: false,
-                    task_data: serde_json::to_value(&task_data).map_err(|e| {
-                        ApiError::Internal(format!("Failed to serialize PDF task data: {}", e))
-                    })?,
-                    metadata: None,
-                    progress: None,
-                    result: None,
-                    lease_owner: None,
-                    lease_token: None,
-                    lease_expires_at: None,
-                    fairness_hold_until: None,
-                };
-
-                // Bind KV document.track_id to task id when a document row exists.
-                if let Some(document_uuid) = pdf.document_id {
-                    let doc_id = document_uuid.to_string();
-                    let metadata_key = edgequake_storage::kv_keys::doc_metadata(&doc_id);
-                    if let Ok(Some(mut metadata)) =
-                        state.storage.kv_storage.get_by_id(&metadata_key).await
-                    {
-                        if let Some(obj) = metadata.as_object_mut() {
-                            obj.insert("track_id".to_string(), serde_json::json!(track_id));
-                            obj.insert(
-                                "retry_at".to_string(),
-                                serde_json::json!(Utc::now().to_rfc3339()),
-                            );
-                            crate::services::reprocess_stage_reset::apply_reprocess_stage_reset(
-                                obj,
-                                reprocess_mode,
-                            );
-                            let _ = crate::services::upsert_metadata_kv_with_index(
-                                state.storage.kv_storage.as_ref(),
-                                &metadata_key,
-                                metadata,
-                            )
-                            .await;
-                        }
-                    }
-                    document_task_ids.push(ReprocessDocumentTaskId {
-                        document_id: doc_id.clone(),
-                        task_id: track_id.clone(),
-                    });
-                    requeued_ids.push(doc_id);
-                } else {
-                    requeued_ids.push(pdf.pdf_id.to_string());
-                    document_task_ids.push(ReprocessDocumentTaskId {
-                        document_id: pdf.pdf_id.to_string(),
-                        task_id: track_id.clone(),
-                    });
-                }
-
-                crate::handlers::pdf_upload::seed_pdf_job_progress(
+                match requeue_one_failed_pdf(
                     &state,
-                    &track_id,
-                    &pdf.pdf_id.to_string(),
-                    &pdf.filename,
-                    Some(new_track_id.as_str()),
+                    pdf_storage.as_ref(),
+                    &tenant_ctx,
+                    &new_track_id,
+                    pdf,
+                    restart_from_scratch,
+                    reprocess_mode,
                 )
-                .await;
-
-                state.enqueue_task(task).await?;
-
-                tracing::info!(
-                    pdf_id = %pdf.pdf_id,
-                    task_id = %track_id,
-                    batch_track_id = %new_track_id,
-                    "Re-enqueued failed PDF for reprocessing"
-                );
+                .await
+                {
+                    Ok((doc_id, task_id)) => {
+                        document_task_ids.push(ReprocessDocumentTaskId {
+                            document_id: doc_id.clone(),
+                            task_id,
+                        });
+                        requeued_ids.push(doc_id);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "Failed PDF leftover requeue skipped (issue #384 batch isolation)"
+                        );
+                        *skip_reasons
+                            .entry("enqueue_failed".to_string())
+                            .or_insert(0) += 1;
+                    }
+                }
             }
         }
     }
@@ -516,4 +323,219 @@ pub(crate) async fn run_reprocess_failed(
         document_task_ids,
     };
     Ok(response)
+}
+
+/// Persist a failed-PDF reprocess task, then project Pending / KV (issue #384).
+///
+/// One PDF failure must not abort the rest of the batch (`?` used to).
+#[cfg(feature = "postgres")]
+async fn requeue_one_failed_pdf(
+    state: &AppState,
+    pdf_storage: &dyn edgequake_storage::PdfDocumentStorage,
+    tenant_ctx: &TenantContext,
+    batch_track_id: &str,
+    pdf: edgequake_storage::PdfDocument,
+    restart_from_scratch: bool,
+    reprocess_mode: edgequake_tasks::ReprocessMode,
+) -> ApiResult<(String, String)> {
+    use edgequake_storage::PdfProcessingStatus;
+    use edgequake_tasks::{PdfProcessingData, Task, TaskStatus, TaskType};
+
+    let tenant_uuid = tenant_ctx
+        .tenant_id
+        .as_deref()
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .unwrap_or(pdf.workspace_id);
+
+    let (vision_provider, vision_model, pdf_parser_backend, vision_ws) = match state
+        .workspace_service
+        .get_workspace(pdf.workspace_id)
+        .await
+    {
+        Ok(Some(ws)) => {
+            let vp = ws
+                .vision_llm_provider
+                .as_deref()
+                .filter(|p| !p.is_empty())
+                .unwrap_or("ollama")
+                .to_string();
+            let vm = ws.vision_llm_model.clone().filter(|m| !m.is_empty());
+            let backend = ws.resolved_pdf_parser_backend();
+            (vp, vm, backend, Some(ws))
+        }
+        Ok(None) | Err(_) => {
+            let opts = crate::handlers::pdf_upload::types::PdfUploadOptions::default();
+            let vp = opts.resolved_vision_provider(None, None);
+            let vm = Some(opts.vision_model(None, None));
+            let backend = PdfParserBackend::from_env().unwrap_or_default();
+            (vp, vm, backend, None)
+        }
+    };
+
+    let vision_model_for_resolve = vision_model
+        .clone()
+        .unwrap_or_else(|| crate::vision_env::default_vision_model_for_provider(&vision_provider));
+    let vision_reasoning_effort = crate::services::resolve_vlm_reasoning_effort(
+        vision_ws.as_ref(),
+        &vision_provider,
+        &vision_model_for_resolve,
+        None,
+        None,
+    );
+
+    let mut restart_from_scratch = restart_from_scratch;
+    let mut reprocess_mode = reprocess_mode;
+    if !restart_from_scratch {
+        let needs_full = match pdf_storage.get_pdf(&pdf.pdf_id).await {
+            Ok(Some(p)) => super::super::storage_helpers::pdf_needs_full_reconversion(
+                p.markdown_content.as_deref(),
+            ),
+            Ok(None) => true,
+            Err(e) => {
+                tracing::warn!(
+                    pdf_id = %pdf.pdf_id,
+                    error = %e,
+                    "Failed to read failed PDF for empty-markdown fallback; defaulting to Full"
+                );
+                true
+            }
+        };
+        if needs_full {
+            tracing::info!(
+                pdf_id = %pdf.pdf_id,
+                "Failed PDF has empty cached markdown — upgrading reprocess to full re-conversion"
+            );
+            reprocess_mode = edgequake_tasks::ReprocessMode::Full;
+            restart_from_scratch = true;
+        }
+    }
+
+    if restart_from_scratch {
+        if let Err(e) = pdf_storage.clear_markdown(&pdf.pdf_id).await {
+            tracing::warn!(
+                pdf_id = %pdf.pdf_id,
+                error = %e,
+                "Failed to clear markdown for failed-PDF full re-conversion"
+            );
+        }
+    }
+
+    let multimodal_process_options = if let Some(document_uuid) = pdf.document_id {
+        let metadata_key = edgequake_storage::kv_keys::doc_metadata(&document_uuid.to_string());
+        state
+            .storage
+            .kv_storage
+            .get_by_id(&metadata_key)
+            .await
+            .ok()
+            .flatten()
+            .as_ref()
+            .and_then(resolve_process_options_from_metadata)
+    } else {
+        None
+    };
+
+    let task_data = PdfProcessingData {
+        pdf_id: pdf.pdf_id,
+        tenant_id: tenant_uuid,
+        workspace_id: pdf.workspace_id,
+        enable_vision: true,
+        vision_provider: vision_provider.clone(),
+        vision_model: vision_model.clone(),
+        existing_document_id: pdf.document_id.map(|id| id.to_string()),
+        pdf_parser_backend,
+        pdf_parser_backend_explicit: true,
+        restart_from_scratch,
+        reprocess_mode: Some(reprocess_mode),
+        multimodal_process_options,
+        vision_reasoning_effort,
+        vision_extract: Default::default(),
+    };
+
+    let track_id = format!("pdf-{}", Uuid::new_v4());
+    let task = Task {
+        track_id: track_id.clone(),
+        tenant_id: tenant_uuid,
+        workspace_id: pdf.workspace_id,
+        task_type: TaskType::PdfProcessing,
+        status: TaskStatus::Pending,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        started_at: None,
+        completed_at: None,
+        error_message: None,
+        error: None,
+        retry_count: 0,
+        max_retries: 3,
+        consecutive_timeout_failures: 0,
+        circuit_breaker_tripped: false,
+        task_data: serde_json::to_value(&task_data)
+            .map_err(|e| ApiError::Internal(format!("Failed to serialize PDF task data: {e}")))?,
+        metadata: None,
+        progress: None,
+        result: None,
+        lease_owner: None,
+        lease_token: None,
+        lease_expires_at: None,
+        fairness_hold_until: None,
+    };
+
+    state.enqueue_task(task).await?;
+
+    if let Err(e) = pdf_storage
+        .update_pdf_status(&pdf.pdf_id, PdfProcessingStatus::Pending)
+        .await
+    {
+        tracing::error!(
+            error = %e,
+            pdf_id = %pdf.pdf_id,
+            task_id = %track_id,
+            "PDF task persisted but status reset to Pending failed"
+        );
+    }
+
+    let correlating_id = if let Some(document_uuid) = pdf.document_id {
+        let doc_id = document_uuid.to_string();
+        let metadata_key = edgequake_storage::kv_keys::doc_metadata(&doc_id);
+        if let Ok(Some(mut metadata)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
+            if let Some(obj) = metadata.as_object_mut() {
+                obj.insert("track_id".to_string(), serde_json::json!(track_id.clone()));
+                obj.insert(
+                    "retry_at".to_string(),
+                    serde_json::json!(Utc::now().to_rfc3339()),
+                );
+                crate::services::reprocess_stage_reset::apply_reprocess_stage_reset(
+                    obj,
+                    reprocess_mode,
+                );
+                let _ = crate::services::upsert_metadata_kv_with_index(
+                    state.storage.kv_storage.as_ref(),
+                    &metadata_key,
+                    metadata,
+                )
+                .await;
+            }
+        }
+        doc_id
+    } else {
+        pdf.pdf_id.to_string()
+    };
+
+    crate::handlers::pdf_upload::seed_pdf_job_progress(
+        state,
+        &track_id,
+        &pdf.pdf_id.to_string(),
+        &pdf.filename,
+        Some(batch_track_id),
+    )
+    .await;
+
+    tracing::info!(
+        pdf_id = %pdf.pdf_id,
+        task_id = %track_id,
+        batch_track_id = %batch_track_id,
+        "Re-enqueued failed PDF for reprocessing"
+    );
+
+    Ok((correlating_id, track_id))
 }

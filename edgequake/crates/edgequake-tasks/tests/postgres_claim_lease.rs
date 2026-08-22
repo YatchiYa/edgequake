@@ -57,6 +57,9 @@ async fn ensure_lease_columns(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS pdf_id TEXT")
         .execute(pool)
         .await?;
+    sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS document_id TEXT")
+        .execute(pool)
+        .await?;
     sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS fairness_hold_until TIMESTAMPTZ")
         .execute(pool)
         .await?;

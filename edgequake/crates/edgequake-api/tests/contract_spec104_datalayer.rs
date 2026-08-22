@@ -124,6 +124,27 @@ fn e2e_104_03_source_inv03_dual_presence() {
 }
 
 #[test]
+fn e2e_384_source_inv07_inflight_without_task() {
+    let src = include_str!("../src/storage_inspector.rs");
+    assert!(
+        src.contains("check_inv07_inflight_docs_without_task"),
+        "INV-07 must be a real inspector method, not docs-only"
+    );
+    assert!(
+        src.contains("\"INV-07\""),
+        "INV-07 must have an explicit repair arm"
+    );
+    assert!(
+        src.contains("no SAFE auto-enqueue from inspector"),
+        "INV-07 LogOnly must forbid inspector enqueue"
+    );
+    assert!(
+        src.contains("inflight_orphan_minutes"),
+        "INV-07 must age-filter past the early-admit window"
+    );
+}
+
+#[test]
 fn e2e_104_04_source_tenant_atomic_upsert() {
     let src = include_str!("../../edgequake-core/src/workspace_service_impl/tenant_ops.rs");
     assert!(
@@ -265,6 +286,138 @@ async fn e2e_104_pg_inspector_inv03_orphan_fires() {
 
     let _ = sqlx::query("DELETE FROM documents WHERE id = $1")
         .bind(doc_id)
+        .execute(&pool)
+        .await;
+}
+
+#[tokio::test]
+async fn e2e_384_pg_inspector_inv07_aged_orphan_fires() {
+    let Some(url) = database_url() else {
+        eprintln!("SKIP e2e_384_pg_inspector_inv07_aged_orphan_fires: no DATABASE_URL");
+        return;
+    };
+    let pool = match PgPool::connect(&url).await {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("SKIP connect failed: {e}");
+            return;
+        }
+    };
+
+    let cfg = InspectorConfig {
+        inflight_orphan_minutes: 15,
+        ..InspectorConfig::for_namespace("default")
+    };
+    let inspector = StorageInspector::new(Arc::new(pool.clone()), cfg);
+
+    let ws: Option<(Uuid, Option<Uuid>)> = sqlx::query_as(
+        "SELECT workspace_id, tenant_id FROM workspaces ORDER BY created_at LIMIT 1",
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten();
+    let Some((workspace_id, tenant_id)) = ws else {
+        eprintln!("SKIP: no workspace row");
+        return;
+    };
+
+    let aged_id = Uuid::parse_str("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee").unwrap();
+    let fresh_id = Uuid::parse_str("ffffffff-ffff-ffff-ffff-ffffffffffff").unwrap();
+    let test_id_text = [
+        "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    ];
+
+    // BEFORE UPDATE trigger forces updated_at=NOW(), so never UPDATE the seed:
+    // delete then INSERT. Epoch timestamp wins ORDER BY aged_at ASC vs fleet orphans.
+    let _ = sqlx::query("DELETE FROM chunks WHERE document_id = ANY($1::uuid[])")
+        .bind([aged_id, fresh_id])
+        .execute(&pool)
+        .await;
+    sqlx::query("DELETE FROM documents WHERE id = ANY($1::uuid[])")
+        .bind([aged_id, fresh_id])
+        .execute(&pool)
+        .await
+        .expect("cleanup spec384 seed documents");
+
+    let kv = InspectorConfig::default().kv_table;
+    let kv_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1)",
+    )
+    .bind(&kv)
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+    if kv_exists {
+        let del = format!("DELETE FROM {kv} WHERE key = ANY($1::text[])");
+        let keys: Vec<String> = test_id_text
+            .iter()
+            .map(|id| format!("{id}-metadata"))
+            .collect();
+        let _ = sqlx::query(&del).bind(keys).execute(&pool).await;
+    }
+
+    let _ = sqlx::query(
+        "DELETE FROM tasks WHERE document_id = ANY($1::text[]) \
+         OR payload->'task_data'->>'document_id' = ANY($1::text[]) \
+         OR payload->'task_data'->>'existing_document_id' = ANY($1::text[])",
+    )
+    .bind(test_id_text)
+    .execute(&pool)
+    .await;
+
+    sqlx::query(
+        r#"
+        INSERT INTO documents (id, workspace_id, tenant_id, title, content, status, created_at, updated_at)
+        VALUES ($1, $2, $3, 'spec384-aged', '', 'processing', TIMESTAMPTZ '1970-01-01', TIMESTAMPTZ '1970-01-01')
+        "#,
+    )
+    .bind(aged_id)
+    .bind(workspace_id)
+    .bind(tenant_id)
+    .execute(&pool)
+    .await
+    .expect("insert aged INV-07 seed");
+
+    sqlx::query(
+        r#"
+        INSERT INTO documents (id, workspace_id, tenant_id, title, content, status, created_at, updated_at)
+        VALUES ($1, $2, $3, 'spec384-fresh', '', 'processing', NOW(), NOW())
+        "#,
+    )
+    .bind(fresh_id)
+    .bind(workspace_id)
+    .bind(tenant_id)
+    .execute(&pool)
+    .await
+    .expect("insert fresh INV-07 seed");
+
+    let report = inspector.inspect().await;
+    let inv07 = report
+        .invariant_violations
+        .iter()
+        .find(|v| v.invariant_id == "INV-07");
+    assert!(
+        inv07.is_some(),
+        "expected INV-07 for aged processing orphan; report={report:?}"
+    );
+    let samples = &inv07.unwrap().sample_ids;
+    assert!(
+        samples
+            .iter()
+            .any(|s| s == "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"),
+        "aged orphan must be sampled: {samples:?}"
+    );
+    assert!(
+        !samples
+            .iter()
+            .any(|s| s == "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+        "fresh early-admit window must not fire INV-07: {samples:?}"
+    );
+
+    let _ = sqlx::query("DELETE FROM documents WHERE id = ANY($1::uuid[])")
+        .bind([aged_id, fresh_id])
         .execute(&pool)
         .await;
 }

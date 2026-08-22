@@ -27,6 +27,7 @@
 //! | INV-03 | Indexed documents have ≥1 chunk | documents, public.chunks (SPEC-104) |
 //! | INV-04 | CQRS sync lag (entities vs AGE) | entities, AGE |
 //! | INV-05 | No stuck PDFs (processing > 1h) | pdf_documents |
+//! | INV-07 | Aged in-flight documents have a live task | documents, tasks (issue #384) |
 
 #[cfg(feature = "postgres")]
 use std::sync::Arc;
@@ -59,6 +60,9 @@ pub struct InspectorConfig {
     pub sync_lag_critical_threshold: f64,
     /// Minutes after which a PDF stuck in 'processing' is considered stuck.
     pub pdf_stuck_minutes: i64,
+    /// Minutes after which an in-flight document without a live task is INV-07
+    /// (issue #384). Must exceed the HTTP reprocess early-admit window.
+    pub inflight_orphan_minutes: i64,
 }
 
 impl InspectorConfig {
@@ -76,6 +80,7 @@ impl InspectorConfig {
             sync_lag_warning_threshold: 0.01,
             sync_lag_critical_threshold: 0.10,
             pdf_stuck_minutes: 60,
+            inflight_orphan_minutes: 15,
         }
     }
 }
@@ -703,6 +708,7 @@ impl StorageInspector {
         self.check_inv03_indexed_docs_without_chunks(report).await;
         self.check_inv04_cqrs_sync_lag(report).await;
         self.check_inv05_stuck_pdfs(report).await;
+        self.check_inv07_inflight_docs_without_task(report).await;
         // SPEC-021 P-B1: per-doc entity_count drift vs the authoritative AGE
         // graph. Replaces the planned R-DRY-03 invariant that compared against
         // the dead relational column (which would fire on every doc).
@@ -1133,6 +1139,188 @@ impl StorageInspector {
                 });
             }
             _ => {}
+        }
+    }
+
+    /// INV-07: aged in-flight documents must have a live task (issue #384).
+    ///
+    /// Document `status` is a projection. A Task row workers can claim is the
+    /// work. Inspector reports; SPEC-054 reconcile remains the healer.
+    /// Age filter avoids racing the #385 early-admit window (seconds).
+    ///
+    /// Dual-read: when the KV sidecar exists, prefer KV status/`updated_at`
+    /// (SPEC-120 list SSOT) so a lagging `public.documents` row does not
+    /// false-positive, and KV-only in-flight metadata is still visible.
+    async fn check_inv07_inflight_docs_without_task(&self, report: &mut InspectorReport) {
+        let tasks_exist: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='tasks')"
+        )
+        .fetch_one(self.pool.as_ref())
+        .await
+        .unwrap_or(false);
+        if !tasks_exist {
+            return;
+        }
+
+        let docs_exist: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='documents')"
+        )
+        .fetch_one(self.pool.as_ref())
+        .await
+        .unwrap_or(false);
+        if !docs_exist {
+            return;
+        }
+
+        let document_id_col: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns \
+             WHERE table_schema='public' AND table_name='tasks' AND column_name='document_id')",
+        )
+        .fetch_one(self.pool.as_ref())
+        .await
+        .unwrap_or(false);
+
+        let kv_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1)",
+        )
+        .bind(&self.config.kv_table)
+        .fetch_one(self.pool.as_ref())
+        .await
+        .unwrap_or(false);
+
+        let kv_ident = if kv_exists {
+            match require_safe_sql_ident(&self.config.kv_table) {
+                Ok(k) => Some(k),
+                Err(e) => {
+                    report.add_schema_issue(SchemaDriftIssue {
+                        check_name: "inv07_unsafe_kv_ident".to_string(),
+                        severity: Severity::Warning,
+                        description: e,
+                        details: None,
+                    });
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let minutes = self.config.inflight_orphan_minutes;
+        let inflight_statuses = "'pending','processing','chunking','extracting','embedding',\
+             'indexing','uploading','converting','preprocessing','gleaning',\
+             'merging','summarizing','storing'";
+
+        let live_task = |doc_id_sql: &str, track_id_sql: &str| -> String {
+            let column_join = if document_id_col {
+                format!("t.document_id = {doc_id_sql} OR ")
+            } else {
+                String::new()
+            };
+            format!(
+                r#"NOT EXISTS (
+                    SELECT 1 FROM tasks t
+                    WHERE t.status IN ('pending', 'processing')
+                      AND (
+                          {column_join}
+                          ({track_id_sql} IS NOT NULL AND t.track_id = {track_id_sql})
+                          OR t.payload->'task_data'->>'document_id' = {doc_id_sql}
+                          OR t.payload->'task_data'->>'existing_document_id' = {doc_id_sql}
+                          OR t.payload->'task_data'->'metadata'->>'document_id' = {doc_id_sql}
+                      )
+                )"#
+            )
+        };
+
+        let docs_live = live_task("d.id::text", "d.track_id");
+        let sql = if let Some(kv) = kv_ident {
+            let kv_doc_id = "left(k.key, length(k.key) - 9)";
+            let kv_live = live_task(kv_doc_id, "k.value->>'track_id'");
+            format!(
+                r#"
+                SELECT id FROM (
+                    SELECT d.id::text AS id,
+                           COALESCE(
+                               CASE WHEN k.value->>'updated_at' ~ '^[0-9]{{4}}-'
+                                    THEN (k.value->>'updated_at')::timestamptz END,
+                               d.updated_at
+                           ) AS aged_at
+                    FROM public.documents d
+                    LEFT JOIN {kv} k ON k.key = d.id::text || '-metadata'
+                    WHERE lower(COALESCE(k.value->>'status', d.status)) IN ({inflight_statuses})
+                      AND NOW() - COALESCE(
+                              CASE WHEN k.value->>'updated_at' ~ '^[0-9]{{4}}-'
+                                   THEN (k.value->>'updated_at')::timestamptz END,
+                              d.updated_at
+                          ) > INTERVAL '{minutes} minutes'
+                      AND {docs_live}
+                    UNION
+                    SELECT {kv_doc_id} AS id,
+                           CASE WHEN k.value->>'updated_at' ~ '^[0-9]{{4}}-'
+                                THEN (k.value->>'updated_at')::timestamptz END AS aged_at
+                    FROM {kv} k
+                    WHERE k.key LIKE '%-metadata'
+                      AND k.key NOT LIKE '%-chunk-%'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM public.documents d
+                          WHERE d.id::text = {kv_doc_id}
+                      )
+                      AND lower(k.value->>'status') IN ({inflight_statuses})
+                      AND k.value->>'updated_at' ~ '^[0-9]{{4}}-'
+                      AND NOW() - (k.value->>'updated_at')::timestamptz
+                          > INTERVAL '{minutes} minutes'
+                      AND {kv_live}
+                ) orphans
+                GROUP BY id
+                ORDER BY MIN(aged_at) ASC NULLS LAST
+                LIMIT 20
+                "#
+            )
+        } else {
+            format!(
+                r#"
+                SELECT d.id::text
+                FROM public.documents d
+                WHERE lower(d.status) IN ({inflight_statuses})
+                  AND NOW() - d.updated_at > INTERVAL '{minutes} minutes'
+                  AND {docs_live}
+                ORDER BY d.updated_at ASC
+                LIMIT 20
+                "#
+            )
+        };
+
+        match sqlx::query_scalar::<_, String>(&sql)
+            .fetch_all(self.pool.as_ref())
+            .await
+        {
+            Ok(ids) if !ids.is_empty() => {
+                let severity = if ids.len() >= 10 {
+                    Severity::Critical
+                } else {
+                    Severity::Warning
+                };
+                report.add_violation(InvariantViolation {
+                    invariant_id: "INV-07".to_string(),
+                    severity,
+                    description: format!(
+                        "{} in-flight document(s) have no live task for >{}min (issue #384)",
+                        ids.len(),
+                        self.config.inflight_orphan_minutes
+                    ),
+                    count: ids.len(),
+                    sample_ids: ids.into_iter().take(5).collect(),
+                });
+            }
+            Ok(_) => {}
+            Err(e) => {
+                warn!(error = %e, "INV-07: query failed");
+                report.add_schema_issue(SchemaDriftIssue {
+                    check_name: "inv07_query".to_string(),
+                    severity: Severity::Warning,
+                    description: format!("INV-07 query failed: {e}"),
+                    details: None,
+                });
+            }
         }
     }
 
@@ -1810,6 +1998,21 @@ pub(crate) fn repair_recommendation_for_invariant(
         "INV-05" => Some(RepairAction::ResetStuckPdfs {
             count: violation.count,
         }),
+        "INV-07" => {
+            let samples = if violation.sample_ids.is_empty() {
+                String::from("(no sample ids)")
+            } else {
+                violation.sample_ids.join(", ")
+            };
+            Some(RepairAction::LogOnly {
+                message: format!(
+                    "INV-07: {} in-flight document(s) have no live task — \
+                     ops: POST /api/v1/documents/recover-stuck or SPEC-054 reconcile; \
+                     sample ids [{samples}]; no SAFE auto-enqueue from inspector",
+                    violation.count
+                ),
+            })
+        }
         _ => None,
     }
 }
@@ -1928,6 +2131,30 @@ mod spec104_tests {
             RepairTier::Safe,
             "LogOnly stays Safe-tier (apply only logs; no status mutate)"
         );
+    }
+
+    /// Issue #384: INV-07 must yield LogOnly (inspect ≠ heal).
+    #[test]
+    fn e2e_384_inv07_logonly_repair() {
+        let v = InvariantViolation {
+            invariant_id: "INV-07".to_string(),
+            severity: Severity::Warning,
+            description: "3 in-flight document(s) have no live task for >15min (issue #384)"
+                .to_string(),
+            count: 3,
+            sample_ids: vec!["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".to_string()],
+        };
+        let repair = repair_recommendation_for_invariant(&v)
+            .expect("INV-07 must produce a repair recommendation");
+        match repair {
+            RepairAction::LogOnly { message } => {
+                assert!(message.contains("INV-07"));
+                assert!(message.contains("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+                assert!(message.contains("recover-stuck"));
+                assert!(message.contains("no SAFE auto-enqueue"));
+            }
+            other => panic!("expected LogOnly, got {other:?}"),
+        }
     }
 
     /// E2E-107-R2-02: SPEC-089 bounds remain the public SSOT (no timeout raise).

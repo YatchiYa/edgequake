@@ -51,6 +51,9 @@ async fn ensure_wave3_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS pdf_id TEXT")
         .execute(pool)
         .await?;
+    sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS document_id TEXT")
+        .execute(pool)
+        .await?;
     sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_tasks_claim_pending_workspace_created

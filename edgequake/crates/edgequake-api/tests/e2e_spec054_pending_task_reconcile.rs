@@ -22,6 +22,9 @@ use serde_json::json;
 use tower::ServiceExt;
 use uuid::Uuid;
 
+#[path = "common/inflight_task_invariant.rs"]
+mod inflight_task_invariant;
+
 const TEST_TENANT_ID: &str = "11111111-1111-1111-1111-111111111111";
 const TEST_WORKSPACE_ID: &str = "22222222-2222-2222-2222-222222222222";
 
@@ -156,6 +159,14 @@ async fn spec054_298_reconcile_enqueues_task_for_orphan_pending_doc() {
         "falsifiable: second reconcile must be idempotent (AlreadyScheduled), got {again:?}"
     );
     assert!(again.already_scheduled >= 1);
+
+    inflight_task_invariant::assert_no_inflight_without_live_task(
+        &state,
+        Uuid::parse_str(TEST_TENANT_ID).unwrap(),
+        ws,
+        &[doc_id],
+    )
+    .await;
 }
 
 #[tokio::test]
