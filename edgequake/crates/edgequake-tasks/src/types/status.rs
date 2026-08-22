@@ -29,6 +29,21 @@ impl fmt::Display for TaskStatus {
     }
 }
 
+impl TaskStatus {
+    /// Claimable or currently running.
+    ///
+    /// WHY (#386 / BR0903): Cancel is a control-plane verb for work that is
+    /// still happening. Finished attempts (`Failed`, `Indexed`, `Cancelled`)
+    /// are audit rows — including retryable `Failed`, which is *not*
+    /// [`crate::types::Task::is_terminal`] but is still a completed attempt.
+    /// Lifecycle purge, live-task gates, and active-PDF lookup must share this
+    /// predicate so a new status cannot be cancelled in one path and skipped
+    /// in another.
+    pub fn is_inflight(self) -> bool {
+        matches!(self, Self::Pending | Self::Processing)
+    }
+}
+
 /// Task type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -117,5 +132,14 @@ mod fairness_class_tests {
             FairnessClass::Ingest
         );
         assert_eq!(TaskType::Insert.fairness_class(), FairnessClass::Ingest);
+    }
+
+    #[test]
+    fn inflight_is_pending_or_processing_only() {
+        assert!(TaskStatus::Pending.is_inflight());
+        assert!(TaskStatus::Processing.is_inflight());
+        assert!(!TaskStatus::Indexed.is_inflight());
+        assert!(!TaskStatus::Failed.is_inflight());
+        assert!(!TaskStatus::Cancelled.is_inflight());
     }
 }

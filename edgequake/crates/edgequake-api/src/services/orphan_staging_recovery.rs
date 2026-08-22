@@ -35,7 +35,7 @@ pub struct OrphanStagingRecoveryReport {
 /// Shared live-task gate for staging orphan recovery (DRY with task recovery).
 /// Pending/Processing = still claimable or in-flight — not an orphan shell.
 pub fn task_is_live(status: TaskStatus) -> bool {
-    matches!(status, TaskStatus::Pending | TaskStatus::Processing)
+    status.is_inflight()
 }
 
 fn is_live_task_status(status: TaskStatus) -> bool {

@@ -438,6 +438,8 @@ pub async fn perform_document_deletion(
 
     // Keep the running deletion task itself (DRY with wipe keep-self). Matching
     // on document_id alone used to cancel+delete this row mid-cascade.
+    // In-flight ingest siblings are cancelled; Failed/Indexed/Cancelled stay
+    // in `tasks` as audit rows (issue #386).
     let persisted_tasks_removed = purge_persisted_tasks_for_document_except(
         state,
         &document_id,

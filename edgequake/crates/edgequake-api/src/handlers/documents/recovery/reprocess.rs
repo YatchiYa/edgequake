@@ -373,12 +373,16 @@ pub(crate) async fn run_reprocess_failed(
             }
         }
 
-        // Edge case: cancel any in-flight task for this document before requeueing.
+        // Cancel in-flight work for this document before requeueing.
         // WHY: A force=true Full reprocess on a doc that is still processing (or has a
         // lingering queued task) would race the worker. For Full re-conversion this
         // is especially important — we clear markdown and must not let a concurrent
-        // task reuse half-cleared state. purge_persisted_tasks_for_document cancels
-        // and removes persisted tasks referencing this document id.
+        // task reuse half-cleared state.
+        //
+        // Finished attempts (Failed / Indexed / Cancelled) are left in `tasks`
+        // as the audit record (issue #386 / BR0903). Reprocess enqueues a new
+        // track_id; it must not overwrite the previous attempt's status or
+        // error. Physical GC is prune_terminal_tasks, not this admit step.
         let purged = super::super::storage_helpers::purge_persisted_tasks_for_document(
             &state,
             doc_id,
@@ -389,7 +393,7 @@ pub(crate) async fn run_reprocess_failed(
         if purged > 0 {
             tracing::info!(
                 document_id = %doc_id,
-                tasks_purged = purged,
+                inflight_tasks_cancelled = purged,
                 "Cancelled in-flight tasks before reprocessing"
             );
         }

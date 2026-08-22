@@ -607,7 +607,8 @@ async fn process_pdf_upload_parts(
                 )
                 .await;
 
-                // Cancel any in-flight task for this document before requeueing.
+                // Cancel in-flight work for this document before requeueing.
+                // Finished Failed/Indexed/Cancelled rows stay in `tasks` (issue #386).
                 let ws_for_tasks = context
                     .workspace_id
                     .clone()
@@ -623,7 +624,7 @@ async fn process_pdf_upload_parts(
                 if purged > 0 {
                     info!(
                         document_id = %document_id,
-                        tasks_purged = purged,
+                        inflight_tasks_cancelled = purged,
                         "Cancelled in-flight tasks before force re-index"
                     );
                 }

@@ -460,6 +460,8 @@ pub async fn delete_workspace(
     tracing::info!(workspace_id = %workspace_id, "Starting workspace cascade delete");
 
     let workspace_id_str = workspace_id.to_string();
+    // Cancel in-flight workspace tasks. Finished rows stay until the workspace
+    // FK ON DELETE CASCADE drops them with the tenant object (issue #386).
     let tasks_deleted = purge_workspace_tasks(&state, workspace_id).await;
 
     // 1. Clear vector storage for this workspace

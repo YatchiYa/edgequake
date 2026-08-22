@@ -1,7 +1,9 @@
 //! Durable workspace wipe-all phase machine (issue #309 / SPEC-050).
 //!
 //! Invariants:
-//! - Cancel all workspace ingestion first, then clear graph/vectors once, then purge docs.
+//! - Cancel all workspace **in-flight** ingestion first, then clear graph/vectors
+//!   once, then purge docs. Finished attempts stay in `tasks` for audit
+//!   (issue #386 / BR0903); `prune_terminal_tasks` is the retention GC.
 //! - Never run N× `find_*_by_source_prefixes` (AGE LIKE SeqScans → timeout/OOM).
 //! - Graph/vector clear failures are retryable task failures (fail-closed).
 //! - HTTP 202 only admits; this worker owns terminal success/failure.
@@ -36,6 +38,11 @@ async fn persist_wipe_checkpoint(
     Ok(())
 }
 
+/// Cancel in-flight workspace tasks except the wipe row itself.
+///
+/// Indexed / Failed / Cancelled rows are left in `tasks` (issue #386). Wipe
+/// clears documents and graph data; it must not erase execution history while
+/// the workspace still exists.
 async fn cancel_inflight_except_wipe(
     state: &AppState,
     workspace_uuid: Uuid,
@@ -363,7 +370,7 @@ pub fn broadcast_wipe_failed(state: &AppState, data: &WorkspaceWipeTaskData, err
 
 /// Mark wipe task status helper for tests / recovery.
 pub fn wipe_is_active(status: TaskStatus) -> bool {
-    matches!(status, TaskStatus::Pending | TaskStatus::Processing)
+    status.is_inflight()
 }
 
 #[cfg(test)]

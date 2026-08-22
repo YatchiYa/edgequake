@@ -132,7 +132,7 @@ impl TaskStorage for MemoryTaskStorage {
         pdf_id: uuid::Uuid,
         workspace_id: uuid::Uuid,
     ) -> TaskResult<Option<Task>> {
-        use crate::types::{TaskStatus, TaskType};
+        use crate::types::TaskType;
 
         let tasks = self.tasks.read().unwrap();
         for task in tasks.values() {
@@ -142,7 +142,7 @@ impl TaskStorage for MemoryTaskStorage {
             if !matches!(task.task_type, TaskType::PdfProcessing | TaskType::Insert) {
                 continue;
             }
-            if !matches!(task.status, TaskStatus::Pending | TaskStatus::Processing) {
+            if !task.status.is_inflight() {
                 continue;
             }
             if task.pdf_id() == Some(pdf_id) {
@@ -157,7 +157,7 @@ impl TaskStorage for MemoryTaskStorage {
         pdf_id: uuid::Uuid,
         workspace_id: uuid::Uuid,
     ) -> TaskResult<Option<Task>> {
-        use crate::types::{TaskStatus, TaskType};
+        use crate::types::TaskType;
 
         let tasks = self.tasks.read().unwrap();
         for task in tasks.values() {
@@ -167,7 +167,7 @@ impl TaskStorage for MemoryTaskStorage {
             if task.task_type != TaskType::Insert {
                 continue;
             }
-            if !matches!(task.status, TaskStatus::Pending | TaskStatus::Processing) {
+            if !task.status.is_inflight() {
                 continue;
             }
             if task.pdf_id() == Some(pdf_id) {
