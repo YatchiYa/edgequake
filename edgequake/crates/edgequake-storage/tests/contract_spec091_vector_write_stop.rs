@@ -216,6 +216,47 @@ async fn typed_backend_write_stops_legacy_mutates_without_table() {
     std::env::remove_var(VECTOR_BACKEND_ENV);
 }
 
+#[test]
+fn contract_spec383_mutates_probe_before_delete() {
+    let src = include_str!("../src/adapters/postgres/vector/storage_impl.rs");
+    let helper = include_str!("../src/adapters/postgres/vector/mod.rs");
+    assert!(
+        helper.contains("fn skip_legacy_mutate_if_absent"),
+        "PgVectorStorage must expose skip_legacy_mutate_if_absent"
+    );
+    assert!(
+        helper.contains("fn legacy_vectors_relation_exists_cached"),
+        "existence probe must be cached (DRY with chunk_kv_table_exists)"
+    );
+    for (fn_name, op) in [
+        ("async fn delete(", "Delete"),
+        ("async fn delete_entity(", "Delete entity"),
+        ("async fn delete_entities_batch(", "Batch delete entities"),
+        (
+            "async fn delete_entity_relations(",
+            "Delete entity relations",
+        ),
+        ("async fn clear(", "Clear"),
+        ("async fn clear_workspace(", "Clear workspace"),
+        ("async fn delete_by_document(", "Delete by document"),
+    ] {
+        let start = src
+            .find(fn_name)
+            .unwrap_or_else(|| panic!("missing {fn_name}"));
+        let body = &src[start..];
+        let delete_at = body
+            .find("DELETE FROM")
+            .unwrap_or_else(|| panic!("{fn_name} must contain DELETE FROM"));
+        let skip_at = body
+            .find("skip_legacy_mutate_if_absent")
+            .unwrap_or_else(|| panic!("{fn_name} must probe before DELETE ({op})"));
+        assert!(
+            skip_at < delete_at,
+            "{fn_name} must call skip_legacy_mutate_if_absent before DELETE FROM"
+        );
+    }
+}
+
 #[tokio::test]
 #[allow(clippy::await_holding_lock)]
 async fn legacy_chunk_ddl_retired_probe_contract() {

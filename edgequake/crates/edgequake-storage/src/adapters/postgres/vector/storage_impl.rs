@@ -379,7 +379,11 @@ impl VectorStorage for PgVectorStorage {
             return Ok(());
         }
 
-        // Lifecycle DELETE runs under typed authority (wipe/retract). 42P01 soft.
+        // SPEC-383: skip SQL when the legacy relation is gone (no 42P01 noise).
+        // SPEC-111: still DELETE residual rows when the table exists.
+        if self.skip_legacy_mutate_if_absent("Delete").await? {
+            return Ok(());
+        }
         let pool = self.pool.get().await?;
 
         let sql = format!("DELETE FROM {} WHERE id = ANY($1)", self.table_name);
@@ -391,6 +395,9 @@ impl VectorStorage for PgVectorStorage {
     }
 
     async fn delete_entity(&self, entity_name: &str) -> Result<()> {
+        if self.skip_legacy_mutate_if_absent("Delete entity").await? {
+            return Ok(());
+        }
         let pool = self.pool.get().await?;
 
         let sql = format!(
@@ -411,6 +418,12 @@ impl VectorStorage for PgVectorStorage {
         let mut unique = entity_names.to_vec();
         unique.sort();
         unique.dedup();
+        if self
+            .skip_legacy_mutate_if_absent("Batch delete entities")
+            .await?
+        {
+            return Ok(0);
+        }
         let pool = self.pool.get().await?;
         let sql = format!(
             "DELETE FROM {} WHERE metadata->>'entity_name' = ANY($1::text[])",
@@ -426,6 +439,12 @@ impl VectorStorage for PgVectorStorage {
     }
 
     async fn delete_entity_relations(&self, entity_name: &str) -> Result<()> {
+        if self
+            .skip_legacy_mutate_if_absent("Delete entity relations")
+            .await?
+        {
+            return Ok(());
+        }
         let pool = self.pool.get().await?;
         // SPEC-090 F-090-09b: UNION ctid arms — avoid non-sargable OR across JSONB keys.
         let sql = format!(
@@ -562,7 +581,9 @@ impl VectorStorage for PgVectorStorage {
     }
 
     async fn clear(&self) -> Result<()> {
-        // Lifecycle clear: run DELETE when relation exists (42P01 soft).
+        if self.skip_legacy_mutate_if_absent("Clear").await? {
+            return Ok(());
+        }
         let pool = self.pool.get().await?;
 
         let sql = format!("DELETE FROM {}", self.table_name);
@@ -582,6 +603,9 @@ impl VectorStorage for PgVectorStorage {
     /// legacy rows (write-stop blocks upsert/CREATE only). Wipe must not leave
     /// orphan fleet keys that fail iw2 / provenance-stamp verify forever.
     async fn clear_workspace(&self, workspace_id: &uuid::Uuid) -> Result<usize> {
+        if self.skip_legacy_mutate_if_absent("Clear workspace").await? {
+            return Ok(0);
+        }
         let pool = self.pool.get().await?;
         let ws = workspace_id.to_string();
 
@@ -615,7 +639,12 @@ impl VectorStorage for PgVectorStorage {
         if document_id.is_empty() {
             return Ok(0);
         }
-        // Lifecycle delete: purge residual legacy rows even under typed authority.
+        if self
+            .skip_legacy_mutate_if_absent("Delete by document")
+            .await?
+        {
+            return Ok(0);
+        }
         let pool = self.pool.get().await?;
         let chunk_prefix = format!("{document_id}-chunk-%");
         let sql = format!(

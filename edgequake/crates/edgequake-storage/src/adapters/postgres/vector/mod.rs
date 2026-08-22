@@ -32,6 +32,7 @@ use super::config::{
     PostgresConfig, VectorIndexType,
 };
 use super::connection::PostgresPool;
+use super::schema;
 
 mod ddl;
 mod fts;
@@ -71,6 +72,8 @@ pub struct PgVectorStorage {
     /// overrides this to the shared default KV store via [`Self::with_chunk_kv_table`].
     pub(crate) chunk_kv_table_name: String,
     pub(crate) chunk_kv_table_exists: Arc<OnceCell<bool>>,
+    /// Cached existence of this instance's legacy `eq_*_vectors` relation (SPEC-383).
+    pub(crate) legacy_vectors_relation_exists: Arc<OnceCell<bool>>,
     pub(crate) iterative_scan_supported: Arc<OnceCell<bool>>,
     /// Set by `ensure_ann_index` / partial HNSW so deferred `VectorIndexType::None`
     /// still applies HNSW search GUCs at query time (SPEC-062 / SPEC-064).
@@ -99,6 +102,7 @@ impl PgVectorStorage {
             storage_mode: VectorStorageMode::from_env(),
             chunk_kv_table_name,
             chunk_kv_table_exists: Arc::new(OnceCell::new()),
+            legacy_vectors_relation_exists: Arc::new(OnceCell::new()),
             iterative_scan_supported: Arc::new(OnceCell::new()),
             deferred_ann_ready: Arc::new(AtomicBool::new(false)),
         }
@@ -173,7 +177,41 @@ impl PgVectorStorage {
         self.deferred_ann_ready.store(true, Ordering::Release);
     }
 
+    /// Cached `information_schema` probe for this instance's legacy vectors table.
+    ///
+    /// SPEC-383: skip mutate SQL when the relation is gone so Postgres never
+    /// logs 42P01. SPEC-111: when the relation exists, lifecycle DELETE still runs.
+    pub(crate) async fn legacy_vectors_relation_exists_cached(&self) -> crate::error::Result<bool> {
+        if let Some(exists) = self.legacy_vectors_relation_exists.get() {
+            return Ok(*exists);
+        }
+        let pool = self.pool.get().await?;
+        let exists = schema::relation_exists(&pool, &self.table_name).await?;
+        let _ = self.legacy_vectors_relation_exists.set(exists);
+        Ok(exists)
+    }
+
+    /// Skip a legacy mutate when `eq_*_vectors` is absent (probe-before-DELETE).
+    ///
+    /// Returns `true` when the caller must no-op. Distinct from
+    /// [`Self::map_legacy_mutate_err`] (TOCTOU 42P01 swallow).
+    pub(crate) async fn skip_legacy_mutate_if_absent(
+        &self,
+        op: &str,
+    ) -> crate::error::Result<bool> {
+        if self.legacy_vectors_relation_exists_cached().await? {
+            return Ok(false);
+        }
+        tracing::debug!(
+            table = %self.table_name,
+            op = %op,
+            "SPEC-383: skip mutate — legacy vectors relation absent"
+        );
+        Ok(true)
+    }
+
     /// SPEC-091: soft-treat missing legacy `eq_*_vectors` (42P01) as write-stop success.
+    /// TOCTOU fallback when the relation is dropped between probe and execute.
     pub(crate) fn map_legacy_mutate_err(
         e: sqlx::Error,
         op: &str,

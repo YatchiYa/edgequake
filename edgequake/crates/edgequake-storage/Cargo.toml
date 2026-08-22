@@ -40,3 +40,4 @@ uuid = { version = "1.19", features = ["v4"] }
 # `sqlx::migrate!` (see tests/support/postgres_test_config.rs). The `migrate`
 # feature is not enabled for the library itself, only for tests.
 sqlx = { workspace = true, features = ["migrate"] }
+tracing-subscriber = { workspace = true }

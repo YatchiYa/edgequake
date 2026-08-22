@@ -44,8 +44,9 @@ pub fn vector_backend_reads_typed(mode: VectorBackend) -> bool {
 ///
 /// Lifecycle **DELETE** / `clear_workspace` / `delete_by_document` still run when
 /// the relation exists (wipe / document retract must not leave orphan fleet
-/// rows that poison iw2 / provenance-stamp verify). Missing relation (42P01)
-/// remains soft-success via `map_legacy_mutate_err`.
+/// rows that poison iw2 / provenance-stamp verify). Missing relation is skipped
+/// **before** SQL (SPEC-383) so Postgres never logs 42P01; `map_legacy_mutate_err`
+/// remains the TOCTOU fallback if the table is dropped between probe and execute.
 pub fn legacy_vector_writes_stopped() -> bool {
     vector_backend_reads_typed(vector_backend_from_env())
 }

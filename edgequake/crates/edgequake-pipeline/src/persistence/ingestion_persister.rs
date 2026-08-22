@@ -1013,6 +1013,175 @@ mod tests {
         std::env::remove_var("EDGEQUAKE_VECTOR_BACKEND");
     }
 
+    /// SPEC-383: typed persist + merge failure must compensate relational chunks
+    /// (the real SSOT rollback). Memory VectorStorage delete is a no-op against
+    /// never-written legacy ids.
+    #[tokio::test]
+    #[serial]
+    async fn typed_merge_failure_compensates_relational_chunks() {
+        use async_trait::async_trait;
+        use edgequake_storage::embedding_family::EmbeddingFamily;
+        use edgequake_storage::traits::domain::{
+            ChunkRepository, DocumentId, EmbeddingCapabilities, EmbeddingIndex, EmbeddingRow,
+            FleetEmbeddingRow, ModelId, ScoredChunk, ScoredFleet, UpsertReport, VectorQuery,
+            WorkspaceId,
+        };
+        use edgequake_storage::traits::FleetEmbeddingIndex;
+        use edgequake_storage::MemoryChunkRepository;
+
+        std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "typed_embeddings");
+        std::env::set_var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY", "relational");
+
+        struct NoopEmbeddingIndex;
+        #[async_trait]
+        impl EmbeddingIndex for NoopEmbeddingIndex {
+            fn capabilities(&self) -> EmbeddingCapabilities {
+                EmbeddingCapabilities {
+                    metric: "cosine",
+                    supports_filters: true,
+                    supports_rerank: false,
+                }
+            }
+            async fn upsert_batch(
+                &self,
+                _model: ModelId,
+                rows: &[EmbeddingRow],
+            ) -> std::result::Result<UpsertReport, edgequake_storage::StorageError> {
+                Ok(UpsertReport {
+                    upserted: rows.len() as u64,
+                    ..Default::default()
+                })
+            }
+            async fn search(
+                &self,
+                _req: &VectorQuery,
+            ) -> std::result::Result<Vec<ScoredChunk>, edgequake_storage::StorageError>
+            {
+                Ok(vec![])
+            }
+            async fn delete_for_workspace(
+                &self,
+                _workspace: WorkspaceId,
+            ) -> std::result::Result<u64, edgequake_storage::StorageError> {
+                Ok(0)
+            }
+        }
+
+        struct FailSink;
+        #[async_trait]
+        impl RelationalEntitySink for FailSink {
+            async fn upsert_entity(
+                &self,
+                _name: &str,
+                _entity_type: &str,
+                _description: &str,
+                _tenant_id: Option<&str>,
+                _workspace_id: Option<&str>,
+                _source_chunk_ids: &[String],
+            ) -> crate::Result<()> {
+                Err(crate::error::PipelineError::StorageError(
+                    edgequake_storage::error::StorageError::Database(
+                        "spec383 injected sink failure".into(),
+                    ),
+                ))
+            }
+
+            async fn remove_entity_sources(
+                &self,
+                _name: &str,
+                _workspace_id: Option<&str>,
+                _sources_to_remove: &[String],
+                _remaining_sources: &[String],
+            ) -> crate::Result<()> {
+                Ok(())
+            }
+        }
+
+        struct NoopFleet;
+        #[async_trait]
+        impl FleetEmbeddingIndex for NoopFleet {
+            fn capabilities(&self, _family: EmbeddingFamily) -> EmbeddingCapabilities {
+                EmbeddingCapabilities {
+                    metric: "cosine",
+                    supports_filters: true,
+                    supports_rerank: false,
+                }
+            }
+            async fn upsert_batch(
+                &self,
+                _family: EmbeddingFamily,
+                _model: ModelId,
+                _rows: &[FleetEmbeddingRow],
+            ) -> std::result::Result<UpsertReport, edgequake_storage::StorageError> {
+                Ok(UpsertReport::default())
+            }
+            async fn search(
+                &self,
+                _family: EmbeddingFamily,
+                _req: &VectorQuery,
+            ) -> std::result::Result<Vec<ScoredFleet>, edgequake_storage::StorageError>
+            {
+                Ok(vec![])
+            }
+            async fn delete_for_workspace(
+                &self,
+                _family: EmbeddingFamily,
+                _workspace: WorkspaceId,
+            ) -> std::result::Result<u64, edgequake_storage::StorageError> {
+                Ok(0)
+            }
+        }
+
+        let graph = Arc::new(MemoryGraphStorage::new("spec383"));
+        let vector = Arc::new(MemoryVectorStorage::new("spec383", 4));
+        vector.initialize().await.unwrap();
+        let chunks = Arc::new(MemoryChunkRepository::new());
+
+        let doc_id = uuid::Uuid::new_v4();
+        let ws_id = uuid::Uuid::new_v4();
+        let config = IngestionPersistConfig::from_settings(
+            IngestionPersistSettings::default(),
+            Arc::new(FailSink),
+            None,
+        )
+        .with_typed_embedding_index(Some(Arc::new(NoopEmbeddingIndex)))
+        .with_relational_chunks(Some(chunks.clone()))
+        .with_fleet_embedding_index(Some(Arc::new(NoopFleet)));
+
+        let mut result = sample_result();
+        result.document_id = doc_id.to_string();
+        result.chunks[0].id = format!("{doc_id}-chunk-0");
+        result.extractions[0].entities[0].embedding = Some(vec![0.1, 0.2, 0.3, 0.4]);
+
+        let err = persist_processing_result(
+            graph,
+            vector,
+            &config,
+            &IngestionPersistContext::new(doc_id.to_string(), None, Some(ws_id.to_string())),
+            &result,
+            ChunkVectorBuildOptions::STANDARD,
+        )
+        .await
+        .expect_err("injected sink failure must fail merge");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("spec383") || msg.contains("merge"),
+            "unexpected error: {msg}"
+        );
+
+        let left = chunks
+            .load_for_document(DocumentId(doc_id))
+            .await
+            .expect("load compensated chunks");
+        assert!(
+            left.is_empty(),
+            "SPEC-383: relational chunk compensation must delete chunks after merge failure"
+        );
+
+        std::env::remove_var("EDGEQUAKE_VECTOR_BACKEND");
+        std::env::remove_var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY");
+    }
+
     #[test]
     fn config_from_settings_is_deterministic() {
         let settings = IngestionPersistSettings {
