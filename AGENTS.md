@@ -686,6 +686,16 @@ make backend-bg
 | `EDGEQUAKE_MAX_EXTRACTION_ENTITIES` | Optional | Per-response entity cap (SPEC-117; default **40**) | `40` |
 | `EDGEQUAKE_MAX_EXTRACTION_RECORDS` | Optional | Per-response total rows cap (SPEC-117; default **100**) | `100` |
 | `EDGEQUAKE_EXTRACT_CAPS_SELECTION` | Optional | Hard truncate under K: product default **relation_aware**; Acc pins **`fifo`** | `fifo`, `relation_aware` |
+| `EDGEQUAKE_PDF_PAGE_MODALITY` | Optional | Force page modality (SPEC-134) | `print`, `manuscript`, `mixed` |
+| `EDGEQUAKE_PDF_MANUSCRIPT_DPI` | Optional | DPI floor for manuscript pages (SPEC-134; default **300**) | `300` |
+| `EDGEQUAKE_PDF_MANUSCRIPT_MAX_PIXELS` | Optional | max_rendered_pixels floor (SPEC-134; default **3600**) | `3600` |
+| `EDGEQUAKE_PDF_MANUSCRIPT_SKIP_EDGEPARSE` | Optional | Skip EdgeParse fast-path for MS (SPEC-134; default **true**) | `true` / `false` |
+| `EDGEQUAKE_PDF_MANUSCRIPT_VERIFY` | Optional | Grounding verify pass for manuscript-class pages (SPEC-134 WP-9; default **on**, fail-open) | `0` / `false` disables |
+| `EDGEQUAKE_PDF_MANUSCRIPT_VERIFY_MIN` | Optional | Min grounded score before refine/marking (SPEC-134 WP-9; default **0.6**) | `0.0`–`1.0` |
+| `EDGEQUAKE_VISION_PROVIDER_MANUSCRIPT` | Optional | Vision provider override for manuscript-class docs (SPEC-134 WP-10; unset = upload/workspace value) | `openai`, `ollama`, … |
+| `EDGEQUAKE_VISION_MODEL_MANUSCRIPT` | Optional | Vision model override for manuscript-class docs (SPEC-134 WP-10; no vendor hardcoded) | `gpt-5.2`, … |
+| `EDGEQUAKE_VISION_MAX_IMAGE_BYTES` | Optional | Per-image binary budget for vision calls (SPEC-134 Slice D; default **3500000**). Oversized PNGs are re-encoded to JPEG. `0` disables | `3500000` |
+| `EDGEQUAKE_PDF_EMPTY_PAGE_RETRY` | Optional | Re-OCR pages that returned the empty placeholder while a page render exists (SPEC-134 Slice D; default **on**) | `0` / `false` disables |
 | `OLLAMA_HOST`                  | Optional | Ollama server URL               | `http://localhost:11434`                             |
 | `OLLAMA_EMBEDDING_MODEL`       | Optional | Ollama embedding model          | `embeddinggemma:latest`                              |
 | `RUST_LOG`                     | Optional | Logging level                   | `debug`, `info`, `warn`                              |

@@ -297,6 +297,517 @@ pub(crate) fn budget_candidates(
     out
 }
 
+// ── SPEC-134: Graphic-as-unit Pass-B suppression ──────────────────────────────
+
+/// Crop descriptor for suppression decision (no file I/O).
+#[derive(Debug, Clone, Copy)]
+pub struct CropDescriptor {
+    /// Fraction of page area covered by this crop (0.0–1.0).
+    pub area_frac: f32,
+    /// Fraction of dark pixels in crop (ink density proxy).
+    pub ink_frac: f32,
+    /// Aspect ratio width/height (e.g. 0.1 for tall thin strip).
+    pub aspect_ratio: f32,
+    /// Whether this crop is a child of a larger chart band (IoU > 0.5 with parent,
+    /// area < 0.35 of parent).
+    pub is_chart_fragment: bool,
+}
+
+/// Default noise area threshold (SPEC-134 WP-4).
+pub const DEFAULT_SUPPRESS_AREA_FRAC: f32 = 0.008;
+
+/// Default ink density threshold (SPEC-134 WP-4).
+pub const DEFAULT_SUPPRESS_INK_FRAC: f32 = 0.01;
+
+/// Decide whether to suppress Pass-B specialize for a crop on manuscript pages.
+///
+/// First principles: a hand-drawn chart is a single semantic unit. Axis ticks,
+/// single bars, and scribbles are fragments — analyzing them separately is
+/// "crop theater" that wastes VLM calls and pollutes the markdown.
+///
+/// Returns `true` when the crop should be suppressed (skipped).
+pub fn should_suppress_crop_manuscript(
+    modality: crate::page_modality::PageModality,
+    crop: &CropDescriptor,
+) -> bool {
+    if !modality.is_manuscript_like() {
+        return false; // print pages: no suppression
+    }
+
+    // Area gate: tiny crops are noise
+    if crop.area_frac < DEFAULT_SUPPRESS_AREA_FRAC {
+        return true;
+    }
+
+    // Ink gate: nearly empty crops are noise
+    if crop.ink_frac < DEFAULT_SUPPRESS_INK_FRAC {
+        return true;
+    }
+
+    // Tick-strip gate: very narrow crops are likely axis ticks or single glyphs
+    // Aspect ratio < 0.15 (tall thin) or > 6.0 (wide thin)
+    if crop.aspect_ratio < 0.15 || crop.aspect_ratio > 6.0 {
+        return true;
+    }
+
+    // Chart fragment gate: child of larger chart band
+    if crop.is_chart_fragment {
+        return true;
+    }
+
+    false
+}
+
+// ── SPEC-134: real crop geometry for the suppression gate ────────────────────
+
+/// Per-document cache of page-level geometry shared across crops.
+///
+/// Page PNG headers are probed once per page (not once per crop) so a
+/// 40-figure page costs one page-file read, not forty.
+#[derive(Debug, Default)]
+pub struct CropGeometryCache {
+    page_dims: HashMap<usize, Option<(u32, u32)>>,
+    chart_area_px: HashMap<usize, Option<u64>>,
+}
+
+/// Fail-open descriptor used whenever real geometry is unavailable — mirrors
+/// the historical placeholder values so a missing asset never over-suppresses.
+const FALLBACK_CROP: CropDescriptor = CropDescriptor {
+    area_frac: 0.05,
+    ink_frac: 0.05,
+    aspect_ratio: 1.0,
+    is_chart_fragment: false,
+};
+
+/// A fig crop covering less than this fraction of its page's chart-crop area is
+/// treated as a fragment of that chart (SPEC-134 parent-area threshold).
+const CHART_FRAGMENT_AREA_RATIO: f32 = 0.35;
+
+/// Build a [`CropDescriptor`] from real asset geometry (SPEC-134 WP-4).
+///
+/// Resolution order (each signal fails open to [`FALLBACK_CROP`] values):
+///
+/// - **bytes**: inline data-URI bytes, else read `{asset_base_dir}/{asset_path}`.
+/// - **aspect_ratio / crop area**: header-only dimension probe of the crop PNG.
+/// - **ink_frac**: dark-pixel fraction of the (downscaled) crop.
+/// - **area_frac**: crop pixel area ÷ full-page render (`page-NNNN.png`) area.
+/// - **is_chart_fragment**: `-fig-` crop whose area < 35% of the same page's
+///   `-chart.png` ink-crop area (the chart band is the graphic-as-unit parent).
+pub fn crop_descriptor_from_asset(
+    cache: &mut CropGeometryCache,
+    asset_base_dir: Option<&Path>,
+    asset_path: Option<&str>,
+    inline_bytes: &[u8],
+) -> CropDescriptor {
+    let bytes_owned;
+    let bytes: &[u8] = if !inline_bytes.is_empty() {
+        inline_bytes
+    } else {
+        let Some(base) = asset_base_dir else {
+            return FALLBACK_CROP;
+        };
+        let Some(rel) = asset_path else {
+            return FALLBACK_CROP;
+        };
+        match std::fs::read(base.join(rel)) {
+            Ok(b) => {
+                bytes_owned = b;
+                &bytes_owned
+            }
+            Err(_) => return FALLBACK_CROP,
+        }
+    };
+
+    let Some((w, h)) = crate::chart_crop::image_dimensions_from_bytes(bytes) else {
+        return FALLBACK_CROP;
+    };
+    if w == 0 || h == 0 {
+        return FALLBACK_CROP;
+    }
+
+    let aspect_ratio = w as f32 / h as f32;
+    let ink_frac =
+        crate::chart_crop::ink_fraction_from_bytes(bytes).unwrap_or(FALLBACK_CROP.ink_frac);
+    let crop_area = u64::from(w) * u64::from(h);
+
+    let Some(page_num) = asset_path.and_then(crate::drawing_tags::page_num_from_asset_rel_path)
+    else {
+        // No page provenance (data-URI ref): real aspect/ink, fallback area.
+        return CropDescriptor {
+            aspect_ratio,
+            ink_frac,
+            ..FALLBACK_CROP
+        };
+    };
+    let page_num = page_num as usize;
+
+    let area_frac = match page_dims(cache, asset_base_dir, page_num) {
+        Some((pw, ph)) if pw > 0 && ph > 0 => {
+            let page_area = u64::from(pw) * u64::from(ph);
+            (crop_area as f32 / page_area as f32).min(1.0)
+        }
+        _ => FALLBACK_CROP.area_frac,
+    };
+
+    let is_chart_fragment = is_fig_crop(asset_path)
+        && match chart_area_px(cache, asset_base_dir, page_num) {
+            Some(chart_area) => (crop_area as f32) < CHART_FRAGMENT_AREA_RATIO * chart_area as f32,
+            None => false,
+        };
+
+    CropDescriptor {
+        area_frac,
+        ink_frac,
+        aspect_ratio,
+        is_chart_fragment,
+    }
+}
+
+fn is_fig_crop(asset_path: Option<&str>) -> bool {
+    asset_path
+        .map(|p| p.rsplit('/').next().unwrap_or(p).contains("-fig-"))
+        .unwrap_or(false)
+}
+
+fn page_dims(
+    cache: &mut CropGeometryCache,
+    asset_base_dir: Option<&Path>,
+    page_num: usize,
+) -> Option<(u32, u32)> {
+    if let Some(cached) = cache.page_dims.get(&page_num) {
+        return *cached;
+    }
+    let probed = probe_asset_dimensions(
+        asset_base_dir,
+        &crate::drawing_tags::page_asset_filename(page_num),
+    );
+    cache.page_dims.insert(page_num, probed);
+    probed
+}
+
+fn chart_area_px(
+    cache: &mut CropGeometryCache,
+    asset_base_dir: Option<&Path>,
+    page_num: usize,
+) -> Option<u64> {
+    if let Some(cached) = cache.chart_area_px.get(&page_num) {
+        return *cached;
+    }
+    let area = probe_asset_dimensions(
+        asset_base_dir,
+        &crate::drawing_tags::page_chart_crop_filename(page_num),
+    )
+    .map(|(w, h)| u64::from(w) * u64::from(h));
+    cache.chart_area_px.insert(page_num, area);
+    area
+}
+
+fn probe_asset_dimensions(asset_base_dir: Option<&Path>, filename: &str) -> Option<(u32, u32)> {
+    let path = asset_base_dir?
+        .join(crate::drawing_tags::ASSETS_SUBDIR)
+        .join(filename);
+    let bytes = std::fs::read(path).ok()?;
+    crate::chart_crop::image_dimensions_from_bytes(&bytes)
+}
+
+#[cfg(test)]
+mod suppress_tests {
+    use super::*;
+    use crate::page_modality::PageModality;
+
+    #[test]
+    fn print_modality_never_suppresses() {
+        let crop = CropDescriptor {
+            area_frac: 0.001,
+            ink_frac: 0.001,
+            aspect_ratio: 0.05,
+            is_chart_fragment: true,
+        };
+        assert!(!should_suppress_crop_manuscript(PageModality::Print, &crop));
+    }
+
+    #[test]
+    fn tiny_area_suppressed() {
+        let crop = CropDescriptor {
+            area_frac: 0.005,
+            ink_frac: 0.05,
+            aspect_ratio: 1.0,
+            is_chart_fragment: false,
+        };
+        assert!(should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn low_ink_suppressed() {
+        let crop = CropDescriptor {
+            area_frac: 0.05,
+            ink_frac: 0.005,
+            aspect_ratio: 1.0,
+            is_chart_fragment: false,
+        };
+        assert!(should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn tick_strip_suppressed() {
+        let crop = CropDescriptor {
+            area_frac: 0.05,
+            ink_frac: 0.05,
+            aspect_ratio: 0.1, // tall thin
+            is_chart_fragment: false,
+        };
+        assert!(should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn chart_fragment_suppressed() {
+        let crop = CropDescriptor {
+            area_frac: 0.05,
+            ink_frac: 0.05,
+            aspect_ratio: 1.0,
+            is_chart_fragment: true,
+        };
+        assert!(should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn real_chart_not_suppressed() {
+        let crop = CropDescriptor {
+            area_frac: 0.15,
+            ink_frac: 0.08,
+            aspect_ratio: 1.5,
+            is_chart_fragment: false,
+        };
+        assert!(!should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn mixed_modality_suppresses_like_manuscript() {
+        let crop = CropDescriptor {
+            area_frac: 0.005,
+            ink_frac: 0.05,
+            aspect_ratio: 1.0,
+            is_chart_fragment: false,
+        };
+        assert!(should_suppress_crop_manuscript(PageModality::Mixed, &crop));
+    }
+}
+
+#[cfg(test)]
+mod geometry_tests {
+    use super::*;
+    use crate::page_modality::PageModality;
+    use image::{DynamicImage, ImageBuffer, Rgba, RgbaImage};
+
+    /// Solid-color PNG of `w`×`h`; `dark` pixels count as ink.
+    fn solid_png(w: u32, h: u32, dark: bool) -> Vec<u8> {
+        let px = if dark {
+            Rgba([0, 0, 0, 255])
+        } else {
+            Rgba([255, 255, 255, 255])
+        };
+        let img: RgbaImage = ImageBuffer::from_pixel(w, h, px);
+        crate::chart_crop::encode_png(&DynamicImage::ImageRgba8(img)).unwrap()
+    }
+
+    /// Assets root with a 1000×2000 full-page render for page 1.
+    fn assets_root_with_page() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+        std::fs::write(
+            assets.join(crate::drawing_tags::page_asset_filename(1)),
+            solid_png(1000, 2000, false),
+        )
+        .unwrap();
+        dir
+    }
+
+    fn descriptor(
+        root: &std::path::Path,
+        cache: &mut CropGeometryCache,
+        rel: &str,
+        png: &[u8],
+    ) -> CropDescriptor {
+        std::fs::write(root.join(rel), png).unwrap();
+        crop_descriptor_from_asset(cache, Some(root), Some(rel), &[])
+    }
+
+    #[test]
+    fn tick_strip_real_geometry_suppressed() {
+        let root = assets_root_with_page();
+        let mut cache = CropGeometryCache::default();
+        // 40×900 tall-thin strip: area 0.018 (above area gate) but aspect 0.044.
+        let crop = descriptor(
+            root.path(),
+            &mut cache,
+            "assets/page-0001-fig-01.png",
+            &solid_png(40, 900, true),
+        );
+        assert!(crop.aspect_ratio < 0.15, "aspect={}", crop.aspect_ratio);
+        assert!(
+            (crop.area_frac - 0.018).abs() < 0.005,
+            "area_frac={}",
+            crop.area_frac
+        );
+        assert!(should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn tiny_crop_real_area_suppressed() {
+        let root = assets_root_with_page();
+        let mut cache = CropGeometryCache::default();
+        // 30×30 on a 1000×2000 page → area 0.00045 < 0.008.
+        let crop = descriptor(
+            root.path(),
+            &mut cache,
+            "assets/page-0001-fig-01.png",
+            &solid_png(30, 30, true),
+        );
+        assert!(crop.area_frac < DEFAULT_SUPPRESS_AREA_FRAC);
+        assert!(should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn whole_graphic_real_geometry_kept() {
+        let root = assets_root_with_page();
+        let mut cache = CropGeometryCache::default();
+        // 800×1000 inked graphic: area 0.4, aspect 0.8, ink 1.0 — all gates pass.
+        let crop = descriptor(
+            root.path(),
+            &mut cache,
+            "assets/page-0001-fig-01.png",
+            &solid_png(800, 1000, true),
+        );
+        assert!(!should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn fig_fragment_of_chart_band_suppressed() {
+        let root = assets_root_with_page();
+        let mut cache = CropGeometryCache::default();
+        // Chart band 800×800 (640k px); fig 200×200 (40k < 35% × 640k) with
+        // otherwise-passing geometry — only the fragment gate can fire.
+        std::fs::write(
+            root.path()
+                .join("assets")
+                .join(crate::drawing_tags::page_chart_crop_filename(1)),
+            solid_png(800, 800, true),
+        )
+        .unwrap();
+        let crop = descriptor(
+            root.path(),
+            &mut cache,
+            "assets/page-0001-fig-02.png",
+            &solid_png(200, 200, true),
+        );
+        assert!(crop.is_chart_fragment, "crop={crop:?}");
+        assert!(should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn fig_covering_most_of_chart_band_kept() {
+        let root = assets_root_with_page();
+        let mut cache = CropGeometryCache::default();
+        // Fig 700×700 (490k ≥ 35% × 640k) is the graphic-as-unit, not a fragment.
+        std::fs::write(
+            root.path()
+                .join("assets")
+                .join(crate::drawing_tags::page_chart_crop_filename(1)),
+            solid_png(800, 800, true),
+        )
+        .unwrap();
+        let crop = descriptor(
+            root.path(),
+            &mut cache,
+            "assets/page-0001-fig-01.png",
+            &solid_png(700, 700, true),
+        );
+        assert!(!crop.is_chart_fragment, "crop={crop:?}");
+        assert!(!should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn missing_assets_fail_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cache = CropGeometryCache::default();
+        // Nothing on disk: fallback descriptor must not trigger any gate.
+        let crop = crop_descriptor_from_asset(
+            &mut cache,
+            Some(dir.path()),
+            Some("assets/page-0001-fig-01.png"),
+            &[],
+        );
+        assert!(!should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn inline_bytes_without_path_use_real_aspect_and_ink() {
+        let mut cache = CropGeometryCache::default();
+        // Data-URI ref: no asset path → area falls back, aspect/ink are real.
+        let crop = crop_descriptor_from_asset(&mut cache, None, None, &solid_png(20, 500, true));
+        assert!(crop.aspect_ratio < 0.15);
+        assert!((crop.area_frac - FALLBACK_CROP.area_frac).abs() < f32::EPSILON);
+        assert!(should_suppress_crop_manuscript(
+            PageModality::Manuscript,
+            &crop
+        ));
+    }
+
+    #[test]
+    fn page_dims_probed_once_per_page() {
+        let root = assets_root_with_page();
+        let mut cache = CropGeometryCache::default();
+        let a = descriptor(
+            root.path(),
+            &mut cache,
+            "assets/page-0001-fig-01.png",
+            &solid_png(100, 100, true),
+        );
+        let b = descriptor(
+            root.path(),
+            &mut cache,
+            "assets/page-0001-fig-02.png",
+            &solid_png(100, 100, true),
+        );
+        assert_eq!(cache.page_dims.len(), 1);
+        assert!((a.area_frac - b.area_frac).abs() < f32::EPSILON);
+    }
+}
+
 struct Pass1Decision {
     kind: FigureKind,
     is_figure: bool,

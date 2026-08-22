@@ -1,0 +1,4 @@
+{
+  "description": "Copy to gold.local.json (gitignored). Tokens for recall only — never commit real notebook content.",
+  "anchors": ["TOKEN_A", "TOKEN_B"]
+}

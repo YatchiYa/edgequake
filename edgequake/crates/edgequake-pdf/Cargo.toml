@@ -22,6 +22,9 @@ regex = "1"
 once_cell = "1"
 base64 = "0.22"
 image = "0.25"
+# Same crate+version as edgeparse-core's lopdf (cargo unifies → identical types).
+# Pure-Rust PDF structure access for SPEC-134 image placement walk — no pdfium.
+lopdf = { version = "0.39.0", default-features = false, package = "pdf-cos" }
 serde_json = { workspace = true }
 tempfile = "3"
 # pdfium access goes through edgequake-pdf2md (shared singleton) — no direct pdfium deps.

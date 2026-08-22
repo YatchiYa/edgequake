@@ -4,7 +4,15 @@ use super::context::SurroundingContext;
 use super::manifest::ManifestItem;
 
 /// Target language for `name` / `description` outputs (LightRAG `language`).
+///
+/// Precedence (SPEC-134 WP-3): task-local document language →
+/// `EDGEQUAKE_MM_PROMPT_LANGUAGE` → `"English"`.
 pub fn prompt_language() -> String {
+    if let Some(lang) = edgequake_pipeline::document_language_override() {
+        if !lang.trim().is_empty() {
+            return lang;
+        }
+    }
     std::env::var("EDGEQUAKE_MM_PROMPT_LANGUAGE")
         .ok()
         .filter(|s| !s.trim().is_empty())
@@ -161,5 +169,15 @@ mod tests {
         assert_eq!(ctx.captions, "n/a");
         assert_eq!(ctx.leading, "before");
         assert_eq!(ctx.trailing, "n/a");
+    }
+
+    #[tokio::test]
+    async fn prompt_language_reads_task_local() {
+        edgequake_pipeline::with_document_language("French".into(), async {
+            assert_eq!(prompt_language(), "French");
+            let ctx = PromptContext::from_parts(None, None, &SurroundingContext::default());
+            assert_eq!(ctx.language, "French");
+        })
+        .await;
     }
 }

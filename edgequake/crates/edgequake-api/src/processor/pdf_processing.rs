@@ -91,6 +91,7 @@ fn build_text_insert_from_pdf_convert(
     vision_model: Option<String>,
     extraction_method: Option<&str>,
     extraction_warning: Option<String>,
+    document_language: Option<String>,
 ) -> edgequake_tasks::TextInsertData {
     edgequake_tasks::TextInsertData {
         text: markdown,
@@ -115,6 +116,7 @@ fn build_text_insert_from_pdf_convert(
             "merge_only": data.reprocess_mode
                 .map(|m| m.merge_only())
                 .unwrap_or(false),
+            "document_language": document_language,
         })),
     }
 }
@@ -171,6 +173,117 @@ fn compute_safe_pdf_resource_profile(
     };
 
     (concurrency.max(1), dpi)
+}
+#[cfg(feature = "postgres")]
+/// SPEC-134 WP-3: route the Pass-A system prompt by page modality.
+///
+/// Precedence (LAW-134-5): explicit upload/workspace prompt (already set on
+/// the config) > modality-routed manuscript prompt > `None` (print SSOT
+/// applied downstream by the vision backend).
+fn route_pass_a_system_prompt(
+    cfg: &mut edgequake_pdf::PageDrawingAssetsConfig,
+    modality: edgequake_pdf::PageModality,
+) {
+    if cfg.page_system_prompt.is_none() && modality.is_manuscript_like() {
+        cfg.page_system_prompt =
+            Some(edgequake_pdf::pass_a_system_prompt_for(modality).to_string());
+    }
+}
+#[cfg(feature = "postgres")]
+/// SPEC-134 WP-4: the SPEC-128 two-pass figure filter only makes sense for
+/// print documents. On image-primary (manuscript/mixed) pages the embedded
+/// XObjects are scan-tiling artifacts, not figures — narrating them is crop
+/// theater (LAW-134-16). Manuscript charts are digitized whole-page by Pass-A.
+fn should_attach_figure_filter(
+    extraction_method: edgequake_storage::ExtractionMethod,
+    modality: edgequake_pdf::PageModality,
+) -> bool {
+    matches!(
+        extraction_method,
+        edgequake_storage::ExtractionMethod::Vision
+    ) && modality == edgequake_pdf::PageModality::Print
+}
+#[cfg(feature = "postgres")]
+/// SPEC-134 WP-10: manuscript-class vision provider routing.
+///
+/// Precedence: `EDGEQUAKE_VISION_PROVIDER_MANUSCRIPT` (operator routing
+/// decision for the manuscript class) > configured upload/workspace value.
+fn resolve_vision_provider_for_modality(
+    modality: edgequake_pdf::PageModality,
+    configured: &str,
+) -> String {
+    if modality.is_manuscript_like() {
+        if let Ok(p) = std::env::var("EDGEQUAKE_VISION_PROVIDER_MANUSCRIPT") {
+            if !p.trim().is_empty() {
+                return p;
+            }
+        }
+    }
+    configured.to_string()
+}
+#[cfg(feature = "postgres")]
+/// SPEC-134 WP-10: manuscript-class vision model routing.
+///
+/// Precedence: `EDGEQUAKE_VISION_MODEL_MANUSCRIPT` > upload field > provider
+/// default. No vendor is hardcoded — the env vars are the only override.
+fn resolve_vision_model_for_modality(
+    modality: edgequake_pdf::PageModality,
+    configured: Option<&str>,
+    provider: &str,
+) -> String {
+    use crate::vision_env::default_vision_model_for_provider;
+    if modality.is_manuscript_like() {
+        if let Ok(m) = std::env::var("EDGEQUAKE_VISION_MODEL_MANUSCRIPT") {
+            if !m.trim().is_empty() {
+                return m;
+            }
+        }
+    }
+    configured
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| default_vision_model_for_provider(provider))
+}
+
+#[cfg(feature = "postgres")]
+fn conversion_config_for_group(
+    base: &edgequake_pdf::PdfConversionConfig,
+    modality: edgequake_pdf::PageModality,
+    pages: Option<Vec<usize>>,
+    figure_filter: Option<std::sync::Arc<dyn edgequake_llm::LLMProvider>>,
+    safe_dpi: u32,
+) -> edgequake_pdf::PdfConversionConfig {
+    let mut cfg = base.clone();
+    let selection = pages.map(edgequake_pdf2md::PageSelection::Set);
+    if let Some(ref mut assets) = cfg.page_drawing_assets {
+        assets.page_modality = Some(modality);
+        route_pass_a_system_prompt(assets, modality);
+        if should_attach_figure_filter(edgequake_storage::ExtractionMethod::Vision, modality) {
+            if let Some(provider) = figure_filter {
+                assets.attach_figure_filter_if_enabled(Some(provider));
+            }
+        } else {
+            assets.figure_filter_provider = None;
+        }
+        if !modality.is_manuscript_like()
+            && assets.page_system_prompt.as_deref()
+                == Some(edgequake_pdf::RAG_PAGE_MANUSCRIPT_VISION_SYSTEM_PROMPT)
+        {
+            assets.page_system_prompt = None;
+        }
+    }
+    if let Some(ref mut vision) = cfg.vision {
+        vision.pages = selection.clone();
+        let profile = edgequake_pdf::ManuscriptProfile::resolve(modality, safe_dpi);
+        if profile.bypasses_adaptive_clamp(modality) {
+            vision.dpi = Some(profile.dpi.max(vision.dpi.unwrap_or(profile.dpi)));
+            vision.max_rendered_pixels = Some(profile.max_rendered_pixels);
+        } else {
+            vision.max_rendered_pixels = None;
+        }
+    }
+    cfg.pages = selection;
+    cfg
 }
 
 impl DocumentTaskProcessor {
@@ -273,6 +386,7 @@ impl DocumentTaskProcessor {
         vision_model: Option<String>,
         extraction_method_str: Option<&str>,
         extraction_warning: Option<String>,
+        document_language: Option<String>,
         cancel_token: &CancellationToken,
     ) -> TaskResult<serde_json::Value> {
         self.check_cancelled(cancel_token, "pre-ingest-enqueue", early_doc_id)
@@ -324,6 +438,7 @@ impl DocumentTaskProcessor {
             vision_model,
             extraction_method_str,
             extraction_warning,
+            document_language,
         );
 
         self.bump_task_progress(task, "enqueue_ingest".to_string(), 5, 90)
@@ -747,6 +862,8 @@ impl DocumentTaskProcessor {
                         .await
                         .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))?;
 
+                    let resume_language = edgequake_pdf::detect_document_language(&stored_markdown)
+                        .map(str::to_string);
                     return self
                         .finish_pdf_convert_and_enqueue_ingest(
                             task,
@@ -761,6 +878,7 @@ impl DocumentTaskProcessor {
                             stored_vision_model,
                             extraction_method_str,
                             None,
+                            resume_language,
                             &cancel_token,
                         )
                         .await;
@@ -788,29 +906,55 @@ impl DocumentTaskProcessor {
             edgequake_pdf::PdfParserBackend::EdgeParse => ExtractionMethod::EdgeParse,
         };
 
-        let default_vision_model = || {
-            use crate::vision_env::default_vision_model_for_provider;
-            data.vision_model
-                .clone()
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| default_vision_model_for_provider(&data.vision_provider))
-        };
-
-        let mut vision_model = match backend.runtime_backend() {
-            edgequake_pdf::PdfParserBackend::Vision | edgequake_pdf::PdfParserBackend::Auto => {
-                Some(default_vision_model())
-            }
-            edgequake_pdf::PdfParserBackend::EdgeParse => None,
-        };
         let mut fallback_warning: Option<String> = None;
 
-        // SPEC-038: born-digital PDFs default to Vision but often have embedded text.
-        // Try EdgeParse first when routing is automatic to avoid O(pages × LLM) conversion.
+        // SPEC-134 Slice E: classify pages BEFORE SPEC-038 Auto so a lying OCR
+        // layer cannot skip Vision on manuscript scans (LAW-134-12).
+        let convert_plan = if matches!(extraction_method, ExtractionMethod::Vision) {
+            if let Some(forced) = edgequake_pdf::PageModality::from_env() {
+                let n = page_count.max(1);
+                let pages: Vec<_> = (1..=n)
+                    .map(|page_num| edgequake_pdf::PageClassification {
+                        page_num,
+                        result: edgequake_pdf::PageClassResult {
+                            modality: forced,
+                            score: 1.0,
+                        },
+                    })
+                    .collect();
+                edgequake_pdf::PageConvertPlan::from_classifications(&pages, n)
+            } else {
+                let detected = edgequake_pdf::classify_pages_from_bytes(&pdf_data).await;
+                let plan = edgequake_pdf::PageConvertPlan::from_classifications(
+                    &detected,
+                    page_count.max(1),
+                );
+                if plan.document_modality != edgequake_pdf::PageModality::Print {
+                    tracing::info!(
+                        pdf_id = %data.pdf_id,
+                        modality = plan.document_modality.as_str(),
+                        ms_pages = plan.manuscript_pages.len(),
+                        print_pages = plan.print_pages.len(),
+                        "SPEC-134: heuristic classifier detected non-print pages"
+                    );
+                }
+                plan
+            }
+        } else {
+            edgequake_pdf::PageConvertPlan::all_print(page_count.max(1))
+        };
+        let page_modality = convert_plan.document_modality;
+        let skip_edgeparse =
+            edgequake_pdf::ManuscriptProfile::resolve(edgequake_pdf::PageModality::Manuscript, 150)
+                .skip_edgeparse_fastpath;
+
         let mut precomputed_markdown: Option<String> = None;
-        if crate::services::should_try_edgeparse_before_vision(
-            backend,
-            data.pdf_parser_backend_explicit,
-        ) {
+        if !convert_plan.should_skip_edgeparse(skip_edgeparse)
+            && crate::services::should_try_edgeparse_before_vision(
+                backend,
+                data.pdf_parser_backend_explicit,
+            )
+        {
             if let Some(markdown) =
                 crate::services::try_edgeparse_fast_path(&pdf_data, page_count, &filename).await
             {
@@ -828,10 +972,24 @@ impl DocumentTaskProcessor {
                     )
                     .await;
                 extraction_method = ExtractionMethod::EdgeParse;
-                vision_model = None;
                 precomputed_markdown = Some(markdown);
             }
         }
+
+        // SPEC-134 WP-10: manuscript-class vision routing — the env override is
+        // an operator routing decision for the manuscript class and beats the
+        // generic upload/workspace/default resolution.
+        let vision_provider =
+            resolve_vision_provider_for_modality(page_modality, &data.vision_provider);
+        let mut vision_model = if matches!(extraction_method, ExtractionMethod::Vision) {
+            Some(resolve_vision_model_for_modality(
+                page_modality,
+                data.vision_model.as_deref(),
+                &vision_provider,
+            ))
+        } else {
+            None
+        };
 
         let converter = if precomputed_markdown.is_some() {
             edgequake_pdf::create_pdf_converter(edgequake_pdf::PdfParserBackend::EdgeParse)
@@ -842,8 +1000,7 @@ impl DocumentTaskProcessor {
                         let error = edgequake_tasks::TaskError::UnsupportedOperation(
                             "Vision PDF extraction requires enable_vision=true.".to_string(),
                         );
-                        let message =
-                            build_edgeparse_fallback_message(&data.vision_provider, &error);
+                        let message = build_edgeparse_fallback_message(&vision_provider, &error);
                         warn!(
                             pdf_id = %data.pdf_id,
                             "Vision disabled for requested vision extraction; falling back to EdgeParse"
@@ -863,14 +1020,14 @@ impl DocumentTaskProcessor {
                             use crate::safety_limits::check_vision_provider_available;
 
                             match check_vision_provider_available(
-                                &data.vision_provider,
+                                &vision_provider,
                                 vision_model.as_deref().unwrap_or_default(),
                             ) {
                                 Ok(()) => edgequake_pdf::create_pdf_converter(backend),
                                 Err(e) => {
                                     let error = edgequake_tasks::TaskError::Processing(format!(
                                         "Failed to create vision provider '{}': {e}",
-                                        data.vision_provider
+                                        vision_provider
                                     ));
                                     if !vision_fallback_allowed(
                                         backend,
@@ -879,10 +1036,8 @@ impl DocumentTaskProcessor {
                                     ) {
                                         return Err(error);
                                     }
-                                    let message = build_edgeparse_fallback_message(
-                                        &data.vision_provider,
-                                        &error,
-                                    );
+                                    let message =
+                                        build_edgeparse_fallback_message(&vision_provider, &error);
                                     warn!(
                                         pdf_id = %data.pdf_id,
                                         error = %error,
@@ -910,7 +1065,7 @@ impl DocumentTaskProcessor {
                                 "Vision extraction requires the 'vision' feature flag".to_string(),
                             );
                             let message =
-                                build_edgeparse_fallback_message(&data.vision_provider, &error);
+                                build_edgeparse_fallback_message(&vision_provider, &error);
                             warn!(
                                 pdf_id = %data.pdf_id,
                                 "Vision feature is unavailable; falling back to EdgeParse"
@@ -939,18 +1094,34 @@ impl DocumentTaskProcessor {
         // retain the original scale-with-page-count formula.
         // See ADR-04-003 in mission/04-heavy-pdf.md.
         let (safe_concurrency, safe_dpi) =
-            compute_safe_pdf_resource_profile(page_count, file_size_bytes, &data.vision_provider);
+            compute_safe_pdf_resource_profile(page_count, file_size_bytes, &vision_provider);
         let concurrency = std::env::var("EDGEQUAKE_PDF_CONCURRENCY")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(safe_concurrency)
             .max(1)
             .min(safe_concurrency);
-        let dpi = std::env::var("EDGEQUAKE_PDF_DPI")
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or(safe_dpi)
-            .clamp(96, safe_dpi.max(96));
+
+        // SPEC-134: manuscript profile from the modality resolved above.
+        // For manuscript/mixed pages, bypass the adaptive DPI clamp and apply
+        // DPI floor + max_rendered_pixels floor (LAW-134-3).
+        let ms_profile = edgequake_pdf::ManuscriptProfile::resolve(page_modality, safe_dpi);
+
+        let dpi = if ms_profile.bypasses_adaptive_clamp(page_modality) {
+            // Manuscript: use profile DPI (bypass adaptive clamp)
+            std::env::var("EDGEQUAKE_PDF_DPI")
+                .ok()
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(ms_profile.dpi)
+                .max(ms_profile.dpi) // never below MS floor
+        } else {
+            // Print: existing adaptive clamp
+            std::env::var("EDGEQUAKE_PDF_DPI")
+                .ok()
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(safe_dpi)
+                .clamp(96, safe_dpi.max(96))
+        };
         let checkpoint_dir =
             crate::services::durable_vision_checkpoint_dir(&data.pdf_id.to_string());
         let mut page_drawing_assets = match extraction_method {
@@ -966,30 +1137,38 @@ impl DocumentTaskProcessor {
                 data.multimodal_process_options.as_deref(),
             ),
         };
-        if matches!(extraction_method, ExtractionMethod::Vision) {
-            if let Some(ref mut cfg) = page_drawing_assets {
-                let model = vision_model.clone().filter(|s| !s.is_empty());
-                match model {
-                    Some(model) => {
-                        match edgequake_llm::ProviderFactory::create_llm_provider(
-                            &data.vision_provider,
-                            &model,
-                        ) {
-                            Ok(provider) => {
-                                cfg.attach_figure_filter_if_enabled(Some(provider));
-                            }
-                            Err(e) => tracing::warn!(
-                                error = %e,
-                                provider = %data.vision_provider,
-                                model = %model,
-                                "SPEC-128 figure filter: could not create vision LLM provider"
-                            ),
+        // SPEC-134 WP-3: prompt is routed per convert group (Slice E mixed docs).
+        if let Some(ref mut cfg) = page_drawing_assets {
+            cfg.page_modality = Some(page_modality);
+        }
+        // Figure filter for print pages only (mixed docs still attach on the print group).
+        let mut print_figure_filter: Option<std::sync::Arc<dyn edgequake_llm::LLMProvider>> = None;
+        if matches!(extraction_method, ExtractionMethod::Vision)
+            && !convert_plan.print_pages.is_empty()
+        {
+            let model = vision_model.clone().filter(|s| !s.is_empty());
+            match model {
+                Some(model) => {
+                    match edgequake_llm::ProviderFactory::create_llm_provider(
+                        &vision_provider,
+                        &model,
+                    ) {
+                        Ok(provider) => {
+                            print_figure_filter = Some(
+                                edgequake_pdf::image_guard::ImageGuardProvider::wrap(provider),
+                            );
                         }
+                        Err(e) => tracing::warn!(
+                            error = %e,
+                            provider = %vision_provider,
+                            model = %model,
+                            "SPEC-128 figure filter: could not create vision LLM provider"
+                        ),
                     }
-                    None => tracing::warn!(
-                        "SPEC-128 figure filter skipped: no vision model (artefacts will not be pruned)"
-                    ),
                 }
+                None => tracing::warn!(
+                    "SPEC-128 figure filter skipped: no vision model (artefacts will not be pruned)"
+                ),
             }
         }
         // Stall-watchdog heartbeat: resets on every page/status progress signal so
@@ -1017,10 +1196,15 @@ impl DocumentTaskProcessor {
                     Arc::clone(&hb),
                 );
                 edgequake_pdf::VisionConversionConfig {
-                    provider_name: Some(data.vision_provider.clone()),
+                    provider_name: Some(vision_provider.clone()),
                     model: Some(model),
                     concurrency: Some(concurrency),
                     dpi: Some(dpi),
+                    max_rendered_pixels: if ms_profile.bypasses_adaptive_clamp(page_modality) {
+                        Some(ms_profile.max_rendered_pixels)
+                    } else {
+                        None // use default 2000
+                    },
                     checkpoint_dir: Some(checkpoint_dir),
                     // Retries must resume from durable checkpoints so pages accumulate.
                     // Fresh restart (`restart_from_scratch`) still clears via no_resume.
@@ -1057,7 +1241,7 @@ impl DocumentTaskProcessor {
                         base_timeout_secs
                     } else {
                         use crate::safety_limits::vision_outer_timeout_secs;
-                        vision_outer_timeout_secs(&data.vision_provider, page_count)
+                        vision_outer_timeout_secs(&vision_provider, page_count)
                     };
                     // Absolute backstop: env override OR 24h — never kill a progressing doc
                     // solely because the soft page budget elapsed.
@@ -1086,7 +1270,7 @@ impl DocumentTaskProcessor {
 
                     info!(
                         pdf_id = %data.pdf_id,
-                        vision_provider = %data.vision_provider,
+                        vision_provider = %vision_provider,
                         vision_model = %vision_model.clone().unwrap_or_default(),
                         page_count = page_count,
                         concurrency = concurrency,
@@ -1115,7 +1299,22 @@ impl DocumentTaskProcessor {
                         result = edgequake_observability::with_pipeline_stage_span(
                             "ingest.pass_a",
                             crate::services::run_with_vision_stall_watchdog(
-                                converter.convert(&pdf_data, &conversion_config),
+                                async {
+                                    let mut parts: Vec<String> = Vec::new();
+                                    for (modality, page_set) in convert_plan.groups() {
+                                        let cfg = conversion_config_for_group(
+                                            &conversion_config,
+                                            modality,
+                                            page_set,
+                                            print_figure_filter.clone(),
+                                            safe_dpi,
+                                        );
+                                        parts.push(converter.convert(&pdf_data, &cfg).await?);
+                                    }
+                                    Ok::<_, edgequake_pdf::PdfConversionError>(
+                                        edgequake_pdf::stitch_page_markdown_in_order(&parts),
+                                    )
+                                },
                                 Arc::clone(&vision_heartbeat),
                                 stall_secs,
                                 absolute_secs,
@@ -1138,7 +1337,7 @@ impl DocumentTaskProcessor {
                             }
 
                             let message =
-                                build_edgeparse_fallback_message(&data.vision_provider, &error);
+                                build_edgeparse_fallback_message(&vision_provider, &error);
                             warn!(
                                 pdf_id = %data.pdf_id,
                                 error = %error,
@@ -1166,7 +1365,7 @@ impl DocumentTaskProcessor {
                             let made_progress = vision_heartbeat.made_progress();
                             let raw = abort.as_timeout_message(
                                 &data.pdf_id.to_string(),
-                                &data.vision_provider,
+                                &vision_provider,
                             );
                             let annotated =
                                 crate::services::annotate_timeout_progress(raw, made_progress);
@@ -1180,7 +1379,7 @@ impl DocumentTaskProcessor {
                             }
 
                             let message =
-                                build_edgeparse_fallback_message(&data.vision_provider, &error);
+                                build_edgeparse_fallback_message(&vision_provider, &error);
                             warn!(
                                 pdf_id = %data.pdf_id,
                                 made_progress = made_progress,
@@ -1237,7 +1436,7 @@ impl DocumentTaskProcessor {
         edgequake_observability::record_ingest_parse_meta(
             edgequake_observability::IngestParseMeta {
                 parser: Some(parser.to_string()),
-                vision_provider: Some(data.vision_provider.clone()),
+                vision_provider: Some(vision_provider.clone()),
                 vision_model: vision_model.clone(),
                 page_count: Some(page_count),
                 pass: Some(if matches!(extraction_method, ExtractionMethod::Vision) {
@@ -1250,6 +1449,18 @@ impl DocumentTaskProcessor {
         );
 
         let markdown = strip_nul_bytes(markdown);
+
+        // SPEC-134 WP-3: detect source language from the first non-empty Pass-A
+        // page. One detection, propagated to Pass-B / verify / extraction.
+        let detected_language =
+            edgequake_pdf::detect_document_language(&markdown).map(str::to_string);
+        if let Some(ref lang) = detected_language {
+            tracing::info!(
+                pdf_id = %data.pdf_id,
+                language = %lang,
+                "SPEC-134: document language detected from Pass-A"
+            );
+        }
 
         // SPEC-128: layout sidecar + DB persist are independent of mm PNG persist
         // (text/EdgeParse ingest still needs overlay rows; LAW-128-7 fail-open).
@@ -1332,6 +1543,202 @@ impl DocumentTaskProcessor {
             }
         }
 
+        // SPEC-134 WP-2: empty-page escalation (calibration law). A page that
+        // returns the empty placeholder while its render exists on disk is an
+        // acquisition failure, not an empty page — re-OCR it before the verify
+        // pass so recovered content is verified like everything else. The
+        // manuscript model override (WP-10) is already folded into
+        // vision_provider/vision_model above.
+        let mut escalation_report: Option<crate::services::manuscript_verify::EscalationOutcome> =
+            None;
+        let markdown = if matches!(extraction_method, ExtractionMethod::Vision)
+            && crate::services::manuscript_verify::empty_page_retry_enabled_from_env()
+            && markdown.contains(edgequake_pdf::EMPTY_VISION_PAGE_PLACEHOLDER)
+        {
+            let escalate_provider =
+                vision_model
+                    .clone()
+                    .filter(|s| !s.is_empty())
+                    .and_then(|model| {
+                        edgequake_llm::ProviderFactory::create_llm_provider(
+                            &vision_provider,
+                            &model,
+                        )
+                        .map_err(|e| {
+                            tracing::warn!(
+                                error = %e,
+                                "SPEC-134 escalation: provider unavailable — skipping"
+                            );
+                            e
+                        })
+                        .ok()
+                    });
+            match escalate_provider {
+                Some(provider) => {
+                    let provider =
+                        edgequake_pdf::image_guard::ImageGuardProvider::wrap_for_modality(
+                            provider,
+                            page_modality,
+                        );
+                    let assets_root = crate::services::document_mm_assets_root(&early_doc_id);
+                    let outcome = crate::services::manuscript_verify::escalate_empty_pages(
+                        &markdown,
+                        assets_root.as_path(),
+                        provider,
+                        page_modality,
+                    )
+                    .await;
+                    if !outcome.pages_escalated.is_empty() || !outcome.pages_failed.is_empty() {
+                        tracing::info!(
+                            pdf_id = %data.pdf_id,
+                            escalated = ?outcome.pages_escalated,
+                            failed = ?outcome.pages_failed,
+                            "SPEC-134: empty-page escalation complete"
+                        );
+                    }
+                    let recovered = outcome.markdown.clone();
+                    escalation_report = Some(outcome);
+                    recovered
+                }
+                None => markdown,
+            }
+        } else {
+            markdown
+        };
+
+        // SPEC-134 WP-9: grounding verify pass (manuscript-class only).
+        // Pixels are the only ground truth (LAW-134-1): judge each page's
+        // Markdown against its render, refine once on a low verdict, and mark
+        // still-low pages honestly. Fail-open — never blocks ingestion.
+        let mut grounding_report: Option<crate::services::manuscript_verify::VerifyOutcome> = None;
+        let markdown = if matches!(extraction_method, ExtractionMethod::Vision)
+            && page_modality.is_manuscript_like()
+            && crate::services::manuscript_verify::verify_enabled_from_env()
+        {
+            let verify_provider =
+                vision_model
+                    .clone()
+                    .filter(|s| !s.is_empty())
+                    .and_then(|model| {
+                        edgequake_llm::ProviderFactory::create_llm_provider(
+                            &vision_provider,
+                            &model,
+                        )
+                        .map_err(|e| {
+                            tracing::warn!(
+                                error = %e,
+                                "SPEC-134 verify: judge provider unavailable — fail open"
+                            );
+                            e
+                        })
+                        .ok()
+                    });
+            match verify_provider {
+                Some(provider) => {
+                    // SPEC-134 WP-1: the judge sees the same page renders as
+                    // Pass-A — size-guard them or oversized pages fail open.
+                    let provider =
+                        edgequake_pdf::image_guard::ImageGuardProvider::wrap_for_modality(
+                            provider,
+                            page_modality,
+                        );
+                    progress_callback
+                        .report_converting_status("Verifying transcription grounding…", 0.965);
+                    let assets_root = crate::services::document_mm_assets_root(&early_doc_id);
+                    let outcome = crate::services::manuscript_verify::verify_manuscript_markdown(
+                        &markdown,
+                        page_modality,
+                        Some(assets_root.as_path()),
+                        provider,
+                    )
+                    .await;
+                    tracing::info!(
+                        pdf_id = %data.pdf_id,
+                        pages_judged = outcome.pages_judged,
+                        pages_low = outcome.pages_low_grounding,
+                        pages_refined = outcome.pages_refined,
+                        mean_score = ?outcome.mean_score,
+                        fail_open = outcome.fail_open,
+                        fail_reason = ?outcome.fail_reason,
+                        "SPEC-134: grounding verify pass complete"
+                    );
+                    let verified_markdown = outcome.markdown.clone();
+                    grounding_report = Some(outcome);
+                    verified_markdown
+                }
+                None => markdown,
+            }
+        } else {
+            markdown
+        };
+
+        // SPEC-134 WP-5: persist modality + grounding outcome so the document
+        // status endpoint exposes them (UX chip is WP-7, out of this round).
+        {
+            let modality_str = page_modality.as_str().to_string();
+            let grounding_score = grounding_report.as_ref().and_then(|r| r.mean_score);
+            let grounding_verified = grounding_report.as_ref().map(|r| r.ran && !r.fail_open);
+            let grounding_low_pages = grounding_report.as_ref().map(|r| r.pages_low_grounding);
+            let pages_escalated = escalation_report
+                .as_ref()
+                .map(|r| r.pages_escalated.clone())
+                .unwrap_or_default();
+            let pages_failed = escalation_report
+                .as_ref()
+                .map(|r| r.pages_failed.clone())
+                .unwrap_or_default();
+            let document_language = detected_language.clone();
+            let grounding_fail_reason = grounding_report
+                .as_ref()
+                .and_then(|r| r.fail_reason.clone());
+            let page_modalities_meta = {
+                let mut rows = Vec::new();
+                for p in &convert_plan.print_pages {
+                    rows.push(json!({"page": p, "modality": "print"}));
+                }
+                for p in &convert_plan.manuscript_pages {
+                    rows.push(json!({"page": p, "modality": "manuscript"}));
+                }
+                json!(rows)
+            };
+            if let Err(e) = crate::services::patch_document_metadata(
+                &self.kv_storage,
+                &early_doc_id,
+                move |obj| {
+                    obj.insert("page_modality".to_string(), json!(modality_str));
+                    obj.insert("page_modalities".to_string(), page_modalities_meta);
+                    if let Some(lang) = document_language {
+                        obj.insert("document_language".to_string(), json!(lang));
+                    }
+                    if let Some(reason) = grounding_fail_reason {
+                        obj.insert("grounding_fail_reason".to_string(), json!(reason));
+                    }
+                    if let Some(score) = grounding_score {
+                        obj.insert("grounding_score".to_string(), json!(score));
+                    }
+                    if let Some(verified) = grounding_verified {
+                        obj.insert("grounding_verified".to_string(), json!(verified));
+                    }
+                    if let Some(low) = grounding_low_pages {
+                        obj.insert("grounding_low_pages".to_string(), json!(low));
+                    }
+                    if !pages_escalated.is_empty() {
+                        obj.insert("pages_escalated".to_string(), json!(pages_escalated));
+                    }
+                    if !pages_failed.is_empty() {
+                        obj.insert("pages_failed".to_string(), json!(pages_failed));
+                    }
+                },
+            )
+            .await
+            {
+                tracing::warn!(
+                    error = %e,
+                    "SPEC-134: failed to persist modality/grounding metadata"
+                );
+            }
+        }
+
         let mm_asset_base = crate::services::multimodal_asset_base_dir(
             &early_doc_id,
             data.multimodal_process_options.as_deref(),
@@ -1366,18 +1773,26 @@ impl DocumentTaskProcessor {
                     );
                 }
             }
-            let mm_outcome = crate::services::run_multimodal_analyze_stage_outcome_with_cancel(
-                markdown,
-                data.multimodal_process_options.as_deref(),
-                &filename,
-                self.workspace_service.as_ref(),
-                data.workspace_id,
-                Arc::clone(&self.llm_provider),
-                mm_asset_base.as_deref(),
-                Some(&early_doc_id),
-                Some(Arc::clone(&self.kv_storage)),
-                converting_substep,
-                Some(cancel_token.clone()),
+            // SPEC-134: scope the resolved page modality so Pass-B suppression
+            // sees the same modality as the conversion profile (LAW-134-16).
+            let mm_outcome = crate::services::with_page_modality_ctx(
+                page_modality,
+                edgequake_pipeline::with_optional_document_language(
+                    detected_language.clone(),
+                    crate::services::run_multimodal_analyze_stage_outcome_with_cancel(
+                        markdown,
+                        data.multimodal_process_options.as_deref(),
+                        &filename,
+                        self.workspace_service.as_ref(),
+                        data.workspace_id,
+                        Arc::clone(&self.llm_provider),
+                        mm_asset_base.as_deref(),
+                        Some(&early_doc_id),
+                        Some(Arc::clone(&self.kv_storage)),
+                        converting_substep,
+                        Some(cancel_token.clone()),
+                    ),
+                ),
             )
             .await;
             if crate::services::multimodal::should_abort_multimodal_hard_error(
@@ -1483,6 +1898,7 @@ impl DocumentTaskProcessor {
             vision_model,
             extraction_method_str,
             extraction_warning,
+            detected_language,
             &cancel_token,
         )
         .await
@@ -1846,6 +2262,129 @@ mod spec124_ingest_converting {
         assert!(
             prod.contains("with_ingest_task_span"),
             "pdf worker must start ingest.task chain"
+        );
+    }
+}
+
+#[cfg(all(test, feature = "postgres"))]
+mod spec134_strategy {
+    use super::{resolve_vision_model_for_modality, resolve_vision_provider_for_modality};
+    use super::{route_pass_a_system_prompt, should_attach_figure_filter};
+    use edgequake_pdf::{PageDrawingAssetsConfig, PageModality};
+    use edgequake_storage::ExtractionMethod;
+
+    fn cfg_with_prompt(prompt: Option<&str>) -> PageDrawingAssetsConfig {
+        let mut cfg =
+            PageDrawingAssetsConfig::with_defaults(std::path::PathBuf::from("/tmp/x"), None);
+        cfg.page_system_prompt = prompt.map(|s| s.to_string());
+        cfg
+    }
+
+    #[test]
+    fn pass_a_prompt_explicit_wins_over_modality() {
+        let mut cfg = cfg_with_prompt(Some("custom upload prompt"));
+        route_pass_a_system_prompt(&mut cfg, PageModality::Manuscript);
+        assert_eq!(
+            cfg.page_system_prompt.as_deref(),
+            Some("custom upload prompt")
+        );
+    }
+
+    #[test]
+    fn pass_a_prompt_manuscript_routed_when_unset() {
+        let mut cfg = cfg_with_prompt(None);
+        route_pass_a_system_prompt(&mut cfg, PageModality::Manuscript);
+        assert_eq!(
+            cfg.page_system_prompt.as_deref(),
+            Some(edgequake_pdf::pass_a_system_prompt_for(
+                PageModality::Manuscript
+            ))
+        );
+    }
+
+    #[test]
+    fn pass_a_prompt_mixed_routed_when_unset() {
+        let mut cfg = cfg_with_prompt(None);
+        route_pass_a_system_prompt(&mut cfg, PageModality::Mixed);
+        assert_eq!(
+            cfg.page_system_prompt.as_deref(),
+            Some(edgequake_pdf::pass_a_system_prompt_for(PageModality::Mixed))
+        );
+    }
+
+    #[test]
+    fn pass_a_prompt_print_stays_none() {
+        let mut cfg = cfg_with_prompt(None);
+        route_pass_a_system_prompt(&mut cfg, PageModality::Print);
+        assert!(cfg.page_system_prompt.is_none());
+    }
+
+    #[test]
+    fn figure_filter_print_vision_attaches() {
+        assert!(should_attach_figure_filter(
+            ExtractionMethod::Vision,
+            PageModality::Print
+        ));
+    }
+
+    #[test]
+    fn figure_filter_manuscript_and_mixture_skip() {
+        assert!(!should_attach_figure_filter(
+            ExtractionMethod::Vision,
+            PageModality::Manuscript
+        ));
+        assert!(!should_attach_figure_filter(
+            ExtractionMethod::Vision,
+            PageModality::Mixed
+        ));
+    }
+
+    #[test]
+    fn figure_filter_edgeparse_never_attaches() {
+        assert!(!should_attach_figure_filter(
+            ExtractionMethod::EdgeParse,
+            PageModality::Print
+        ));
+    }
+
+    /// Env manipulation is process-global — keep all override assertions in
+    /// one sequential test so parallel runners cannot interleave set/remove.
+    #[test]
+    fn vision_routing_env_precedence() {
+        // 1. Manuscript + env set: env wins over the configured value.
+        std::env::set_var("EDGEQUAKE_VISION_PROVIDER_MANUSCRIPT", "env-provider");
+        std::env::set_var("EDGEQUAKE_VISION_MODEL_MANUSCRIPT", "env-model");
+        assert_eq!(
+            resolve_vision_provider_for_modality(PageModality::Manuscript, "configured"),
+            "env-provider"
+        );
+        assert_eq!(
+            resolve_vision_model_for_modality(
+                PageModality::Manuscript,
+                Some("cfg-model"),
+                "configured"
+            ),
+            "env-model"
+        );
+        // 2. Print + env set: print documents ignore the manuscript override.
+        assert_eq!(
+            resolve_vision_provider_for_modality(PageModality::Print, "configured"),
+            "configured"
+        );
+        assert_eq!(
+            resolve_vision_model_for_modality(PageModality::Print, Some("cfg-model"), "configured"),
+            "cfg-model"
+        );
+        // 3. Manuscript + env unset: fall back to the configured value.
+        std::env::remove_var("EDGEQUAKE_VISION_PROVIDER_MANUSCRIPT");
+        std::env::remove_var("EDGEQUAKE_VISION_MODEL_MANUSCRIPT");
+        assert_eq!(
+            resolve_vision_provider_for_modality(PageModality::Mixed, "configured"),
+            "configured"
+        );
+        assert_eq!(
+            resolve_vision_model_for_modality(PageModality::Mixed, Some("cfg-model"), "configured"),
+            "cfg-model"
         );
     }
 }

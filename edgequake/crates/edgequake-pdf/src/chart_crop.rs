@@ -430,6 +430,45 @@ fn is_background(p: Rgba<u8>) -> bool {
     r >= BG_LUMA_MIN && g >= BG_LUMA_MIN && b >= BG_LUMA_MIN
 }
 
+/// Dark-pixel (ink) fraction of an image: 0.0 = blank, 1.0 = fully inked.
+///
+/// SPEC-134: modality signal for manuscript detection — handwritten strokes on
+/// a scan typically yield 0.02–0.15; a blank scan < 0.01. Downscaled before
+/// counting so cost is bounded regardless of source resolution.
+pub fn ink_fraction(img: &DynamicImage) -> f32 {
+    let thumb = img.thumbnail(400, 400);
+    let rgba = thumb.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    if w == 0 || h == 0 {
+        return 0.0;
+    }
+    let total = u64::from(w) * u64::from(h);
+    let ink = rgba.pixels().filter(|p| !is_background(**p)).count() as u64;
+    ink as f32 / total as f32
+}
+
+/// Ink fraction from encoded image bytes (PNG/JPEG/…). `None` when undecodable.
+///
+/// Keeps the `image` crate dependency inside edgequake-pdf (SOLID-D): callers
+/// (e.g. edgequake-api Pass-B gate) depend on this API, not on `image`.
+pub fn ink_fraction_from_bytes(bytes: &[u8]) -> Option<f32> {
+    let img = image::load_from_memory(bytes).ok()?;
+    Some(ink_fraction(&img))
+}
+
+/// Pixel dimensions `(w, h)` from encoded image bytes — header-only probe,
+/// no full decode. `None` when the format is unrecognized.
+///
+/// SPEC-134: real crop geometry for the Pass-B suppression gate (aspect ratio,
+/// page-area fraction). Same SOLID-D rationale as [`ink_fraction_from_bytes`].
+pub fn image_dimensions_from_bytes(bytes: &[u8]) -> Option<(u32, u32)> {
+    image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?
+        .into_dimensions()
+        .ok()
+}
+
 fn apply_pad(bbox: (u32, u32, u32, u32), w: u32, h: u32) -> (u32, u32, u32, u32) {
     let (x0, y0, x1, y1) = bbox;
     let bw = x1.saturating_sub(x0).max(1);

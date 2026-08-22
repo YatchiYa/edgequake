@@ -155,7 +155,26 @@ pub async fn resolve_vlm_provider_for_workspace(
 }
 
 /// Resolve VLM for multimodal Pass B with shorter local per-call timeout.
+///
+/// SPEC-134 WP-1: every returned provider is wrapped in the image size guard
+/// so oversized analyze payloads are re-encoded instead of rejected upstream.
 pub async fn resolve_vlm_provider_for_pass_b(
+    workspace_service: Option<&Arc<dyn WorkspaceService>>,
+    workspace_id: Uuid,
+    startup_vision: Option<Arc<dyn LLMProvider>>,
+    fallback: Arc<dyn LLMProvider>,
+) -> Arc<dyn LLMProvider> {
+    let resolved = resolve_vlm_provider_for_pass_b_inner(
+        workspace_service,
+        workspace_id,
+        startup_vision,
+        fallback,
+    )
+    .await;
+    edgequake_pdf::image_guard::ImageGuardProvider::wrap(resolved)
+}
+
+async fn resolve_vlm_provider_for_pass_b_inner(
     workspace_service: Option<&Arc<dyn WorkspaceService>>,
     workspace_id: Uuid,
     startup_vision: Option<Arc<dyn LLMProvider>>,

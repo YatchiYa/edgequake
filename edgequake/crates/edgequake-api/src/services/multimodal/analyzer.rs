@@ -7,6 +7,9 @@ use std::time::Instant;
 
 use edgequake_llm::traits::LLMProvider;
 use edgequake_pdf::inline_images::scan_inline_image_refs;
+use edgequake_pdf::{
+    crop_descriptor_from_asset, should_suppress_crop_manuscript, CropGeometryCache, PageModality,
+};
 use edgequake_storage::traits::KVStorage;
 use futures::stream::{self, StreamExt};
 use tokio_util::sync::CancellationToken;
@@ -44,12 +47,33 @@ use crate::services::converting_subprogress::{
 tokio::task_local! {
     /// SPEC-015V: Pass B prompt / specialize gates for the current analyze stage.
     pub static VISION_EXTRACT_CTX: edgequake_pdf::VisionExtractConfig;
+    /// SPEC-134: page modality resolved by the ingestion pipeline (env override
+    /// or heuristic classifier). Scoped around the analyze stage so Pass-B
+    /// suppression sees the same modality as the conversion profile.
+    pub static PAGE_MODALITY_CTX: PageModality;
 }
 
 fn current_vision_extract() -> edgequake_pdf::VisionExtractConfig {
     VISION_EXTRACT_CTX
         .try_with(|c| c.clone())
         .unwrap_or_default()
+}
+
+/// Run `fut` with the SPEC-134 page modality visible to Pass-B suppression.
+pub async fn with_page_modality_ctx<R>(
+    modality: PageModality,
+    fut: impl std::future::Future<Output = R>,
+) -> R {
+    PAGE_MODALITY_CTX.scope(modality, fut).await
+}
+
+/// Resolution order: pipeline-scoped modality → env override → Print (fail-open).
+fn current_page_modality() -> PageModality {
+    PAGE_MODALITY_CTX
+        .try_with(|m| *m)
+        .ok()
+        .or_else(PageModality::from_env)
+        .unwrap_or(PageModality::Print)
 }
 
 /// Remove `<drawing …/>` placeholders that Pass B did not replace (viewer hygiene).
@@ -367,6 +391,40 @@ async fn analyze_images_pass_b(
     let analyze_cap = mm_profile.figures_to_analyze(discovered);
     let skipped = discovered.saturating_sub(analyze_cap);
     let refs: Vec<_> = all_refs.into_iter().take(analyze_cap).collect();
+
+    // SPEC-134: Graphic-as-unit Pass-B suppression for manuscript pages.
+    // Filter out tick strips, single bars, scribbles, and chart fragments
+    // before VLM analysis (LAW-134-16) using real crop geometry (WP-5).
+    let page_modality = current_page_modality();
+    let refs: Vec<_> = if page_modality.is_manuscript_like() {
+        let before = refs.len();
+        let mut geometry = CropGeometryCache::default();
+        let filtered: Vec<_> = refs
+            .into_iter()
+            .filter(|image_ref| {
+                let crop = crop_descriptor_from_asset(
+                    &mut geometry,
+                    asset_base_dir,
+                    image_ref.asset_path.as_deref(),
+                    &image_ref.bytes,
+                );
+                !should_suppress_crop_manuscript(page_modality, &crop)
+            })
+            .collect();
+        let suppressed = before - filtered.len();
+        if suppressed > 0 {
+            info!(
+                suppressed,
+                before,
+                after = filtered.len(),
+                "SPEC-134 Pass-B suppression: filtered manuscript crop fragments"
+            );
+        }
+        filtered
+    } else {
+        refs
+    };
+
     let total = refs.len();
     let concurrency = mm_image_concurrency();
     let progress_opts = VisionFigureProgressOpts {
@@ -979,6 +1037,33 @@ mod tests {
         .await;
         assert_eq!(out.markdown, "plain");
         assert!(out.summary.success == 0);
+    }
+
+    #[tokio::test]
+    async fn page_modality_ctx_visible_inside_scope() {
+        with_page_modality_ctx(PageModality::Manuscript, async {
+            assert_eq!(current_page_modality(), PageModality::Manuscript);
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn page_modality_ctx_nested_scope_overrides_then_restores() {
+        with_page_modality_ctx(PageModality::Manuscript, async {
+            with_page_modality_ctx(PageModality::Mixed, async {
+                assert_eq!(current_page_modality(), PageModality::Mixed);
+            })
+            .await;
+            assert_eq!(current_page_modality(), PageModality::Manuscript);
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn page_modality_defaults_to_print_outside_scope() {
+        // No scope and no env override (lib tests never set
+        // EDGEQUAKE_PDF_PAGE_MODALITY) → fail-open default.
+        assert_eq!(current_page_modality(), PageModality::Print);
     }
 
     #[tokio::test]

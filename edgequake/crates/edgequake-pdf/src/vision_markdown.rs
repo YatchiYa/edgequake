@@ -1,6 +1,6 @@
 //! Vision markdown assembly with page markers and optional drawing refs (SPEC-047 MV-20/21/24/28).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::drawing_tags::{
     bind_figure_images_to_page_asset, caption_with_page_context, count_markdown_images_for_asset,
@@ -406,7 +406,7 @@ pub fn assemble_vision_markdown(
     emit_drawing_refs: bool,
     id_prefix: Option<&str>,
 ) -> String {
-    assemble_vision_markdown_with_figures(
+    assemble_vision_markdown_with_policy(
         pages,
         emit_drawing_refs,
         emit_drawing_refs,
@@ -414,6 +414,7 @@ pub fn assemble_vision_markdown(
         None,
         None,
         None,
+        false,
     )
 }
 
@@ -424,7 +425,7 @@ pub fn assemble_vision_markdown_with_overrides(
     id_prefix: Option<&str>,
     drawing_path_overrides: Option<&HashMap<usize, String>>,
 ) -> String {
-    assemble_vision_markdown_with_figures(
+    assemble_vision_markdown_with_policy(
         pages,
         emit_drawing_refs,
         emit_drawing_refs,
@@ -432,6 +433,7 @@ pub fn assemble_vision_markdown_with_overrides(
         drawing_path_overrides,
         None,
         None,
+        false,
     )
 }
 
@@ -443,7 +445,7 @@ pub fn assemble_vision_markdown_with_options(
     id_prefix: Option<&str>,
     drawing_path_overrides: Option<&HashMap<usize, String>>,
 ) -> String {
-    assemble_vision_markdown_with_figures(
+    assemble_vision_markdown_with_policy(
         pages,
         emit_viewer_images,
         emit_analyze_tags,
@@ -451,6 +453,7 @@ pub fn assemble_vision_markdown_with_options(
         drawing_path_overrides,
         None,
         None,
+        false,
     )
 }
 
@@ -467,6 +470,32 @@ pub fn assemble_vision_markdown_with_figures(
     drawing_path_overrides: Option<&HashMap<usize, String>>,
     figures_by_page: Option<&HashMap<usize, Vec<WrittenFigureAsset>>>,
     tables_by_page: Option<&HashMap<usize, Vec<WrittenTableAsset>>>,
+) -> String {
+    assemble_vision_markdown_with_policy(
+        pages,
+        emit_viewer_images,
+        emit_analyze_tags,
+        id_prefix,
+        drawing_path_overrides,
+        figures_by_page,
+        tables_by_page,
+        false,
+    )
+}
+
+/// SPEC-134 Slice E / LAW-134-20: `page_as_unit` suppresses fig/chart/table
+/// inject and `<drawing/>` tiles (full-page raster is the VLM unit). Empty
+/// Pass-A bodies never grow fragment hrefs either (empty-page retry).
+#[allow(clippy::too_many_arguments)]
+pub fn assemble_vision_markdown_with_policy(
+    pages: &[VisionPageSlice],
+    emit_viewer_images: bool,
+    emit_analyze_tags: bool,
+    id_prefix: Option<&str>,
+    drawing_path_overrides: Option<&HashMap<usize, String>>,
+    figures_by_page: Option<&HashMap<usize, Vec<WrittenFigureAsset>>>,
+    tables_by_page: Option<&HashMap<usize, Vec<WrittenTableAsset>>>,
+    page_as_unit: bool,
 ) -> String {
     let mut parts = Vec::with_capacity(pages.len());
     for page in pages {
@@ -501,9 +530,10 @@ pub fn assemble_vision_markdown_with_figures(
             .map(|s| s.as_str());
 
         let raw_body = page.markdown.trim();
+        let suppress_fragments = page_as_unit || raw_body.is_empty();
         let mut body = if raw_body.is_empty() {
             EMPTY_VISION_PAGE_PLACEHOLDER.to_string()
-        } else if emit_viewer_images {
+        } else if emit_viewer_images && !suppress_fragments {
             let bind_rel = viewer_rel.as_deref().unwrap_or("");
             let mut b = if bind_rel.is_empty() {
                 raw_body.to_string()
@@ -535,7 +565,7 @@ pub fn assemble_vision_markdown_with_figures(
             raw_body.to_string()
         };
 
-        if emit_viewer_images {
+        if emit_viewer_images && !suppress_fragments {
             if let Some(ref rel) = viewer_rel {
                 if !markdown_has_durable_asset_image(&body) {
                     let alt = caption_with_page_context(page.page_num, &body, is_chart_crop);
@@ -587,7 +617,7 @@ pub fn assemble_vision_markdown_with_figures(
         }
         body = finalize_page_asset_images(&body, &dedupe_rels);
 
-        if emit_analyze_tags {
+        if emit_analyze_tags && !suppress_fragments {
             if !page_figures.is_empty() {
                 // One drawing per embedded ImageXObject — never the full page.
                 for (i, fig) in page_figures.iter().enumerate() {
@@ -713,6 +743,63 @@ pub fn assemble_vision_markdown_with_figures(
     parts.join("\n\n")
 }
 
+/// Merge per-group Vision markdown by `<!-- edgequake-page:N -->` order.
+///
+/// Homogeneous converts (`parts.len() <= 1`) are returned unchanged so trailing
+/// crop-coverage comments stay byte-identical on the print Acc path.
+pub fn stitch_page_markdown_in_order(parts: &[String]) -> String {
+    if parts.len() <= 1 {
+        return parts.first().cloned().unwrap_or_default();
+    }
+    let mut by_page: BTreeMap<usize, String> = BTreeMap::new();
+    let mut tails = Vec::new();
+    for part in parts {
+        let sections = split_marked_page_sections(part);
+        if sections.is_empty() {
+            if !part.trim().is_empty() {
+                tails.push(part.clone());
+            }
+            continue;
+        }
+        for (num, section) in sections {
+            by_page.insert(num, section);
+        }
+    }
+    let mut out = by_page.into_values().collect::<Vec<_>>().join("\n\n");
+    for tail in tails {
+        if !out.is_empty() {
+            out.push_str("\n\n");
+        }
+        out.push_str(&tail);
+    }
+    out
+}
+
+fn split_marked_page_sections(markdown: &str) -> Vec<(usize, String)> {
+    let mut starts: Vec<(usize, usize)> = Vec::new();
+    let mut rest_idx = 0usize;
+    while let Some(rel) = markdown[rest_idx..].find(PAGE_MARKER_PREFIX) {
+        let idx = rest_idx + rel;
+        let after = &markdown[idx + PAGE_MARKER_PREFIX.len()..];
+        if let Some(end) = after.find(PAGE_MARKER_SUFFIX) {
+            if let Ok(n) = after[..end].trim().parse::<usize>() {
+                if n > 0 {
+                    starts.push((idx, n));
+                }
+            }
+            rest_idx = idx + PAGE_MARKER_PREFIX.len() + end + PAGE_MARKER_SUFFIX.len();
+        } else {
+            break;
+        }
+    }
+    let mut out = Vec::with_capacity(starts.len());
+    for (i, (start, num)) in starts.iter().enumerate() {
+        let end = starts.get(i + 1).map(|(s, _)| *s).unwrap_or(markdown.len());
+        out.push((*num, markdown[*start..end].trim_end().to_string()));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -727,6 +814,55 @@ mod tests {
         let md = assemble_vision_markdown(&pages, false, None);
         assert!(md.contains("<!-- edgequake-page:3 -->"));
         assert!(md.contains(EMPTY_VISION_PAGE_PLACEHOLDER));
+    }
+
+    #[test]
+    fn page_as_unit_does_not_inject_figures_on_transcribed_page() {
+        let pages = vec![VisionPageSlice {
+            page_num: 1,
+            markdown: "Handwritten title".into(),
+        }];
+        let mut figs = HashMap::new();
+        figs.insert(
+            1,
+            vec![crate::embedded_images::WrittenFigureAsset {
+                page_num: 1,
+                index: 1,
+                rel_path: "assets/page-0001-fig-01.png".into(),
+                width: 40,
+                height: 30,
+                bbox: None,
+            }],
+        );
+        let md = assemble_vision_markdown_with_policy(
+            &pages,
+            true,
+            true,
+            Some("ms"),
+            None,
+            Some(&figs),
+            None,
+            true,
+        );
+        assert!(md.contains("Handwritten title"));
+        assert!(!md.contains("page-0001-fig-01.png"));
+        assert!(!md.contains("<drawing"));
+    }
+
+    #[test]
+    fn stitch_orders_mixed_convert_groups() {
+        let print = "<!-- edgequake-page:2 -->\n\nPrint body\n".to_string();
+        let ms = "<!-- edgequake-page:1 -->\n\nMS body\n".to_string();
+        let out = stitch_page_markdown_in_order(&[print, ms]);
+        assert!(out.find("MS body").unwrap() < out.find("Print body").unwrap());
+        assert!(out.contains("<!-- edgequake-page:1 -->"));
+        assert!(out.contains("<!-- edgequake-page:2 -->"));
+    }
+
+    #[test]
+    fn stitch_single_part_is_identity() {
+        let one = "<!-- edgequake-page:1 -->\n\nHello\n\n<!-- edgequake-crop-coverage: x -->\n";
+        assert_eq!(stitch_page_markdown_in_order(&[one.to_string()]), one);
     }
 
     #[test]
@@ -774,18 +910,16 @@ mod tests {
             None,
         );
         let refs = scan_inline_image_refs(&md);
-        assert_eq!(refs.len(), 2);
+        assert_eq!(refs.len(), 1, "empty Pass-A page must not get a fig href");
         assert_eq!(
             refs[0].asset_path.as_deref(),
             Some("assets/page-0001-fig-01.png")
         );
-        assert_eq!(
-            refs[1].asset_path.as_deref(),
-            Some("assets/page-0002-fig-01.png")
-        );
         // Viewer image precedes body text.
         assert!(md.contains("!["));
         assert!(md.find("![").unwrap() < md.find("Revenue chart").unwrap());
+        assert!(md.contains(EMPTY_VISION_PAGE_PLACEHOLDER));
+        assert!(!md.contains("page-0002-fig-01.png"));
     }
 
     #[test]

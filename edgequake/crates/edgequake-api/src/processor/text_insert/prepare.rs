@@ -466,8 +466,14 @@ impl DocumentTaskProcessor {
         // mid-row without headers, leading to poor entity extraction and high LLM costs.
         // The preprocessor groups rows by category and adds headers per section for better chunking.
         let processed_text = {
+            // SPEC-134 P0 quarantine lane (Display != Index, LAW-134-4):
+            // manuscript sections that failed grounding verification stay in
+            // the stored/display markdown but must not reach chunking or
+            // entity extraction. No-op when no marker is present.
+            let index_text =
+                crate::services::manuscript_verify::strip_low_grounding_sections(&text_content);
             let preprocess_result = edgequake_pipeline::preprocess_tabular_content(
-                &text_content,
+                &index_text,
                 &edgequake_pipeline::TablePreprocessorConfig::default(),
             );
             if preprocess_result.was_restructured {

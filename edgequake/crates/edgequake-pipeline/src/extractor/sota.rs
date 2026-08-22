@@ -7,7 +7,8 @@ use edgequake_llm::traits::ChatMessage;
 
 use super::{
     assign_token_usage, extraction_completion_options_with_effort,
-    recommended_chunk_size_for_bytes, ConfigurableEntitySchema, EntityExtractor, ExtractionResult,
+    maybe_lift_extract_effort_from_llm_error, recommended_chunk_size_for_bytes,
+    ConfigurableEntitySchema, EntityExtractor, ExtractionResult,
 };
 use crate::chunker::TextChunk;
 use crate::error::{PipelineError, Result};
@@ -157,13 +158,14 @@ where
 
         // Build system and user prompts (SPEC-117: resolved caps, not stale env-only)
         let caps = self.resolved_caps();
+        let language = crate::prompts::effective_extraction_language(&self.language);
         let system_prompt =
             self.prompts
-                .system_prompt_with_caps(&self.entity_schema, &self.language, caps);
+                .system_prompt_with_caps(&self.entity_schema, &language, caps);
         let user_prompt = self.prompts.user_prompt_with_caps(
             &chunk.content,
             &self.entity_schema.types,
-            &self.language,
+            &language,
             caps,
         );
 
@@ -320,16 +322,18 @@ where
         const MAX_RETRIES: u32 = 3;
         let mut last_error = None;
         let mut current_max_tokens = base_max_tokens;
+        let mut desired_effort = self.reasoning_effort.clone();
 
         for attempt in 1..=MAX_RETRIES {
             // Create completion options with adaptive max_tokens.
             //
             // Provider-aware effort: cloud floors via registry; Ollama floors to "none"
             // so thinking-capable models get think:false (not Auto think:true).
+            // Cloud `none` is coerced off disable (mandatory-reasoning 400).
             let options = extraction_completion_options_with_effort(
                 self.llm_provider.model(),
                 current_max_tokens,
-                self.reasoning_effort.as_deref(),
+                desired_effort.as_deref(),
                 self.llm_provider.name(),
             );
 
@@ -366,7 +370,32 @@ where
                 Err(e) => {
                     // SPEC-083 X-30: prefer typed LlmError::Timeout; string markers only as fallback.
                     use edgequake_llm::error::LlmError;
-                    let error_str = e.to_string().to_lowercase();
+                    let error_str = e.to_string();
+                    if let Some(lifted) = maybe_lift_extract_effort_from_llm_error(
+                        self.llm_provider.name(),
+                        self.llm_provider.model(),
+                        options
+                            .reasoning_effort
+                            .as_deref()
+                            .or(desired_effort.as_deref()),
+                        &error_str,
+                    ) {
+                        tracing::warn!(
+                            attempt = attempt,
+                            chunk_id = %chunk.id,
+                            from = desired_effort.as_deref().unwrap_or("none"),
+                            to = %lifted,
+                            "Extract reasoning-off rejected; lifting effort and retrying"
+                        );
+                        desired_effort = Some(lifted);
+                        last_error =
+                            Some(PipelineError::ExtractionError(format!("LLM error: {e}")));
+                        if attempt < MAX_RETRIES {
+                            continue;
+                        }
+                        return Err(last_error.unwrap());
+                    }
+                    let error_str = error_str.to_lowercase();
                     let is_timeout = matches!(&e, LlmError::Timeout)
                         || error_str.contains("operation timed out")
                         || error_str.contains("task processing timed out")
@@ -586,9 +615,12 @@ where
                     result
                         .metadata
                         .insert("extractor".to_string(), serde_json::json!("sota"));
-                    result
-                        .metadata
-                        .insert("language".to_string(), serde_json::json!(self.language));
+                    result.metadata.insert(
+                        "language".to_string(),
+                        serde_json::json!(crate::prompts::effective_extraction_language(
+                            &self.language
+                        )),
+                    );
                     result
                         .metadata
                         .insert("model".to_string(), serde_json::json!(response.model));

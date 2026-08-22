@@ -42,8 +42,9 @@ mod types;
 
 pub use completion_options::{
     assign_token_usage, extraction_completion_options, extraction_completion_options_with_effort,
-    recommended_chunk_size_for_bytes, resolve_extraction_reasoning_effort,
-    structured_extract_effort_floor,
+    lift_extract_effort_after_disable_reject, maybe_lift_extract_effort_from_llm_error,
+    reasoning_disable_rejected, recommended_chunk_size_for_bytes,
+    resolve_extraction_reasoning_effort, structured_extract_effort_floor,
 };
 pub use schema::ConfigurableEntitySchema;
 pub use temperature::{effective_temperature_for_model, resolve_effective_temperature};

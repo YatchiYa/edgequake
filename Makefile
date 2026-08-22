@@ -377,8 +377,11 @@ else
   DATABASE_POOL_SIZE ?= 32
 endif
 
-# Always pin extract think-off + modest Ollama ctx when unset (safe for hybrid too).
-EDGEQUAKE_EXTRACT_REASONING_EFFORT ?= none
+# Extract think-off (`none` → Ollama `think:false`) is local-only.
+# Cloud OpenAI/OpenRouter treat `none` as disable-reasoning; many endpoints 400
+# ("Reasoning is mandatory for this endpoint and cannot be disabled").
+# Do not pin EDGEQUAKE_EXTRACT_REASONING_EFFORT=none for openai / openrouter —
+# extract uses the registry's lowest *enabled* effort (minimal/low).
 OLLAMA_CONTEXT_LENGTH ?= 8192
 EDGEQUAKE_PROVIDER_BUDGET ?= 1
 

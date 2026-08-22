@@ -31,7 +31,7 @@ mod surrounding;
 
 pub use analyzer::{
     analyze_image_bytes, analyze_image_bytes_with_asset, analyze_multimodal_images,
-    analyze_multimodal_images_with_substep, AnalyzeOutcome,
+    analyze_multimodal_images_with_substep, with_page_modality_ctx, AnalyzeOutcome,
 };
 pub use api_views::{manifest_item_status_views, summary_from_metadata, MultimodalItemStatusView};
 pub use blocks::{

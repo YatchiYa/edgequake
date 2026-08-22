@@ -144,6 +144,10 @@ pub struct VisionConversionConfig {
     pub model: Option<String>,
     pub concurrency: Option<usize>,
     pub dpi: Option<u32>,
+    /// SPEC-134: max_rendered_pixels forwarded to pdf2md Pass-A (long-edge;
+    /// pdf2md 0.9.11 ignores dpi at raster time). None → pdf2md default 2000.
+    /// Viewer page PNGs also read this field.
+    pub max_rendered_pixels: Option<u32>,
     pub checkpoint_dir: Option<String>,
     pub no_resume: bool,
     pub progress_callback: Option<Arc<dyn edgequake_pdf2md::ConversionProgressCallback>>,
@@ -162,6 +166,7 @@ impl std::fmt::Debug for VisionConversionConfig {
             .field("model", &self.model)
             .field("concurrency", &self.concurrency)
             .field("dpi", &self.dpi)
+            .field("max_rendered_pixels", &self.max_rendered_pixels)
             .field("checkpoint_dir", &self.checkpoint_dir)
             .field("no_resume", &self.no_resume)
             .field(
@@ -201,6 +206,10 @@ pub struct PageDrawingAssetsConfig {
     pub extract_figures: bool,
     /// SPEC-015V: Pass A page OCR system prompt override (None → SSOT).
     pub page_system_prompt: Option<String>,
+    /// SPEC-134 P0: resolved page modality. Manuscript-class pages suppress
+    /// scan-tiling fragment links/analyze tags (LAW-134-1 page-as-unit).
+    /// `None` preserves legacy (print) behavior.
+    pub page_modality: Option<crate::PageModality>,
     /// When set, run the SPEC-049 two-pass VLM figure filter after all crops
     /// are written.  The provider should be the same vision LLM used for page
     /// OCR.  Results are written to `figure_filter_manifest.json` under
@@ -219,6 +228,7 @@ impl PageDrawingAssetsConfig {
             extract_charts: true,
             extract_figures: true,
             page_system_prompt: None,
+            page_modality: None,
             figure_filter_provider: None,
         }
     }

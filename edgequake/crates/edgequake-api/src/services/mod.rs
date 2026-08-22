@@ -65,6 +65,7 @@ pub mod list_pagination;
 pub mod list_run_enrich;
 pub mod llm_text_embedder;
 pub mod login_lockout;
+pub mod manuscript_verify;
 pub mod message_context_mapper;
 pub mod multimodal;
 pub mod multimodal_admission;
@@ -249,10 +250,11 @@ pub use multimodal::{
     run_multimodal_analyze_stage_outcome, run_multimodal_analyze_stage_outcome_with_cancel,
     run_multimodal_analyze_stage_outcome_with_substep, scan_manifest_items,
     should_run_image_analysis, summary_from_metadata, table_analysis_messages, vlm_process_enabled,
-    AnalyzeOutcome, LocalMmProfile, ManifestItem, MmChunkBuildError, MultimodalChunk,
-    MultimodalHeading, MultimodalItemRecord, MultimodalItemStatusView, MultimodalManifest,
-    MultimodalProviders, MultimodalReanalyzeOutcome, MultimodalReanalyzeParams, MultimodalSummary,
-    PromptContext, SurroundingContext, SurroundingKind, SurroundingTokenCounter, METADATA_FIELD,
+    with_page_modality_ctx, AnalyzeOutcome, LocalMmProfile, ManifestItem, MmChunkBuildError,
+    MultimodalChunk, MultimodalHeading, MultimodalItemRecord, MultimodalItemStatusView,
+    MultimodalManifest, MultimodalProviders, MultimodalReanalyzeOutcome, MultimodalReanalyzeParams,
+    MultimodalSummary, PromptContext, SurroundingContext, SurroundingKind, SurroundingTokenCounter,
+    METADATA_FIELD,
 };
 pub use multimodal_admission::{
     resolve_upload_content, MultimodalAdmissionMeta, ResolvedUploadContent,

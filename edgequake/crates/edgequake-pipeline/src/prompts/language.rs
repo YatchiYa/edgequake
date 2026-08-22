@@ -87,6 +87,52 @@ pub fn resolve_extraction_language_from_env(workspace_language: Option<&str>) ->
     resolve_extraction_language(workspace_language, env.as_deref())
 }
 
+tokio::task_local! {
+    /// SPEC-134 WP-3: per-document source language scoped around Pass-B and
+    /// entity extraction so every text-generating stage writes in the page's
+    /// language (transduction law — no translation).
+    static DOCUMENT_LANGUAGE: String;
+}
+
+/// Run `fut` with `language` visible to [`document_language_override`].
+pub async fn with_document_language<R>(
+    language: String,
+    fut: impl std::future::Future<Output = R>,
+) -> R {
+    DOCUMENT_LANGUAGE.scope(language, fut).await
+}
+
+/// Run `fut` under a language scope when `language` is `Some`.
+pub async fn with_optional_document_language<R>(
+    language: Option<String>,
+    fut: impl std::future::Future<Output = R>,
+) -> R {
+    match language {
+        Some(lang) if !lang.trim().is_empty() => with_document_language(lang, fut).await,
+        _ => fut.await,
+    }
+}
+
+/// Task-local document language, if one is scoped on this task.
+pub fn document_language_override() -> Option<String> {
+    DOCUMENT_LANGUAGE.try_with(|s| s.clone()).ok()
+}
+
+/// Effective extraction language: task-local document language wins over the
+/// pipeline's baked workspace/env/default (SPEC-096 chain).
+pub fn effective_extraction_language(baked: &str) -> String {
+    if let Some(doc) = document_language_override() {
+        if let Some(canonical) = canonicalize_extraction_language(&doc) {
+            return canonical.to_string();
+        }
+        let trimmed = doc.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    baked.to_string()
+}
+
 /// Read `extraction_language` string from workspace metadata JSON map.
 pub fn extraction_language_from_metadata(
     metadata: &std::collections::HashMap<String, serde_json::Value>,
@@ -148,5 +194,19 @@ mod tests {
         assert!(is_extraction_language_clear("none"));
         assert!(is_extraction_language_clear("NONE"));
         assert!(!is_extraction_language_clear("Chinese"));
+    }
+
+    #[test]
+    fn effective_language_falls_back_to_baked_without_scope() {
+        assert_eq!(effective_extraction_language("English"), "English");
+    }
+
+    #[tokio::test]
+    async fn effective_language_prefers_task_local() {
+        with_document_language("French".into(), async {
+            assert_eq!(document_language_override().as_deref(), Some("French"));
+            assert_eq!(effective_extraction_language("English"), "French");
+        })
+        .await;
     }
 }

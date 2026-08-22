@@ -146,6 +146,11 @@ edgequake-website/
 # Root-level marketing screenshots (safe to regenerate)
 /*.png
 
+# SPEC-134 Slice E — private page-as-unit study outputs / local gold (never commit trigger scans).
+specs/134-manuscrit/study/out/
+specs/134-manuscrit/study/gold.local.json
+specs/134-manuscrit/study/.env
+
 # SPEC-097 / GH-351 — fat regenerable bench001 archives (local-only).
 # Keep thin scorecard/SUMMARY/BUSINESS_REPORT/meta in git; regenerate fat via make bench001-*.
 specs/001-benchmark/e2e/artifacts/**/predictions_*.json

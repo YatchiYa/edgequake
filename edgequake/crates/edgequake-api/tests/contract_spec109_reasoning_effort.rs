@@ -6,6 +6,7 @@
 use edgequake_api::config_resolution::build_effective_config;
 use edgequake_api::handlers::query_types::QueryRequest;
 use edgequake_api::server_config_store::ServerConfigSnapshot;
+use edgequake_api::services::resolve_extract_reasoning_effort;
 use edgequake_core::{
     install_server_config, resolve_role_reasoning_effort, ConfigPriorityMode, LlmRole,
     ServerLlmDefaults, Workspace,
@@ -36,12 +37,35 @@ fn e2e109_02_gpt5_mini_none_clamps_to_minimal() {
 
 #[test]
 fn e2e109_03_extract_default_floor() {
+    // gpt-5.4-nano catalog lists `none`; live OpenAI rejects disable — floor is `low`.
     let opts = extraction_completion_options("gpt-5.4-nano", 1024);
-    assert_eq!(opts.reasoning_effort.as_deref(), Some("none"));
+    assert_eq!(opts.reasoning_effort.as_deref(), Some("low"));
 
     let overridden =
         extraction_completion_options_with_effort("gpt-5-mini", 1024, Some("low"), "openai");
     assert_eq!(overridden.reasoning_effort.as_deref(), Some("low"));
+}
+
+#[test]
+fn e2e109_08_api_resolve_extract_none_env_lifts_for_gpt54_nano() {
+    let mut ws = Workspace::new(Uuid::nil(), "t", "t");
+    ws.llm_provider = "openai".into();
+    ws.llm_model = "gpt-5.4-nano".into();
+    let effort = resolve_extract_reasoning_effort(
+        Some(&ws),
+        "openai",
+        "gpt-5.4-nano",
+        None,
+        Some("none"),
+    );
+    assert_eq!(effort.as_deref(), Some("low"));
+}
+
+#[test]
+fn e2e109_07_gpt55_extract_none_lifts_off_disable() {
+    // Catalog lists `none` for gpt-5.5; live endpoints reject disable.
+    let opts = extraction_completion_options_with_effort("gpt-5.5", 1024, Some("none"), "openai");
+    assert_eq!(opts.reasoning_effort.as_deref(), Some("low"));
 }
 
 #[test]

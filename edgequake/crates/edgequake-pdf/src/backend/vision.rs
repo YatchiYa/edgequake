@@ -74,17 +74,25 @@ impl PdfConverter for VisionPdfConverter {
 
         // SPEC-109: when effort is set, inject a clamped provider so pdf2md page
         // OCR forwards reasoning_effort (ConversionConfig has no effort field yet).
-        if vision.reasoning_effort.is_some() {
+        // SPEC-134 WP-1: always build the provider explicitly (identical to
+        // pdf2md's internal `provider_name` path — same factory call) so the
+        // image size guard wraps every Pass-A page OCR call. Providers reject
+        // oversized page renders silently; the guard re-encodes them first.
+        {
             let base = ProviderFactory::create_llm_provider(&provider_name, &model)
                 .map_err(|error| PdfConversionError::Backend(error.to_string()))?;
+            let modality = config
+                .page_drawing_assets
+                .as_ref()
+                .and_then(|c| c.page_modality)
+                .unwrap_or(crate::PageModality::Print);
+            let guarded = crate::image_guard::ImageGuardProvider::wrap_for_modality(base, modality);
             let wrapped = ReasoningEffortInjectProvider::wrap(
-                base,
+                guarded,
                 &provider_name,
                 vision.reasoning_effort.as_deref(),
             );
             builder = builder.provider(wrapped).model(model.clone());
-        } else {
-            builder = builder.provider_name(provider_name).model(model.clone());
         }
 
         if let Some(concurrency) = vision.concurrency {
@@ -92,6 +100,9 @@ impl PdfConverter for VisionPdfConverter {
         }
         if let Some(dpi) = vision.dpi {
             builder = builder.dpi(dpi);
+        }
+        if let Some(max_px) = vision.max_rendered_pixels {
+            builder = builder.max_rendered_pixels(max_px);
         }
         if let Some(progress_callback) = vision.progress_callback.clone() {
             builder = builder.progress_callback(progress_callback);
@@ -142,11 +153,14 @@ impl PdfConverter for VisionPdfConverter {
         if emit_viewer_images {
             if let Some(page_assets) = &config.page_drawing_assets {
                 let plan = page_assets.write_plan();
+                let page_as_unit = page_assets
+                    .page_modality
+                    .is_some_and(|m| m.is_manuscript_like());
                 let total_pages = output.stats.total_pages.max(output.pages.len()).max(1);
                 let page_numbers: Vec<usize> = (1..=total_pages).collect();
                 let render = PageAssetRenderConfig {
                     dpi: vision.dpi.unwrap_or(150),
-                    max_rendered_pixels: 2000,
+                    max_rendered_pixels: vision.max_rendered_pixels.unwrap_or(2000),
                 };
 
                 // 1) Embedded ImageXObjects first — VLM analyze SSOT (figure-bounded).
@@ -169,6 +183,35 @@ impl PdfConverter for VisionPdfConverter {
                                 "Embedded figure assets written for VLM analyze"
                             );
                             figure_map = figures_by_page(&written);
+                            // SPEC-134 P0 (LAW-134-1 page-as-unit): on
+                            // manuscript-class pages, a page delivered as many
+                            // small image tiles is a sliced scan — the tiles are
+                            // encoding artifacts, not figures. Suppressing them
+                            // here closes every downstream fragment channel at
+                            // once: markdown links, <drawing/> analyze tags, and
+                            // chart-residual candidates all read figure_map.
+                            if page_assets
+                                .page_modality
+                                .is_some_and(|m| m.is_manuscript_like())
+                            {
+                                let mut suppressed = 0usize;
+                                for (page, figs) in figure_map.iter_mut() {
+                                    if crate::embedded_images::is_scan_tiling_page(figs) {
+                                        suppressed += figs.len();
+                                        figs.clear();
+                                        info!(
+                                            page_num = page,
+                                            "SPEC-134: scan-tiling page — fragment links suppressed"
+                                        );
+                                    }
+                                }
+                                if suppressed > 0 {
+                                    info!(
+                                        suppressed,
+                                        "SPEC-134: scan-tiling fragments excluded from markdown/analyze"
+                                    );
+                                }
+                            }
                             if let Some(hook) = status_hook {
                                 hook(
                                     &format!(
@@ -188,33 +231,37 @@ impl PdfConverter for VisionPdfConverter {
                     }
 
                     // 1b) Caption-anchored Form XObject figures + table crops.
-                    match write_caption_region_assets(
-                        pdf_bytes,
-                        &page_assets.assets_root,
-                        &figure_map,
-                    )
-                    .await
-                    {
-                        Ok((region_figs, region_tables)) => {
-                            if !region_figs.is_empty() {
-                                info!(
-                                    figures = region_figs.len(),
-                                    "Caption-anchored figure regions written"
-                                );
-                                for fig in region_figs {
-                                    figure_map.entry(fig.page_num).or_default().push(fig);
+                    // LAW-134-20: manuscript pages do not re-inject scan fragments
+                    // after tiling clear — Pass-A owns the full page.
+                    if !page_as_unit {
+                        match write_caption_region_assets(
+                            pdf_bytes,
+                            &page_assets.assets_root,
+                            &figure_map,
+                        )
+                        .await
+                        {
+                            Ok((region_figs, region_tables)) => {
+                                if !region_figs.is_empty() {
+                                    info!(
+                                        figures = region_figs.len(),
+                                        "Caption-anchored figure regions written"
+                                    );
+                                    for fig in region_figs {
+                                        figure_map.entry(fig.page_num).or_default().push(fig);
+                                    }
+                                }
+                                if !region_tables.is_empty() {
+                                    info!(
+                                        tables = region_tables.len(),
+                                        "Caption-anchored table regions written"
+                                    );
+                                    table_map = tables_by_page(&region_tables);
                                 }
                             }
-                            if !region_tables.is_empty() {
-                                info!(
-                                    tables = region_tables.len(),
-                                    "Caption-anchored table regions written"
-                                );
-                                table_map = tables_by_page(&region_tables);
+                            Err(e) => {
+                                warn!(error = %e, "Caption region extract failed");
                             }
-                        }
-                        Err(e) => {
-                            warn!(error = %e, "Caption region extract failed");
                         }
                     }
                 }
@@ -267,7 +314,7 @@ impl PdfConverter for VisionPdfConverter {
                 let page_nums: Vec<usize> = output.pages.iter().map(|p| p.page_num).collect();
                 let mut coverage =
                     CropCoverageReport::from_pages(&page_nums, &figure_map, &table_map);
-                if plan.write_charts {
+                if plan.write_charts && !page_as_unit {
                     let candidates =
                         chart_residual_candidate_pages(&page_nums, &figure_map, &table_map);
                     // EC-015V-4: without page PNGs, skip ink prefilter and crop candidates directly.
@@ -437,7 +484,12 @@ impl PdfConverter for VisionPdfConverter {
         } else {
             Some(&table_map)
         };
-        let mut markdown = crate::vision_markdown::assemble_vision_markdown_with_figures(
+        let page_as_unit = config
+            .page_drawing_assets
+            .as_ref()
+            .and_then(|c| c.page_modality)
+            .is_some_and(|m| m.is_manuscript_like());
+        let mut markdown = crate::vision_markdown::assemble_vision_markdown_with_policy(
             &normalized,
             emit_viewer_images,
             emit_analyze_tags,
@@ -445,6 +497,7 @@ impl PdfConverter for VisionPdfConverter {
             overrides,
             figures,
             tables,
+            page_as_unit,
         );
         if !vision_filter_results.is_empty() {
             markdown =
@@ -534,11 +587,15 @@ mod tests {
         assert!(md.contains("<!-- edgequake-page:2 -->"));
         assert!(md.contains(crate::drawing_tags::EMPTY_VISION_PAGE_PLACEHOLDER));
         let refs = scan_inline_image_refs(&md);
-        assert_eq!(refs.len(), 2);
+        assert_eq!(refs.len(), 1, "empty Pass-A must not grow fig hrefs: {md}");
+        assert_eq!(
+            refs[0].asset_path.as_deref(),
+            Some("assets/page-0001-fig-01.png")
+        );
+        assert!(md.contains(crate::drawing_tags::EMPTY_VISION_PAGE_PLACEHOLDER));
         assert!(
-            refs.iter()
-                .all(|r| r.asset_path.as_deref().is_some_and(|p| p.contains("-fig-"))),
-            "analyze drawings must target fig assets, got {refs:?}"
+            !md.contains("page-0002-fig-01.png"),
+            "empty page 2 must not inject scan tiles"
         );
         assert!(
             refs.iter().all(|r| {

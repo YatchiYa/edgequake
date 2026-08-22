@@ -5,7 +5,9 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use super::completion_options::extraction_completion_options_with_effort;
+use super::completion_options::{
+    extraction_completion_options_with_effort, maybe_lift_extract_effort_from_llm_error,
+};
 use super::{EntityExtractor, ExtractedEntity, ExtractedRelationship, ExtractionResult};
 use crate::chunker::TextChunk;
 use crate::error::{PipelineError, Result};
@@ -144,7 +146,7 @@ impl GleaningExtractor {
             &text,
             previous_entities,
             &self.entity_schema,
-            &self.language,
+            &crate::prompts::effective_extraction_language(&self.language),
             self.resolved_caps(),
             after_caps_truncate,
         )
@@ -268,10 +270,11 @@ impl EntityExtractor for GleaningExtractor {
                 result.entities.iter().map(|e| e.name.clone()).collect();
 
             // C-17: share extraction CompletionOptions (temp=0, provider-aware think-off).
-            let options = extraction_completion_options_with_effort(
+            let mut desired_effort = self.reasoning_effort.clone();
+            let mut options = extraction_completion_options_with_effort(
                 self.llm_provider.model(),
                 16_384,
-                self.reasoning_effort.as_deref(),
+                desired_effort.as_deref(),
                 self.llm_provider.name(),
             )
             .with_provider_prompt_cache(
@@ -295,7 +298,7 @@ impl EntityExtractor for GleaningExtractor {
                         edgequake_llm::traits::ChatMessage::system(
                             crate::prompts::json_gleaning_system_prompt_with_caps(
                                 &self.entity_schema,
-                                &self.language,
+                                &crate::prompts::effective_extraction_language(&self.language),
                                 caps,
                                 after_caps_truncate,
                             ),
@@ -304,13 +307,56 @@ impl EntityExtractor for GleaningExtractor {
                             crate::prompts::json_gleaning_user_prompt(&text, &entity_names),
                         ),
                     ];
-                    let resp = self
-                        .llm_provider
-                        .chat(&messages, Some(&options))
-                        .await
-                        .map_err(|e| {
-                            PipelineError::ExtractionError(format!("Gleaning LLM error: {}", e))
-                        })?;
+                    let mut last_err: Option<String> = None;
+                    let mut resp = None;
+                    for _attempt in 0..2 {
+                        match self.llm_provider.chat(&messages, Some(&options)).await {
+                            Ok(r) => {
+                                resp = Some(r);
+                                break;
+                            }
+                            Err(e) => {
+                                if let Some(lifted) = maybe_lift_extract_effort_from_llm_error(
+                                    self.llm_provider.name(),
+                                    self.llm_provider.model(),
+                                    options
+                                        .reasoning_effort
+                                        .as_deref()
+                                        .or(desired_effort.as_deref()),
+                                    &e.to_string(),
+                                ) {
+                                    tracing::warn!(
+                                        from = desired_effort.as_deref().unwrap_or("none"),
+                                        to = %lifted,
+                                        "Glean reasoning-off rejected; lifting effort and retrying"
+                                    );
+                                    desired_effort = Some(lifted);
+                                    options = extraction_completion_options_with_effort(
+                                        self.llm_provider.model(),
+                                        16_384,
+                                        desired_effort.as_deref(),
+                                        self.llm_provider.name(),
+                                    )
+                                    .with_provider_prompt_cache(
+                                        "glean",
+                                        self.llm_provider.name(),
+                                        self.llm_provider.model(),
+                                    );
+                                    last_err = Some(e.to_string());
+                                    continue;
+                                }
+                                return Err(PipelineError::ExtractionError(format!(
+                                    "Gleaning LLM error: {e}"
+                                )));
+                            }
+                        }
+                    }
+                    let resp = resp.ok_or_else(|| {
+                        PipelineError::ExtractionError(format!(
+                            "Gleaning LLM error: {}",
+                            last_err.unwrap_or_else(|| "unknown".into())
+                        ))
+                    })?;
                     edgequake_observability::record_observation_meta(
                         "gleaning_iteration",
                         &iteration.to_string(),

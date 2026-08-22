@@ -108,6 +108,7 @@ impl ResolvedParseOptions {
                 model: Some(model),
                 concurrency: Some(self.concurrency),
                 dpi: Some(self.dpi),
+                max_rendered_pixels: None,
                 checkpoint_dir: None,
                 no_resume: true,
                 progress_callback,

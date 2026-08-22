@@ -58,9 +58,10 @@ pub use json_prompts::{
     json_gleaning_user_prompt, JSON_OUTPUT_FORMAT_SECTION,
 };
 pub use language::{
-    canonicalize_extraction_language, extraction_language_from_metadata,
-    is_extraction_language_clear, json_language_instruction, resolve_extraction_language,
-    resolve_extraction_language_from_env, DEFAULT_EXTRACTION_LANGUAGE, EXTRACTION_LANGUAGE_ENV,
+    canonicalize_extraction_language, document_language_override, effective_extraction_language,
+    extraction_language_from_metadata, is_extraction_language_clear, json_language_instruction,
+    resolve_extraction_language, resolve_extraction_language_from_env, with_document_language,
+    with_optional_document_language, DEFAULT_EXTRACTION_LANGUAGE, EXTRACTION_LANGUAGE_ENV,
 };
 pub use normalizer::{is_opaque_identifier, normalize_entity_name};
 pub use parser::{

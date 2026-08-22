@@ -3,8 +3,9 @@
 use async_trait::async_trait;
 
 use super::{
-    assign_token_usage, extraction_completion_options_with_effort, ConfigurableEntitySchema,
-    EntityExtractor, ExtractionResult,
+    assign_token_usage, extraction_completion_options_with_effort,
+    maybe_lift_extract_effort_from_llm_error, ConfigurableEntitySchema, EntityExtractor,
+    ExtractionResult,
 };
 use crate::chunker::TextChunk;
 use crate::error::{PipelineError, Result};
@@ -130,7 +131,7 @@ where
         crate::prompts::json_extraction_prompt_with_caps(
             &text,
             &self.entity_schema,
-            &self.language,
+            &crate::prompts::effective_extraction_language(&self.language),
             self.resolved_caps(),
         )
     }
@@ -159,9 +160,10 @@ where
     async fn extract(&self, chunk: &TextChunk) -> Result<ExtractionResult> {
         let text =
             crate::prompts::text_with_section_context(&chunk.content, chunk.section.as_ref());
+        let language = crate::prompts::effective_extraction_language(&self.language);
         let system = crate::prompts::json_extraction_system_prompt_with_caps(
             &self.entity_schema,
-            &self.language,
+            &language,
             self.resolved_caps(),
         );
         let user = crate::prompts::json_extraction_user_prompt(&text);
@@ -174,18 +176,62 @@ where
         // - Cloud reasoning models exhaust completion_tokens on CoT without a floor.
         // - Ollama thinking models default think:true when effort is unset (SPEC-113 Auto).
         // - Local extract floors to "none" → wire think:false (edgequake-llm ≥0.10.7).
-        let options = extraction_completion_options_with_effort(
+        // - Cloud `none` is coerced off disable; one retry if the endpoint still 400s.
+        let mut desired_effort = self.reasoning_effort.clone();
+        let mut options = extraction_completion_options_with_effort(
             self.llm_provider.model(),
             16384,
-            self.reasoning_effort.as_deref(),
+            desired_effort.as_deref(),
             self.llm_provider.name(),
         );
 
-        let response = self
-            .llm_provider
-            .chat(&messages, Some(&options))
-            .await
-            .map_err(|e| PipelineError::ExtractionError(format!("LLM error: {}", e)))?;
+        let response = {
+            let mut last_err: Option<edgequake_llm::error::LlmError> = None;
+            let mut response = None;
+            for _attempt in 0..2 {
+                match self.llm_provider.chat(&messages, Some(&options)).await {
+                    Ok(resp) => {
+                        response = Some(resp);
+                        break;
+                    }
+                    Err(e) => {
+                        if let Some(lifted) = maybe_lift_extract_effort_from_llm_error(
+                            self.llm_provider.name(),
+                            self.llm_provider.model(),
+                            options
+                                .reasoning_effort
+                                .as_deref()
+                                .or(desired_effort.as_deref()),
+                            &e.to_string(),
+                        ) {
+                            tracing::warn!(
+                                from = desired_effort.as_deref().unwrap_or("none"),
+                                to = %lifted,
+                                "Extract reasoning-off rejected; lifting effort and retrying"
+                            );
+                            desired_effort = Some(lifted);
+                            options = extraction_completion_options_with_effort(
+                                self.llm_provider.model(),
+                                16384,
+                                desired_effort.as_deref(),
+                                self.llm_provider.name(),
+                            );
+                            last_err = Some(e);
+                            continue;
+                        }
+                        return Err(PipelineError::ExtractionError(format!("LLM error: {}", e)));
+                    }
+                }
+            }
+            response.ok_or_else(|| {
+                PipelineError::ExtractionError(format!(
+                    "LLM error: {}",
+                    last_err
+                        .map(|e| e.to_string())
+                        .unwrap_or_else(|| "unknown".into())
+                ))
+            })?
+        };
 
         let mut result = match self.parse_response(&response.content, &chunk.id) {
             Ok(r) => r,

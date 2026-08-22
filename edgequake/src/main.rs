@@ -1040,16 +1040,21 @@ fn main() -> Result<()> {
     // WHY 8 MiB: Hybrid/Mix join three large retrieval futures. Debug builds still
     // need headroom even after Box::pin (SPEC-047 stack overflow). Override via
     // TOKIO_WORKER_STACK_SIZE (bytes).
-    let worker_stack = std::env::var("TOKIO_WORKER_STACK_SIZE")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(8 * 1024 * 1024);
+    let worker_stack = tokio_worker_stack_size();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(worker_stack)
         .build()
         .context("failed to build tokio runtime")?;
     rt.block_on(async_main())
+}
+
+/// Shared Tokio worker stack size (serving + ingest). Default 8 MiB.
+fn tokio_worker_stack_size() -> usize {
+    std::env::var("TOKIO_WORKER_STACK_SIZE")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(8 * 1024 * 1024)
 }
 
 async fn async_main() -> Result<()> {
@@ -1583,10 +1588,15 @@ async fn async_main() -> Result<()> {
 
     // Isolate ingest from Axum serving: PDF CPU + long Ollama awaits must not
     // starve interactive HTTP on the default (serving) Tokio runtime.
+    // WHY same stack as serving_rt: process_pdf_processing_inner is a large
+    // async frame (modality classify + language + escalate + verify + multimodal).
+    // Measured 2026-08-20: default ~2 MiB eq-ingest stack overflowed immediately
+    // on a 4-page manuscript upload ("thread 'eq-ingest' has overflowed its stack").
     let ingest_threads = worker_config.num_workers.max(1);
     let ingest_rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(ingest_threads)
         .thread_name("eq-ingest")
+        .thread_stack_size(tokio_worker_stack_size())
         .enable_all()
         .build()
         .expect("failed to build ingest Tokio runtime");
@@ -1594,6 +1604,7 @@ async fn async_main() -> Result<()> {
         serving_runtime = "current",
         ingest_runtime = "eq-ingest",
         ingest_worker_threads = ingest_threads,
+        ingest_stack_bytes = tokio_worker_stack_size(),
         "Tokio runtime split: Axum on serving_rt, WorkerPool on ingest_rt"
     );
     info!(

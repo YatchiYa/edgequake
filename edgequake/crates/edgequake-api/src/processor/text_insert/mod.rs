@@ -65,9 +65,19 @@ impl DocumentTaskProcessor {
         );
 
         let stage_t0 = std::time::Instant::now();
-        let extracted = self
-            .text_insert_extract(task, prepared, cancel_token.clone())
-            .await?;
+        let doc_lang = prepared
+            .data
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("document_language"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let extracted = edgequake_pipeline::with_optional_document_language(
+            doc_lang,
+            self.text_insert_extract(task, prepared, cancel_token.clone()),
+        )
+        .await?;
         edgequake_observability::metrics::record_ingest_stage_duration(
             "extract",
             stage_t0.elapsed().as_secs_f64(),

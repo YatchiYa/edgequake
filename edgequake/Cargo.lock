@@ -2014,6 +2014,7 @@ dependencies = [
  "futures",
  "image",
  "once_cell",
+ "pdf-cos",
  "regex",
  "serde",
  "serde_json",

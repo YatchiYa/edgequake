@@ -94,5 +94,18 @@ fn resolve_role_effort(
         defaults.reasoning_effort.as_deref(),
         server_by_role,
     );
+    if role == LlmRole::Extract {
+        // Pipeline choke point: cloud `none` disables reasoning and 400s on
+        // mandatory endpoints. Must run before omit-env (SPEC-131) clears the field.
+        let seed = resolved
+            .effective
+            .as_deref()
+            .or(resolved.desired.as_deref());
+        return edgequake_pipeline::resolve_extraction_reasoning_effort(
+            provider,
+            model,
+            seed,
+        );
+    }
     edgequake_llm::apply_omit_reasoning_effort(resolved.effective)
 }

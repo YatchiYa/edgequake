@@ -243,17 +243,18 @@ pub use progress::{
 };
 pub use prompts::{
     apply_extraction_caps, apply_extraction_caps_with_strategy, canonicalize_extraction_language,
-    default_entity_types, detect_format_markers, extraction_language_from_metadata,
-    format_section_context, is_extraction_language_clear, json_extraction_prompt,
-    json_extraction_prompt_with_caps, json_gleaning_prompt, json_gleaning_prompt_with_caps,
-    json_language_instruction, normalize_entity_name, resolve_extraction_language,
-    resolve_extraction_language_from_env, text_with_section_context, truncate_section_context,
-    CapsSelectionStrategy, EntityExtractionPrompts, ExtractionCaps, ExtractionResultParser,
-    HybridExtractionParser, JsonExtractionParser, SummarizationPrompts, TupleParser,
-    DEFAULT_COMPLETION_DELIMITER, DEFAULT_EXTRACTION_LANGUAGE, DEFAULT_MAX_EXTRACTION_ENTITIES,
-    DEFAULT_MAX_EXTRACTION_RECORDS, DEFAULT_TUPLE_DELIMITER, EXTRACTION_LANGUAGE_ENV,
-    EXTRACT_CAPS_SELECTION_ENV, META_EXTRACT_MAX_ENTITIES, META_EXTRACT_MAX_RECORDS,
-    SUPPORTED_LANGUAGES,
+    default_entity_types, detect_format_markers, document_language_override,
+    effective_extraction_language, extraction_language_from_metadata, format_section_context,
+    is_extraction_language_clear, json_extraction_prompt, json_extraction_prompt_with_caps,
+    json_gleaning_prompt, json_gleaning_prompt_with_caps, json_language_instruction,
+    normalize_entity_name, resolve_extraction_language, resolve_extraction_language_from_env,
+    text_with_section_context, truncate_section_context, with_document_language,
+    with_optional_document_language, CapsSelectionStrategy, EntityExtractionPrompts,
+    ExtractionCaps, ExtractionResultParser, HybridExtractionParser, JsonExtractionParser,
+    SummarizationPrompts, TupleParser, DEFAULT_COMPLETION_DELIMITER, DEFAULT_EXTRACTION_LANGUAGE,
+    DEFAULT_MAX_EXTRACTION_ENTITIES, DEFAULT_MAX_EXTRACTION_RECORDS, DEFAULT_TUPLE_DELIMITER,
+    EXTRACTION_LANGUAGE_ENV, EXTRACT_CAPS_SELECTION_ENV, META_EXTRACT_MAX_ENTITIES,
+    META_EXTRACT_MAX_RECORDS, SUPPORTED_LANGUAGES,
 };
 pub use sanitizer::{EmojiMode, SanitizeConfig, SanitizeReport, Sanitizer};
 pub use stage_bridge::{
