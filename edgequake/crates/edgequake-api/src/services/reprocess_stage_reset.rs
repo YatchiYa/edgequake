@@ -9,13 +9,91 @@
 use chrono::Utc;
 use serde_json::{Map, Value};
 
+use edgequake_storage::error::StorageError;
+use edgequake_storage::traits::KVStorage;
 use edgequake_tasks::ReprocessMode;
+
+use crate::error::ApiError;
+use crate::services::graph_cleanup_timeout::{
+    graph_cleanup_timeout_user_message, is_source_discovery_timeout, GraphCleanupAction,
+};
+use crate::services::reprocess_admission::ReprocessSkipReason;
+use crate::services::upsert_metadata_kv_with_index;
 
 /// Stats from graph cascade cleanup (optional UX detail in stage_message).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CleanupAdmitStats {
     pub entities_removed: usize,
     pub relationships_removed: usize,
+}
+
+/// Overlay a post-admit failure onto the pre-admit snapshot (pure).
+///
+/// Keeps prior `status` / `track_id` so the failed attempt remains the audit
+/// pointer. Only `error_message` is replaced when `overlay_error` is set.
+pub fn apply_pre_admit_restore_overlay(previous: &mut Value, overlay_error: Option<&str>) {
+    let Some(msg) = overlay_error.map(str::trim).filter(|m| !m.is_empty()) else {
+        return;
+    };
+    if let Some(obj) = previous.as_object_mut() {
+        obj.insert("error_message".to_string(), Value::String(msg.to_string()));
+    }
+}
+
+/// Restore metadata written by [`apply_early_reprocess_admit`] (issue #385).
+///
+/// After early admit, the only legal exits are enqueue or this compensate path.
+pub async fn restore_pre_admit_metadata(
+    kv: &dyn KVStorage,
+    metadata_key: &str,
+    mut previous: Value,
+    overlay_error: Option<&str>,
+) -> Result<(), StorageError> {
+    apply_pre_admit_restore_overlay(&mut previous, overlay_error);
+    upsert_metadata_kv_with_index(kv, metadata_key, previous).await
+}
+
+/// Best-effort compensate: log if restore fails (do not abort the batch).
+pub async fn restore_pre_admit_metadata_best_effort(
+    kv: &dyn KVStorage,
+    metadata_key: &str,
+    document_id: &str,
+    previous: Value,
+    overlay_error: Option<&str>,
+) {
+    if let Err(e) = restore_pre_admit_metadata(kv, metadata_key, previous, overlay_error).await {
+        tracing::error!(
+            document_id = %document_id,
+            error = %e,
+            "Failed to roll back early reprocess admit; document may remain processing without a task"
+        );
+    }
+}
+
+/// Classify a failure after early admit for `skip_reasons` (SPEC-119 vs enqueue).
+pub fn post_admit_skip_reason(err: &ApiError) -> ReprocessSkipReason {
+    match err {
+        ApiError::ServiceUnavailable { message, .. }
+            if message.contains("Graph cleanup timed out") =>
+        {
+            ReprocessSkipReason::GraphCleanupFailed
+        }
+        other if is_source_discovery_timeout(&other.to_string()) => {
+            ReprocessSkipReason::GraphCleanupFailed
+        }
+        _ => ReprocessSkipReason::EnqueueFailed,
+    }
+}
+
+/// Product copy to overlay when retract fails closed on discovery timeout.
+pub fn graph_cleanup_overlay_error(err: &ApiError) -> Option<String> {
+    if post_admit_skip_reason(err) == ReprocessSkipReason::GraphCleanupFailed {
+        Some(graph_cleanup_timeout_user_message(
+            GraphCleanupAction::Reprocess,
+        ))
+    } else {
+        None
+    }
 }
 
 /// Write in-flight reprocess fields **before** expensive graph cleanup.
@@ -173,6 +251,9 @@ fn clear_stale_completion_fields(obj: &mut Map<String, Value>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::graph_cleanup_timeout::{
+        api_error_graph_cleanup_timeout, graph_cleanup_timeout_user_message, GraphCleanupAction,
+    };
     use serde_json::json;
 
     #[test]
@@ -333,5 +414,69 @@ mod tests {
             v.get("error_message").is_none(),
             "error_message must be cleared by write_processing_stage"
         );
+    }
+
+    #[test]
+    fn restore_overlay_keeps_failed_status_and_track_id() {
+        let mut v = json!({
+            "status": "failed",
+            "track_id": "insert-old",
+            "current_stage": "extracting",
+            "error_message": "old persist error",
+        });
+        apply_pre_admit_restore_overlay(
+            &mut v,
+            Some(&graph_cleanup_timeout_user_message(
+                GraphCleanupAction::Reprocess,
+            )),
+        );
+        assert_eq!(v.get("status").and_then(|x| x.as_str()), Some("failed"));
+        assert_eq!(
+            v.get("track_id").and_then(|x| x.as_str()),
+            Some("insert-old")
+        );
+        let msg = v
+            .get("error_message")
+            .and_then(|x| x.as_str())
+            .unwrap_or("");
+        assert!(
+            msg.contains("Graph cleanup timed out"),
+            "timeout copy must overlay old persist error: {msg}"
+        );
+        assert!(!msg.contains("old persist error"));
+    }
+
+    #[test]
+    fn restore_overlay_none_leaves_previous_error() {
+        let mut v = json!({
+            "status": "failed",
+            "track_id": "insert-old",
+            "error_message": "old persist error",
+        });
+        apply_pre_admit_restore_overlay(&mut v, None);
+        assert_eq!(
+            v.get("error_message").and_then(|x| x.as_str()),
+            Some("old persist error")
+        );
+    }
+
+    #[test]
+    fn post_admit_timeout_is_graph_cleanup_failed() {
+        let err = api_error_graph_cleanup_timeout(GraphCleanupAction::Reprocess);
+        assert_eq!(
+            post_admit_skip_reason(&err),
+            ReprocessSkipReason::GraphCleanupFailed
+        );
+        assert!(graph_cleanup_overlay_error(&err).is_some());
+    }
+
+    #[test]
+    fn post_admit_other_error_is_enqueue_failed() {
+        let err = ApiError::Internal("queue full".into());
+        assert_eq!(
+            post_admit_skip_reason(&err),
+            ReprocessSkipReason::EnqueueFailed
+        );
+        assert!(graph_cleanup_overlay_error(&err).is_none());
     }
 }

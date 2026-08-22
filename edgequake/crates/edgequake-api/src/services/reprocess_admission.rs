@@ -39,6 +39,10 @@ pub enum ReprocessSkipReason {
     CancellingInProgress,
     /// Targeted document_id was not found in scoped metadata.
     NotFound,
+    /// SPEC-119 graph retract failed closed after early admit (issue #385).
+    GraphCleanupFailed,
+    /// Task create/enqueue (or a later admit write) failed after early admit.
+    EnqueueFailed,
 }
 
 impl ReprocessSkipReason {
@@ -50,6 +54,8 @@ impl ReprocessSkipReason {
             Self::DeleteFailed => "delete_failed",
             Self::CancellingInProgress => "cancelling_in_progress",
             Self::NotFound => "not_found",
+            Self::GraphCleanupFailed => "graph_cleanup_failed",
+            Self::EnqueueFailed => "enqueue_failed",
         }
     }
 }
@@ -380,6 +386,14 @@ mod tests {
         assert_eq!(
             ReprocessSkipReason::CancellingInProgress.as_str(),
             "cancelling_in_progress"
+        );
+        assert_eq!(
+            ReprocessSkipReason::GraphCleanupFailed.as_str(),
+            "graph_cleanup_failed"
+        );
+        assert_eq!(
+            ReprocessSkipReason::EnqueueFailed.as_str(),
+            "enqueue_failed"
         );
     }
 }

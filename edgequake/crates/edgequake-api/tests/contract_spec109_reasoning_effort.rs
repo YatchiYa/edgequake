@@ -51,13 +51,8 @@ fn e2e109_08_api_resolve_extract_none_env_lifts_for_gpt54_nano() {
     let mut ws = Workspace::new(Uuid::nil(), "t", "t");
     ws.llm_provider = "openai".into();
     ws.llm_model = "gpt-5.4-nano".into();
-    let effort = resolve_extract_reasoning_effort(
-        Some(&ws),
-        "openai",
-        "gpt-5.4-nano",
-        None,
-        Some("none"),
-    );
+    let effort =
+        resolve_extract_reasoning_effort(Some(&ws), "openai", "gpt-5.4-nano", None, Some("none"));
     assert_eq!(effort.as_deref(), Some("low"));
 }
 

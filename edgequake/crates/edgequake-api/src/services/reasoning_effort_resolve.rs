@@ -101,11 +101,7 @@ fn resolve_role_effort(
             .effective
             .as_deref()
             .or(resolved.desired.as_deref());
-        return edgequake_pipeline::resolve_extraction_reasoning_effort(
-            provider,
-            model,
-            seed,
-        );
+        return edgequake_pipeline::resolve_extraction_reasoning_effort(provider, model, seed);
     }
     edgequake_llm::apply_omit_reasoning_effort(resolved.effective)
 }

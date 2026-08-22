@@ -309,11 +309,28 @@ impl AppState {
         Self::build_test_state(Arc::new(MockProvider::new()))
     }
 
+    /// Test state that shares a concrete [`MemoryGraphStorage`] handle (issue #385).
+    ///
+    /// Use this when the test must arm `fail_next_find_edges_by_source_prefixes`
+    /// on the same instance the reprocess handler retracts through.
+    pub fn test_state_with_graph(graph_storage: Arc<MemoryGraphStorage>) -> Self {
+        use edgequake_llm::MockProvider;
+
+        Self::build_test_state_with_graph(Arc::new(MockProvider::new()), graph_storage)
+    }
+
     /// Build test state from a pre-configured mock (DRY — worker E2E seeds extraction JSON).
     pub fn build_test_state(mock_provider: Arc<edgequake_llm::MockProvider>) -> Self {
+        Self::build_test_state_with_graph(mock_provider, Arc::new(MemoryGraphStorage::new("test")))
+    }
+
+    /// Build test state with an injected graph adapter.
+    pub fn build_test_state_with_graph(
+        mock_provider: Arc<edgequake_llm::MockProvider>,
+        graph_storage: Arc<MemoryGraphStorage>,
+    ) -> Self {
         let kv_storage = Arc::new(MemoryKVStorage::new("test"));
         let vector_storage = Arc::new(MemoryVectorStorage::new("test", 1536)); // Match MockProvider dimension
-        let graph_storage = Arc::new(MemoryGraphStorage::new("test"));
         let pipeline = super::query_bootstrap::build_ingestion_pipeline(
             Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,
             Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
