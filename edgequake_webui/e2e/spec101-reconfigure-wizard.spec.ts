@@ -6,12 +6,15 @@ import {
   bootstrapDeterministicUiContext,
   seedTenantStoreOnPage,
   wizardGoNext,
+  wizardGoToReconfigureExtraction,
   wizardGoToReconfigureReview,
+  wizardGoUntilStep,
 } from './helpers/spec013-bootstrap';
 import {
   API_V1_URL,
   MISTRAL_EMBEDDING_MODEL,
   MISTRAL_LLM_MODEL,
+  tenantHeaders,
 } from './helpers/spec013-api';
 import { skipUnlessLiveStack } from './helpers/live-stack';
 import { GOTO_OPTS } from './helpers/app-ready';
@@ -74,6 +77,18 @@ async function patchWorkspaceModels(
   return res.json();
 }
 
+async function getWorkspace(
+  request: import('@playwright/test').APIRequestContext,
+  tenantId: string,
+  workspaceId: string,
+) {
+  const res = await request.get(`${API_V1_URL}/workspaces/${workspaceId}`, {
+    headers: tenantHeaders(tenantId, workspaceId),
+  });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  return res.json() as Promise<Record<string, unknown>>;
+}
+
 test.describe('SPEC-101 reconfigure workspace wizard', () => {
   test('opens from Edit Configuration and walks all steps', async ({
     page,
@@ -110,13 +125,14 @@ test.describe('SPEC-101 reconfigure workspace wizard', () => {
     request,
   }) => {
     skipUnlessLiveStack();
-    await bootstrapDeterministicUiContext(page, request, 'spec101-reconfig-lang');
+    const ctx = await bootstrapDeterministicUiContext(
+      page,
+      request,
+      'spec101-reconfig-lang',
+    );
 
     await openReconfigureWizard(page);
-    await wizardGoNext(page); // document-parsing
-    await wizardGoNext(page); // chunking
-    await wizardGoNext(page); // extract-budget
-    await wizardGoNext(page); // extraction
+    await wizardGoToReconfigureExtraction(page);
 
     const lang = page.getByTestId('create-workspace-extraction-language');
     await lang.click();
@@ -134,6 +150,8 @@ test.describe('SPEC-101 reconfigure workspace wizard', () => {
       'Chinese',
       { timeout: 15_000 },
     );
+    const body = await getWorkspace(request, ctx.tenantId, ctx.workspaceId);
+    expect(body.extraction_language).toBe('Chinese');
   });
 
   test('PDF parser step shows never-silent server default (Vision)', async ({
@@ -298,11 +316,15 @@ test.describe('SPEC-101 reconfigure workspace wizard', () => {
       llm_model?: string;
       embedding_provider?: string;
       embedding_model?: string;
+      llm_resolution_source?: string;
+      embedding_resolution_source?: string;
     };
     expect(body.llm_provider).toBe('mistral');
     expect(body.llm_model).toBe(MISTRAL_LLM_MODEL);
     expect(body.embedding_provider).toBe('mistral');
     expect(body.embedding_model).toBe(MISTRAL_EMBEDDING_MODEL);
+    expect(body.llm_resolution_source).toBe('tenant');
+    expect(body.embedding_resolution_source).toBe('tenant');
   });
 
   test('draft useServerDefaults=true + Advanced change sends override (not clear-all)', async ({
@@ -382,5 +404,87 @@ test.describe('SPEC-101 reconfigure workspace wizard', () => {
     expect(payload.llm_model).toBeTruthy();
     expect(payload.llm_model).not.toBe('');
     expect(payload.embedding_provider).toBe('mistral');
+  });
+
+  test('PDF parser Apply persists on GET', async ({ page, request }) => {
+    skipUnlessLiveStack();
+    const ctx = await bootstrapDeterministicUiContext(
+      page,
+      request,
+      'spec101-reconfig-pdf-put',
+    );
+    await openReconfigureWizard(page);
+    await wizardGoUntilStep(page, 'wizard-step-document-parsing');
+    await page.getByTestId('pdf-parser-backend-select').click();
+    await page.getByRole('option', { name: 'EdgeParse' }).click();
+    await wizardGoToReconfigureReview(page);
+    await page.getByTestId('wizard-finish').click();
+    await expect(page.getByTestId('reconfigure-workspace-wizard')).toBeHidden({
+      timeout: 30_000,
+    });
+    const body = await getWorkspace(request, ctx.tenantId, ctx.workspaceId);
+    expect(String(body.pdf_parser_backend)).toMatch(/edgeparse/i);
+  });
+
+  test('vision extract Apply persists on GET', async ({ page, request }) => {
+    skipUnlessLiveStack();
+    const ctx = await bootstrapDeterministicUiContext(
+      page,
+      request,
+      'spec101-reconfig-vision-extract',
+    );
+    await openReconfigureWizard(page);
+    await wizardGoUntilStep(page, 'wizard-step-document-parsing');
+    const images = page.getByTestId('vision-extract-extractImages');
+    await expect(images).toBeVisible();
+    await images.click();
+    await wizardGoToReconfigureReview(page);
+    await page.getByTestId('wizard-finish').click();
+    await expect(page.getByTestId('reconfigure-workspace-wizard')).toBeHidden({
+      timeout: 30_000,
+    });
+    const body = await getWorkspace(request, ctx.tenantId, ctx.workspaceId);
+    expect(body.vision_extract_images).toBe(false);
+  });
+
+  test('chunking Acc-fair Apply persists on GET', async ({ page, request }) => {
+    skipUnlessLiveStack();
+    const ctx = await bootstrapDeterministicUiContext(
+      page,
+      request,
+      'spec101-reconfig-chunking',
+    );
+    await openReconfigureWizard(page);
+    await wizardGoUntilStep(page, 'wizard-step-chunking');
+    await page.getByTestId('chunking-acc-fair-chip').click();
+    await wizardGoToReconfigureReview(page);
+    await page.getByTestId('wizard-finish').click();
+    await expect(page.getByTestId('reconfigure-workspace-wizard')).toBeHidden({
+      timeout: 30_000,
+    });
+    const body = await getWorkspace(request, ctx.tenantId, ctx.workspaceId);
+    expect(body.chunking_mode).toBe('fixed');
+    expect(body.chunk_token_size).toBe(1200);
+    expect(body.chunk_overlap_token_size).toBe(100);
+  });
+
+  test('extract budget LightRAG Apply persists on GET', async ({ page, request }) => {
+    skipUnlessLiveStack();
+    const ctx = await bootstrapDeterministicUiContext(
+      page,
+      request,
+      'spec101-reconfig-budget',
+    );
+    await openReconfigureWizard(page);
+    await wizardGoUntilStep(page, 'wizard-step-extract-budget');
+    await page.getByTestId('extract-budget-preset-lightrag').click();
+    await wizardGoToReconfigureReview(page);
+    await page.getByTestId('wizard-finish').click();
+    await expect(page.getByTestId('reconfigure-workspace-wizard')).toBeHidden({
+      timeout: 30_000,
+    });
+    const body = await getWorkspace(request, ctx.tenantId, ctx.workspaceId);
+    expect(Number(body.extract_max_entities)).toBe(40);
+    expect(Number(body.extract_max_records)).toBe(100);
   });
 });

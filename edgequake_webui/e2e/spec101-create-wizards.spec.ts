@@ -9,6 +9,7 @@ import {
   openCreateWorkspaceDialog,
   seedTenantStoreOnPage,
   wizardGoNext,
+  wizardGoUntilStep,
 } from './helpers/spec013-bootstrap';
 import {
   API_V1_URL,
@@ -32,10 +33,7 @@ test.describe('SPEC-101 create wizards', () => {
     await page.getByTestId('wizard-workspace-slug').fill(slug);
     await wizardGoNext(page); // models
     await expect(page.getByTestId('wizard-step-models')).toBeVisible();
-    await wizardGoNext(page); // extraction
-    await expect(page.getByTestId('wizard-step-extraction')).toBeVisible();
-    await wizardGoNext(page); // review
-    await expect(page.getByTestId('wizard-step-review')).toBeVisible();
+    await wizardGoUntilStep(page, 'wizard-step-review');
     await page.getByTestId('wizard-finish').click();
 
     await expect(page.getByTestId('create-workspace-wizard')).toBeHidden({ timeout: 30_000 });
@@ -136,7 +134,7 @@ test.describe('SPEC-101 create wizards', () => {
       new RegExp(visionId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
     );
 
-    await wizardGoNext(page); // extraction
+    await wizardGoUntilStep(page, 'wizard-step-extraction');
     await expect(page.getByTestId('create-workspace-extraction-language')).toContainText('French');
   });
 
@@ -157,12 +155,9 @@ test.describe('SPEC-101 create wizards', () => {
     await page.getByTestId('wizard-tenant-name').fill(tenantName);
     await wizardGoNext(page); // models
     await expect(page.getByTestId('wizard-step-models')).toBeVisible();
-    await wizardGoNext(page); // workspace
+    await wizardGoUntilStep(page, 'wizard-step-workspace-basics');
     await page.getByTestId('wizard-workspace-name').fill(workspaceName);
-    await wizardGoNext(page); // extraction
-    await expect(page.getByTestId('wizard-step-extraction')).toBeVisible();
-    await wizardGoNext(page); // review
-    await expect(page.getByTestId('wizard-step-review')).toBeVisible();
+    await wizardGoUntilStep(page, 'wizard-step-review');
     await page.getByTestId('wizard-finish').click();
 
     await expect(page.getByTestId('create-tenant-wizard')).toBeHidden({ timeout: 30_000 });

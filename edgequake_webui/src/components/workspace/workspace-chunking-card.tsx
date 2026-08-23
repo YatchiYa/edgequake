@@ -53,6 +53,8 @@ export interface WorkspaceChunkingCardProps {
   value?: WorkspaceChunkingValue;
   onChange?: (next: WorkspaceChunkingValue) => void;
   disabled?: boolean;
+  /** Wizard shell already shows the step title — hide the card heading. */
+  variant?: 'settings' | 'wizard';
 }
 
 export function workspaceChunkingFromWorkspace(workspace: {
@@ -73,6 +75,7 @@ export function WorkspaceChunkingCard({
   value,
   onChange,
   disabled = false,
+  variant = 'settings',
 }: WorkspaceChunkingCardProps) {
   const { t } = useTranslation();
   const configured = workspaceChunkingFromWorkspace(workspace);
@@ -94,16 +97,20 @@ export function WorkspaceChunkingCard({
     <Card className="gap-2 py-4" data-testid="workspace-chunking-card">
       <CardHeader className="flex flex-col gap-2 px-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Scissors className="h-4 w-4 text-indigo-600" />
-            {t('workspace.chunking.title', 'Chunking')}
-          </CardTitle>
-          <CardDescription className="text-xs leading-snug">
-            {t(
-              'workspace.chunking.description',
-              'How documents are split into chunks before entity extraction.',
-            )}
-          </CardDescription>
+          {variant === 'settings' ? (
+            <>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Scissors className="h-4 w-4 text-indigo-600" />
+                {t('workspace.chunking.title', 'Chunking')}
+              </CardTitle>
+              <CardDescription className="text-xs leading-snug">
+                {t(
+                  'workspace.chunking.description',
+                  'How documents are split into chunks before entity extraction.',
+                )}
+              </CardDescription>
+            </>
+          ) : null}
           <p
             className="text-[11px] text-muted-foreground"
             data-testid="chunking-markdown-pack-hint"

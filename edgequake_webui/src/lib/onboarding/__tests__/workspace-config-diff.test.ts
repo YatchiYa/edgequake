@@ -129,4 +129,18 @@ describe('workspace-config-diff', () => {
     );
     expect(diff.rebuildHints.extraction).toBe(true);
   });
+
+  it('flags vision extract / reasoning as changes and PDF as vision rebuild', () => {
+    const draft: WorkspaceConfigSnapshot = {
+      ...base,
+      pdfParserBackend: 'edgeparse',
+      visionExtractImages: false,
+      reasoningEffort: 'low',
+    };
+    const diff = diffWorkspaceConfig(base, draft, { documentCount: 2 });
+    expect(diff.changedKeys).toEqual(
+      expect.arrayContaining(['pdfParser', 'visionExtract', 'reasoningEffort']),
+    );
+    expect(diff.rebuildHints.vision).toBe(true);
+  });
 });

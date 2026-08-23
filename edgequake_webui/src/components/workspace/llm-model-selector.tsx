@@ -29,6 +29,11 @@ interface LLMModelSelectorProps {
   /** @deprecated Ignored — provider is a dedicated select. */
   showProviderFilters?: boolean;
   showCapabilityFilters?: boolean;
+  /**
+   * LAW-101-13 inherit chip. When set, replaces fleet catalog "Server default (…)"
+   * so tenant ladder matches ServerDefaultsCard.
+   */
+  inheritLabel?: string;
 }
 
 export function LLMModelSelector({
@@ -39,6 +44,7 @@ export function LLMModelSelector({
   showUsageHint = true,
   filterVision = false,
   showCapabilityFilters,
+  inheritLabel,
 }: LLMModelSelectorProps) {
   const { data: llmData, isLoading, error } = useLlmModels();
 
@@ -70,9 +76,10 @@ export function LLMModelSelector({
     : undefined;
 
   const defaultLabel =
-    llmData.default_provider && llmData.default_model
+    inheritLabel ??
+    (llmData.default_provider && llmData.default_model
       ? `Server default (${llmData.default_provider}/${llmData.default_model})`
-      : 'Server default';
+      : 'Server default');
 
   return (
     <div className={cn('space-y-1', className)} data-testid="llm-model-selector">

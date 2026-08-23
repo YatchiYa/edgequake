@@ -3,6 +3,7 @@
 /**
  * SPEC-117 — Dedicated wizard step for workspace extract budget (SRP).
  * Reuses {@link WorkspaceExtractBudgetCard}; draft mapping via draft-extract-budget SSOT.
+ * Step title lives on WizardShell — card uses variant="wizard".
  */
 
 import {
@@ -14,7 +15,6 @@ import {
   extractBudgetValueFromDraft,
 } from '@/lib/onboarding/draft-extract-budget';
 import type { WizardDraft } from '@/lib/onboarding/wizard-state';
-import { Gauge } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export interface WorkspaceExtractBudgetStepProps {
@@ -34,30 +34,8 @@ export function WorkspaceExtractBudgetStep({
       className="mx-auto flex w-full max-w-2xl flex-col gap-4"
       data-testid="wizard-step-extract-budget"
     >
-      <header className="flex items-start gap-3">
-        <div
-          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10"
-          aria-hidden
-        >
-          <Gauge className="h-4 w-4 text-indigo-600" />
-        </div>
-        <div className="min-w-0 space-y-1">
-          <h4 className="text-sm font-medium leading-none">
-            {t(
-              'onboarding.extractBudgetStepHeading',
-              'Cap entities per LLM response',
-            )}
-          </h4>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {t(
-              'onboarding.extractBudgetStepLead',
-              'These limits apply to each extraction call, not the whole graph. Match LightRAG (40/100) for Acc-fair parity, or leave Inherit for fleet defaults.',
-            )}
-          </p>
-        </div>
-      </header>
-
       <WorkspaceExtractBudgetCard
+        variant="wizard"
         isEditing
         workspace={{
           extract_budget_mode: draft.extractBudgetMode,

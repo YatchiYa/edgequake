@@ -99,13 +99,32 @@ export async function wizardGoNext(page: Page): Promise<void> {
 }
 
 /**
+ * Click Next until a step test id is visible (survives inserted ingest steps).
+ */
+export async function wizardGoUntilStep(
+  page: Page,
+  stepTestId: string,
+  maxClicks = 12,
+): Promise<void> {
+  for (let i = 0; i < maxClicks; i += 1) {
+    if (await page.getByTestId(stepTestId).isVisible().catch(() => false)) {
+      return;
+    }
+    const next = page.getByTestId('wizard-next');
+    await expect(next).toBeEnabled({ timeout: 10_000 });
+    await next.click();
+  }
+  await expect(page.getByTestId(stepTestId)).toBeVisible({ timeout: 15_000 });
+}
+
+/**
  * Reconfigure wizard: models → document-parsing → chunking → extract-budget → extraction → review.
  */
 export async function wizardGoToReconfigureReview(page: Page): Promise<void> {
-  for (let i = 0; i < 5; i += 1) {
-    await wizardGoNext(page);
-  }
-  await expect(page.getByTestId('wizard-step-review')).toBeVisible({
-    timeout: 15_000,
-  });
+  await wizardGoUntilStep(page, 'wizard-step-review');
+}
+
+/** Reconfigure: land on extraction (language / KG schema). */
+export async function wizardGoToReconfigureExtraction(page: Page): Promise<void> {
+  await wizardGoUntilStep(page, 'wizard-step-extraction');
 }

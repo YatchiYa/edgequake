@@ -19,6 +19,7 @@ import {
   modelSupportsThinking,
   supportedReasoningEffortsForModel,
 } from '@/lib/settings/reasoning-effort-supported';
+import { formatInheritModelLabel } from '@/lib/onboarding/inherited-defaults';
 import type { WizardDraft } from '@/lib/onboarding/wizard-state';
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -101,6 +102,29 @@ export function ModelDefaultsStep({
   ]);
 
   const showAdvanced = advancedOpen && !isLoading;
+  const tenantPrefix = t('onboarding.tenantDefaultShort', 'Tenant default');
+  const serverPrefix = t('onboarding.serverDefaultShort', 'Server default');
+  const llmInheritLabel = formatInheritModelLabel({
+    source: inherited.source,
+    provider: inherited.defaultLlmProvider,
+    model: inherited.defaultLlmModel,
+    tenantPrefix,
+    serverPrefix,
+  });
+  const embeddingInheritLabel = formatInheritModelLabel({
+    source: inherited.source,
+    provider: inherited.defaultEmbeddingProvider,
+    model: inherited.defaultEmbeddingModel,
+    tenantPrefix,
+    serverPrefix,
+  });
+  const visionInheritLabel = formatInheritModelLabel({
+    source: inherited.source,
+    provider: inherited.defaultVisionProvider,
+    model: inherited.defaultVisionModel,
+    tenantPrefix,
+    serverPrefix,
+  });
 
   return (
     <div className="space-y-3" data-testid="wizard-step-models">
@@ -165,6 +189,7 @@ export function ModelDefaultsStep({
                 onChange={onLlmChange}
                 showCapabilityFilters={false}
                 showUsageHint
+                inheritLabel={llmInheritLabel}
               />
             </div>
             <div className="grid gap-2">
@@ -172,6 +197,7 @@ export function ModelDefaultsStep({
               <EmbeddingModelSelector
                 value={embedding}
                 onChange={onEmbeddingChange}
+                inheritLabel={embeddingInheritLabel}
               />
             </div>
             <div className="grid gap-2">
@@ -182,6 +208,7 @@ export function ModelDefaultsStep({
                 filterVision
                 showCapabilityFilters={false}
                 showUsageHint
+                inheritLabel={visionInheritLabel}
               />
             </div>
             <ReasoningEffortSelect

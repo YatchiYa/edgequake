@@ -44,6 +44,8 @@ export interface WorkspaceExtractBudgetCardProps {
   value?: WorkspaceExtractBudgetValue;
   onChange?: (next: WorkspaceExtractBudgetValue) => void;
   disabled?: boolean;
+  /** Wizard shell already shows the step title — hide the card heading. */
+  variant?: 'settings' | 'wizard';
 }
 
 export function workspaceExtractBudgetFromWorkspace(workspace: {
@@ -67,6 +69,7 @@ export function WorkspaceExtractBudgetCard({
   value,
   onChange,
   disabled = false,
+  variant = 'settings',
 }: WorkspaceExtractBudgetCardProps) {
   const { t } = useTranslation();
   const configured = workspaceExtractBudgetFromWorkspace(workspace);
@@ -80,16 +83,20 @@ export function WorkspaceExtractBudgetCard({
     <Card className="gap-2 py-4" data-testid="workspace-extract-budget-card">
       <CardHeader className="flex flex-col gap-2 px-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Gauge className="h-4 w-4 text-indigo-600" />
-            {t('workspace.extractBudget.title', 'Extract budget')}
-          </CardTitle>
-          <CardDescription className="text-xs leading-snug">
-            {t(
-              'workspace.extractBudget.description',
-              'Per-response entity and record caps for LLM extraction (not a global graph quota).',
-            )}
-          </CardDescription>
+          {variant === 'settings' ? (
+            <>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Gauge className="h-4 w-4 text-indigo-600" />
+                {t('workspace.extractBudget.title', 'Extract budget')}
+              </CardTitle>
+              <CardDescription className="text-xs leading-snug">
+                {t(
+                  'workspace.extractBudget.description',
+                  'Per-response entity and record caps for LLM extraction (not a global graph quota).',
+                )}
+              </CardDescription>
+            </>
+          ) : null}
           <p
             className="text-[11px] text-muted-foreground"
             data-testid="extract-budget-future-only-hint"

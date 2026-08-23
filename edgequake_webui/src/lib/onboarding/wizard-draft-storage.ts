@@ -97,10 +97,24 @@ export function hydrateWizardDraft(
   stored: PersistedWizardPayload | null,
 ): WizardDraft {
   if (!stored) return base;
+  const llmPick = stored.draft.llmPick ?? stored.modelPicks?.llm;
+  const embeddingPick = stored.draft.embeddingPick ?? stored.modelPicks?.embedding;
+  const visionPick = stored.draft.visionPick ?? stored.modelPicks?.vision;
+  const advancedOpen = Boolean(
+    stored.draft.advancedOpen ||
+      stored.modelPicks?.advancedOpen ||
+      llmPick ||
+      embeddingPick ||
+      visionPick,
+  );
   return {
     ...base,
     ...stored.draft,
     adminPassword: '',
     adminPasswordConfirm: '',
+    llmPick,
+    embeddingPick,
+    visionPick,
+    advancedOpen,
   };
 }

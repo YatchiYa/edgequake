@@ -11,6 +11,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import * as fs from "node:fs";
 import { GOTO_OPTS } from "./helpers/app-ready";
 import { spec096Screenshot } from "./helpers/screenshot-paths";
+import { wizardGoUntilStep } from "./helpers/spec013-bootstrap";
 
 const MOCK_TENANT_ID = "aaaaaaaa-0096-0096-0096-aaaaaaaaaaaa";
 const MOCK_WORKSPACE_ID = "bbbbbbbb-0096-0096-0096-bbbbbbbbbbbb";
@@ -347,9 +348,7 @@ test.describe("SPEC-096 Extraction Language", () => {
     await expect(page.getByTestId("reconfigure-workspace-wizard")).toBeVisible({
       timeout: 15_000,
     });
-    // models → document-parsing → extraction
-    await page.getByTestId("wizard-next").click();
-    await page.getByTestId("wizard-next").click();
+    await wizardGoUntilStep(page, "wizard-step-extraction");
     await expect(page.getByTestId("wizard-step-extraction")).toBeVisible();
     const select = page.getByTestId("create-workspace-extraction-language");
     await expect(select).toBeVisible();
@@ -398,9 +397,7 @@ test.describe("SPEC-096 Extraction Language", () => {
     await expect(page.getByTestId("reconfigure-workspace-wizard")).toBeVisible({
       timeout: 15_000,
     });
-    await page.getByTestId("wizard-next").click();
-    await page.getByTestId("wizard-next").click();
-    await expect(page.getByTestId("wizard-step-extraction")).toBeVisible();
+    await wizardGoUntilStep(page, "wizard-step-extraction");
     await expect(page.getByTestId("entity-types-chips")).toBeVisible();
     const entityTypeChip = (label: string) =>
       page
@@ -409,10 +406,7 @@ test.describe("SPEC-096 Extraction Language", () => {
 
     // Server-default workspaces may begin with an empty custom list.
     // Select General so LAW-L6 exercises preset remapping deterministically.
-    const generalPreset = page.getByTestId("preset-btn-general");
-    if (!(await generalPreset.isVisible())) {
-      await page.getByRole("button", { name: "Change domain" }).click();
-    }
+    const generalPreset = page.getByTestId("kg-schema-preset-general");
     await expect(generalPreset).toBeVisible();
     await generalPreset.click();
     await expect(entityTypeChip("PERSON")).toBeVisible();

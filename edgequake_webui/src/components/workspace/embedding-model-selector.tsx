@@ -27,6 +27,8 @@ interface EmbeddingModelSelectorProps {
   className?: string;
   /** @deprecated Ignored — provider is a dedicated select. */
   showProviderFilters?: boolean;
+  /** LAW-101-13 inherit chip; overrides fleet catalog default label. */
+  inheritLabel?: string;
 }
 
 export function EmbeddingModelSelector({
@@ -34,6 +36,7 @@ export function EmbeddingModelSelector({
   onChange,
   disabled,
   className,
+  inheritLabel,
 }: EmbeddingModelSelectorProps) {
   const { data: embeddingData, isLoading, error } = useEmbeddingModels();
 
@@ -71,9 +74,10 @@ export function EmbeddingModelSelector({
     : undefined;
 
   const defaultLabel =
-    embeddingData.default_provider && embeddingData.default_model
+    inheritLabel ??
+    (embeddingData.default_provider && embeddingData.default_model
       ? `Server default (${embeddingData.default_provider}/${embeddingData.default_model})`
-      : 'Server default';
+      : 'Server default');
 
   const handleChange = (v: ModelPickerValue | undefined) => {
     if (!v) {

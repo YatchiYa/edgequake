@@ -113,6 +113,53 @@ pub struct SetupInitializeRequest {
     pub default_vision_llm_model: Option<String>,
     #[serde(default)]
     pub default_vision_llm_provider: Option<String>,
+    // Workspace ingest (SPEC-101 parity with create/reconfigure wizards)
+    #[serde(default)]
+    pub pdf_parser_backend: Option<String>,
+    #[serde(default)]
+    pub extraction_language: Option<String>,
+    #[serde(default)]
+    pub chunking_mode: Option<String>,
+    #[serde(default)]
+    pub chunk_token_size: Option<u32>,
+    #[serde(default)]
+    pub chunk_overlap_token_size: Option<u32>,
+    #[serde(default)]
+    pub extract_budget_mode: Option<String>,
+    #[serde(default)]
+    pub extract_max_entities: Option<u32>,
+    #[serde(default)]
+    pub extract_max_records: Option<u32>,
+    #[serde(default)]
+    pub entity_types: Option<Vec<String>>,
+    #[serde(default)]
+    pub entity_types_strict: Option<bool>,
+    #[serde(default)]
+    pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
+    #[serde(default)]
+    pub relation_types: Option<Vec<String>>,
+    #[serde(default)]
+    pub relation_types_strict: Option<bool>,
+    #[serde(default)]
+    pub kg_schema_preset: Option<String>,
+    #[serde(default)]
+    pub relation_edges: Option<Vec<crate::handlers::workspaces_types::RelationEdgeDto>>,
+    #[serde(default)]
+    pub default_reasoning_effort: Option<String>,
+    #[serde(default)]
+    pub vision_extract_images: Option<bool>,
+    #[serde(default)]
+    pub vision_extract_charts: Option<bool>,
+    #[serde(default)]
+    pub vision_extract_figures: Option<bool>,
+    #[serde(default)]
+    pub vision_page_system_prompt: Option<String>,
+    #[serde(default)]
+    pub vision_image_system_prompt: Option<String>,
+    #[serde(default)]
+    pub vision_chart_system_prompt: Option<String>,
+    #[serde(default)]
+    pub vision_figure_system_prompt: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -268,6 +315,64 @@ async fn create_first_run_admin(
     }
 }
 
+fn apply_ingest_to_update(update: &mut UpdateWorkspaceRequest, request: &SetupInitializeRequest) {
+    update.pdf_parser_backend = request.pdf_parser_backend.clone();
+    update.extraction_language = request.extraction_language.clone();
+    update.chunking_mode = request.chunking_mode.clone();
+    update.chunk_token_size = request.chunk_token_size;
+    update.chunk_overlap_token_size = request.chunk_overlap_token_size;
+    update.extract_budget_mode = request.extract_budget_mode.clone();
+    update.extract_max_entities = request.extract_max_entities;
+    update.extract_max_records = request.extract_max_records;
+    update.entity_types = request.entity_types.clone();
+    update.entity_types_strict = request.entity_types_strict;
+    update.entity_type_colors = request.entity_type_colors.clone();
+    update.relation_types = request.relation_types.clone();
+    update.relation_types_strict = request.relation_types_strict;
+    update.kg_schema_preset = request.kg_schema_preset.clone();
+    update.relation_edges = crate::handlers::workspaces_types::relation_edges_to_core(
+        request.relation_edges.clone(),
+    );
+    update.default_reasoning_effort = request.default_reasoning_effort.clone();
+    update.vision_extract_images = request.vision_extract_images;
+    update.vision_extract_charts = request.vision_extract_charts;
+    update.vision_extract_figures = request.vision_extract_figures;
+    update.vision_page_system_prompt = request.vision_page_system_prompt.clone();
+    update.vision_image_system_prompt = request.vision_image_system_prompt.clone();
+    update.vision_chart_system_prompt = request.vision_chart_system_prompt.clone();
+    update.vision_figure_system_prompt = request.vision_figure_system_prompt.clone();
+}
+
+fn apply_ingest_to_create(req: &mut CreateWorkspaceRequest, request: &SetupInitializeRequest) {
+    if let Some(ref backend) = request.pdf_parser_backend {
+        req.pdf_parser_backend = edgequake_pdf::PdfParserBackend::from_env_str(backend);
+    }
+    req.extraction_language = request.extraction_language.clone();
+    req.chunking_mode = request.chunking_mode.clone();
+    req.chunk_token_size = request.chunk_token_size;
+    req.chunk_overlap_token_size = request.chunk_overlap_token_size;
+    req.extract_budget_mode = request.extract_budget_mode.clone();
+    req.extract_max_entities = request.extract_max_entities;
+    req.extract_max_records = request.extract_max_records;
+    req.entity_types = request.entity_types.clone();
+    req.entity_types_strict = request.entity_types_strict;
+    req.entity_type_colors = request.entity_type_colors.clone();
+    req.relation_types = request.relation_types.clone();
+    req.relation_types_strict = request.relation_types_strict;
+    req.kg_schema_preset = request.kg_schema_preset.clone();
+    req.relation_edges = crate::handlers::workspaces_types::relation_edges_to_core(
+        request.relation_edges.clone(),
+    );
+    req.default_reasoning_effort = request.default_reasoning_effort.clone();
+    req.vision_extract_images = request.vision_extract_images;
+    req.vision_extract_charts = request.vision_extract_charts;
+    req.vision_extract_figures = request.vision_extract_figures;
+    req.vision_page_system_prompt = request.vision_page_system_prompt.clone();
+    req.vision_image_system_prompt = request.vision_image_system_prompt.clone();
+    req.vision_chart_system_prompt = request.vision_chart_system_prompt.clone();
+    req.vision_figure_system_prompt = request.vision_figure_system_prompt.clone();
+}
+
 /// GET /api/v1/setup/status
 #[utoipa::path(
     get,
@@ -399,6 +504,7 @@ pub async fn setup_initialize(
             description: request.workspace_description.clone(),
             ..Default::default()
         };
+        apply_ingest_to_update(&mut update, &request);
         if let (Some(model), Some(provider)) =
             (&request.default_llm_model, &request.default_llm_provider)
         {
@@ -429,6 +535,7 @@ pub async fn setup_initialize(
         let mut req = CreateWorkspaceRequest::new(request.workspace_name.trim());
         req.slug = Some(ws_slug);
         req.description = request.workspace_description.clone();
+        apply_ingest_to_create(&mut req, &request);
         if let (Some(model), Some(provider)) =
             (&request.default_llm_model, &request.default_llm_provider)
         {
@@ -502,5 +609,49 @@ mod tests {
         assert!(!should_provision_defaults_at_boot(true, false));
         assert!(should_provision_defaults_at_boot(false, false));
         assert!(should_provision_defaults_at_boot(true, true));
+    }
+
+    #[test]
+    fn apply_ingest_to_update_copies_pdf_and_chunking() {
+        let request: SetupInitializeRequest = serde_json::from_value(serde_json::json!({
+            "tenant_name": "Org",
+            "workspace_name": "Main",
+            "pdf_parser_backend": "edgeparse",
+            "chunking_mode": "fixed",
+            "chunk_token_size": 1200,
+            "chunk_overlap_token_size": 100,
+            "extract_budget_mode": "custom",
+            "extract_max_entities": 40,
+            "extract_max_records": 100,
+            "vision_extract_images": false
+        }))
+        .expect("setup request");
+        let mut update = UpdateWorkspaceRequest::default();
+        apply_ingest_to_update(&mut update, &request);
+        assert_eq!(update.pdf_parser_backend.as_deref(), Some("edgeparse"));
+        assert_eq!(update.chunking_mode.as_deref(), Some("fixed"));
+        assert_eq!(update.chunk_token_size, Some(1200));
+        assert_eq!(update.extract_max_entities, Some(40));
+        assert_eq!(update.vision_extract_images, Some(false));
+    }
+
+    #[test]
+    fn apply_ingest_to_create_copies_pdf_and_chunking() {
+        let request: SetupInitializeRequest = serde_json::from_value(serde_json::json!({
+            "tenant_name": "Org",
+            "workspace_name": "Main",
+            "pdf_parser_backend": "vision",
+            "chunking_mode": "adaptive",
+            "extraction_language": "French"
+        }))
+        .expect("setup request");
+        let mut req = CreateWorkspaceRequest::new("Main");
+        apply_ingest_to_create(&mut req, &request);
+        assert_eq!(
+            req.pdf_parser_backend,
+            edgequake_pdf::PdfParserBackend::from_env_str("vision")
+        );
+        assert_eq!(req.chunking_mode.as_deref(), Some("adaptive"));
+        assert_eq!(req.extraction_language.as_deref(), Some("French"));
     }
 }

@@ -77,10 +77,36 @@ describe('reconfigure persist payload', () => {
   });
 
   it('prefill opens Advanced when workspace has concrete LLM picks', () => {
-    const prefill = prefillReconfigureFromWorkspace(baseWorkspace());
+    const prefill = prefillReconfigureFromWorkspace(
+      baseWorkspace({
+        llm_resolution_source: 'workspace',
+        embedding_resolution_source: 'workspace',
+      }),
+    );
     expect(prefill.advancedOpen).toBe(true);
     expect(prefill.draft.useServerDefaults).toBe(false);
     expect(prefill.llm?.provider).toBe('ollama');
+    expect(prefill.draft.llmPick?.provider).toBe('ollama');
+    expect(prefill.draft.advancedOpen).toBe(true);
+    expect(prefill.draft.llmPick?.provider).toBe('ollama');
+    expect(prefill.draft.advancedOpen).toBe(true);
+  });
+
+  it('prefill treats painted tenant models as inherit (not overrides)', () => {
+    const prefill = prefillReconfigureFromWorkspace(
+      baseWorkspace({
+        llm_resolution_source: 'tenant',
+        embedding_resolution_source: 'tenant',
+      }),
+    );
+    expect(prefill.advancedOpen).toBe(false);
+    expect(prefill.draft.useServerDefaults).toBe(true);
+    expect(prefill.llm).toBeUndefined();
+    expect(prefill.embedding).toBeUndefined();
+    expect(prefill.draft.llmPick).toBeUndefined();
+    expect(prefill.draft.advancedOpen).toBe(false);
+    expect(prefill.draft.llmPick).toBeUndefined();
+    expect(prefill.draft.embeddingPick).toBeUndefined();
   });
 
   it('prefill seeds relation defaults when kg_schema_preset names a domain', () => {

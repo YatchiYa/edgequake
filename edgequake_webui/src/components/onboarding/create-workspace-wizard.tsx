@@ -2,19 +2,19 @@
 
 import { WizardShell } from '@/components/onboarding/wizard-shell';
 import { STEP_META } from '@/components/onboarding/step-meta';
+import { DocumentParsingStep } from '@/components/onboarding/steps/document-parsing-step';
 import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-step';
 import { ReviewStep } from '@/components/onboarding/steps/review-step';
 import { WorkspaceBasicsStep } from '@/components/onboarding/steps/workspace-basics-step';
 import { WorkspaceChunkingStep } from '@/components/onboarding/steps/workspace-chunking-step';
 import { WorkspaceExtractBudgetStep } from '@/components/onboarding/steps/workspace-extract-budget-step';
 import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace-extraction-step';
-import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
-import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
 import { EDGE_PRESETS, RELATION_PRESETS } from '@/constants/kg-schema-presets';
 import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
+import { useWizardDraftPicks } from '@/hooks/use-wizard-draft-picks';
 import { createWorkspace } from '@/lib/api/edgequake';
-import { buildWorkspaceModelPayload } from '@/lib/onboarding/model-payload';
+import { buildWorkspaceIngestPayload, buildWorkspaceModelPayload } from '@/lib/onboarding/model-payload';
 import { useWizardDraftPersistence } from '@/lib/onboarding/use-wizard-draft-persistence';
 import {
   EMPTY_WIZARD_DRAFT,
@@ -64,14 +64,20 @@ export function CreateWorkspaceWizard({
   const baselineRef = useRef(initialWorkspaceDraft());
   const [stepIndex, setStepIndex] = useState(0);
   const [draft, setDraft] = useState<WizardDraft>(initialWorkspaceDraft);
-  const [llm, setLlm] = useState<LLMSelection | undefined>();
-  const [embedding, setEmbedding] = useState<EmbeddingSelection | undefined>();
-  const [vision, setVision] = useState<LLMSelection | undefined>();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const inherited = useInheritedModelDefaults(tenantId);
   const { hasConfiguredDefaults } = inherited;
   const languagePrefillDone = useRef(false);
+  const {
+    llm,
+    embedding,
+    vision,
+    advancedOpen,
+    commitLlm,
+    commitEmbedding,
+    commitVision,
+    setAdvancedOpen,
+  } = useWizardDraftPicks(draft, setDraft);
   const { clearDraft } = useWizardDraftPersistence(
     'create-workspace',
     open,
@@ -123,10 +129,6 @@ export function CreateWorkspaceWizard({
     languagePrefillDone.current = false;
     setStepIndex(0);
     setDraft(next);
-    setLlm(undefined);
-    setEmbedding(undefined);
-    setVision(undefined);
-    setAdvancedOpen(false);
     clearDraft();
   }, [clearDraft]);
 
@@ -154,41 +156,13 @@ export function CreateWorkspaceWizard({
         vision,
         reasoningEffort: draft.reasoningEffort,
       });
+      const ingest = buildWorkspaceIngestPayload(draft, 'create');
       const workspace = await createWorkspace(tenantId, {
         name: draft.workspaceName.trim(),
         slug: draft.workspaceSlug.trim() || undefined,
         description: draft.workspaceDescription.trim() || undefined,
         ...models,
-        entity_types: draft.entityTypes.length > 0 ? draft.entityTypes : undefined,
-        extraction_language: draft.extractionLanguage ?? undefined,
-        ...(draft.chunkingMode && draft.chunkingMode !== 'inherit'
-          ? {
-              chunking_mode: draft.chunkingMode,
-              ...(draft.chunkingMode === 'fixed'
-                ? {
-                    chunk_token_size: draft.chunkTokenSize,
-                    chunk_overlap_token_size: draft.chunkOverlapTokenSize,
-                  }
-                : {}),
-            }
-          : {}),
-        ...(draft.extractBudgetMode === 'custom'
-          ? {
-              extract_budget_mode: 'custom',
-              extract_max_entities: draft.extractMaxEntities,
-              extract_max_records: draft.extractMaxRecords,
-            }
-          : {}),
-        entity_type_colors:
-          Object.keys(draft.entityTypeColors).length > 0
-            ? draft.entityTypeColors
-            : undefined,
-        relation_types:
-          draft.relationTypes.length > 0 ? draft.relationTypes : undefined,
-        relation_types_strict: draft.relationTypesStrict,
-        kg_schema_preset: draft.kgSchemaPreset,
-        relation_edges:
-          draft.relationEdges.length > 0 ? draft.relationEdges : undefined,
+        ...ingest,
       });
       // Success toast + navigation CTA owned by caller (header / tenant-guard).
       onCreated?.(workspace);
@@ -223,13 +197,15 @@ export function CreateWorkspaceWizard({
             llm={llm}
             embedding={embedding}
             vision={vision}
-            onLlmChange={setLlm}
-            onEmbeddingChange={setEmbedding}
-            onVisionChange={setVision}
+            onLlmChange={commitLlm}
+            onEmbeddingChange={commitEmbedding}
+            onVisionChange={commitVision}
             advancedOpen={advancedOpen}
             onAdvancedOpenChange={setAdvancedOpen}
           />
         );
+      case 'document-parsing':
+        return <DocumentParsingStep draft={draft} onChange={patchDraft} />;
       case 'chunking':
         return <WorkspaceChunkingStep draft={draft} onChange={patchDraft} />;
       case 'extract-budget':
@@ -247,6 +223,7 @@ export function CreateWorkspaceWizard({
             embedding={embedding}
             vision={vision}
             onEditStep={goToStep}
+            showDocumentParsing
           />
         );
       default:

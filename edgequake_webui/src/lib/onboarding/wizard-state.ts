@@ -70,6 +70,19 @@ export interface WizardDraft {
   relationEdges: RelationEdge[];
   /** SPEC-109 — seed default reasoning effort. */
   reasoningEffort?: string;
+  /** Model overrides (persisted with the draft — LAW-101-9). */
+  llmPick?: WizardModelPick;
+  embeddingPick?: WizardModelPick;
+  visionPick?: WizardModelPick;
+  advancedOpen: boolean;
+}
+
+/** Slash-style model pick stored on the wizard draft. */
+export interface WizardModelPick {
+  provider: string;
+  model: string;
+  fullId?: string;
+  dimension?: number;
 }
 
 export const EMPTY_WIZARD_DRAFT: WizardDraft = {
@@ -106,6 +119,10 @@ export const EMPTY_WIZARD_DRAFT: WizardDraft = {
   kgSchemaPreset: undefined,
   relationEdges: [],
   reasoningEffort: undefined,
+  llmPick: undefined,
+  embeddingPick: undefined,
+  visionPick: undefined,
+  advancedOpen: false,
 };
 
 /**
@@ -127,6 +144,17 @@ function withIngestTuningBeforeExtraction(
   return out;
 }
 
+/** Document parsing sits immediately after models on every wizard kind. */
+function withDocumentParsingAfterModels(steps: WizardStepId[]): WizardStepId[] {
+  if (steps.includes('document-parsing')) return steps;
+  const out: WizardStepId[] = [];
+  for (const step of steps) {
+    out.push(step);
+    if (step === 'models') out.push('document-parsing');
+  }
+  return out;
+}
+
 export function stepsForWizard(
   kind: WizardKind,
   opts: { includeAdmin: boolean; includeExtraction: boolean } = {
@@ -134,31 +162,32 @@ export function stepsForWizard(
     includeExtraction: true,
   },
 ): WizardStepId[] {
+  let steps: WizardStepId[];
   if (kind === 'reconfigure-workspace') {
-    return withIngestTuningBeforeExtraction(
+    steps = withIngestTuningBeforeExtraction(
       ['models', 'document-parsing', 'extraction', 'review'],
       true,
     );
-  }
-  if (kind === 'create-tenant') {
-    return withIngestTuningBeforeExtraction(
+  } else if (kind === 'create-tenant') {
+    steps = withIngestTuningBeforeExtraction(
       ['tenant-basics', 'models', 'workspace-basics', 'extraction', 'review'],
       true,
     );
+  } else if (kind === 'create-workspace') {
+    const create: WizardStepId[] = ['workspace-basics', 'models'];
+    if (opts.includeExtraction) create.push('extraction');
+    create.push('review');
+    steps = withIngestTuningBeforeExtraction(create, opts.includeExtraction);
+  } else {
+    // first-run
+    const first: WizardStepId[] = [];
+    if (opts.includeAdmin) first.push('admin');
+    first.push('tenant-basics', 'models', 'workspace-basics');
+    if (opts.includeExtraction) first.push('extraction');
+    first.push('review');
+    steps = withIngestTuningBeforeExtraction(first, opts.includeExtraction);
   }
-  if (kind === 'create-workspace') {
-    const steps: WizardStepId[] = ['workspace-basics', 'models'];
-    if (opts.includeExtraction) steps.push('extraction');
-    steps.push('review');
-    return withIngestTuningBeforeExtraction(steps, opts.includeExtraction);
-  }
-  // first-run
-  const steps: WizardStepId[] = [];
-  if (opts.includeAdmin) steps.push('admin');
-  steps.push('tenant-basics', 'models', 'workspace-basics');
-  if (opts.includeExtraction) steps.push('extraction');
-  steps.push('review');
-  return withIngestTuningBeforeExtraction(steps, opts.includeExtraction);
+  return withDocumentParsingAfterModels(steps);
 }
 
 export function canProceed(

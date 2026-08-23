@@ -2,6 +2,7 @@
 
 import { WizardShell } from '@/components/onboarding/wizard-shell';
 import { STEP_META } from '@/components/onboarding/step-meta';
+import { DocumentParsingStep } from '@/components/onboarding/steps/document-parsing-step';
 import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-step';
 import { ReviewStep } from '@/components/onboarding/steps/review-step';
 import { TenantBasicsStep } from '@/components/onboarding/steps/tenant-basics-step';
@@ -9,11 +10,10 @@ import { WorkspaceBasicsStep } from '@/components/onboarding/steps/workspace-bas
 import { WorkspaceChunkingStep } from '@/components/onboarding/steps/workspace-chunking-step';
 import { WorkspaceExtractBudgetStep } from '@/components/onboarding/steps/workspace-extract-budget-step';
 import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace-extraction-step';
-import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
-import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
 import { EDGE_PRESETS, RELATION_PRESETS } from '@/constants/kg-schema-presets';
 import { useServerModelDefaults } from '@/hooks/use-server-model-defaults';
+import { useWizardDraftPicks } from '@/hooks/use-wizard-draft-picks';
 import { setTenantContext } from '@/lib/api/client-context';
 import {
   createTenant,
@@ -21,7 +21,7 @@ import {
   getWorkspaces,
   updateWorkspace,
 } from '@/lib/api/edgequake';
-import { buildTenantModelPayload, buildWorkspaceModelPayload } from '@/lib/onboarding/model-payload';
+import { buildTenantModelPayload, buildWorkspaceIngestPayload, buildWorkspaceModelPayload } from '@/lib/onboarding/model-payload';
 import { useWizardDraftPersistence } from '@/lib/onboarding/use-wizard-draft-persistence';
 import {
   EMPTY_WIZARD_DRAFT,
@@ -64,12 +64,18 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
   const baselineRef = useRef(initialTenantDraft());
   const [stepIndex, setStepIndex] = useState(0);
   const [draft, setDraft] = useState<WizardDraft>(initialTenantDraft);
-  const [llm, setLlm] = useState<LLMSelection | undefined>();
-  const [embedding, setEmbedding] = useState<EmbeddingSelection | undefined>();
-  const [vision, setVision] = useState<LLMSelection | undefined>();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const { hasConfiguredDefaults } = useServerModelDefaults();
+  const {
+    llm,
+    embedding,
+    vision,
+    advancedOpen,
+    commitLlm,
+    commitEmbedding,
+    commitVision,
+    setAdvancedOpen,
+  } = useWizardDraftPicks(draft, setDraft);
   const { clearDraft } = useWizardDraftPersistence(
     'create-tenant',
     open,
@@ -104,10 +110,6 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
     baselineRef.current = next;
     setStepIndex(0);
     setDraft(next);
-    setLlm(undefined);
-    setEmbedding(undefined);
-    setVision(undefined);
-    setAdvancedOpen(false);
     clearDraft();
   }, [clearDraft]);
 
@@ -153,42 +155,15 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
         reasoningEffort: draft.reasoningEffort,
       });
 
+      const ingest = buildWorkspaceIngestPayload(draft, autoWs ? 'update' : 'create');
+
       let workspace: Workspace;
       if (autoWs) {
         workspace = await updateWorkspace(tenant.id, autoWs.id, {
           name: draft.workspaceName.trim(),
           description: draft.workspaceDescription.trim() || undefined,
           ...wsModels,
-          entity_types: draft.entityTypes.length > 0 ? draft.entityTypes : undefined,
-          entity_type_colors:
-            Object.keys(draft.entityTypeColors).length > 0
-              ? draft.entityTypeColors
-              : undefined,
-          extraction_language: draft.extractionLanguage ?? undefined,
-          ...(draft.chunkingMode && draft.chunkingMode !== 'inherit'
-            ? {
-                chunking_mode: draft.chunkingMode,
-                ...(draft.chunkingMode === 'fixed'
-                  ? {
-                      chunk_token_size: draft.chunkTokenSize,
-                      chunk_overlap_token_size: draft.chunkOverlapTokenSize,
-                    }
-                  : {}),
-              }
-            : {}),
-          ...(draft.extractBudgetMode === 'custom'
-            ? {
-                extract_budget_mode: 'custom',
-                extract_max_entities: draft.extractMaxEntities,
-                extract_max_records: draft.extractMaxRecords,
-              }
-            : {}),
-          relation_types:
-            draft.relationTypes.length > 0 ? draft.relationTypes : undefined,
-          relation_types_strict: draft.relationTypesStrict,
-          kg_schema_preset: draft.kgSchemaPreset,
-          relation_edges:
-            draft.relationEdges.length > 0 ? draft.relationEdges : undefined,
+          ...ingest,
         });
       } else {
         workspace = await createWorkspace(tenant.id, {
@@ -196,36 +171,7 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
           slug: draft.workspaceSlug.trim() || undefined,
           description: draft.workspaceDescription.trim() || undefined,
           ...wsModels,
-          entity_types: draft.entityTypes.length > 0 ? draft.entityTypes : undefined,
-          entity_type_colors:
-            Object.keys(draft.entityTypeColors).length > 0
-              ? draft.entityTypeColors
-              : undefined,
-          extraction_language: draft.extractionLanguage ?? undefined,
-          ...(draft.chunkingMode && draft.chunkingMode !== 'inherit'
-            ? {
-                chunking_mode: draft.chunkingMode,
-                ...(draft.chunkingMode === 'fixed'
-                  ? {
-                      chunk_token_size: draft.chunkTokenSize,
-                      chunk_overlap_token_size: draft.chunkOverlapTokenSize,
-                    }
-                  : {}),
-              }
-            : {}),
-          ...(draft.extractBudgetMode === 'custom'
-            ? {
-                extract_budget_mode: 'custom',
-                extract_max_entities: draft.extractMaxEntities,
-                extract_max_records: draft.extractMaxRecords,
-              }
-            : {}),
-          relation_types:
-            draft.relationTypes.length > 0 ? draft.relationTypes : undefined,
-          relation_types_strict: draft.relationTypesStrict,
-          kg_schema_preset: draft.kgSchemaPreset,
-          relation_edges:
-            draft.relationEdges.length > 0 ? draft.relationEdges : undefined,
+          ...ingest,
         });
       }
 
@@ -261,13 +207,15 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
             llm={llm}
             embedding={embedding}
             vision={vision}
-            onLlmChange={setLlm}
-            onEmbeddingChange={setEmbedding}
-            onVisionChange={setVision}
+            onLlmChange={commitLlm}
+            onEmbeddingChange={commitEmbedding}
+            onVisionChange={commitVision}
             advancedOpen={advancedOpen}
             onAdvancedOpenChange={setAdvancedOpen}
           />
         );
+      case 'document-parsing':
+        return <DocumentParsingStep draft={draft} onChange={patchDraft} />;
       case 'workspace-basics':
         return <WorkspaceBasicsStep draft={draft} onChange={patchDraft} />;
       case 'chunking':
@@ -286,6 +234,7 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
             embedding={embedding}
             vision={vision}
             onEditStep={goToStep}
+            showDocumentParsing
           />
         );
       default:

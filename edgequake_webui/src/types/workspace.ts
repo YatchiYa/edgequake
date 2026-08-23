@@ -289,7 +289,7 @@ export interface CreateWorkspaceRequest {
    */
   vision_llm_provider?: string;
   /** Default PDF parser backend for this workspace. */
-  pdf_parser_backend?: PdfParserBackend;
+  pdf_parser_backend?: PdfParserBackend | "none";
   /**
    * Custom entity types for this workspace's extraction pipeline.
    * Normalized to UPPERCASE_UNDERSCORED and deduplicated (max 50).
@@ -323,6 +323,17 @@ export interface CreateWorkspaceRequest {
   kg_schema_preset?: string;
   /** Typed edges (SPEC-114b). */
   relation_edges?: Array<{ source: string; relation: string; target: string }>;
+  /** Strict entity type enforcement. */
+  entity_types_strict?: boolean;
+  /** SPEC-109 workspace default reasoning effort. */
+  default_reasoning_effort?: string;
+  vision_extract_images?: boolean;
+  vision_extract_charts?: boolean;
+  vision_extract_figures?: boolean;
+  vision_page_system_prompt?: string;
+  vision_image_system_prompt?: string;
+  vision_chart_system_prompt?: string;
+  vision_figure_system_prompt?: string;
 }
 
 /**

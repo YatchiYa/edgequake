@@ -17,6 +17,10 @@ import {
 import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import {
+  embeddingSelectionFromPick,
+  llmSelectionFromPick,
+} from '@/lib/onboarding/wizard-picks';
+import {
   EMPTY_WIZARD_DRAFT,
   type WizardDraft,
 } from '@/lib/onboarding/wizard-state';
@@ -108,8 +112,10 @@ function resolveSchemaForPrefill(
 }
 
 export function prefillReconfigureFromWorkspace(workspace: Workspace): ReconfigurePrefill {
-  const llm = getWorkspaceLlmSelection(workspace);
-  const embedding = getWorkspaceEmbeddingSelection(workspace);
+  const llm = getWorkspaceLlmSelection(workspace, { overridesOnly: true });
+  const embedding = getWorkspaceEmbeddingSelection(workspace, {
+    overridesOnly: true,
+  });
   const vision = getWorkspaceVisionSelection(workspace);
   const pdfParserBackend = getWorkspacePdfParserBackend(workspace);
   const hasOverrides = Boolean(llm || embedding || vision);
@@ -154,29 +160,24 @@ export function prefillReconfigureFromWorkspace(workspace: Workspace): Reconfigu
     visionImageSystemPrompt: workspace.vision_image_system_prompt ?? '',
     visionChartSystemPrompt: workspace.vision_chart_system_prompt ?? '',
     visionFigureSystemPrompt: workspace.vision_figure_system_prompt ?? '',
+    reasoningEffort: workspace.default_reasoning_effort ?? undefined,
+    llmPick: llm
+      ? { provider: llm.provider, model: llm.model, fullId: llm.fullId }
+      : undefined,
+    embeddingPick: embedding
+      ? {
+          provider: embedding.provider,
+          model: embedding.model,
+          dimension: embedding.dimension,
+        }
+      : undefined,
+    visionPick: vision
+      ? { provider: vision.provider, model: vision.model, fullId: vision.fullId }
+      : undefined,
+    advancedOpen: hasOverrides,
   };
 
-  const snapshot: WorkspaceConfigSnapshot = {
-    useServerDefaults: draft.useServerDefaults,
-    llm,
-    embedding,
-    vision,
-    pdfParserBackend,
-    extractionLanguage: draft.extractionLanguage,
-    chunkingMode: draft.chunkingMode,
-    chunkTokenSize: draft.chunkTokenSize,
-    chunkOverlapTokenSize: draft.chunkOverlapTokenSize,
-    extractBudgetMode: draft.extractBudgetMode,
-    extractMaxEntities: draft.extractMaxEntities,
-    extractMaxRecords: draft.extractMaxRecords,
-    entityTypes: [...draft.entityTypes],
-    entityTypesStrict: draft.entityTypesStrict,
-    entityTypeColors: { ...draft.entityTypeColors },
-    relationTypes: [...draft.relationTypes],
-    relationTypesStrict: draft.relationTypesStrict,
-    kgSchemaPreset: draft.kgSchemaPreset,
-    relationEdges: draft.relationEdges.map((e) => ({ ...e })),
-  };
+  const snapshot = snapshotFromWizardState({ draft, llm, embedding, vision });
 
   return {
     draft,
@@ -194,11 +195,15 @@ export function snapshotFromWizardState(args: {
   embedding?: EmbeddingSelection;
   vision?: LLMSelection;
 }): WorkspaceConfigSnapshot {
+  const llm = args.llm ?? llmSelectionFromPick(args.draft.llmPick);
+  const embedding =
+    args.embedding ?? embeddingSelectionFromPick(args.draft.embeddingPick);
+  const vision = args.vision ?? llmSelectionFromPick(args.draft.visionPick);
   return {
     useServerDefaults: args.draft.useServerDefaults,
-    llm: args.llm,
-    embedding: args.embedding,
-    vision: args.vision,
+    llm,
+    embedding,
+    vision,
     pdfParserBackend: args.draft.pdfParserBackend,
     extractionLanguage: args.draft.extractionLanguage,
     chunkingMode: args.draft.chunkingMode,
@@ -214,6 +219,14 @@ export function snapshotFromWizardState(args: {
     relationTypesStrict: args.draft.relationTypesStrict ?? true,
     kgSchemaPreset: args.draft.kgSchemaPreset,
     relationEdges: (args.draft.relationEdges ?? []).map((e) => ({ ...e })),
+    visionExtractImages: args.draft.visionExtractImages,
+    visionExtractCharts: args.draft.visionExtractCharts,
+    visionExtractFigures: args.draft.visionExtractFigures,
+    visionPageSystemPrompt: args.draft.visionPageSystemPrompt,
+    visionImageSystemPrompt: args.draft.visionImageSystemPrompt,
+    visionChartSystemPrompt: args.draft.visionChartSystemPrompt,
+    visionFigureSystemPrompt: args.draft.visionFigureSystemPrompt,
+    reasoningEffort: args.draft.reasoningEffort,
   };
 }
 

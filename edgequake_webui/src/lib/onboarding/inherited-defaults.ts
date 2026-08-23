@@ -108,3 +108,24 @@ export function pickDefaultWorkspaceLanguage(
   if (typeof lang === 'string' && lang.trim().length > 0) return lang.trim();
   return null;
 }
+
+/**
+ * LAW-101-13 — picker inherit chip must name the resolved provider/model.
+ * Prefix is tenant vs server so it matches ServerDefaultsCard, not fleet catalog.
+ */
+export function formatInheritModelLabel(args: {
+  source: DefaultsSource;
+  provider?: string;
+  model?: string;
+  tenantPrefix?: string;
+  serverPrefix?: string;
+}): string {
+  const prefix =
+    args.source === 'tenant'
+      ? (args.tenantPrefix ?? 'Tenant default')
+      : (args.serverPrefix ?? 'Server default');
+  if (args.provider && args.model) {
+    return `${prefix} (${args.provider}/${args.model})`;
+  }
+  return prefix;
+}

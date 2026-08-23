@@ -94,6 +94,8 @@ export interface VisionExtractFormProps {
   showInheritHint?: boolean;
   disabled?: boolean;
   className?: string;
+  /** Workspace wizard vs per-upload dropzone (copy + scope). */
+  scope?: 'workspace' | 'upload';
   /** Optional effort field rendered at top of the form (upload panel). */
   effort?: {
     value?: string;
@@ -115,6 +117,7 @@ export function VisionExtractControls({
   disabled = false,
   className,
   effort,
+  scope = 'upload',
 }: VisionExtractFormProps) {
   const { t } = useTranslation();
   const [promptsOpen, setPromptsOpen] = useState(
@@ -167,8 +170,12 @@ export function VisionExtractControls({
           </p>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             {t(
-              'documents.upload.visionExtract.modalitiesHint',
-              'Turn off modalities you do not need for this upload.',
+              scope === 'workspace'
+                ? 'onboarding.visionExtractModalitiesHint'
+                : 'documents.upload.visionExtract.modalitiesHint',
+              scope === 'workspace'
+                ? 'Turn off modalities you do not need. Applies to future uploads.'
+                : 'Turn off modalities you do not need for this upload.',
             )}
           </p>
         </div>

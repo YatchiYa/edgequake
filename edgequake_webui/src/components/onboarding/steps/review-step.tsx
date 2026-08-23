@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
-import type { WorkspaceConfigDiff } from '@/lib/onboarding/workspace-config-diff';
+import type { WorkspaceConfigChangedKey, WorkspaceConfigDiff } from '@/lib/onboarding/workspace-config-diff';
 import type { WizardDraft, WizardStepId } from '@/lib/onboarding/wizard-state';
 import { formatServerDefaultExtractionLanguageLabel } from '@/constants/extraction-languages';
 import { formatServerDefaultPdfParserLabel } from '@/lib/pdf/resolve-pdf-parser-backend';
@@ -104,7 +104,7 @@ function pdfLabel(
 }
 
 const CHANGE_LABEL_KEYS: Record<
-  string,
+  WorkspaceConfigChangedKey,
   { key: string; fallback: string }
 > = {
   llm: { key: 'onboarding.impactLlm', fallback: 'LLM model' },
@@ -115,10 +115,19 @@ const CHANGE_LABEL_KEYS: Record<
     key: 'onboarding.impactLanguage',
     fallback: 'Extraction language',
   },
+  chunking: { key: 'onboarding.impactChunking', fallback: 'Chunking' },
+  extractBudget: {
+    key: 'onboarding.impactExtractBudget',
+    fallback: 'Extract budget',
+  },
   entityTypes: { key: 'onboarding.impactEntityTypes', fallback: 'Entity types' },
   entityTypesStrict: {
     key: 'onboarding.impactStrict',
     fallback: 'Strict entity types',
+  },
+  entityTypeColors: {
+    key: 'onboarding.impactEntityTypeColors',
+    fallback: 'Entity type colors',
   },
   relationTypes: {
     key: 'onboarding.impactRelationTypes',
@@ -135,6 +144,14 @@ const CHANGE_LABEL_KEYS: Record<
   relationEdges: {
     key: 'onboarding.impactRelationEdges',
     fallback: 'Typed edges',
+  },
+  visionExtract: {
+    key: 'onboarding.impactVisionExtract',
+    fallback: 'Vision extraction',
+  },
+  reasoningEffort: {
+    key: 'onboarding.impactReasoningEffort',
+    fallback: 'Reasoning effort',
   },
 };
 
@@ -220,8 +237,14 @@ export function ReviewStep({
               {impact.rebuildHints.embeddings
                 ? ` ${t('onboarding.impactRebuildEmbeddings', 'Rebuild Embeddings for the new embedding model.')}`
                 : ''}
-              {impact.rebuildHints.extraction
+              {impact.rebuildHints.extraction && impact.changedKeys.includes('llm')
                 ? ` ${t('onboarding.impactRebuildKg', 'Rebuild Knowledge Graph for the new LLM.')}`
+                : ''}
+              {impact.rebuildHints.extraction && !impact.changedKeys.includes('llm')
+                ? ` ${t(
+                    'onboarding.impactRebuildKgSchema',
+                    'Rebuild Knowledge Graph so existing documents pick up chunking, budget, and schema changes.',
+                  )}`
                 : ''}
               {impact.rebuildHints.vision
                 ? ` ${t('onboarding.impactRebuildVision', 'Rebuild Knowledge Graph for vision/PDF changes.')}`
@@ -238,7 +261,7 @@ export function ReviewStep({
             <p className="text-xs text-muted-foreground">
               {t(
                 'onboarding.impactFutureOnly',
-                'Extraction language and entity types apply to future ingestions.',
+                'Changes apply to future ingestions. Rebuild Knowledge Graph to reprocess existing documents.',
               )}
             </p>
           )}

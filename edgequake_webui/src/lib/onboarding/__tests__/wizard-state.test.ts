@@ -13,6 +13,7 @@ describe('wizard-state', () => {
     expect(stepsForWizard('create-tenant')).toEqual([
       'tenant-basics',
       'models',
+      'document-parsing',
       'workspace-basics',
       'chunking',
       'extract-budget',
@@ -41,6 +42,7 @@ describe('wizard-state', () => {
     ).toEqual([
       'workspace-basics',
       'models',
+      'document-parsing',
       'chunking',
       'extract-budget',
       'extraction',
@@ -114,6 +116,7 @@ describe('wizard-state', () => {
       'admin',
       'tenant-basics',
       'models',
+      'document-parsing',
       'workspace-basics',
       'chunking',
       'extract-budget',

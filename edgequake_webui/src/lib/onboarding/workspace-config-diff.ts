@@ -19,7 +19,9 @@ export type WorkspaceConfigChangedKey =
   | 'relationTypes'
   | 'relationTypesStrict'
   | 'kgSchemaPreset'
-  | 'relationEdges';
+  | 'relationEdges'
+  | 'visionExtract'
+  | 'reasoningEffort';
 
 export interface WorkspaceConfigSnapshot {
   useServerDefaults: boolean;
@@ -41,6 +43,14 @@ export interface WorkspaceConfigSnapshot {
   relationTypesStrict?: boolean;
   kgSchemaPreset?: string;
   relationEdges?: Array<{ source: string; relation: string; target: string }>;
+  visionExtractImages?: boolean;
+  visionExtractCharts?: boolean;
+  visionExtractFigures?: boolean;
+  visionPageSystemPrompt?: string;
+  visionImageSystemPrompt?: string;
+  visionChartSystemPrompt?: string;
+  visionFigureSystemPrompt?: string;
+  reasoningEffort?: string;
 }
 
 export interface WorkspaceRebuildHints {
@@ -188,6 +198,30 @@ export function diffWorkspaceConfig(
   ) {
     changedKeys.push('relationEdges');
   }
+  const baseVisionExtract = [
+    baseline.visionExtractImages ?? true,
+    baseline.visionExtractCharts ?? true,
+    baseline.visionExtractFigures ?? true,
+    baseline.visionPageSystemPrompt ?? '',
+    baseline.visionImageSystemPrompt ?? '',
+    baseline.visionChartSystemPrompt ?? '',
+    baseline.visionFigureSystemPrompt ?? '',
+  ].join('|');
+  const draftVisionExtract = [
+    draft.visionExtractImages ?? true,
+    draft.visionExtractCharts ?? true,
+    draft.visionExtractFigures ?? true,
+    draft.visionPageSystemPrompt ?? '',
+    draft.visionImageSystemPrompt ?? '',
+    draft.visionChartSystemPrompt ?? '',
+    draft.visionFigureSystemPrompt ?? '',
+  ].join('|');
+  if (baseVisionExtract !== draftVisionExtract) {
+    changedKeys.push('visionExtract');
+  }
+  if ((baseline.reasoningEffort ?? '') !== (draft.reasoningEffort ?? '')) {
+    changedKeys.push('reasoningEffort');
+  }
 
   const docs = opts.documentCount ?? 0;
   const modelChanged = (key: WorkspaceConfigChangedKey) => changedKeys.includes(key);
@@ -201,10 +235,15 @@ export function diffWorkspaceConfig(
 
   // Rebuild hints only when there are documents to rebuild (EC-101-16…18).
   // SPEC-114: schema changes also suggest KG rebuild (honest future-only apply).
+  // PDF parser + vision extract affect page/markdown output, same as vision model.
   const rebuildHints: WorkspaceRebuildHints = {
     embeddings: docs > 0 && modelChanged('embedding'),
     extraction: docs > 0 && (modelChanged('llm') || schemaChanged),
-    vision: docs > 0 && modelChanged('vision'),
+    vision:
+      docs > 0 &&
+      (modelChanged('vision') ||
+        modelChanged('pdfParser') ||
+        modelChanged('visionExtract')),
   };
 
   return {

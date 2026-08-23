@@ -38,6 +38,8 @@ describe('wizard-draft-storage', () => {
     clearWizardDraft('create-tenant');
     clearWizardDraft('first-run');
     clearWizardDraft('reconfigure-workspace', 'ws-1');
+    clearWizardDraft('reconfigure-workspace', 'ws-2');
+    clearWizardDraft('reconfigure-workspace', 'ws-legacy');
   });
 
   it('round-trips non-secret fields and step index', () => {
@@ -136,5 +138,39 @@ describe('wizard-draft-storage', () => {
     expect(loaded?.modelPicks?.embedding?.provider).toBe('mistral');
     expect(loaded?.modelPicks?.embedding?.dimension).toBe(1024);
     expect(loaded?.modelPicks?.advancedOpen).toBe(true);
+  });
+
+  it('hydrates llmPick from draft without legacy modelPicks', () => {
+    saveWizardDraft(
+      'create-workspace',
+      {
+        ...EMPTY_WIZARD_DRAFT,
+        useServerDefaults: false,
+        llmPick: { provider: 'mistral', model: 'mistral-small-latest' },
+        advancedOpen: true,
+      },
+      1,
+    );
+    const stored = loadWizardDraft('create-workspace');
+    const hydrated = hydrateWizardDraft(EMPTY_WIZARD_DRAFT, stored);
+    expect(hydrated.llmPick?.provider).toBe('mistral');
+    expect(hydrated.advancedOpen).toBe(true);
+  });
+
+  it('hydrates llmPick from legacy v2 modelPicks', () => {
+    saveWizardDraft(
+      'reconfigure-workspace',
+      EMPTY_WIZARD_DRAFT,
+      0,
+      'ws-legacy',
+      {
+        llm: { provider: 'ollama', model: 'gemma4:latest' },
+        advancedOpen: true,
+      },
+    );
+    const stored = loadWizardDraft('reconfigure-workspace', 'ws-legacy');
+    const hydrated = hydrateWizardDraft(EMPTY_WIZARD_DRAFT, stored);
+    expect(hydrated.llmPick?.provider).toBe('ollama');
+    expect(hydrated.advancedOpen).toBe(true);
   });
 });

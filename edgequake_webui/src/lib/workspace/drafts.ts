@@ -3,6 +3,21 @@ import type { EmbeddingSelection } from "@/components/workspace/embedding-model-
 import type { LLMSelection } from "@/components/workspace/llm-model-selector";
 import type { Workspace } from "@/types";
 
+export interface WorkspaceSelectionOpts {
+  /**
+   * When true, only return a pick if GET provenance is a workspace override.
+   * Painted tenant/env values on `llm_model` must not look like overrides (LAW-101-5).
+   */
+  overridesOnly?: boolean;
+}
+
+/** Honest workspace-override signal (GET paints inherited llm/embedding onto struct fields). */
+export function isWorkspaceResolutionSource(
+  source?: string | null,
+): boolean {
+  return (source ?? "").trim().toLowerCase() === "workspace";
+}
+
 /** Mock must never be selected/saved in the application UI. */
 function isMockProvider(provider?: string | null): boolean {
   const id = provider?.trim().toLowerCase() ?? "";
@@ -39,8 +54,12 @@ function healMockProvider(provider: string, model: string): string {
 
 export function getWorkspaceLlmSelection(
   workspace?: Workspace | null,
+  opts: WorkspaceSelectionOpts = {},
 ): LLMSelection | undefined {
   if (!workspace?.llm_provider || !workspace.llm_model) {
+    return undefined;
+  }
+  if (opts.overridesOnly && !isWorkspaceResolutionSource(workspace.llm_resolution_source)) {
     return undefined;
   }
 
@@ -54,8 +73,15 @@ export function getWorkspaceLlmSelection(
 
 export function getWorkspaceEmbeddingSelection(
   workspace?: Workspace | null,
+  opts: WorkspaceSelectionOpts = {},
 ): EmbeddingSelection | undefined {
   if (!workspace?.embedding_provider || !workspace.embedding_model) {
+    return undefined;
+  }
+  if (
+    opts.overridesOnly &&
+    !isWorkspaceResolutionSource(workspace.embedding_resolution_source)
+  ) {
     return undefined;
   }
 

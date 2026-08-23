@@ -93,6 +93,7 @@ export function DocumentParsingStep({ draft, onChange }: DocumentParsingStepProp
                 visionFigureSystemPrompt: next.figureSystemPrompt,
               })
             }
+            scope="workspace"
           />
         </section>
       ) : null}

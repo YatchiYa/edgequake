@@ -3,6 +3,7 @@
 import { WizardShell } from '@/components/onboarding/wizard-shell';
 import { STEP_META } from '@/components/onboarding/step-meta';
 import { AdminCredentialsStep } from '@/components/onboarding/steps/admin-credentials-step';
+import { DocumentParsingStep } from '@/components/onboarding/steps/document-parsing-step';
 import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-step';
 import { ReviewStep } from '@/components/onboarding/steps/review-step';
 import { TenantBasicsStep } from '@/components/onboarding/steps/tenant-basics-step';
@@ -18,15 +19,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
-import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
 import { EDGE_PRESETS, RELATION_PRESETS } from '@/constants/kg-schema-presets';
 import { useServerModelDefaults } from '@/hooks/use-server-model-defaults';
 import { useSetupStatus } from '@/hooks/use-setup-status';
+import { useWizardDraftPicks } from '@/hooks/use-wizard-draft-picks';
 import { login } from '@/lib/api/edgequake';
 import { initializeSetup } from '@/lib/api/setup';
-import { buildTenantModelPayload } from '@/lib/onboarding/model-payload';
+import { buildTenantModelPayload, buildWorkspaceIngestPayload } from '@/lib/onboarding/model-payload';
 import { useWizardDraftPersistence } from '@/lib/onboarding/use-wizard-draft-persistence';
 import {
   EMPTY_WIZARD_DRAFT,
@@ -90,12 +90,18 @@ export function FirstRunWizard({ surface = 'dashboard' }: FirstRunWizardProps) {
 
   const [stepIndex, setStepIndex] = useState(0);
   const [draft, setDraft] = useState<WizardDraft>(initialFirstRunDraft);
-  const [llm, setLlm] = useState<LLMSelection | undefined>();
-  const [embedding, setEmbedding] = useState<EmbeddingSelection | undefined>();
-  const [vision, setVision] = useState<LLMSelection | undefined>();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const { hasConfiguredDefaults } = useServerModelDefaults();
+  const {
+    llm,
+    embedding,
+    vision,
+    advancedOpen,
+    commitLlm,
+    commitEmbedding,
+    commitVision,
+    setAdvancedOpen,
+  } = useWizardDraftPicks(draft, setDraft);
 
   const open = (() => {
     if (isLoading || !status?.needs_setup || !status.auth_enabled) return false;
@@ -143,6 +149,7 @@ export function FirstRunWizard({ surface = 'dashboard' }: FirstRunWizardProps) {
         vision,
         reasoningEffort: draft.reasoningEffort,
       });
+      const ingest = buildWorkspaceIngestPayload(draft, 'create');
       const result = await initializeSetup({
         admin_username: includeAdmin ? draft.adminUsername.trim() : undefined,
         admin_email: includeAdmin ? draft.adminEmail.trim() || undefined : undefined,
@@ -153,6 +160,7 @@ export function FirstRunWizard({ surface = 'dashboard' }: FirstRunWizardProps) {
         workspace_slug: draft.workspaceSlug.trim() || undefined,
         workspace_description: draft.workspaceDescription.trim() || undefined,
         ...models,
+        ...ingest,
       });
       selectTenant(result.tenant.id);
       selectWorkspace(result.workspace.id);
@@ -221,13 +229,15 @@ export function FirstRunWizard({ surface = 'dashboard' }: FirstRunWizardProps) {
             llm={llm}
             embedding={embedding}
             vision={vision}
-            onLlmChange={setLlm}
-            onEmbeddingChange={setEmbedding}
-            onVisionChange={setVision}
+            onLlmChange={commitLlm}
+            onEmbeddingChange={commitEmbedding}
+            onVisionChange={commitVision}
             advancedOpen={advancedOpen}
             onAdvancedOpenChange={setAdvancedOpen}
           />
         );
+      case 'document-parsing':
+        return <DocumentParsingStep draft={draft} onChange={patchDraft} />;
       case 'workspace-basics':
         return <WorkspaceBasicsStep draft={draft} onChange={patchDraft} />;
       case 'chunking':
@@ -246,6 +256,7 @@ export function FirstRunWizard({ surface = 'dashboard' }: FirstRunWizardProps) {
             embedding={embedding}
             vision={vision}
             onEditStep={goToStep}
+            showDocumentParsing
           />
         );
       default:

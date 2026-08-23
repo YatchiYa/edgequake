@@ -20,7 +20,7 @@ export const STEP_META: Record<
     titleKey: 'onboarding.modelsTitle',
     title: 'Confirm AI models',
     descriptionKey: 'onboarding.modelsSubtitle',
-    description: 'Server defaults apply unless you override.',
+    description: 'Inherited defaults apply unless you override.',
   },
   'workspace-basics': {
     titleKey: 'onboarding.workspaceTitle',

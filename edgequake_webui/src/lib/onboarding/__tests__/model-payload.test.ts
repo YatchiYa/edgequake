@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildTenantModelPayload,
+  buildWorkspaceIngestPayload,
   buildWorkspaceModelPayload,
   buildWorkspaceUpdatePayload,
   normalizeModelFullId,
 } from '../model-payload';
+import { EMPTY_WIZARD_DRAFT } from '../wizard-state';
 
 describe('model-payload', () => {
   it('omits all model fields when using server defaults (tenant)', () => {
@@ -98,24 +100,6 @@ describe('model-payload', () => {
       embedding_dimension: 0,
       vision_llm_model: '',
       vision_llm_provider: '',
-      pdf_parser_backend: 'vision',
-      vision_extract_images: true,
-      vision_extract_charts: true,
-      vision_extract_figures: true,
-      vision_page_system_prompt: '',
-      vision_image_system_prompt: '',
-      vision_chart_system_prompt: '',
-      vision_figure_system_prompt: '',
-      entity_types: ['PERSON'],
-      entity_types_strict: true,
-      extraction_language: 'none',
-      chunking_mode: 'inherit',
-      extract_budget_mode: 'inherit',
-      entity_type_colors: {},
-      relation_types: [],
-      relation_types_strict: true,
-      kg_schema_preset: 'custom',
-      relation_edges: [],
     });
   });
 
@@ -174,5 +158,104 @@ describe('model-payload', () => {
       extract_max_entities: 40,
       extract_max_records: 100,
     });
+  });
+
+  it('sparse PUT emits only changed keys (language must not promote models)', () => {
+    const payload = buildWorkspaceUpdatePayload({
+      useServerDefaults: true,
+      llm: { provider: 'ollama', model: 'gemma4:latest' },
+      embedding: { provider: 'ollama', model: 'embeddinggemma', dimension: 768 },
+      vision: { provider: 'ollama', model: 'gemma4:latest' },
+      pdfParserBackend: 'none',
+      extractionLanguage: 'Chinese',
+      entityTypes: ['PERSON'],
+      entityTypesStrict: true,
+      changedKeys: ['extractionLanguage'],
+    });
+    expect(payload).toEqual({
+      extraction_language: 'Chinese',
+    });
+  });
+
+  it('sparse PUT with inherit models only clears model fields', () => {
+    const payload = buildWorkspaceUpdatePayload({
+      useServerDefaults: true,
+      pdfParserBackend: 'none',
+      extractionLanguage: null,
+      entityTypes: ['PERSON'],
+      entityTypesStrict: true,
+      changedKeys: ['llm', 'embedding', 'vision'],
+    });
+    expect(payload).toEqual({
+      llm_model: '',
+      llm_provider: '',
+      embedding_model: '',
+      embedding_provider: '',
+      embedding_dimension: 0,
+      vision_llm_model: '',
+      vision_llm_provider: '',
+    });
+    expect(payload).not.toHaveProperty('entity_types');
+    expect(payload).not.toHaveProperty('relation_types');
+  });
+});
+
+describe('buildWorkspaceIngestPayload', () => {
+  it('omits inherit-equivalent fields on create', () => {
+    const payload = buildWorkspaceIngestPayload(
+      {
+        ...EMPTY_WIZARD_DRAFT,
+        pdfParserBackend: 'none',
+        chunkingMode: null,
+        extractBudgetMode: null,
+        visionExtractImages: true,
+        visionExtractCharts: true,
+        visionExtractFigures: true,
+      },
+      'create',
+    );
+    expect(payload.pdf_parser_backend).toBeUndefined();
+    expect(payload.chunking_mode).toBeUndefined();
+    expect(payload.extract_budget_mode).toBeUndefined();
+    expect(payload.vision_extract_images).toBeUndefined();
+  });
+
+  it('sends create overrides for pdf, chunking, budget, and vision extract', () => {
+    const payload = buildWorkspaceIngestPayload(
+      {
+        ...EMPTY_WIZARD_DRAFT,
+        pdfParserBackend: 'edgeparse',
+        chunkingMode: 'fixed',
+        chunkTokenSize: 800,
+        chunkOverlapTokenSize: 50,
+        extractBudgetMode: 'custom',
+        extractMaxEntities: 20,
+        extractMaxRecords: 50,
+        visionExtractImages: false,
+        extractionLanguage: 'French',
+      },
+      'create',
+    );
+    expect(payload.pdf_parser_backend).toBe('edgeparse');
+    expect(payload.chunking_mode).toBe('fixed');
+    expect(payload.chunk_token_size).toBe(800);
+    expect(payload.extract_max_entities).toBe(20);
+    expect(payload.vision_extract_images).toBe(false);
+    expect(payload.extraction_language).toBe('French');
+  });
+
+  it('sends inherit clears on update', () => {
+    const payload = buildWorkspaceIngestPayload(
+      {
+        ...EMPTY_WIZARD_DRAFT,
+        pdfParserBackend: 'none',
+        chunkingMode: 'inherit',
+        extractBudgetMode: 'inherit',
+      },
+      'update',
+    );
+    expect(payload.pdf_parser_backend).toBe('none');
+    expect(payload.chunking_mode).toBe('inherit');
+    expect(payload.extract_budget_mode).toBe('inherit');
   });
 });

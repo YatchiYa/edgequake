@@ -5,6 +5,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   bootstrapDeterministicUiContext,
   wizardGoNext,
+  wizardGoUntilStep,
 } from './helpers/spec013-bootstrap';
 import { skipUnlessLiveStack } from './helpers/live-stack';
 import { GOTO_OPTS } from './helpers/app-ready';
@@ -58,7 +59,7 @@ test.describe('SPEC-101 reconfigure UX capture', () => {
       await assertDialogWithinViewport(page, 'reconfigure-workspace-wizard');
       await captureWizard(page, `after-reconfigure-document-parsing-${vp.name}.png`);
 
-      await wizardGoNext(page); // extraction
+      await wizardGoUntilStep(page, 'wizard-step-extraction');
       // Force a change so Impact appears on review
       const lang = page.getByTestId('create-workspace-extraction-language');
       await lang.click();

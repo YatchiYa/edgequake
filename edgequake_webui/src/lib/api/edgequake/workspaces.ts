@@ -231,6 +231,20 @@ export interface UpdateWorkspaceRequest {
   default_reasoning_effort?: string;
   /** SPEC-109: merge llm_roles metadata (extract/query effort). */
   llm_roles?: Record<string, { reasoning_effort?: string | null }>;
+  /**
+   * SPEC-117 extract budget. Pass `"inherit"` / `"none"` / `""` to clear.
+   */
+  extract_budget_mode?: string | null;
+  extract_max_entities?: number | null;
+  extract_max_records?: number | null;
+  /** SPEC-015V — Vision extract toggles (absent → server default ON). */
+  vision_extract_images?: boolean;
+  vision_extract_charts?: boolean;
+  vision_extract_figures?: boolean;
+  vision_page_system_prompt?: string;
+  vision_image_system_prompt?: string;
+  vision_chart_system_prompt?: string;
+  vision_figure_system_prompt?: string;
 }
 
 /**

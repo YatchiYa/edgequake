@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatInheritModelLabel,
   pickDefaultWorkspaceLanguage,
   resolveInheritedModelDefaults,
   type ModelDefaultsSlice,
@@ -77,5 +78,27 @@ describe('pickDefaultWorkspaceLanguage', () => {
     expect(pickDefaultWorkspaceLanguage([{ slug: 'default', name: 'Default Workspace' }])).toBe(
       null,
     );
+  });
+});
+
+describe('formatInheritModelLabel', () => {
+  it('includes tenant prefix and resolved id', () => {
+    expect(
+      formatInheritModelLabel({
+        source: 'tenant',
+        provider: 'ollama',
+        model: 'gemma4:latest',
+      }),
+    ).toBe('Tenant default (ollama/gemma4:latest)');
+  });
+
+  it('includes server prefix and resolved id', () => {
+    expect(
+      formatInheritModelLabel({
+        source: 'server',
+        provider: 'openai',
+        model: 'text-embedding-3-small',
+      }),
+    ).toBe('Server default (openai/text-embedding-3-small)');
   });
 });

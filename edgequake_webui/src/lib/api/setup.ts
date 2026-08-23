@@ -29,6 +29,29 @@ export interface SetupInitializeRequest {
   default_embedding_provider?: string;
   default_vision_llm_model?: string;
   default_vision_llm_provider?: string;
+  pdf_parser_backend?: string;
+  extraction_language?: string | null;
+  chunking_mode?: string | null;
+  chunk_token_size?: number | null;
+  chunk_overlap_token_size?: number | null;
+  extract_budget_mode?: string | null;
+  extract_max_entities?: number | null;
+  extract_max_records?: number | null;
+  entity_types?: string[];
+  entity_types_strict?: boolean;
+  entity_type_colors?: Record<string, string>;
+  relation_types?: string[];
+  relation_types_strict?: boolean;
+  kg_schema_preset?: string;
+  relation_edges?: Array<{ source: string; relation: string; target: string }>;
+  default_reasoning_effort?: string;
+  vision_extract_images?: boolean;
+  vision_extract_charts?: boolean;
+  vision_extract_figures?: boolean;
+  vision_page_system_prompt?: string;
+  vision_image_system_prompt?: string;
+  vision_chart_system_prompt?: string;
+  vision_figure_system_prompt?: string;
 }
 
 export interface SetupInitializeResponse {

@@ -11,9 +11,8 @@ import { ReviewStep } from '@/components/onboarding/steps/review-step';
 import { WorkspaceChunkingStep } from '@/components/onboarding/steps/workspace-chunking-step';
 import { WorkspaceExtractBudgetStep } from '@/components/onboarding/steps/workspace-extract-budget-step';
 import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace-extraction-step';
-import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
-import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
+import { useWizardDraftPicks } from '@/hooks/use-wizard-draft-picks';
 import { updateWorkspace } from '@/lib/api/edgequake';
 import { buildWorkspaceUpdatePayload } from '@/lib/onboarding/model-payload';
 import {
@@ -25,7 +24,6 @@ import { useWizardDraftPersistence } from '@/lib/onboarding/use-wizard-draft-per
 import {
   hydrateWizardDraft,
   loadWizardDraft,
-  saveWizardDraft,
 } from '@/lib/onboarding/wizard-draft-storage';
 import {
   diffWorkspaceConfig,
@@ -78,21 +76,21 @@ export function ReconfigureWorkspaceWizard({
   const baselineSnapshotRef = useRef<WorkspaceConfigSnapshot | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [draft, setDraft] = useState<WizardDraft>(EMPTY_WIZARD_DRAFT);
-  const [llm, setLlm] = useState<LLMSelection | undefined>();
-  const [embedding, setEmbedding] = useState<EmbeddingSelection | undefined>();
-  const [vision, setVision] = useState<LLMSelection | undefined>();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const workspaceId = workspace?.id ?? null;
   const inherited = useInheritedModelDefaults(tenantId);
   const { hasConfiguredDefaults } = inherited;
   const prefilledForId = useRef<string | null>(null);
-  const llmRef = useRef(llm);
-  const embeddingRef = useRef(embedding);
-  const visionRef = useRef(vision);
-  llmRef.current = llm;
-  embeddingRef.current = embedding;
-  visionRef.current = vision;
+  const {
+    llm,
+    embedding,
+    vision,
+    advancedOpen,
+    commitLlm,
+    commitEmbedding,
+    commitVision,
+    setAdvancedOpen,
+  } = useWizardDraftPicks(draft, setDraft);
 
   const { clearDraft } = useWizardDraftPersistence(
     'reconfigure-workspace',
@@ -135,6 +133,7 @@ export function ReconfigureWorkspaceWizard({
           ));
       setDraft({
         ...hydrated,
+        advancedOpen: advanced,
         useServerDefaults: resolveHydratedUseServerDefaults({
           prefillAdvancedOpen: prefill.advancedOpen,
           prefillUseServerDefaults: prefill.draft.useServerDefaults,
@@ -143,78 +142,12 @@ export function ReconfigureWorkspaceWizard({
         }),
       });
       setStepIndex(clampStepIndex(stored.stepIndex, steps.length));
-      setLlm(
-        stored.modelPicks?.llm
-          ? {
-              provider: stored.modelPicks.llm.provider,
-              model: stored.modelPicks.llm.model,
-              fullId:
-                stored.modelPicks.llm.fullId ??
-                `${stored.modelPicks.llm.provider}/${stored.modelPicks.llm.model}`,
-            }
-          : prefill.llm,
-      );
-      setEmbedding(stored.modelPicks?.embedding ?? prefill.embedding);
-      setVision(
-        stored.modelPicks?.vision
-          ? {
-              provider: stored.modelPicks.vision.provider,
-              model: stored.modelPicks.vision.model,
-              fullId:
-                stored.modelPicks.vision.fullId ??
-                `${stored.modelPicks.vision.provider}/${stored.modelPicks.vision.model}`,
-            }
-          : prefill.vision,
-      );
-      setAdvancedOpen(advanced);
     } else {
       setDraft(prefill.draft);
-      setLlm(prefill.llm);
-      setEmbedding(prefill.embedding);
-      setVision(prefill.vision);
-      setAdvancedOpen(prefill.advancedOpen);
       setStepIndex(0);
     }
     prefilledForId.current = workspace.id;
   }, [open, workspace, steps.length]);
-
-  // Persist model picks alongside draft (EC-101-22 v2).
-  useEffect(() => {
-    if (!open || !workspaceId) return;
-    const hasPicks = Boolean(llm || embedding || vision || advancedOpen);
-    saveWizardDraft(
-      'reconfigure-workspace',
-      draft,
-      stepIndex,
-      workspaceId,
-      hasPicks
-        ? {
-            llm: llm
-              ? {
-                  provider: llm.provider,
-                  model: llm.model,
-                  fullId: llm.fullId,
-                }
-              : undefined,
-            embedding: embedding
-              ? {
-                  provider: embedding.provider,
-                  model: embedding.model,
-                  dimension: embedding.dimension,
-                }
-              : undefined,
-            vision: vision
-              ? {
-                  provider: vision.provider,
-                  model: vision.model,
-                  fullId: vision.fullId,
-                }
-              : undefined,
-            advancedOpen,
-          }
-        : undefined,
-    );
-  }, [open, workspaceId, draft, stepIndex, llm, embedding, vision, advancedOpen]);
 
   const stepId = steps[clampStepIndex(stepIndex, steps.length)];
   const meta =
@@ -226,49 +159,9 @@ export function ReconfigureWorkspaceWizard({
     setDraft((d) => ({ ...d, ...patch }));
   }, []);
 
-  /** Concrete model pick → Apply must send overrides (never clear-all). */
-  const commitLlm = useCallback((next: LLMSelection | undefined) => {
-    setLlm(next);
-    llmRef.current = next;
-    if (next?.provider && next?.model) {
-      setDraft((d) => ({ ...d, useServerDefaults: false }));
-      setAdvancedOpen(true);
-    } else if (!next && !embeddingRef.current && !visionRef.current) {
-      setDraft((d) => ({ ...d, useServerDefaults: true }));
-    }
-  }, []);
-
-  const commitEmbedding = useCallback((next: EmbeddingSelection | undefined) => {
-    setEmbedding(next);
-    embeddingRef.current = next;
-    if (next?.provider && next?.model) {
-      setDraft((d) => ({ ...d, useServerDefaults: false }));
-      setAdvancedOpen(true);
-    } else if (!llmRef.current && !next && !visionRef.current) {
-      setDraft((d) => ({ ...d, useServerDefaults: true }));
-    }
-  }, []);
-
-  const commitVision = useCallback((next: LLMSelection | undefined) => {
-    setVision(next);
-    visionRef.current = next;
-    if (next?.provider && next?.model) {
-      setDraft((d) => ({ ...d, useServerDefaults: false }));
-      setAdvancedOpen(true);
-    } else if (!llmRef.current && !embeddingRef.current && !next) {
-      setDraft((d) => ({ ...d, useServerDefaults: true }));
-    }
-  }, []);
-
   const currentSnapshot = useMemo(
-    () =>
-      snapshotFromWizardState({
-        draft,
-        llm,
-        embedding,
-        vision,
-      }),
-    [draft, llm, embedding, vision],
+    () => snapshotFromWizardState({ draft }),
+    [draft],
   );
 
   const impact = useMemo(() => {
@@ -307,10 +200,6 @@ export function ReconfigureWorkspaceWizard({
     baselineSnapshotRef.current = null;
     setStepIndex(0);
     setDraft(EMPTY_WIZARD_DRAFT);
-    setLlm(undefined);
-    setEmbedding(undefined);
-    setVision(undefined);
-    setAdvancedOpen(false);
     clearDraft();
   }, [clearDraft]);
 
@@ -363,6 +252,7 @@ export function ReconfigureWorkspaceWizard({
         kgSchemaPreset: draft.kgSchemaPreset,
         relationEdges: draft.relationEdges,
         reasoningEffort: draft.reasoningEffort,
+        changedKeys: impact.changedKeys,
       });
       const updated = await updateWorkspace(tenantId, workspace.id, payload);
       const pendingRebuild = toPendingRebuild(impact.rebuildHints);

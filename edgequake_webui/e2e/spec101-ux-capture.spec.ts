@@ -7,6 +7,7 @@ import {
   openCreateTenantDialog,
   openCreateWorkspaceDialog,
   wizardGoNext,
+  wizardGoUntilStep,
 } from './helpers/spec013-bootstrap';
 import { skipUnlessLiveStack } from './helpers/live-stack';
 import { spec101E2eScreenshot, spec101Screenshot } from './helpers/screenshot-paths';
@@ -60,8 +61,7 @@ test.describe('SPEC-101 UX capture QC', () => {
       await assertDialogWithinViewport(page, 'create-workspace-wizard');
       await captureWizard(page, `after-create-workspace-models-${vp.name}.png`);
 
-      await wizardGoNext(page); // extraction
-      await wizardGoNext(page); // review
+      await wizardGoUntilStep(page, 'wizard-step-review');
       await expect(page.getByTestId('wizard-step-review')).toBeVisible();
       await expect(page.getByTestId('wizard-review-workspace-edit')).toBeVisible();
       await assertDialogWithinViewport(page, 'create-workspace-wizard');
@@ -79,10 +79,9 @@ test.describe('SPEC-101 UX capture QC', () => {
       await assertDialogWithinViewport(page, 'create-tenant-wizard');
       await captureWizard(page, `after-create-tenant-models-${vp.name}.png`);
 
-      await wizardGoNext(page); // workspace
+      await wizardGoUntilStep(page, 'wizard-step-workspace-basics');
       await page.getByTestId('wizard-workspace-name').fill(`Cap WS ${vp.name}`);
-      await wizardGoNext(page); // extraction
-      await wizardGoNext(page); // review
+      await wizardGoUntilStep(page, 'wizard-step-review');
       await expect(page.getByTestId('wizard-step-review')).toBeVisible();
       await assertDialogWithinViewport(page, 'create-tenant-wizard');
       await captureWizard(page, `after-create-tenant-review-${vp.name}.png`);

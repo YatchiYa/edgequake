@@ -19,6 +19,7 @@ import {
   bootstrapDeterministicUiContext,
   openCreateWorkspaceDialog,
   wizardGoNext,
+  wizardGoUntilStep,
 } from "./helpers/spec013-bootstrap";
 import { skipUnlessLiveStack } from "./helpers/live-stack";
 
@@ -32,7 +33,7 @@ test.describe('SPEC-085: Entity Type Selector — Interactive UI', () => {
     await openCreateWorkspaceDialog(page);
     await page.getByTestId('wizard-workspace-name').fill('spec085-entities');
     await wizardGoNext(page); // models
-    await wizardGoNext(page); // extraction
+    await wizardGoUntilStep(page, 'wizard-step-extraction');
     await page.waitForSelector('[data-testid="entity-type-selector"]', { timeout: 10_000 });
   }
   test('entity-type-selector renders with preset buttons and chip list', async ({ page }) => {

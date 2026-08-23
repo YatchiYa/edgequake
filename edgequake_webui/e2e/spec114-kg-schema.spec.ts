@@ -6,6 +6,7 @@ import { expect, test } from '@playwright/test';
 import {
   bootstrapDeterministicUiContext,
   wizardGoNext,
+  wizardGoToReconfigureExtraction,
 } from './helpers/spec013-bootstrap';
 import {
   mistralSpec114ExtractWorkspacePayload,
@@ -28,9 +29,7 @@ async function openReconfigureWizard(page: import('@playwright/test').Page) {
 
 async function goToExtractionStep(page: import('@playwright/test').Page) {
   await openReconfigureWizard(page);
-  // models → document-parsing → extraction
-  await wizardGoNext(page);
-  await wizardGoNext(page);
+  await wizardGoToReconfigureExtraction(page);
   await expect(page.getByTestId('wizard-step-extraction')).toBeVisible({
     timeout: 15_000,
   });
