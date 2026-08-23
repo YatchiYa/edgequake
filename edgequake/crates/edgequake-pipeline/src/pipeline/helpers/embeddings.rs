@@ -946,10 +946,11 @@ mod tests {
     #[tokio::test]
     async fn test_embed_parallel_path_propagates_last_provider_error() {
         let texts: Vec<String> = (0..6).map(|_| "x".repeat(100)).collect();
-        let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(FailingEmbedProvider {
-            max_tokens: 80,
-            max_batch: 2,
-        });
+        let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> =
+            Arc::new(FailingEmbedProvider {
+                max_tokens: 80,
+                max_batch: 2,
+            });
 
         let err = embed_with_token_budget(&provider, &texts, None, None)
             .await

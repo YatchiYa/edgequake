@@ -16,9 +16,41 @@ SHA-256 of each `.md` is frozen in [../08-test-protocol.md](../08-test-protocol.
 (and `sha256` inside `freetoken_like.gold.json`). Changing fixture bytes without
 updating 08 + gold is a failed gate.
 
+## Gold (`freetoken_like.gold.json`)
+
+Packed Pdf at Fixed **1200/100** on `freetoken_like.md` (measured 2026-08-23):
+
+| Field | Value |
+|-------|-------|
+| `n` | 30 |
+| `n_min` / `n_max` | 18 / 36 |
+| `fill_p50` | 0.6725 |
+| `fill_p50_min` | 0.55 |
+| `n_legacy` | 20 (`EDGEQUAKE_PDF_PACK=0`, Recursive word-count) |
+| `probe_fig` / `probe_prose` | `PROBE_FIG_A` / `PROBE_PROSE_A` (same chunk) |
+
+`U-135-KILL` uses frozen `n_legacy=20` — do **not** require packed `N > n_max` on
+this fixture. Rollback is distinguished by `N == n_legacy` plus word-count tokens.
+
+## Recompute hashes
+
+```bash
+shasum -a 256 specs/135-chunking/fixtures/*.md
+```
+
+Mismatch ⇒ fail the suite (do not “update expected” inside the test).
+
 ## Rules
 
 - Unique probe strings must appear **verbatim** (see gold JSON).
 - Page markers use `<!-- edgequake-page:N -->` (1-indexed).
-- VLM inline blocks use `**Type:**` + `edgequake-figure-vision` so P0 dedupe can match.
+- VLM inline blocks use `**Type:**` + `edgequake-figure-vision` (or
+  `<!-- edgequake-figure-vision:{rel_path} -->` from Pass-B) so P0 dedupe can match.
 - No copyrighted paper text. Lorem is unique per sentence (`EQ135_P{page}_S{i}`).
+
+## Run contract tests
+
+```bash
+cargo test -p edgequake-pipeline --test contract_spec135_pdf_pack
+cargo test -p edgequake-api --test contract_spec135_mm_once
+```

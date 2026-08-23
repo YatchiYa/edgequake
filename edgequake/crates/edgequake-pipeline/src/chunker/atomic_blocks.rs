@@ -337,9 +337,7 @@ mod tests {
         let md = "Hello.\n\n<!-- multimodal-chunks -->\n\n<!-- edgequake-page:3 -->\n\nWorld.";
         let regions = split_preserving_atomic_regions(md);
         assert!(
-            regions
-                .iter()
-                .all(|r| !is_html_comment_only(&r.text)),
+            regions.iter().all(|r| !is_html_comment_only(&r.text)),
             "comment-only regions leaked: {:?}",
             regions.iter().map(|r| r.text.as_str()).collect::<Vec<_>>()
         );

@@ -686,6 +686,8 @@ make backend-bg
 | `EDGEQUAKE_MAX_EXTRACTION_ENTITIES` | Optional | Per-response entity cap (SPEC-117; default **40**) | `40` |
 | `EDGEQUAKE_MAX_EXTRACTION_RECORDS` | Optional | Per-response total rows cap (SPEC-117; default **100**) | `100` |
 | `EDGEQUAKE_EXTRACT_CAPS_SELECTION` | Optional | Hard truncate under K: product default **relation_aware**; Acc pins **`fifo`** | `fifo`, `relation_aware` |
+| `EDGEQUAKE_PDF_PACK` | Optional | PDF converted markdown packs to token budget (SPEC-135; default **on**) | `0` restores pre-135 Recursive inner |
+| `EDGEQUAKE_PDF_CROSS_PAGE_PACK` | Optional | Undersize remainder may span pages (SPEC-135; default **on**) | `0` keeps `page_start == page_end` |
 | `EDGEQUAKE_PDF_PAGE_MODALITY` | Optional | Force page modality (SPEC-134) | `print`, `manuscript`, `mixed` |
 | `EDGEQUAKE_PDF_MANUSCRIPT_DPI` | Optional | DPI floor for manuscript pages (SPEC-134; default **300**) | `300` |
 | `EDGEQUAKE_PDF_MANUSCRIPT_MAX_PIXELS` | Optional | max_rendered_pixels floor (SPEC-134; default **3600**) | `3600` |
@@ -833,7 +835,7 @@ Checklist summary:
 5. `git tag vX.Y.Z && git push origin vX.Y.Z` → GHCR via `release-docker.yml`
 6. Verify: `gh release view vX.Y.Z` + `docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:X.Y.Z`
 
-Current product pin: **v0.25.0**.
+Current product pin: **v0.26.0**.
 
 ## Automation & Agent Workflow
 

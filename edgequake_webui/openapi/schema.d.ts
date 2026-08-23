@@ -290,7 +290,7 @@ export interface paths {
         /**
          * GET /api/v1/admin/storage/inspect — full storage health report (admin-only).
          * @description Runs `StorageInspector::inspect()` and returns the full report: schema
-         *     drift, invariant violations (INV-01/03/04/05/C/D/D2/04b), and recommended
+         *     drift, invariant violations (INV-01/03/04/05/07/C/D/D2/04b), and recommended
          *     repairs. Read-only — never mutates data.
          */
         get: operations["storage_inspect"];
@@ -11610,6 +11610,7 @@ export interface components {
          *       "documents_queued": {},
          *       "documents_skipped": {},
          *       "estimated_time_seconds": {},
+         *       "skip_reasons": {},
          *       "status": {},
          *       "track_id": {},
          *       "v2_migration": {},
@@ -11628,6 +11629,13 @@ export interface components {
              * @description Estimated processing time in seconds.
              */
             estimated_time_seconds?: number | null;
+            /**
+             * @description Why documents were not queued (issue #384 — `no_content` must not
+             *     leave status pending). Empty map is omitted from JSON.
+             */
+            skip_reasons?: {
+                [key: string]: number;
+            };
             /** @description Status of the operation. */
             status: string;
             /** @description Track ID for monitoring progress. */
@@ -12023,14 +12031,37 @@ export interface components {
          *       "admin_email": {},
          *       "admin_password": {},
          *       "admin_username": {},
+         *       "chunk_overlap_token_size": {},
+         *       "chunk_token_size": {},
+         *       "chunking_mode": {},
          *       "default_embedding_model": {},
          *       "default_embedding_provider": {},
          *       "default_llm_model": {},
          *       "default_llm_provider": {},
+         *       "default_reasoning_effort": {},
          *       "default_vision_llm_model": {},
          *       "default_vision_llm_provider": {},
+         *       "entity_type_colors": {},
+         *       "entity_types": [],
+         *       "entity_types_strict": {},
+         *       "extract_budget_mode": {},
+         *       "extract_max_entities": {},
+         *       "extract_max_records": {},
+         *       "extraction_language": {},
+         *       "kg_schema_preset": {},
+         *       "pdf_parser_backend": {},
+         *       "relation_edges": [],
+         *       "relation_types": [],
+         *       "relation_types_strict": {},
          *       "tenant_description": {},
          *       "tenant_name": {},
+         *       "vision_chart_system_prompt": {},
+         *       "vision_extract_charts": {},
+         *       "vision_extract_figures": {},
+         *       "vision_extract_images": {},
+         *       "vision_figure_system_prompt": {},
+         *       "vision_image_system_prompt": {},
+         *       "vision_page_system_prompt": {},
          *       "workspace_description": {},
          *       "workspace_name": {},
          *       "workspace_slug": {}
@@ -12040,14 +12071,43 @@ export interface components {
             admin_email?: string | null;
             admin_password?: string | null;
             admin_username?: string | null;
+            /** Format: int32 */
+            chunk_overlap_token_size?: number | null;
+            /** Format: int32 */
+            chunk_token_size?: number | null;
+            chunking_mode?: string | null;
             default_embedding_model?: string | null;
             default_embedding_provider?: string | null;
             default_llm_model?: string | null;
             default_llm_provider?: string | null;
+            default_reasoning_effort?: string | null;
             default_vision_llm_model?: string | null;
             default_vision_llm_provider?: string | null;
+            entity_type_colors?: {
+                [key: string]: string;
+            } | null;
+            entity_types?: string[] | null;
+            entity_types_strict?: boolean | null;
+            extract_budget_mode?: string | null;
+            /** Format: int32 */
+            extract_max_entities?: number | null;
+            /** Format: int32 */
+            extract_max_records?: number | null;
+            extraction_language?: string | null;
+            kg_schema_preset?: string | null;
+            pdf_parser_backend?: string | null;
+            relation_edges?: components["schemas"]["RelationEdgeDto"][] | null;
+            relation_types?: string[] | null;
+            relation_types_strict?: boolean | null;
             tenant_description?: string | null;
             tenant_name: string;
+            vision_chart_system_prompt?: string | null;
+            vision_extract_charts?: boolean | null;
+            vision_extract_figures?: boolean | null;
+            vision_extract_images?: boolean | null;
+            vision_figure_system_prompt?: string | null;
+            vision_image_system_prompt?: string | null;
+            vision_page_system_prompt?: string | null;
             workspace_description?: string | null;
             workspace_name: string;
             workspace_slug?: string | null;
@@ -12197,7 +12257,7 @@ export interface components {
             id: string;
             /**
              * Format: int32
-             * @description PDF page number where this chunk ends (may exceed page_start when a remainder spans pages).
+             * @description PDF page number where this chunk ends (SPEC-135: may exceed page_start).
              */
             page_end?: number | null;
             /**

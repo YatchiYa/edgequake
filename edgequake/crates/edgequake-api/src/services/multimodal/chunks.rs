@@ -249,6 +249,32 @@ pub fn mm_asset_already_inlined(body: &str, asset_id: &str) -> bool {
     {
         return true;
     }
+    if body.contains(&format!("<!-- edgequake-figure-vision:{id} -->")) {
+        return true;
+    }
+    const VISION_PREFIX: &str = "<!-- edgequake-figure-vision:";
+    for line in body.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix(VISION_PREFIX) else {
+            continue;
+        };
+        let Some(path) = rest.strip_suffix("-->") else {
+            continue;
+        };
+        let path = path.trim();
+        if path == id
+            || path.ends_with(&format!("/{id}"))
+            || path.ends_with(&format!("/{id}.png"))
+            || path.ends_with(&format!("/{id}.jpg"))
+            || path.ends_with(&format!("/{id}.webp"))
+            || std::path::Path::new(path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                == Some(id)
+        {
+            return true;
+        }
+    }
     for label in [
         "Chart Name",
         "Figure Name",
@@ -639,6 +665,24 @@ mod tests {
     }
 
     #[test]
+    fn spec135_skips_sidecar_when_pass_b_vision_marker_inlined() {
+        let body = "Page text.\n\n<!-- edgequake-figure-vision:assets/cost_capability_p7.png -->\n**Type:** Chart\n";
+        assert!(mm_asset_already_inlined(body, "cost_capability_p7"));
+        let sidecar = MultimodalChunk {
+            item_id: "cost_capability_p7".into(),
+            modality: "drawing".into(),
+            text: "[Chart Name]cost_capability_p7".into(),
+            sidecar: super::super::sidecar::build_sidecar_block("drawing", "cost_capability_p7"),
+            heading: None,
+            llm_cache_list: vec![],
+            chunk_order_index: 0,
+            page_start: Some(1),
+        };
+        let kept = filter_mm_chunks_already_inlined(body, std::slice::from_ref(&sidecar));
+        assert!(kept.is_empty());
+    }
+
+    #[test]
     fn spec135_skips_sidecar_when_asset_inlined() {
         let body = r#"<div class="edgequake-figure-vision" data-asset-id="cost_capability_synthetic_a">
 
@@ -660,7 +704,10 @@ mod tests {
             chunk_order_index: 0,
             page_start: Some(1),
         };
-        assert!(mm_asset_already_inlined(body, "cost_capability_synthetic_a"));
+        assert!(mm_asset_already_inlined(
+            body,
+            "cost_capability_synthetic_a"
+        ));
         let kept = filter_mm_chunks_already_inlined(body, std::slice::from_ref(&sidecar));
         assert!(kept.is_empty());
         let out = append_mm_chunks_to_text(body, &[]);

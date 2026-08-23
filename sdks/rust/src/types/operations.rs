@@ -225,6 +225,12 @@ pub struct ChunkDetail {
     pub chunk_index: Option<u32>,
     #[serde(default)]
     pub token_count: Option<u32>,
+    /// PDF page number (1-indexed) where this chunk starts (SPEC-033 / SPEC-135).
+    #[serde(default)]
+    pub page_start: Option<u32>,
+    /// PDF page end; may exceed `page_start` when a chunk spans pages (SPEC-135).
+    #[serde(default)]
+    pub page_end: Option<u32>,
 }
 
 // --- Provenance ---

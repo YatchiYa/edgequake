@@ -10,10 +10,11 @@ mod common;
 
 use std::sync::Arc;
 
-use edgequake_pipeline::{
-    persist_relational_chunks, resolve_chunker, ChunkStrategy, ChunkerConfig, IngestionPersistContext,
-};
 use edgequake_pipeline::pipeline::ProcessingResult;
+use edgequake_pipeline::{
+    persist_relational_chunks, resolve_chunker, ChunkStrategy, ChunkerConfig,
+    IngestionPersistContext,
+};
 use edgequake_storage::PostgresChunkRepository;
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;

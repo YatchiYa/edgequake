@@ -137,9 +137,8 @@ pub fn apply_embedding_config_update_with_tenant(
         return;
     }
 
-    let dimension_only_noop = embedding_dimension == Some(0)
-        && embedding_model.is_none()
-        && embedding_provider.is_none();
+    let dimension_only_noop =
+        embedding_dimension == Some(0) && embedding_model.is_none() && embedding_provider.is_none();
 
     if let Some(embedding_model) = embedding_model {
         workspace.embedding_model = embedding_model.clone();
@@ -389,8 +388,10 @@ mod tests {
         ws.llm_model = "mistral-small-latest".into();
         ws.metadata
             .insert("llm_provider".to_string(), serde_json::json!("mistral"));
-        ws.metadata
-            .insert("llm_model".to_string(), serde_json::json!("mistral-small-latest"));
+        ws.metadata.insert(
+            "llm_model".to_string(),
+            serde_json::json!("mistral-small-latest"),
+        );
         ws.embedding_provider = "ollama".into();
         ws.embedding_model = "embeddinggemma".into();
         ws.embedding_dimension = 768;
@@ -407,7 +408,9 @@ mod tests {
         assert_eq!(ws.embedding_model, "mistral-embed");
         assert_eq!(ws.embedding_dimension, 1024);
         assert_eq!(
-            ws.metadata.get("embedding_provider").and_then(|v| v.as_str()),
+            ws.metadata
+                .get("embedding_provider")
+                .and_then(|v| v.as_str()),
             Some("mistral")
         );
         assert_eq!(
@@ -437,12 +440,7 @@ mod tests {
             serde_json::json!("embeddinggemma"),
         );
 
-        apply_embedding_config_update(
-            &mut ws,
-            None,
-            None,
-            Some(0),
-        );
+        apply_embedding_config_update(&mut ws, None, None, Some(0));
 
         assert_eq!(ws.embedding_provider, "ollama");
         assert_eq!(ws.embedding_model, "embeddinggemma");

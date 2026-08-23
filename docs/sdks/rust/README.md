@@ -11,10 +11,11 @@ title: "Rust SDK"
 
 ## Install
 
-In your `Cargo.toml` (path or crates.io as published):
+In your `Cargo.toml` (crates.io or monorepo path):
 
 ```toml
-edgequake-sdk = { path = "../sdks/rust" }
+edgequake-sdk = "0.4"
+# edgequake-sdk = { path = "../sdks/rust" }
 ```
 
 ## Minimal example

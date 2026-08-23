@@ -4,7 +4,33 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.25.0] — 2026-08-16
+## [0.26.0] — 2026-08-23
+
+Minor: PDF pack-to-budget (SPEC-135), manuscript page-as-unit convert (SPEC-134),
+Langfuse dev sibling (SPEC-124), and partner reliability (#377, #383–#386, SPEC-101).
+Migration **149**. Upgrade: [`docs/operations/upgrade-to-0.26.0.md`](docs/operations/upgrade-to-0.26.0.md).
+
+**Deps (crates.io):** `edgequake-llm` **0.10.8**, `edgequake-pdf2md` **0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0** (workspace crates remain GHCR-only).
+
+**SPEC-001 Acc:** attested from existing [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **PDF geometry not re-scored**.
+
+### Added
+- **SPEC-135 — PDF pack-to-budget** — Product PDF ingest packs converted markdown to the workspace tiktoken budget (default ON); cross-page span packing; MM index-once; relational `page_start`/`page_end` bind; citation badge `p.N–M`; `ingest.chunking` `fill_p50` + `mm_sidecar_appended`. Kill switches: `EDGEQUAKE_PDF_PACK`, `EDGEQUAKE_PDF_CROSS_PAGE_PACK`. Spec: [`specs/135-chunking/`](specs/135-chunking/).
+- **SPEC-134 — manuscript page-as-unit convert** — Page-as-unit manuscript PDF convert path; lift extract off disabled reasoning. Spec: [`specs/134-manuscrit/`](specs/134-manuscrit/).
+- **SPEC-124 — Langfuse dev sibling** — `make dev-langfuse` / `dev-bg-langfuse` + one-command `make spec124-langfuse-e2e` (isolated local Langfuse v4).
+
+### Fixed
+- **#377 / SPEC-136 — stamp-once `legacy_vector_id` unique violations** — Absorb concurrent stamp races on `(workspace_id, legacy_vector_id)`.
+- **#383 — saga compensation on dropped legacy vector tables** — Skip compensation DELETE when legacy tables are gone.
+- **#384 — in-flight document status** — Enqueue a live task before projecting in-flight status; migration **149** `tasks.document_id`.
+- **#385 — reprocess-admit metadata rollback** — Roll back when graph retract fails closed.
+- **#386 — finished task rows on reprocess purge** — Keep completed task rows when reprocess purges in-flight work.
+- **SPEC-101 — wizard persist honesty** — Create/reconfigure wizards persist embedding overrides; `embedding_dimension=0` no longer clears dim.
+
+### Changed
+- **edgequake-sdk 0.4.0** — `ChunkDetail` adds optional `page_start` / `page_end` (SPEC-135 citation spans).
+
 
 Minor: Langfuse observability (SPEC-124), structure-aware markdown pack (SPEC-125),
 provider KV / prompt cache (SPEC-126), PDF layout overlay (SPEC-128), LLM transport

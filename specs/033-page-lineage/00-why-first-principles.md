@@ -130,8 +130,9 @@ metadata (`build_chunk_vector_metadata`).  Every downstream consumer (API, UI)
 
 ### Principle 2 — No Chunk Spans Two Pages
 
-`PageAwareChunking` guarantees `page_start == page_end` for every chunk.
-This makes page attribution trivially a scalar integer once available.
+`PageAwareChunking` defaults to `page_start == page_end` per page. SPEC-135 P2 may
+emit `page_end > page_start` when an undersize remainder spans pages (kill:
+`EDGEQUAKE_PDF_CROSS_PAGE_PACK=0`). Deeplinks always open `page_start`.
 The data model must treat this as `Optional<u32>` (absent for non-PDF).
 
 > Implication: UI logic can show "Page N" when `page_start` is present and

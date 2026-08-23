@@ -57,13 +57,13 @@
 | ID | Item | Status |
 |----|------|--------|
 | D1 | Doc pack (00–12 + 6 lenses + fixtures) | This tree |
-| I1 | P0: comment-only skip + MM inline dedupe | Planned |
-| I2 | P1: Pdf inner = markdown packer (tiktoken) | Planned |
-| I3 | P2: cross-page remainder pack + span | Planned |
-| I4 | Persist `page_start`/`page_end` columns | Planned |
-| I5 | `ingest.chunking` `fill_p50` + mm sidecar flag | Planned |
-| I6 | UX span badge `p.N–M` + deeplink start page | Planned |
-| T1 | Unfakable U-135-* + E2E-135-01 + Playwright + Acc R | Planned |
+| I1 | P0: comment-only skip + MM inline dedupe | Done (v0.26.0) |
+| I2 | P1: Pdf inner = markdown packer (tiktoken) | Done (v0.26.0) |
+| I3 | P2: cross-page remainder pack + span | Done (v0.26.0) |
+| I4 | Persist `page_start`/`page_end` columns | Done (v0.26.0) |
+| I5 | `ingest.chunking` `fill_p50` + mm sidecar flag | Done (v0.26.0) |
+| I6 | UX span badge `p.N–M` + deeplink start page | Done (v0.26.0) |
+| T1 | Unfakable U-135-* + E2E-135-01 + Playwright + Acc R | Done (v0.26.0) |
 
 ## Config (v1)
 

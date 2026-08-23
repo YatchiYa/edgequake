@@ -92,7 +92,7 @@ export interface ChunkDetail {
 
   /** PDF page number (1-indexed) where this chunk starts. SPEC-033. */
   page_start?: number;
-  /** PDF page number (1-indexed) where this chunk ends. Always equals page_start. */
+  /** PDF page number (1-indexed) where this chunk ends. SPEC-135: may exceed page_start. */
   page_end?: number;
 }
 ```
@@ -109,7 +109,7 @@ export interface ChunkLineage {
 
   /** PDF page number (1-indexed). SPEC-033. */
   page_start?: number;
-  /** PDF page number (1-indexed). Always equals page_start. */
+  /** PDF page number (1-indexed). SPEC-135: may exceed page_start when span packing. */
   page_end?: number;
 }
 ```
@@ -131,7 +131,7 @@ interface FullLineageChunk {
   relationship_ids?: string[];
   /** PDF page number (1-indexed). Present only for PDFs. SPEC-033. */
   page_start?: number;
-  /** Always equals page_start. */
+  /** SPEC-135: may exceed page_start when span packing. */
   page_end?: number;
 }
 ```

@@ -191,7 +191,10 @@ async fn u135_oversize_page_still_splits() {
         "U-135-NO-SPAN-OVERSIZE must split, got {}",
         chunks.len()
     );
-    let joined = chunks.iter().map(|c| c.content.as_str()).collect::<String>();
+    let joined = chunks
+        .iter()
+        .map(|c| c.content.as_str())
+        .collect::<String>();
     for i in [0usize, 50, 100, 150, 219] {
         let needle = format!("EQ135_P1_S{i}");
         assert!(joined.contains(&needle), "silent drop of {needle}");
@@ -229,10 +232,7 @@ async fn u135_kill_restores_legacy_n() {
         n, n_legacy,
         "U-135-KILL frozen Recursive N={n} expected {n_legacy}"
     );
-    assert_ne!(
-        n, packed_n,
-        "U-135-KILL must not match packed N={packed_n}"
-    );
+    assert_ne!(n, packed_n, "U-135-KILL must not match packed N={packed_n}");
     assert!(
         legacy
             .iter()

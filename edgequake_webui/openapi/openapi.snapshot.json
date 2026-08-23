@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.25.0"
+    "version": "0.26.0"
   },
   "servers": [
     {
@@ -543,7 +543,7 @@
           "admin"
         ],
         "summary": "GET /api/v1/admin/storage/inspect — full storage health report (admin-only).",
-        "description": "Runs `StorageInspector::inspect()` and returns the full report: schema\ndrift, invariant violations (INV-01/03/04/05/C/D/D2/04b), and recommended\nrepairs. Read-only — never mutates data.",
+        "description": "Runs `StorageInspector::inspect()` and returns the full report: schema\ndrift, invariant violations (INV-01/03/04/05/07/C/D/D2/04b), and recommended\nrepairs. Read-only — never mutates data.",
         "operationId": "storage_inspect",
         "responses": {
           "200": {
@@ -9264,8 +9264,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_all"
+        "x-edgequake-v2-job-type": "reprocess_all",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -9756,8 +9756,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     },
     "/ws/progress/{track_id}": {
@@ -25482,6 +25482,17 @@
             "description": "Estimated processing time in seconds.",
             "minimum": 0
           },
+          "skip_reasons": {
+            "type": "object",
+            "description": "Why documents were not queued (issue #384 — `no_content` must not\nleave status pending). Empty map is omitted from JSON.",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "status": {
             "type": "string",
             "description": "Status of the operation."
@@ -25512,6 +25523,7 @@
           "documents_queued": {},
           "documents_skipped": {},
           "estimated_time_seconds": {},
+          "skip_reasons": {},
           "status": {},
           "track_id": {},
           "v2_migration": {},
@@ -26264,6 +26276,28 @@
               "null"
             ]
           },
+          "chunk_overlap_token_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "chunk_token_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "chunking_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "default_embedding_model": {
             "type": [
               "string",
@@ -26288,6 +26322,12 @@
               "null"
             ]
           },
+          "default_reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "default_vision_llm_model": {
             "type": [
               "string",
@@ -26300,6 +26340,97 @@
               "null"
             ]
           },
+          "entity_type_colors": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "entity_types": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "entity_types_strict": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "extract_budget_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "extract_max_entities": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "extract_max_records": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "extraction_language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kg_schema_preset": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pdf_parser_backend": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "relation_edges": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RelationEdgeDto"
+            }
+          },
+          "relation_types": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "relation_types_strict": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "tenant_description": {
             "type": [
               "string",
@@ -26308,6 +26439,48 @@
           },
           "tenant_name": {
             "type": "string"
+          },
+          "vision_chart_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_extract_charts": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_extract_figures": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_extract_images": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision_figure_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_image_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_page_system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "workspace_description": {
             "type": [
@@ -26329,14 +26502,37 @@
           "admin_email": {},
           "admin_password": {},
           "admin_username": {},
+          "chunk_overlap_token_size": {},
+          "chunk_token_size": {},
+          "chunking_mode": {},
           "default_embedding_model": {},
           "default_embedding_provider": {},
           "default_llm_model": {},
           "default_llm_provider": {},
+          "default_reasoning_effort": {},
           "default_vision_llm_model": {},
           "default_vision_llm_provider": {},
+          "entity_type_colors": {},
+          "entity_types": [],
+          "entity_types_strict": {},
+          "extract_budget_mode": {},
+          "extract_max_entities": {},
+          "extract_max_records": {},
+          "extraction_language": {},
+          "kg_schema_preset": {},
+          "pdf_parser_backend": {},
+          "relation_edges": [],
+          "relation_types": [],
+          "relation_types_strict": {},
           "tenant_description": {},
           "tenant_name": {},
+          "vision_chart_system_prompt": {},
+          "vision_extract_charts": {},
+          "vision_extract_figures": {},
+          "vision_extract_images": {},
+          "vision_figure_system_prompt": {},
+          "vision_image_system_prompt": {},
+          "vision_page_system_prompt": {},
           "workspace_description": {},
           "workspace_name": {},
           "workspace_slug": {}
@@ -26621,7 +26817,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "PDF page number where this chunk ends (may exceed page_start when a remainder spans pages).",
+            "description": "PDF page number where this chunk ends (SPEC-135: may exceed page_start).",
             "minimum": 0
           },
           "page_start": {
@@ -29755,7 +29951,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.25.0",
+      "version": "0.26.0",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455)."
     },
     "defaultContentType": "application/json",

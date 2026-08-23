@@ -15,7 +15,10 @@ pub fn pdf_cross_page_pack_enabled() -> bool {
 }
 
 /// Merge adjacent page-stamped chunks when LAW-135-8 allows.
-pub fn merge_cross_page_remainders(chunks: Vec<ChunkResult>, config: &ChunkerConfig) -> Vec<ChunkResult> {
+pub fn merge_cross_page_remainders(
+    chunks: Vec<ChunkResult>,
+    config: &ChunkerConfig,
+) -> Vec<ChunkResult> {
     if chunks.len() < 2 {
         return reindex(chunks);
     }
@@ -67,7 +70,11 @@ fn can_merge(left: &ChunkResult, right: &ChunkResult, budget: usize, floor: usiz
     if script_change(&left.content, &right.content) {
         return false;
     }
-    let combined = count_tokens(&format!("{}\n{}", left.content.trim_end(), right.content.trim_start()));
+    let combined = count_tokens(&format!(
+        "{}\n{}",
+        left.content.trim_end(),
+        right.content.trim_start()
+    ));
     if combined > budget {
         return false;
     }
@@ -80,9 +87,10 @@ fn can_merge(left: &ChunkResult, right: &ChunkResult, budget: usize, floor: usiz
 }
 
 fn starts_with_h1(content: &str) -> bool {
-    content.lines().find(|l| !l.trim().is_empty()).is_some_and(|line| {
-        parse_atx_heading(line).is_some_and(|(level, _)| level == 1)
-    })
+    content
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .is_some_and(|line| parse_atx_heading(line).is_some_and(|(level, _)| level == 1))
 }
 
 /// CJK vs Latin letter-ratio flip (LAW-135 E3).
@@ -120,7 +128,11 @@ fn is_cjk(ch: char) -> bool {
 }
 
 fn merge_pair(left: ChunkResult, right: ChunkResult) -> ChunkResult {
-    let content = format!("{}\n{}", left.content.trim_end(), right.content.trim_start());
+    let content = format!(
+        "{}\n{}",
+        left.content.trim_end(),
+        right.content.trim_start()
+    );
     let tokens = count_tokens(&content);
     let page_start = left.page_start.or(right.page_start);
     let page_end = match (left.page_end, right.page_end, right.page_start) {

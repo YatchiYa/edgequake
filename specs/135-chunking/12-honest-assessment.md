@@ -44,9 +44,16 @@ that require equality are **wrong** after P2 (unless `CROSS_PAGE_PACK=0`).
 
 ## Langfuse honesty
 
-Until WP-5, `ingest.chunking` will not show `fill_p50`. Support cannot prove
-underfill from traces alone. After WP-5, `fill_p50 < 0.4` on ≥8k docs is a
-**warning**, not an ingest abort.
+**v0.26.0:** `ingest.chunking` emits `fill_p50` and `mm_sidecar_appended` (counts
+only, no chunk body). `fill_p50 < 0.4` on docs ≥ 8k tiktoken is a **warning**, not
+an ingest abort.
+
+## v0.26.0 Acc publication
+
+This cut **attests** existing [`publish/latest`](../../001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`). **No fresh n=200 run.** PDF
+geometry was **not** re-scored; SPEC-135 default-ON packing changes PDF N/fill for
+future ingestions only.
 
 ## Risk
 

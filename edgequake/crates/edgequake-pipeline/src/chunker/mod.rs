@@ -71,15 +71,13 @@ pub use atomic_blocks::{
     is_html_comment_only, is_mm_chunk_header, split_preserving_atomic_regions, AtomicKind,
     ContentRegion,
 };
+pub use cross_page_pack::{pdf_cross_page_pack_enabled, PDF_CROSS_PAGE_PACK_ENV};
 pub use markdown_chunking::MarkdownChunking;
 pub use markdown_pack::{
     ingest_chunking_observation, ingest_chunking_observation_full, markdown_chunk,
     markdown_pack_enabled, ChunkTokenStats, MARKDOWN_PACK_ENV,
 };
 pub use page_aware::{pdf_pack_enabled, split_into_page_segments, PageAwareChunking, PDF_PACK_ENV};
-pub use cross_page_pack::{
-    pdf_cross_page_pack_enabled, PDF_CROSS_PAGE_PACK_ENV,
-};
 pub use recursive::{default_recursive_separators, RecursiveCharacterChunking};
 pub use semantic::{
     breakpoint_threshold, buffered_windows, cosine_distance, group_by_breakpoints,

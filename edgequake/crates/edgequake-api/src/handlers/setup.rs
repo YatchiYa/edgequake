@@ -330,9 +330,8 @@ fn apply_ingest_to_update(update: &mut UpdateWorkspaceRequest, request: &SetupIn
     update.relation_types = request.relation_types.clone();
     update.relation_types_strict = request.relation_types_strict;
     update.kg_schema_preset = request.kg_schema_preset.clone();
-    update.relation_edges = crate::handlers::workspaces_types::relation_edges_to_core(
-        request.relation_edges.clone(),
-    );
+    update.relation_edges =
+        crate::handlers::workspaces_types::relation_edges_to_core(request.relation_edges.clone());
     update.default_reasoning_effort = request.default_reasoning_effort.clone();
     update.vision_extract_images = request.vision_extract_images;
     update.vision_extract_charts = request.vision_extract_charts;
@@ -360,9 +359,8 @@ fn apply_ingest_to_create(req: &mut CreateWorkspaceRequest, request: &SetupIniti
     req.relation_types = request.relation_types.clone();
     req.relation_types_strict = request.relation_types_strict;
     req.kg_schema_preset = request.kg_schema_preset.clone();
-    req.relation_edges = crate::handlers::workspaces_types::relation_edges_to_core(
-        request.relation_edges.clone(),
-    );
+    req.relation_edges =
+        crate::handlers::workspaces_types::relation_edges_to_core(request.relation_edges.clone());
     req.default_reasoning_effort = request.default_reasoning_effort.clone();
     req.vision_extract_images = request.vision_extract_images;
     req.vision_extract_charts = request.vision_extract_charts;

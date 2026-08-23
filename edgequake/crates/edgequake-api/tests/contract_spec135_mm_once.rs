@@ -46,7 +46,10 @@ fn u135_mm_once_skips_inlined_sidecar() {
     assert!(mm_asset_already_inlined(&body, ASSET));
     let sidecar = sidecar_chunk(ASSET);
     let kept = filter_mm_chunks_already_inlined(&body, std::slice::from_ref(&sidecar));
-    assert!(kept.is_empty(), "inlined asset must not remain as leftover sidecar");
+    assert!(
+        kept.is_empty(),
+        "inlined asset must not remain as leftover sidecar"
+    );
 
     let inline_only = body
         .split("<!-- multimodal-chunks -->")
