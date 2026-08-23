@@ -58,7 +58,7 @@ export interface ChunkLineage {
   end_offset?: number;
   /** PDF page number (1-indexed) where this chunk starts. SPEC-033. */
   page_start?: number;
-  /** PDF page number (1-indexed) where this chunk ends. Always equals page_start. */
+  /** PDF page number (1-indexed) where this chunk ends. May exceed page_start (SPEC-135 span). */
   page_end?: number;
   char_range?: {
     start: number;
@@ -88,7 +88,7 @@ export interface ChunkDetail {
   end_line?: number;
   /** PDF page number (1-indexed) where this chunk starts. SPEC-033. */
   page_start?: number;
-  /** PDF page number (1-indexed) where this chunk ends. Always equals page_start. */
+  /** PDF page number (1-indexed) where this chunk ends. May exceed page_start (SPEC-135 span). */
   page_end?: number;
   char_range?: {
     start: number;

@@ -131,7 +131,7 @@ mod tests {
             degree: None,
             source_chunk_ids: None,
             page_start,
-            page_end: page_start, // always equals page_start
+            page_end: page_start,
         }
     }
 

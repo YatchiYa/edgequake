@@ -209,9 +209,9 @@ impl DocumentTaskProcessor {
                 .with_gleaning(enable_gleaning, max_gleaning)
                 .with_allow_local_gleaning(allow_local_gleaning)
                 .with_chunk_strategy(chunk_strategy);
-        // SPEC-032 W-09: auto-select Pdf chunking strategy for PDF sources so
-        // chunks never cross page boundaries. Only applies when no explicit
-        // strategy override was provided by the caller.
+        // SPEC-032 W-09 / SPEC-135: auto-select Pdf chunking for PDF sources so
+        // page attribution is stamped (remainders may span pages). Only applies
+        // when no explicit strategy override was provided by the caller.
         let source_is_pdf = source_type.eq_ignore_ascii_case("pdf")
             || source_type.eq_ignore_ascii_case("pdf_upload")
             || text_content.contains(edgequake_pipeline::PAGE_MARKER_PREFIX);

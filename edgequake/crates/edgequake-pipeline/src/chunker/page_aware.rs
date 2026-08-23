@@ -1,18 +1,14 @@
-//! Page-aware PDF chunking (SPEC-032 W-09 / First Principle: page attribution).
+//! Page-aware PDF chunking (SPEC-032 W-09 / SPEC-135 pack-to-budget).
 //!
 //! ## Design Contract
 //!
-//! A PDF chunk **MUST NOT span two pages**. This is the First Principle behind
-//! this module: when a user cites a chunk, the citation must map to a single,
-//! navigable page in the original PDF (enabling deep links to `#page=N`).
+//! Page is **attribution**. Prefer packing within a page. SPEC-135 P2 may emit a
+//! chunk with `page_end ≥ page_start` when an undersize remainder would otherwise
+//! become an orphan extract job. Deep-links open `page_start`.
 //!
-//! ## How it works
-//!
-//! 1. PDF converters inject `<!-- edgequake-page:N -->` markers between pages.
-//! 2. `PageAwareChunking` splits the markdown at these markers before
-//!    delegating to the inner chunker (Recursive by default).
-//! 3. Each resulting `ChunkResult` (and eventually `TextChunk`) carries
-//!    `page_start == page_end == N` — never crossing a page boundary.
+//! Inner strategy defaults to the SPEC-125 markdown packer (tiktoken). Set
+//! `EDGEQUAKE_PDF_PACK=0` to restore Recursive word-count (pre-135). Set
+//! `EDGEQUAKE_PDF_CROSS_PAGE_PACK=0` to keep hard page emit (`page_start == page_end`).
 //!
 //! ## Marker format
 //!
@@ -23,31 +19,46 @@
 //! <!-- edgequake-page:2 -->
 //! ...page 2 content...
 //! ```
-//!
-//! The marker is a valid HTML comment, invisible in rendered Markdown.
-//! Regex: `<!-- edgequake-page:(\d+) -->`
 
 use async_trait::async_trait;
 
+use super::cross_page_pack::{merge_cross_page_remainders, pdf_cross_page_pack_enabled};
+use super::env_flags::env_flag_default_on_var;
+use super::markdown_chunking::MarkdownChunking;
 use super::page_marker::{parse_page_marker, PAGE_MARKER_PREFIX};
 use super::recursive::RecursiveCharacterChunking;
 use super::types::{ChunkResult, ChunkerConfig, ChunkingStrategy};
 use crate::error::Result;
+use crate::token_estimator::count_tokens;
 
-/// Wraps an inner chunker; splits content at page boundaries first so no chunk
-/// ever spans two PDF pages.
+/// Fleet kill switch. Default **on** (unset). `0` restores Recursive inner.
+pub const PDF_PACK_ENV: &str = "EDGEQUAKE_PDF_PACK";
+
+pub fn pdf_pack_enabled() -> bool {
+    env_flag_default_on_var(PDF_PACK_ENV)
+}
+
+fn pdf_inner_strategy() -> Box<dyn ChunkingStrategy> {
+    if pdf_pack_enabled() {
+        Box::new(MarkdownChunking)
+    } else {
+        Box::new(RecursiveCharacterChunking)
+    }
+}
+
+/// Wraps an inner chunker; splits content at page markers, then optionally
+/// merges undersize remainders across pages (P2).
 ///
-/// @implements SPEC-032 W-09 — Page-aware chunking for PDFs
+/// @implements SPEC-032 W-09 / SPEC-135
 pub struct PageAwareChunking {
     /// Inner strategy used within each page segment.
-    /// Default: `RecursiveCharacterChunking` (same as the document default).
     pub inner: Box<dyn ChunkingStrategy>,
 }
 
 impl Default for PageAwareChunking {
     fn default() -> Self {
         Self {
-            inner: Box::new(RecursiveCharacterChunking),
+            inner: pdf_inner_strategy(),
         }
     }
 }
@@ -71,22 +82,12 @@ pub struct PageSegment {
 
 /// Split markdown at `<!-- edgequake-page:N -->` markers.
 ///
-/// # First page handling
-///
-/// Content before the first marker is attributed to page 1. This handles PDFs
-/// where the converter did not emit a marker at the very beginning.
-///
-/// # Ordering guarantee
-///
-/// Segments are returned in the order they appear in the input.
-/// If a page number appears multiple times (shouldn't happen but defensive),
-/// content is appended to the existing segment.
+/// Content before the first marker is attributed to page 1.
 pub fn split_into_page_segments(content: &str) -> Vec<PageSegment> {
     if content.trim().is_empty() {
         return Vec::new();
     }
 
-    // No page markers → treat entire content as page 1
     if !content.contains(PAGE_MARKER_PREFIX) {
         return vec![PageSegment {
             page: 1,
@@ -103,7 +104,6 @@ pub fn split_into_page_segments(content: &str) -> Vec<PageSegment> {
 
     for line in content.lines() {
         let line_start = byte_offset;
-        // Advance past this line (+ optional `\n` that `lines()` strips).
         byte_offset += line.len();
         if byte_offset < content.len() && content.as_bytes()[byte_offset] == b'\n' {
             byte_offset += 1;
@@ -129,7 +129,6 @@ pub fn split_into_page_segments(content: &str) -> Vec<PageSegment> {
         }
     }
 
-    // Flush final segment
     let text = current_lines.join("\n");
     if !text.trim().is_empty() {
         segments.push(PageSegment {
@@ -144,14 +143,6 @@ pub fn split_into_page_segments(content: &str) -> Vec<PageSegment> {
 
 #[async_trait]
 impl ChunkingStrategy for PageAwareChunking {
-    /// Chunk content respecting PDF page boundaries.
-    ///
-    /// For each page segment:
-    ///   1. Run the inner chunker on the page's content.
-    ///   2. Stamp every resulting chunk with `page_start = page_end = N`.
-    ///
-    /// If there are no page markers (plain text / non-PDF), falls back to the
-    /// inner chunker with no page attribution (page fields remain None).
     async fn chunk(&self, content: &str, config: &ChunkerConfig) -> Result<Vec<ChunkResult>> {
         if content.trim().is_empty() {
             return Ok(Vec::new());
@@ -159,7 +150,6 @@ impl ChunkingStrategy for PageAwareChunking {
 
         let segments = split_into_page_segments(content);
 
-        // No markers → plain fallback (page fields stay None)
         if segments.len() == 1 && segments[0].page == 1 && !content.contains(PAGE_MARKER_PREFIX) {
             return self.inner.chunk(content, config).await;
         }
@@ -173,10 +163,9 @@ impl ChunkingStrategy for PageAwareChunking {
             let sub_chunks = self.inner.chunk(&seg.content, config).await?;
 
             if sub_chunks.is_empty() && !seg.content.trim().is_empty() {
-                // Inner chunker returned nothing for non-empty content — keep as one chunk
                 results.push(ChunkResult {
                     content: seg.content.trim().to_string(),
-                    tokens: super::text_utils::estimate_tokens(&seg.content),
+                    tokens: count_tokens(&seg.content),
                     chunk_order_index: order,
                     page_start: Some(page),
                     page_end: Some(page),
@@ -187,7 +176,6 @@ impl ChunkingStrategy for PageAwareChunking {
                 order += 1;
             } else {
                 for mut sub in sub_chunks {
-                    // C-15: rebase segment-local offsets onto the full document.
                     if let Some(start) = sub.start_offset.as_mut() {
                         *start = start.saturating_add(base_offset);
                     }
@@ -203,6 +191,10 @@ impl ChunkingStrategy for PageAwareChunking {
             }
         }
 
+        if pdf_cross_page_pack_enabled() {
+            results = merge_cross_page_remainders(results, config);
+        }
+
         Ok(results)
     }
 
@@ -215,6 +207,7 @@ impl ChunkingStrategy for PageAwareChunking {
 mod tests {
     use super::*;
     use crate::chunker::page_marker::make_page_marker;
+    use serial_test::serial;
 
     fn make_pdf_markdown(pages: &[(u32, &str)]) -> String {
         pages
@@ -224,9 +217,19 @@ mod tests {
             .join("\n\n")
     }
 
-    /// Core invariant: chunks never span two pages.
+    fn pin_hard_pages() {
+        std::env::set_var("EDGEQUAKE_PDF_CROSS_PAGE_PACK", "0");
+    }
+
+    fn unpin_hard_pages() {
+        std::env::remove_var("EDGEQUAKE_PDF_CROSS_PAGE_PACK");
+    }
+
+    /// Hard-page invariant when P2 is killed.
     #[tokio::test]
-    async fn chunks_never_cross_page_boundary() {
+    #[serial]
+    async fn chunks_never_cross_page_boundary_when_p2_off() {
+        pin_hard_pages();
         let md = make_pdf_markdown(&[
             (
                 1,
@@ -246,6 +249,7 @@ mod tests {
         };
         let chunker = PageAwareChunking::default();
         let chunks = chunker.chunk(&md, &config).await.unwrap();
+        unpin_hard_pages();
 
         assert!(!chunks.is_empty(), "Must produce chunks");
 
@@ -256,14 +260,15 @@ mod tests {
             );
             assert_eq!(
                 chunk.page_start, chunk.page_end,
-                "page_start must equal page_end — no cross-page chunks"
+                "page_start must equal page_end when CROSS_PAGE_PACK=0"
             );
         }
     }
 
-    /// Matrix Cluster 04: rebased offsets slice back to chunk text in the doc.
     #[tokio::test]
+    #[serial]
     async fn e2e_page_aware_offsets_rebase() {
+        pin_hard_pages();
         let page2 = "UNIQUE_PAGE_TWO_MARKER_TEXT for offset rebase.";
         let md = make_pdf_markdown(&[
             (1, "First page padding content that is long enough."),
@@ -278,6 +283,7 @@ mod tests {
             .chunk(&md, &config)
             .await
             .unwrap();
+        unpin_hard_pages();
         let page2_chunks: Vec<_> = chunks.iter().filter(|c| c.page_start == Some(2)).collect();
         assert!(!page2_chunks.is_empty());
         for c in page2_chunks {
@@ -292,9 +298,10 @@ mod tests {
         }
     }
 
-    /// Chunks from page 1 must have page=1, page 2 must have page=2.
     #[tokio::test]
+    #[serial]
     async fn page_numbers_assigned_correctly() {
+        pin_hard_pages();
         let md = make_pdf_markdown(&[(1, "Alpha beta gamma delta"), (2, "Epsilon zeta eta theta")]);
 
         let config = ChunkerConfig {
@@ -304,6 +311,7 @@ mod tests {
         };
         let chunker = PageAwareChunking::default();
         let chunks = chunker.chunk(&md, &config).await.unwrap();
+        unpin_hard_pages();
 
         let page1_chunks: Vec<_> = chunks.iter().filter(|c| c.page_start == Some(1)).collect();
         let page2_chunks: Vec<_> = chunks.iter().filter(|c| c.page_start == Some(2)).collect();
@@ -312,7 +320,6 @@ mod tests {
         assert!(!page2_chunks.is_empty(), "Must have page 2 chunks");
     }
 
-    /// Plain text (no markers) falls back to inner chunker with no page attribution.
     #[tokio::test]
     async fn plain_text_no_page_markers_fallback() {
         let config = ChunkerConfig {
@@ -330,7 +337,6 @@ mod tests {
             .unwrap();
 
         assert!(!chunks.is_empty());
-        // page fields are None for plain text
         for chunk in &chunks {
             assert!(
                 chunk.page_start.is_none() || chunk.page_start == Some(1),
@@ -339,7 +345,6 @@ mod tests {
         }
     }
 
-    /// split_into_page_segments correctly extracts page number and content.
     #[test]
     fn split_extracts_page_segments() {
         let md = make_pdf_markdown(&[(1, "Content of page one."), (2, "Content of page two.")]);
@@ -351,7 +356,6 @@ mod tests {
         assert!(segs[1].content.contains("page two"));
     }
 
-    /// Empty content returns empty.
     #[tokio::test]
     async fn empty_content_returns_empty() {
         let config = ChunkerConfig::default();
@@ -362,7 +366,6 @@ mod tests {
         assert!(chunks.is_empty());
     }
 
-    /// make_page_marker and parse_page_marker are inverses.
     #[test]
     fn marker_roundtrip() {
         use crate::chunker::page_marker::parse_page_marker;

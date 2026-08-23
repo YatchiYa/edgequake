@@ -24,5 +24,5 @@
 ## Residual (honest)
 
 - Setext / HTML headings not parsed.
-- PDF strategy still page-aware recursive (not this packer).
 - Tenant not in cascade.
+- PDF converted markdown packing is SPEC-135 (packer inner), not this spec.

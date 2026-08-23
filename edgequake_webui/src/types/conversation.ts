@@ -69,7 +69,7 @@ export interface MessageSource {
    * SPEC-033: enables page-grouped citations in persisted conversation history.
    */
   page_start?: number;
-  /** PDF page number (1-indexed) where this chunk ends. Always equals page_start. */
+  /** PDF page number (1-indexed) where this chunk ends. May exceed page_start (SPEC-135 span). */
   page_end?: number;
 }
 

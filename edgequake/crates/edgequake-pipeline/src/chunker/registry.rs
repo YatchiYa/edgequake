@@ -27,10 +27,10 @@ pub enum ChunkStrategy {
     Recursive,
     /// Markdown heading-aware splits with breadcrumbs.
     Markdown,
-    /// Page-aware chunking for PDF sources (SPEC-032 W-09).
+    /// Page-aware chunking for PDF sources (SPEC-032 W-09 / SPEC-135).
     ///
-    /// Wraps the Recursive strategy but treats `<!-- edgequake-page:N -->`
-    /// markers as hard split points so **no chunk ever crosses a page boundary**.
+    /// Splits at `<!-- edgequake-page:N -->` then packs with the SPEC-125
+    /// markdown packer. P2 may emit `page_end > page_start` for remainders.
     Pdf,
     /// Semantic vector breakpoints (LightRAG `V` / SPEC-046 EQ-046-09).
     ///
@@ -152,8 +152,7 @@ pub fn resolve_chunker_with_embedder(
         ChunkStrategy::Fixed => Arc::new(TokenBasedChunking),
         ChunkStrategy::Recursive => Arc::new(RecursiveCharacterChunking),
         ChunkStrategy::Markdown => Arc::new(MarkdownChunking),
-        // Pdf wraps Recursive: splits at page markers first, then applies
-        // the same recursive token-based strategy within each page.
+        // Pdf: page markers first, SPEC-125 packer inner (SPEC-135). Kill: EDGEQUAKE_PDF_PACK=0.
         ChunkStrategy::Pdf => Arc::new(PageAwareChunking::default()),
         ChunkStrategy::Semantic => Arc::new(SemanticChunking::new(embedder)),
     };

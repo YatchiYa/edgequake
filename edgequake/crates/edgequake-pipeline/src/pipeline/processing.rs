@@ -54,10 +54,28 @@ impl Pipeline {
     async fn chunk_under_span(&self, content: &str, document_id: &str) -> Result<Vec<TextChunk>> {
         edgequake_observability::with_pipeline_stage_span("ingest.chunking", async {
             let chunks = self.chunker.chunk_async(content, document_id).await?;
-            let (input, output, dist) = crate::ingest_chunking_observation(
+            let mm_sidecar_appended = content.contains("<!-- multimodal-chunks -->");
+            let budget = self.config.chunker.chunk_size;
+            let (input, output, dist) = crate::ingest_chunking_observation_full(
                 content.len(),
                 chunks.iter().map(|c| (c.token_count, c.content.as_str())),
+                Some(budget),
+                mm_sidecar_appended,
             );
+            if budget > 0 {
+                let fill_p50 = dist.token_p50 as f64 / budget as f64;
+                if fill_p50 < 0.4 {
+                    let doc_tokens = crate::token_estimator::count_tokens(content);
+                    if doc_tokens >= 8000 {
+                        tracing::warn!(
+                            fill_p50,
+                            doc_tokens,
+                            budget,
+                            "SPEC-135 underfill (fail-open): fill_p50 < 0.4 on large doc"
+                        );
+                    }
+                }
+            }
             edgequake_observability::record_observation_io(Some(&input), Some(&output));
             edgequake_observability::record_ingest_kg_meta(edgequake_observability::IngestKgMeta {
                 chunk_strategy: Some(self.config.chunk_strategy.as_str().to_string()),
@@ -74,6 +92,8 @@ impl Pipeline {
                 token_p50: Some(dist.token_p50),
                 token_max: Some(dist.token_max),
                 orphan_heading_chunks: Some(dist.orphan_heading_chunks),
+                fill_p50: (budget > 0).then_some(dist.token_p50 as f64 / budget as f64),
+                mm_sidecar_appended: Some(mm_sidecar_appended),
             });
             Ok(chunks)
         })

@@ -44,6 +44,12 @@ pub struct Chunk {
     pub end_offset: Option<i32>,
     pub token_count: Option<i32>,
     pub metadata: serde_json::Value,
+    /// SPEC-135: PDF page start (1-indexed). None when unmarked.
+    #[serde(default)]
+    pub page_start: Option<i32>,
+    /// SPEC-135: PDF page end (`≥ page_start`).
+    #[serde(default)]
+    pub page_end: Option<i32>,
 }
 
 /// Text payload returned by load_texts.

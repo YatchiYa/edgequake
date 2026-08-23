@@ -16,7 +16,7 @@
 
 import { Badge } from '@/components/ui/badge';
 import { useDocumentFullLineage } from '@/hooks/use-lineage';
-import { buildDocumentPageUrl } from '@/lib/utils/document-url';
+import { buildDocumentPageUrl, formatChunkPageBadge } from '@/lib/utils/document-url';
 import { cn } from '@/lib/utils';
 import type { EntityLineage } from '@/types/lineage';
 import {
@@ -45,9 +45,9 @@ interface FullLineageChunk {
   entity_ids?: string[];
   extraction_metadata?: Record<string, unknown>;
   relationship_ids?: string[];
-  /** PDF page number (1-indexed). Present only for PDFs. SPEC-033. */
+  /** PDF page number (1-indexed). Present only for PDFs. SPEC-033 / SPEC-135. */
   page_start?: number;
-  /** Always equals page_start. */
+  /** Last PDF page in the chunk (`≥ page_start`). SPEC-135 span. */
   page_end?: number;
 }
 
@@ -75,7 +75,7 @@ interface DocumentHierarchyTreeProps {
    * so ContentRenderer can scroll to and highlight the chunk.
    * Unlike onChunkSelect this does NOT toggle selection.
    */
-  onChunkResolved?: (chunkId: string, startLine?: number, endLine?: number) => void;
+  onChunkResolved?: (chunkId: string, startLine?: number, endLine?: number, page?: number) => void;
   /** ID of the currently selected chunk (controls visual highlight in tree). */
   selectedChunkId?: string;
 }
@@ -151,9 +151,20 @@ export function DocumentHierarchyTree({
     if (!selectedChunkId || chunks.length === 0 || !onChunkResolved) return;
     const found = chunks.find((c) => c.chunk_id === selectedChunkId);
     if (found) {
-      onChunkResolved(found.chunk_id, found.start_line, found.end_line);
+      onChunkResolved(found.chunk_id, found.start_line, found.end_line, found.page_start);
     }
   }, [chunks, selectedChunkId, onChunkResolved]);
+
+  useEffect(() => {
+    if (!selectedChunkId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const row = document.querySelector(
+        `[data-testid="hierarchy-chunk-row"][data-chunk-id="${CSS.escape(selectedChunkId)}"]`,
+      );
+      row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [chunks, selectedChunkId]);
 
   if (isLoading) {
     return (
@@ -328,8 +339,14 @@ function PageGroupNode({
   selectedChunkId,
   onSelect,
 }: PageGroupNodeProps) {
-  // First 3 pages open by default; rest collapsed to keep the tree compact
-  const [isOpen, setIsOpen] = useState(page <= 3);
+  const containsSelected = chunks.some((c) => c.chunk_id === selectedChunkId);
+  // First 3 pages open by default; the page that owns the deeplinked chunk
+  // must also open so the selected row is not hidden (SPEC-135 page=4+).
+  const [isOpen, setIsOpen] = useState(page <= 3 || containsSelected);
+
+  useEffect(() => {
+    if (containsSelected) setIsOpen(true);
+  }, [containsSelected]);
 
   const entityCount = chunks.reduce(
     (acc, c) => acc + (entitiesByChunk.get(c.chunk_id)?.length ?? 0),
@@ -357,6 +374,8 @@ function PageGroupNode({
         tabIndex={0}
         aria-expanded={isOpen}
         aria-label={`Page ${page}: ${chunks.length} chunk${chunks.length !== 1 ? 's' : ''}`}
+        data-testid="page-group"
+        data-page={page}
         className={cn(
           'group flex items-center gap-1.5 w-full text-left py-1 px-2 rounded',
           'hover:bg-muted/40 transition-colors cursor-pointer select-none',
@@ -446,11 +465,18 @@ function ChunkTreeNode({ chunk, entities, documentId, depth, isSelected, onSelec
     onSelect?.(chunk.chunk_id, chunk.start_line, chunk.end_line, chunk.page_start);
   }, [onSelect, chunk.chunk_id, chunk.start_line, chunk.end_line, chunk.page_start]);
 
-  // Build the page deeplink when page_start is present (SPEC-033 FR-004)
+  // Build the page deeplink when page_start is present (SPEC-033 FR-004 / SPEC-135).
   const pageUrl =
     chunk.page_start !== undefined && chunk.page_start > 0
       ? buildDocumentPageUrl(documentId, chunk.chunk_id, chunk.page_start)
       : null;
+  const pageBadge = formatChunkPageBadge(chunk.page_start, chunk.page_end);
+  const pageAria =
+    chunk.page_start !== undefined &&
+    chunk.page_end !== undefined &&
+    chunk.page_end > chunk.page_start
+      ? `Pages ${chunk.page_start} to ${chunk.page_end}`
+      : `Page ${chunk.page_start}`;
 
   return (
     <TreeNode
@@ -469,17 +495,19 @@ function ChunkTreeNode({ chunk, entities, documentId, depth, isSelected, onSelec
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50',
                 'rounded-sm px-1 py-0.5 leading-none',
               )}
-              aria-label={`Page ${chunk.page_start}`}
+              aria-label={pageAria}
               title={`Open PDF at page ${chunk.page_start}`}
+              data-testid="chunk-page-badge"
               onClick={(e) => e.stopPropagation()}
             >
-              p.{chunk.page_start}
+              {pageBadge}
             </Link>
           </span>
         ) : undefined
       }
       depth={depth}
       isSelected={isSelected}
+      chunkId={chunk.chunk_id}
       onSelect={handleSelect}
     >
       {entities.length === 0 ? (
@@ -545,6 +573,7 @@ interface TreeNodeProps {
   children?: React.ReactNode;
   /** Highlight this node as selected (chunk highlight feature). */
   isSelected?: boolean;
+  chunkId?: string;
   /** Extra action fired when the node row is clicked (in addition to toggle). */
   onSelect?: () => void;
 }
@@ -558,6 +587,7 @@ function TreeNode({
   depth,
   children,
   isSelected,
+  chunkId,
   onSelect,
 }: TreeNodeProps) {
   const [open, setOpen] = useState(defaultOpen);
@@ -571,6 +601,9 @@ function TreeNode({
       <button
         type="button"
         onClick={toggle}
+        data-testid={chunkId ? 'hierarchy-chunk-row' : undefined}
+        data-chunk-id={chunkId}
+        aria-current={isSelected ? 'true' : undefined}
         className={cn(
           'flex items-center gap-1.5 w-full text-left py-1.5 px-2 rounded text-sm',
           'hover:bg-muted/50 transition-colors',

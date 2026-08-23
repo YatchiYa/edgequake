@@ -238,10 +238,54 @@ pub fn render_mm_chunk_with_description(
         .join("\n\n")
 }
 
+/// SPEC-135 LAW-135-5: true when Pass-A markdown already inlined this asset.
+pub fn mm_asset_already_inlined(body: &str, asset_id: &str) -> bool {
+    let id = asset_id.trim();
+    if id.is_empty() {
+        return false;
+    }
+    if body.contains(&format!("data-asset-id=\"{id}\""))
+        || body.contains(&format!("data-asset-id='{id}'"))
+    {
+        return true;
+    }
+    for label in [
+        "Chart Name",
+        "Figure Name",
+        "Image Name",
+        "Table Name",
+        "Equation Name",
+    ] {
+        if body.contains(&format!("[{label}]{id}")) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Drop sidecars whose asset is already in the token stream (index-once).
+pub fn filter_mm_chunks_already_inlined<'a>(
+    body: &str,
+    chunks: &'a [MultimodalChunk],
+) -> Vec<&'a MultimodalChunk> {
+    chunks
+        .iter()
+        .filter(|c| !mm_asset_already_inlined(body, &c.item_id))
+        .collect()
+}
+
+/// Result of MM sidecar append (SPEC-135 observability).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MmTextEnrichment {
+    pub text: String,
+    pub sidecar_appended: bool,
+}
+
 /// Append multimodal chunks as markdown sections for pipeline indexing (Phase 4g).
 ///
 /// SPEC-047 / 026 W2-mm-page: stamp `<!-- edgequake-page:N -->` from asset path so
 /// page-aware chunking does not inherit the document's last page.
+/// SPEC-135: skip the fence when `chunks` is empty (no comment-only extract unit).
 pub fn append_mm_chunks_to_text(text: &str, chunks: &[MultimodalChunk]) -> String {
     if chunks.is_empty() {
         return text.to_string();
@@ -266,11 +310,29 @@ pub async fn enrich_processed_text_with_mm_chunks(
     metadata: Option<&Value>,
     text: String,
 ) -> String {
+    enrich_processed_text_with_mm_report(kv, document_id, metadata, text)
+        .await
+        .text
+}
+
+/// Same as [`enrich_processed_text_with_mm_chunks`] plus whether a sidecar was concatenated.
+pub async fn enrich_processed_text_with_mm_report(
+    kv: &dyn KVStorage,
+    document_id: &str,
+    metadata: Option<&Value>,
+    text: String,
+) -> MmTextEnrichment {
     if !mm_chunks_enabled() {
-        return text;
+        return MmTextEnrichment {
+            text,
+            sidecar_appended: false,
+        };
     }
     let Some(manifest) = load_manifest(kv, document_id).await else {
-        return text;
+        return MmTextEnrichment {
+            text,
+            sidecar_appended: false,
+        };
     };
     let opts = metadata
         .and_then(resolve_process_options_from_metadata)
@@ -280,7 +342,10 @@ pub async fn enrich_processed_text_with_mm_chunks(
         Ok(chunks) => chunks,
         Err(e) => {
             tracing::warn!(document_id = %document_id, error = %e, "skipping mm chunk injection due to failed analyze item");
-            return text;
+            return MmTextEnrichment {
+                text,
+                sidecar_appended: false,
+            };
         }
     };
     if !chunks.is_empty() {
@@ -288,7 +353,15 @@ pub async fn enrich_processed_text_with_mm_chunks(
             tracing::warn!(document_id = %document_id, error = %e, "failed to persist multimodal chunk sidecar metadata");
         }
     }
-    append_mm_chunks_to_text(&text, &chunks)
+    let kept: Vec<MultimodalChunk> = filter_mm_chunks_already_inlined(&text, &chunks)
+        .into_iter()
+        .cloned()
+        .collect();
+    let sidecar_appended = !kept.is_empty();
+    MmTextEnrichment {
+        text: append_mm_chunks_to_text(&text, &kept),
+        sidecar_appended,
+    }
 }
 
 #[cfg(test)]
@@ -563,5 +636,35 @@ mod tests {
         // Sidecar page marker must appear after multimodal-chunks divider.
         let after = out.split("<!-- multimodal-chunks -->").nth(1).unwrap();
         assert!(after.contains("<!-- edgequake-page:3 -->"));
+    }
+
+    #[test]
+    fn spec135_skips_sidecar_when_asset_inlined() {
+        let body = r#"<div class="edgequake-figure-vision" data-asset-id="cost_capability_synthetic_a">
+
+**Type:** Chart
+
+**Summary:** already inlined
+</div>
+"#;
+        let sidecar = MultimodalChunk {
+            item_id: "cost_capability_synthetic_a".into(),
+            modality: "drawing".into(),
+            text: "[Chart Name]cost_capability_synthetic_a\n[Image Type]Chart".into(),
+            sidecar: super::super::sidecar::build_sidecar_block(
+                "drawing",
+                "cost_capability_synthetic_a",
+            ),
+            heading: None,
+            llm_cache_list: vec![],
+            chunk_order_index: 0,
+            page_start: Some(1),
+        };
+        assert!(mm_asset_already_inlined(body, "cost_capability_synthetic_a"));
+        let kept = filter_mm_chunks_already_inlined(body, std::slice::from_ref(&sidecar));
+        assert!(kept.is_empty());
+        let out = append_mm_chunks_to_text(body, &[]);
+        assert_eq!(out, body);
+        assert!(!out.contains("<!-- multimodal-chunks -->"));
     }
 }

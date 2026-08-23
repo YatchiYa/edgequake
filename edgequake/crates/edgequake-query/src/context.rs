@@ -156,7 +156,7 @@ pub struct RetrievedChunk {
     /// Enables the UI to deep-link to `#page=N` in the PDF viewer.
     pub page_start: Option<u32>,
 
-    /// PDF page number where this chunk ends (always equals page_start).
+    /// PDF page number where this chunk ends (SPEC-135: may exceed page_start).
     pub page_end: Option<u32>,
 
     /// Retrieval modality stamped at ingest (`chart`, `figure`, `table`, `equation`).
@@ -216,10 +216,15 @@ impl RetrievedChunk {
         self
     }
 
-    /// Set PDF page attribution (SPEC-032 W-09).
-    pub fn with_page(mut self, page: u32) -> Self {
-        self.page_start = Some(page);
-        self.page_end = Some(page);
+    /// Set PDF page attribution (SPEC-032 W-09). Single-page helper.
+    pub fn with_page(self, page: u32) -> Self {
+        self.with_page_span(page, Some(page))
+    }
+
+    /// Set a page span. `end` defaults to `start` when None (SPEC-135).
+    pub fn with_page_span(mut self, start: u32, end: Option<u32>) -> Self {
+        self.page_start = Some(start);
+        self.page_end = Some(end.unwrap_or(start));
         self
     }
 

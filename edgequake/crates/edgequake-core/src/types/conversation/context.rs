@@ -158,7 +158,7 @@ pub struct MessageSource {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_start: Option<u32>,
     /// PDF page number (1-indexed) where this chunk ends.
-    /// Always equals `page_start` — chunks never cross page boundaries.
+    /// SPEC-135: may exceed `page_start` when a remainder spans pages.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_end: Option<u32>,
 }

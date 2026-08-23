@@ -44,6 +44,23 @@ export function buildDocumentPageUrl(
 }
 
 /**
+ * Citation badge for a chunk page span (SPEC-135).
+ * Uses an en-dash between start and end when they differ.
+ */
+export function formatChunkPageBadge(
+  pageStart?: number,
+  pageEnd?: number,
+): string | null {
+  if (pageStart === undefined || pageStart < 1) {
+    return null;
+  }
+  if (pageEnd !== undefined && pageEnd > pageStart) {
+    return `p.${pageStart}–${pageEnd}`;
+  }
+  return `p.${pageStart}`;
+}
+
+/**
  * Build a citation deeplink preserving line-range, chunk selection and optional page navigation.
  *
  * Behavior mirrors citation click UX:

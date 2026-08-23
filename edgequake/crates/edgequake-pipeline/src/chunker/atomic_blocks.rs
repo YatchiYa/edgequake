@@ -101,6 +101,12 @@ fn is_page_marker(line: &str) -> bool {
     line.trim().starts_with(PAGE_MARKER_PREFIX)
 }
 
+/// True when `text` is a single HTML comment (page marker, mm fence, empty).
+pub fn is_html_comment_only(text: &str) -> bool {
+    let t = text.trim();
+    t.starts_with("<!--") && t.ends_with("-->") && t.matches("<!--").count() == 1
+}
+
 fn is_pipe_table_row(line: &str) -> bool {
     let t = line.trim();
     t.starts_with('|') && t.ends_with('|')
@@ -145,6 +151,10 @@ fn push_region(
     }
     let text = content[start..end].trim_end().to_string();
     if text.trim().is_empty() {
+        return;
+    }
+    // LAW-135-6: HTML comments are control plane, never extract units.
+    if is_html_comment_only(&text) {
         return;
     }
     regions.push(ContentRegion {
@@ -252,7 +262,7 @@ pub fn split_preserving_atomic_regions(content: &str) -> Vec<ContentRegion> {
         }
     }
 
-    if regions.is_empty() {
+    if regions.is_empty() && !is_html_comment_only(content) && !content.trim().is_empty() {
         regions.push(ContentRegion {
             text: content.to_string(),
             atomic: None,
@@ -320,5 +330,21 @@ mod tests {
         assert!(regions.iter().any(
             |r| r.atomic == Some(AtomicKind::FencedCode) && r.text.contains("# not a heading")
         ));
+    }
+
+    #[test]
+    fn html_comment_only_is_not_a_region() {
+        let md = "Hello.\n\n<!-- multimodal-chunks -->\n\n<!-- edgequake-page:3 -->\n\nWorld.";
+        let regions = split_preserving_atomic_regions(md);
+        assert!(
+            regions
+                .iter()
+                .all(|r| !is_html_comment_only(&r.text)),
+            "comment-only regions leaked: {:?}",
+            regions.iter().map(|r| r.text.as_str()).collect::<Vec<_>>()
+        );
+        let joined = regions.iter().map(|r| r.text.as_str()).collect::<String>();
+        assert!(joined.contains("Hello"));
+        assert!(joined.contains("World"));
     }
 }

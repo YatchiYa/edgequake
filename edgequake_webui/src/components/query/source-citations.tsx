@@ -31,7 +31,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { displayEntityLabel } from '@/lib/graph/label-utils';
-import { buildDocumentPageUrl } from '@/lib/utils/document-url';
+import { buildDocumentPageUrl, formatChunkPageBadge } from '@/lib/utils/document-url';
 import { useSettingsStore } from '@/stores/use-settings-store';
 import type { QueryContext } from '@/types';
 import {
@@ -259,6 +259,13 @@ function PassageRow({
     chunk.document_id && chunk.page_start !== undefined
       ? buildDocumentPageUrl(chunk.document_id, chunk.chunk_id, chunk.page_start)
       : null;
+  const pageBadge = formatChunkPageBadge(chunk.page_start, chunk.page_end);
+  const pageAria =
+    chunk.page_start !== undefined &&
+    chunk.page_end !== undefined &&
+    chunk.page_end > chunk.page_start
+      ? `Pages ${chunk.page_start} to ${chunk.page_end}`
+      : `Page ${chunk.page_start}`;
 
   return (
     <div className="relative">
@@ -301,17 +308,18 @@ function PassageRow({
         </div>
 
         {/* Row 2: page deeplink (inside the card, always visible, not floating) */}
-        {pageUrl && (
+        {pageUrl && pageBadge && (
           <div className="mt-1.5 pl-7 flex items-center">
             <Link
               href={pageUrl}
               className="inline-flex items-center gap-0.5 text-[10px] font-medium text-primary/75 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 rounded-sm"
               title={`Open PDF at page ${chunk.page_start}`}
-              aria-label={`Go to page ${chunk.page_start} in document viewer`}
+              aria-label={`Go to ${pageAria} in document viewer`}
+              data-testid="citation-page-badge"
               onClick={(e) => e.stopPropagation()}
             >
               <BookOpen className="h-2.5 w-2.5" aria-hidden="true" />
-              <span className="ml-0.5">p.{chunk.page_start}</span>
+              <span className="ml-0.5">{pageBadge}</span>
               <ExternalLink className="h-2 w-2 ml-0.5 opacity-70" aria-hidden="true" />
             </Link>
           </div>

@@ -194,6 +194,10 @@ pub struct IngestKgMeta {
     pub token_max: Option<usize>,
     /// SPEC-125: chunks whose body is ATX headings only.
     pub orphan_heading_chunks: Option<usize>,
+    /// SPEC-135: token_p50 / chunk budget.
+    pub fill_p50: Option<f64>,
+    /// SPEC-135: whether `<!-- multimodal-chunks -->` sidecars were concatenated.
+    pub mm_sidecar_appended: Option<bool>,
 }
 
 /// LAW-124-22 KG-slice facts.
@@ -236,6 +240,12 @@ impl IngestKgMeta {
         }
         if let Some(n) = self.orphan_heading_chunks {
             record_observation_meta("orphan_heading_chunks", &n.to_string());
+        }
+        if let Some(f) = self.fill_p50 {
+            record_observation_meta("fill_p50", &format!("{f:.4}"));
+        }
+        if let Some(b) = self.mm_sidecar_appended {
+            record_observation_meta("mm_sidecar_appended", if b { "true" } else { "false" });
         }
     }
 }

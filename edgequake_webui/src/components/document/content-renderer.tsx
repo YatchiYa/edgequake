@@ -20,6 +20,11 @@ import {
 } from '@/components/query/markdown/VirtualizedMarkdownContent';
 import { Skeleton } from '@/components/ui/skeleton';
 import { rewriteMarkdownMmAssetUrls } from '@/lib/api/edgequake/documents';
+import {
+    findHighlightIndex,
+    resolveMarkdownHighlightRange,
+    type HighlightLineRange,
+} from '@/lib/utils/markdown-highlight';
 import type { Document } from '@/types';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { CodeRenderer } from './code-renderer';
@@ -113,17 +118,23 @@ function getRendererForDocument(doc: Document, highlightText?: string, startLine
     fileName.endsWith('.markdown') ||
     hasMarkdownSignature(content)
   ) {
-    const highlightLineRange =
-      startLine !== undefined && endLine !== undefined
-        ? { startLine, endLine }
-        : undefined;
+    const highlightLineRange = resolveMarkdownHighlightRange({
+      content,
+      startLine,
+      endLine,
+      highlightText,
+    });
 
     // WHY: For very large markdown (e.g. 1000-page PDF), tokenising the
     // entire string freezes the browser. VirtualizedMarkdownContent splits the
     // raw string into ~25 KB chunks — only visible chunks are tokenised.
+    // Highlight still applies: each slice gets a local line range (SPEC-135).
     const isLargeDocument = content.length >= VIRTUALIZATION_CHAR_THRESHOLD;
 
-    const markdownArticle = (pageContent: string) => (
+    const markdownArticle = (
+      pageContent: string,
+      localRange?: HighlightLineRange,
+    ) => (
       <article className="
         prose prose-lg dark:prose-invert max-w-none
         prose-headings:font-display prose-headings:font-semibold
@@ -150,20 +161,23 @@ function getRendererForDocument(doc: Document, highlightText?: string, startLine
         <StreamingMarkdownRenderer
           content={pageContent}
           className="text-sm leading-relaxed"
-          highlightLineRange={isLargeDocument ? undefined : highlightLineRange}
+          highlightLineRange={localRange}
         />
       </article>
     );
 
     if (isLargeDocument) {
       return (
-        <VirtualizedMarkdownContent content={content}>
-          {markdownArticle}
+        <VirtualizedMarkdownContent
+          content={content}
+          highlightLineRange={highlightLineRange}
+        >
+          {(pageContent, ctx) => markdownArticle(pageContent, ctx.highlightLineRange)}
         </VirtualizedMarkdownContent>
       );
     }
 
-    return markdownArticle(content);
+    return markdownArticle(content, highlightLineRange);
   }
 
   // ---------------------------------------------------------------------------
@@ -380,33 +394,7 @@ function applyLineHighlight(content: string, startLine: number, endLine: number)
  * Uses fuzzy matching to find the best match position.
  */
 function applyTextHighlight(content: string, searchText: string): string {
-  if (!searchText || searchText.length < 10) return content;
-  
-  // Normalize both strings for matching
-  const normalizedContent = content.toLowerCase();
-  const normalizedSearch = searchText.toLowerCase().trim();
-  
-  // Try exact match first
-  let matchIndex = normalizedContent.indexOf(normalizedSearch);
-  
-  // If no exact match, try partial matching with first 50 chars
-  if (matchIndex === -1 && normalizedSearch.length > 50) {
-    const shortSearch = normalizedSearch.slice(0, 50);
-    matchIndex = normalizedContent.indexOf(shortSearch);
-  }
-  
-  // If still no match, try word-by-word matching
-  if (matchIndex === -1) {
-    const words = normalizedSearch.split(/\s+/).filter(w => w.length > 4);
-    if (words.length > 0) {
-      // Find first significant word
-      for (const word of words.slice(0, 3)) {
-        matchIndex = normalizedContent.indexOf(word);
-        if (matchIndex !== -1) break;
-      }
-    }
-  }
-  
+  const matchIndex = findHighlightIndex(content, searchText);
   if (matchIndex === -1) return content;
   
   // Calculate highlight range (show some context around the match)

@@ -4232,7 +4232,7 @@ export interface components {
             /**
              * Format: int32
              * @description PDF page number (1-indexed) where this chunk ends.
-             *     Always equal to `page_start` — chunks never cross page boundaries.
+             *     SPEC-135: may exceed `page_start` when a remainder spans pages.
              */
             page_end?: number | null;
             /**
@@ -12197,7 +12197,7 @@ export interface components {
             id: string;
             /**
              * Format: int32
-             * @description PDF page number where this chunk ends (always equals page_start).
+             * @description PDF page number where this chunk ends (may exceed page_start when a remainder spans pages).
              */
             page_end?: number | null;
             /**

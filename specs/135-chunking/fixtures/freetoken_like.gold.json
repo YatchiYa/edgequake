@@ -1,0 +1,28 @@
+{
+  "schema": "spec-135-gold/v1",
+  "fixture": "freetoken_like.md",
+  "sha256": "0f3b59fffe97a005c5d063075845699e1c42eda8d92fa7cab78efcd580c33be5",
+  "strategy": "Pdf",
+  "chunk_size": 1200,
+  "chunk_overlap": 100,
+  "min_chunk_size": 100,
+  "n": 30,
+  "n_min": 18,
+  "n_max": 36,
+  "fill_p50": 0.6725,
+  "fill_p50_min": 0.55,
+  "budget": 1200,
+  "n_legacy": 20,
+  "n_legacy_min": 20,
+  "n_legacy_max": 20,
+  "n_legacy_note": "Measured 2026-08-23 WP-6: PDF_PACK=0 → Recursive word-count inner yields N=20 on this SHA-256. Packed Pdf (tiktoken) yields N=30 fill_p50=0.672. Recursive 1200-word budget over-merges Latin prose vs tiktoken, so N_legacy < n_max. Kill is distinguished by frozen N=20 plus token_count != count_tokens on at least one chunk.",
+  "probe_fig": "PROBE_FIG_A",
+  "probe_prose": "PROBE_PROSE_A",
+  "corpus_id": "EQ135_FREETOKEN_LIKE",
+  "page_count": 16,
+  "mm_asset_id": "cost_capability_synthetic_a",
+  "comment_needles": [
+    "<!-- multimodal-chunks -->",
+    "<!-- edgequake-page:"
+  ]
+}

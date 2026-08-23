@@ -97,13 +97,14 @@ pub use anthropic_images::{
 pub use chunk_storage::build_chunk_kv_records;
 pub use chunker::{
     calculate_line_numbers, default_recursive_separators, ingest_chunking_observation,
-    is_mm_chunk_header, make_page_marker, markdown_chunk, markdown_pack_enabled, parse_page_marker,
-    resolve_chunker, split_into_page_segments, split_preserving_atomic_regions, AtomicKind,
+    ingest_chunking_observation_full, is_html_comment_only, is_mm_chunk_header, make_page_marker,
+    markdown_chunk, markdown_pack_enabled, parse_page_marker, pdf_cross_page_pack_enabled,
+    pdf_pack_enabled, resolve_chunker, split_into_page_segments, split_preserving_atomic_regions, AtomicKind,
     CharacterBasedChunking, ChunkOptions, ChunkResult, ChunkStrategy, ChunkTokenStats, Chunker,
     ChunkerConfig, ChunkingStrategy, ContentRegion, MarkdownChunking, PageAwareChunking,
     PageMarkerWriter, ParagraphBoundaryChunking, RecursiveCharacterChunking, SectionMetadata,
     SentenceBoundaryChunking, TextChunk, TokenBasedChunking, MARKDOWN_PACK_ENV, PAGE_MARKER_PREFIX,
-    PAGE_MARKER_SUFFIX,
+    PAGE_MARKER_SUFFIX, PDF_CROSS_PAGE_PACK_ENV, PDF_PACK_ENV,
 };
 pub use error::{
     ChunkExtractionOutcome, ChunkFailure, PipelineError, ResilientExtractionResult, Result,

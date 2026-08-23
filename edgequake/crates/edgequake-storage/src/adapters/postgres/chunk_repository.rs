@@ -26,6 +26,8 @@ pub(crate) struct ChunkInsertRow {
     pub end_offset: Option<i32>,
     pub token_count: Option<i32>,
     pub metadata: serde_json::Value,
+    pub page_start: Option<i32>,
+    pub page_end: Option<i32>,
 }
 
 /// LAW-D7: single round trip per batch via `unnest` (mirrors vector upsert in
@@ -52,16 +54,20 @@ where
     let end_offsets: Vec<Option<i32>> = rows.iter().map(|r| r.end_offset).collect();
     let token_counts: Vec<Option<i32>> = rows.iter().map(|r| r.token_count).collect();
     let metadatas: Vec<&serde_json::Value> = rows.iter().map(|r| &r.metadata).collect();
+    let page_starts: Vec<Option<i32>> = rows.iter().map(|r| r.page_start).collect();
+    let page_ends: Vec<Option<i32>> = rows.iter().map(|r| r.page_end).collect();
 
     sqlx::query_scalar::<_, Uuid>(
         r#"
         INSERT INTO chunks (
             document_id, tenant_id, workspace_id, chunk_index,
-            content, start_offset, end_offset, token_count, metadata
+            content, start_offset, end_offset, token_count, metadata,
+            page_start, page_end
         )
         SELECT * FROM unnest(
             $1::uuid[], $2::uuid[], $3::uuid[], $4::int[],
-            $5::text[], $6::int[], $7::int[], $8::int[], $9::jsonb[]
+            $5::text[], $6::int[], $7::int[], $8::int[], $9::jsonb[],
+            $10::int[], $11::int[]
         )
         ON CONFLICT (document_id, chunk_index) DO NOTHING
         RETURNING id
@@ -76,6 +82,8 @@ where
     .bind(&end_offsets)
     .bind(&token_counts)
     .bind(&metadatas)
+    .bind(&page_starts)
+    .bind(&page_ends)
     .fetch_all(executor)
     .await
     .map_err(|e| StorageError::Database(format!("chunks batch insert failed: {e}")))
@@ -277,6 +285,8 @@ impl ChunkRepository for PostgresChunkRepository {
                 end_offset: c.end_offset,
                 token_count: c.token_count,
                 metadata: c.metadata.clone(),
+                page_start: c.page_start,
+                page_end: c.page_end,
             })
             .collect();
 
@@ -314,7 +324,8 @@ impl ChunkRepository for PostgresChunkRepository {
         let rows = sqlx::query_as::<_, ChunkRow>(
             r#"
             SELECT id, document_id, tenant_id, workspace_id, chunk_index,
-                   content, start_offset, end_offset, token_count, metadata
+                   content, start_offset, end_offset, token_count, metadata,
+                   page_start, page_end
             FROM chunks
             WHERE document_id = $1
             ORDER BY chunk_index
@@ -335,7 +346,8 @@ impl ChunkRepository for PostgresChunkRepository {
         let row = sqlx::query_as::<_, ChunkRow>(
             r#"
             SELECT id, document_id, tenant_id, workspace_id, chunk_index,
-                   content, start_offset, end_offset, token_count, metadata
+                   content, start_offset, end_offset, token_count, metadata,
+                   page_start, page_end
             FROM chunks
             WHERE document_id = $1 AND chunk_index = $2
             "#,
@@ -367,7 +379,8 @@ impl ChunkRepository for PostgresChunkRepository {
             sqlx::query_as::<_, ChunkRow>(
                 r#"
                 SELECT id, document_id, tenant_id, workspace_id, chunk_index,
-                       content, start_offset, end_offset, token_count, metadata
+                       content, start_offset, end_offset, token_count, metadata,
+                       page_start, page_end
                 FROM chunks
                 WHERE (document_id, chunk_index) > ($1, $2)
                 ORDER BY document_id, chunk_index
@@ -383,7 +396,8 @@ impl ChunkRepository for PostgresChunkRepository {
             sqlx::query_as::<_, ChunkRow>(
                 r#"
                 SELECT id, document_id, tenant_id, workspace_id, chunk_index,
-                       content, start_offset, end_offset, token_count, metadata
+                       content, start_offset, end_offset, token_count, metadata,
+                       page_start, page_end
                 FROM chunks
                 ORDER BY document_id, chunk_index
                 LIMIT $1
@@ -457,6 +471,8 @@ struct ChunkRow {
     end_offset: Option<i32>,
     token_count: Option<i32>,
     metadata: serde_json::Value,
+    page_start: Option<i32>,
+    page_end: Option<i32>,
 }
 
 impl ChunkRow {
@@ -473,6 +489,8 @@ impl ChunkRow {
             end_offset: self.end_offset,
             token_count: self.token_count,
             metadata: self.metadata,
+            page_start: self.page_start,
+            page_end: self.page_end,
         }
     }
 }
@@ -496,6 +514,8 @@ mod tests {
             end_offset: Some(8),
             token_count: Some(2),
             metadata: serde_json::json!({"legacy_key": "doc-chunk-3"}),
+            page_start: None,
+            page_end: None,
         };
         assert_eq!(chunk.document_id.0, doc_id);
         assert_eq!(chunk.chunk_index, 3);

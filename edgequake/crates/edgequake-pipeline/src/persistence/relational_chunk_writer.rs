@@ -79,6 +79,8 @@ pub fn build_relational_chunks(
                 end_offset: i32::try_from(chunk.end_offset).ok(),
                 token_count: i32::try_from(chunk.token_count).ok(),
                 metadata,
+                page_start: chunk.page_start.and_then(|p| i32::try_from(p).ok()),
+                page_end: chunk.page_end.and_then(|p| i32::try_from(p).ok()),
             }
         })
         .collect())

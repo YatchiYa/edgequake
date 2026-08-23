@@ -618,7 +618,7 @@ pub struct SourceReference {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_start: Option<u32>,
 
-    /// PDF page number where this chunk ends (always equals page_start).
+    /// PDF page number where this chunk ends (SPEC-135: may exceed page_start).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_end: Option<u32>,
 

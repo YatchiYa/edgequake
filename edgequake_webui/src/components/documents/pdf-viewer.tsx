@@ -227,7 +227,7 @@ export function PDFViewer({
     queryFn: () => listDocumentPages(documentId!),
     enabled: Boolean(documentId),
   });
-  const pageSummary = pagesQuery.data?.pages.find((p) => p.page_number === pageNumber);
+  const pageSummary = pagesQuery.data?.pages?.find((p) => p.page_number === pageNumber);
   const overlayDisabled = layoutToggleDisabled(
     pageSummary,
     pagesQuery.isSuccess,
@@ -421,7 +421,11 @@ export function PDFViewer({
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm text-muted-foreground min-w-[80px] text-center">
+            <span
+              className="text-sm text-muted-foreground min-w-[80px] text-center"
+              data-testid="pdf-page-indicator"
+              data-page={pageNumber}
+            >
               {isLoading ? '...' : `${pageNumber} / ${numPages}`}
             </span>
             <Button

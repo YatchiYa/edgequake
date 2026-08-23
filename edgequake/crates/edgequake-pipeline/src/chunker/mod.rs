@@ -39,6 +39,8 @@
 //! - `strategies`: Chunking strategy implementations (token, character, sentence, paragraph)
 
 mod atomic_blocks;
+mod cross_page_pack;
+mod env_flags;
 mod markdown_chunking;
 mod markdown_pack;
 mod page_aware;
@@ -66,14 +68,18 @@ pub use text_utils::calculate_line_numbers;
 
 // Re-export strategies
 pub use atomic_blocks::{
-    is_mm_chunk_header, split_preserving_atomic_regions, AtomicKind, ContentRegion,
+    is_html_comment_only, is_mm_chunk_header, split_preserving_atomic_regions, AtomicKind,
+    ContentRegion,
 };
 pub use markdown_chunking::MarkdownChunking;
 pub use markdown_pack::{
-    ingest_chunking_observation, markdown_chunk, markdown_pack_enabled, ChunkTokenStats,
-    MARKDOWN_PACK_ENV,
+    ingest_chunking_observation, ingest_chunking_observation_full, markdown_chunk,
+    markdown_pack_enabled, ChunkTokenStats, MARKDOWN_PACK_ENV,
 };
-pub use page_aware::{split_into_page_segments, PageAwareChunking};
+pub use page_aware::{pdf_pack_enabled, split_into_page_segments, PageAwareChunking, PDF_PACK_ENV};
+pub use cross_page_pack::{
+    pdf_cross_page_pack_enabled, PDF_CROSS_PAGE_PACK_ENV,
+};
 pub use recursive::{default_recursive_separators, RecursiveCharacterChunking};
 pub use semantic::{
     breakpoint_threshold, buffered_windows, cosine_distance, group_by_breakpoints,
@@ -161,7 +167,8 @@ impl Chunker {
                     end_line,
                 )
                 .with_section(result.section)
-                .with_page_opt(result.page_start)
+                .with_page_span(result.page_start, result.page_end)
+                .with_token_count(result.tokens)
             })
             .collect())
     }

@@ -187,14 +187,8 @@ export default function DocumentViewPage() {
     return undefined;
   }, [searchParams]);
 
-  const [initialPdfPage, setInitialPdfPage] = useState<number>(pageFromUrl ?? 1);
-
-  // Sync initialPdfPage when URL param changes (e.g. user clicks different citations)
-  useEffect(() => {
-    if (pageFromUrl !== undefined) {
-      setInitialPdfPage(pageFromUrl);
-    }
-  }, [pageFromUrl]);
+  const [resolvedPdfPage, setResolvedPdfPage] = useState<number | undefined>();
+  const activePdfPage = pageFromUrl ?? resolvedPdfPage;
   // OODA-chunk-select: Local chunk selection state for sidebar → content highlighting.
   // State is always kept in sync with the URL (`?chunk=<id>`) so any selection
   // is addressable, shareable, and survives page refresh.
@@ -254,13 +248,16 @@ export default function DocumentViewPage() {
    * SRP: This does NOT toggle selection — it is a pure data resolution callback.
    */
   const handleChunkResolved = useCallback(
-    (chunkId: string, start?: number, end?: number) => {
+    (chunkId: string, start?: number, end?: number, page?: number) => {
       // Only apply if this chunk is still the active selection
       if (chunkId !== selectedChunkId) return;
       setChunkStartLine(start);
       setChunkEndLine(end);
+      if (page !== undefined && page >= 1 && pageFromUrl === undefined) {
+        setResolvedPdfPage(page);
+      }
     },
-    [selectedChunkId],
+    [selectedChunkId, pageFromUrl],
   );
 
   // Active line range: chunk selection overrides URL params.
@@ -622,8 +619,8 @@ export default function DocumentViewPage() {
                   // OODA-48: Use pdfIdForViewer which is guaranteed to exist when isPdfDocument is true
                   <PDFViewer
                     file={getPdfDownloadUrl(pdfIdForViewer!)}
-                    initialPage={initialPdfPage}
-                    currentPage={pageFromUrl}
+                    initialPage={activePdfPage ?? 1}
+                    currentPage={activePdfPage}
                     documentId={documentId}
                   />
                 }
@@ -750,8 +747,8 @@ export default function DocumentViewPage() {
               <TabsContent value="pdf" className="flex-1 overflow-hidden m-0 mt-0">
                 <PDFViewer
                   file={getPdfDownloadUrl(pdfIdForViewer)}
-                  initialPage={initialPdfPage}
-                  currentPage={pageFromUrl}
+                  initialPage={activePdfPage ?? 1}
+                  currentPage={activePdfPage}
                   documentId={documentId}
                 />
               </TabsContent>

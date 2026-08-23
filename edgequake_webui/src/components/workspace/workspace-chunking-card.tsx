@@ -115,6 +115,15 @@ export function WorkspaceChunkingCard({
           </p>
           <p
             className="text-[11px] text-muted-foreground"
+            data-testid="chunking-pdf-pack-hint"
+          >
+            {t(
+              'workspace.chunking.pdfPackHint',
+              'PDF conversions pack headings, figures, and short pages into the token budget so extract is not one job per page.',
+            )}
+          </p>
+          <p
+            className="text-[11px] text-muted-foreground"
             data-testid="chunking-future-only-hint"
           >
             {t(

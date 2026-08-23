@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { buildDocumentCitationUrl, buildDocumentPageUrl } from '../document-url';
+import { buildDocumentCitationUrl, buildDocumentPageUrl, formatChunkPageBadge } from '../document-url';
 
 describe('buildDocumentPageUrl', () => {
   it('returns path-only when no params provided', () => {
@@ -87,5 +87,21 @@ describe('buildDocumentCitationUrl', () => {
         page: 18,
       }),
     ).toBe('/documents/d1?page=18');
+  });
+});
+
+describe('formatChunkPageBadge', () => {
+  it('returns null when page_start is missing or invalid', () => {
+    expect(formatChunkPageBadge(undefined, undefined)).toBeNull();
+    expect(formatChunkPageBadge(0, 2)).toBeNull();
+  });
+
+  it('renders a single page', () => {
+    expect(formatChunkPageBadge(3, 3)).toBe('p.3');
+    expect(formatChunkPageBadge(3, undefined)).toBe('p.3');
+  });
+
+  it('renders a span with an en-dash', () => {
+    expect(formatChunkPageBadge(1, 2)).toBe('p.1–2');
   });
 });

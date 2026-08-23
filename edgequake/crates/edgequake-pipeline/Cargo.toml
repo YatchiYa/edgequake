@@ -33,3 +33,5 @@ parking_lot = "0.12"
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "macros", "rt-multi-thread"] }
 serial_test = "3"
+sha2 = "0.10"
+serde_json.workspace = true

@@ -36,7 +36,7 @@ interface MetadataSidebarProps {
    * Called once when chunk data loads and the pre-selected chunk's line range
    * is resolved. Used to drive content-area highlighting on deep-link arrival.
    */
-  onChunkResolved?: (chunkId: string, startLine?: number, endLine?: number) => void;
+  onChunkResolved?: (chunkId: string, startLine?: number, endLine?: number, page?: number) => void;
   /** ID of the currently selected chunk (controls visual highlight). */
   selectedChunkId?: string;
   /** Additional class names to override the outer container (e.g. border-l-0). */
@@ -87,6 +87,8 @@ export function MetadataSidebar({ document, onChunkSelect, onChunkResolved, sele
             title="Data Hierarchy"
             icon={<GitBranch className="h-4 w-4" />}
             defaultOpen={!!selectedChunkId}
+            forceOpen={!!selectedChunkId}
+            testId="data-hierarchy-section"
           >
             <DocumentHierarchyTree
               documentId={document.id}

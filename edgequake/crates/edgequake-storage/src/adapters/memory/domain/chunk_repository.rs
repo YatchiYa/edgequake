@@ -168,6 +168,8 @@ mod tests {
             end_offset: Some(5),
             token_count: Some(1),
             metadata: serde_json::json!({}),
+            page_start: None,
+            page_end: None,
         };
         let first = repo
             .insert_batch(&mut UnitOfWork::default(), std::slice::from_ref(&chunk))

@@ -69,14 +69,20 @@ async fn enrich_lineage_page_data(
     }
 
     // IMP-075-03: one RT UNNEST batch (O(K log N)), never O(K) get_by_id RTs.
-    // Map: chunk_id → page_start (u32) from authoritative chunk KV SSOT.
+    // Map: chunk_id → (page_start, page_end) from authoritative chunk KV SSOT.
     let values = kv.get_by_ids_ordered(&chunk_ids).await.ok()?;
-    let mut page_map: std::collections::HashMap<String, u32> =
+    let mut page_map: std::collections::HashMap<String, (u32, u32)> =
         std::collections::HashMap::with_capacity(chunk_ids.len());
     for (id, record) in chunk_ids.iter().zip(values) {
         if let Some(record) = record {
             if let Some(page) = record.get("page_start").and_then(|v| v.as_u64()) {
-                page_map.insert(id.clone(), page as u32);
+                let start = page as u32;
+                let end = record
+                    .get("page_end")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32)
+                    .unwrap_or(start);
+                page_map.insert(id.clone(), (start, end));
             }
         }
     }
@@ -98,16 +104,16 @@ async fn enrich_lineage_page_data(
                 None => return chunk.clone(),
             };
             match page_map.get(chunk_id) {
-                Some(&page) => {
+                Some(&(start, end)) => {
                     let mut enriched = chunk.clone();
                     if let Some(obj) = enriched.as_object_mut() {
                         obj.insert(
                             "page_start".to_string(),
-                            serde_json::Value::Number(page.into()),
+                            serde_json::Value::Number(start.into()),
                         );
                         obj.insert(
                             "page_end".to_string(),
-                            serde_json::Value::Number(page.into()),
+                            serde_json::Value::Number(end.into()),
                         );
                     }
                     enriched
@@ -590,6 +596,28 @@ mod tests {
         assert_eq!(chunks[0]["page_end"], json!(1));
         assert_eq!(chunks[1]["page_start"], json!(2));
         assert_eq!(chunks[1]["page_end"], json!(2));
+    }
+
+    #[tokio::test]
+    async fn enriches_page_end_span_from_kv() {
+        let kv = MemoryKVStorage::new("test-enrichment-span");
+        kv.upsert(&[(
+            "doc-1-chunk-0".to_string(),
+            json!({
+                "content": "span",
+                "page_start": 1,
+                "page_end": 2,
+            }),
+        )])
+        .await
+        .unwrap();
+        let lineage = make_lineage(vec![lineage_chunk("doc-1-chunk-0", 0, None)]);
+        let result = enrich_lineage_page_data(&kv, &lineage)
+            .await
+            .expect("should enrich span");
+        let chunks = result["chunks"].as_array().unwrap();
+        assert_eq!(chunks[0]["page_start"], json!(1));
+        assert_eq!(chunks[0]["page_end"], json!(2));
     }
 
     // ── Idempotency (early exit) ───────────────────────────────────────────────

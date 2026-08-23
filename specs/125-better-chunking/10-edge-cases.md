@@ -11,7 +11,7 @@
 | E7 | Table in list | Prefer pipe-row atomic still | unit |
 | E8 | Fenced table vs pipe | Fence wins (atomic code) | unit |
 | E9 | MM `[Table Name]` | Atomic MM; split only if oversize (C-16) | existing + pack |
-| E10 | Page markers | Pdf strategy; packer not used | non-goal |
+| E10 | Page markers | Pdf inner = SPEC-125 packer (SPEC-135); markers are control plane | SPEC-135 U-135-* |
 | E11 | `structure_induce` FAQ `##` | Pack induced headings | unit with env |
 | E12 | VLM `# Figure` + `**Type:**` | Atomic MM region | unit |
 | E13 | CJK | tiktoken, not word count | unit |
@@ -31,7 +31,7 @@
 | E27 | HTML `<h2>` | Not a heading | unit |
 | E28 | Setext | Not a heading v1 | unit |
 | E29 | Rebuild vs future-only | Copy + no auto rebuild | Playwright |
-| E30 | PDF converted MD | Pdf strategy unchanged | contract existing |
+| E30 | PDF converted MD | SPEC-135 Pdf pack-to-budget (reverses this row) | contract_spec135_pdf_pack |
 
 ## Residual risk
 

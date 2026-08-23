@@ -34,7 +34,7 @@ pub struct ChunkDetailResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_start: Option<u32>,
     /// PDF page number (1-indexed) where this chunk ends.
-    /// Always equal to `page_start` — chunks never cross page boundaries.
+    /// SPEC-135: may exceed `page_start` when a remainder spans pages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_end: Option<u32>,
     /// Token count.

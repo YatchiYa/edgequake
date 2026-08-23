@@ -54,7 +54,7 @@ pub struct ChunkResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_start: Option<u32>,
     /// PDF page number (1-indexed) where this chunk ends.
-    /// Always equal to `page_start` — chunks never cross page boundaries.
+    /// SPEC-135: may exceed `page_start` when a remainder spans pages.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_end: Option<u32>,
 }
@@ -163,14 +163,13 @@ pub struct TextChunk {
 
     /// PDF page number (1-indexed) where this chunk starts.
     /// Set when the source document is a PDF processed with `PageAwareChunking`.
-    /// None for plain text, Markdown, or single-page PDFs without markers.
+    /// None for plain text, Markdown, or unmarked sources.
     ///
-    /// Key invariant: a chunk NEVER spans two pages — `page_start == page_end`.
+    /// SPEC-135: `page_end` may be greater than `page_start` (cross-page remainder).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_start: Option<u32>,
 
-    /// PDF page number (1-indexed) where this chunk ends.
-    /// Always equal to `page_start` by construction.
+    /// PDF page number (1-indexed) where this chunk ends (`≥ page_start`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_end: Option<u32>,
 
@@ -242,19 +241,32 @@ impl TextChunk {
         self
     }
 
-    /// Assign PDF page attribution (1-indexed). page_start == page_end always.
+    /// Assign PDF page attribution (1-indexed). Single-page helper.
     pub fn with_page(mut self, page: u32) -> Self {
         self.page_start = Some(page);
         self.page_end = Some(page);
         self
     }
 
-    /// Assign page attribution from an Option (no-op when None).
+    /// Assign a page span. `end` defaults to `start` when None.
+    pub fn with_page_span(mut self, start: Option<u32>, end: Option<u32>) -> Self {
+        self.page_start = start;
+        self.page_end = end.or(start);
+        self
+    }
+
+    /// Assign page attribution from an Option (no-op when None). Single page.
     pub fn with_page_opt(mut self, page: Option<u32>) -> Self {
         if let Some(p) = page {
             self.page_start = Some(p);
             self.page_end = Some(p);
         }
+        self
+    }
+
+    /// Override token count (SSOT from the chunker, not a word-count re-estimate).
+    pub fn with_token_count(mut self, tokens: usize) -> Self {
+        self.token_count = tokens;
         self
     }
 

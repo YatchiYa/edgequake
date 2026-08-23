@@ -30,6 +30,11 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import {
+  findChunkIndexForRange,
+  localHighlightForSlice,
+  type HighlightLineRange,
+} from '@/lib/utils/markdown-highlight';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -211,13 +216,25 @@ function findScrollableAncestor(start: HTMLElement): HTMLElement {
 // Main component
 // ---------------------------------------------------------------------------
 
+export type VirtualizedChunkRenderContext = {
+  /** Document-absolute start offset of this slice. */
+  sliceStart: number;
+  /** Line range mapped onto this slice, when a citation highlight overlaps. */
+  highlightLineRange?: HighlightLineRange;
+};
+
 interface VirtualizedMarkdownContentProps {
   /** Full raw markdown content */
   content: string;
-  /** Render function that receives a chunk's markdown and renders it */
-  children: (chunkContent: string) => React.ReactNode;
+  /** Render function that receives a chunk's markdown and optional highlight ctx */
+  children: (
+    chunkContent: string,
+    ctx: VirtualizedChunkRenderContext,
+  ) => React.ReactNode;
   /** Additional class for wrapper */
   className?: string;
+  /** Document-absolute citation highlight (1-based inclusive). */
+  highlightLineRange?: HighlightLineRange;
 }
 
 /**
@@ -242,6 +259,7 @@ export const VirtualizedMarkdownContent = memo(function VirtualizedMarkdownConte
   content,
   children,
   className,
+  highlightLineRange,
 }: VirtualizedMarkdownContentProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -250,6 +268,15 @@ export const VirtualizedMarkdownContent = memo(function VirtualizedMarkdownConte
 
   // Split content into chunks (memoized — raw string split is cheap).
   const chunks = useMemo(() => splitMarkdownIntoChunks(content), [content]);
+  const sliceStarts = useMemo(() => {
+    const starts: number[] = [];
+    let cursor = 0;
+    for (const chunk of chunks) {
+      starts.push(cursor);
+      cursor += chunk.length;
+    }
+    return starts;
+  }, [chunks]);
 
   // Precompute estimated heights per chunk.
   const estimatedHeights = useMemo(
@@ -286,15 +313,28 @@ export const VirtualizedMarkdownContent = memo(function VirtualizedMarkdownConte
   });
 
   // Reset virtualizer when content changes (new document loaded).
+  // Citation deeplinks own scroll position — do not yank to top.
   useEffect(() => {
-    if (scrollElement) {
-      virtualizer.scrollToOffset(0);
-    }
-  }, [content, virtualizer, scrollElement]);
+    if (!scrollElement || highlightLineRange) return;
+    virtualizer.scrollToOffset(0);
+  }, [content, virtualizer, scrollElement, highlightLineRange]);
+
+  useEffect(() => {
+    if (!scrollElement || !highlightLineRange || chunks.length === 0) return;
+    const index = findChunkIndexForRange(chunks, content, highlightLineRange);
+    virtualizer.scrollToIndex(index, { align: 'center' });
+  }, [scrollElement, highlightLineRange, chunks, content, virtualizer]);
 
   // Below threshold — pass content through directly (no virtualization).
   if (chunks.length <= 1) {
-    return <>{children(content)}</>;
+    return (
+      <>
+        {children(content, {
+          sliceStart: 0,
+          highlightLineRange,
+        })}
+      </>
+    );
   }
 
   const virtualItems = virtualizer.getVirtualItems();
@@ -326,7 +366,21 @@ export const VirtualizedMarkdownContent = memo(function VirtualizedMarkdownConte
               ref={virtualizer.measureElement}
             >
               <VirtualizedChunk chunk={chunks[virtualRow.index]}>
-                {children}
+                {(chunkContent) => {
+                  const sliceStart = sliceStarts[virtualRow.index] ?? 0;
+                  const localRange = highlightLineRange
+                    ? localHighlightForSlice(
+                        chunkContent,
+                        sliceStart,
+                        content,
+                        highlightLineRange,
+                      )
+                    : undefined;
+                  return children(chunkContent, {
+                    sliceStart,
+                    highlightLineRange: localRange,
+                  });
+                }}
               </VirtualizedChunk>
             </div>
           ))}

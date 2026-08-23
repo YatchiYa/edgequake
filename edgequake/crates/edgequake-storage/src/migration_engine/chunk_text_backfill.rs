@@ -200,6 +200,20 @@ impl BackfillJob for ChunkTextBackfillJob {
                     .and_then(Value::as_i64)
                     .map(|v| v as i32),
                 metadata: json!({ "legacy_chunk_key": key }),
+                page_start: value
+                    .get("page_start")
+                    .and_then(Value::as_i64)
+                    .map(|v| v as i32),
+                page_end: value
+                    .get("page_end")
+                    .and_then(Value::as_i64)
+                    .map(|v| v as i32)
+                    .or_else(|| {
+                        value
+                            .get("page_start")
+                            .and_then(Value::as_i64)
+                            .map(|v| v as i32)
+                    }),
             });
         }
         if orphaned > 0 {

@@ -123,16 +123,16 @@ export function ReconfigureWorkspaceWizard({
       // that makes Apply clear overrides and drop picker selections.
       const advanced =
         stored.modelPicks?.advancedOpen ??
-        prefill.advancedOpen ||
-        !hydrated.useServerDefaults ||
-        Boolean(
-          stored.modelPicks?.llm ||
-            stored.modelPicks?.embedding ||
-            stored.modelPicks?.vision ||
-            prefill.llm ||
-            prefill.embedding ||
-            prefill.vision,
-        );
+        (prefill.advancedOpen ||
+          !hydrated.useServerDefaults ||
+          Boolean(
+            stored.modelPicks?.llm ||
+              stored.modelPicks?.embedding ||
+              stored.modelPicks?.vision ||
+              prefill.llm ||
+              prefill.embedding ||
+              prefill.vision,
+          ));
       setDraft({
         ...hydrated,
         useServerDefaults: resolveHydratedUseServerDefaults({

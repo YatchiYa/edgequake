@@ -49,8 +49,9 @@ pub use chunk_budget::{
 };
 pub use chunks::{
     append_mm_chunks_to_text, build_mm_chunks_from_manifest, collect_mm_chunks_from_manifest,
-    enrich_processed_text_with_mm_chunks, mm_chunks_enabled, render_mm_chunk, MmChunkBuildError,
-    MultimodalChunk,
+    enrich_processed_text_with_mm_chunks, enrich_processed_text_with_mm_report,
+    filter_mm_chunks_already_inlined, mm_asset_already_inlined, mm_chunks_enabled, render_mm_chunk,
+    MmChunkBuildError, MmTextEnrichment, MultimodalChunk,
 };
 pub use chunks_store::{load_mm_chunks, mm_chunks_key, persist_mm_chunks};
 pub use context::{

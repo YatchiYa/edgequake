@@ -22,13 +22,7 @@ pub fn markdown_pack_enabled() -> bool {
 }
 
 pub(crate) fn markdown_pack_flag(raw: Option<&str>) -> bool {
-    match raw {
-        Some(v) => !matches!(
-            v.trim().to_ascii_lowercase().as_str(),
-            "0" | "false" | "off" | "no"
-        ),
-        None => true,
-    }
+    super::env_flags::env_flag_default_on(raw)
 }
 
 /// Token min/p50/max + heading-only orphan count (LAW-125-10).
@@ -74,11 +68,34 @@ impl ChunkTokenStats {
         }
     }
 
-    /// LAW-124-8 / LAW-125-10: counts only — never chunk text.
+    /// LAW-124-8 / LAW-125-10 / LAW-135-10: counts only — never chunk text.
     pub fn observation_output_json(&self, chunk_count: usize) -> String {
+        self.observation_output_json_full(chunk_count, None, false)
+    }
+
+    /// Include `fill_p50` (p50/budget) and whether MM sidecars were concatenated.
+    pub fn observation_output_json_full(
+        &self,
+        chunk_count: usize,
+        budget: Option<usize>,
+        mm_sidecar_appended: bool,
+    ) -> String {
+        let fill = budget
+            .filter(|b| *b > 0)
+            .map(|b| self.token_p50 as f64 / b as f64);
+        let fill_json = match fill {
+            Some(f) => format!("{f:.4}"),
+            None => "null".to_string(),
+        };
         format!(
-            "{{\"chunks\":{},\"token_min\":{},\"token_p50\":{},\"token_max\":{},\"orphan_heading_chunks\":{}}}",
-            chunk_count, self.token_min, self.token_p50, self.token_max, self.orphan_heading_chunks
+            "{{\"chunks\":{},\"token_min\":{},\"token_p50\":{},\"token_max\":{},\"orphan_heading_chunks\":{},\"fill_p50\":{},\"mm_sidecar_appended\":{}}}",
+            chunk_count,
+            self.token_min,
+            self.token_p50,
+            self.token_max,
+            self.orphan_heading_chunks,
+            fill_json,
+            if mm_sidecar_appended { "true" } else { "false" }
         )
     }
 }
@@ -91,10 +108,23 @@ pub fn ingest_chunking_observation<'a, I>(
 where
     I: IntoIterator<Item = (usize, &'a str)>,
 {
+    ingest_chunking_observation_full(content_chars, pairs, None, false)
+}
+
+/// Like [`ingest_chunking_observation`] with fill budget and MM sidecar flag (SPEC-135).
+pub fn ingest_chunking_observation_full<'a, I>(
+    content_chars: usize,
+    pairs: I,
+    budget: Option<usize>,
+    mm_sidecar_appended: bool,
+) -> (String, String, ChunkTokenStats)
+where
+    I: IntoIterator<Item = (usize, &'a str)>,
+{
     let pairs: Vec<(usize, &str)> = pairs.into_iter().collect();
     let dist = ChunkTokenStats::from_pairs(pairs.iter().copied());
     let input = format!("{{\"chars\":{content_chars}}}");
-    let output = dist.observation_output_json(pairs.len());
+    let output = dist.observation_output_json_full(pairs.len(), budget, mm_sidecar_appended);
     (input, output, dist)
 }
 

@@ -110,7 +110,7 @@ export interface QueryContext {
      * Enables deep links to the exact page: navigate to `/documents/{id}#page={page_start}`
      */
     page_start?: number;
-    /** PDF page number where this chunk ends. Always equals page_start. */
+    /** PDF page number where this chunk ends. May exceed page_start (SPEC-135 span). */
     page_end?: number;
   }>;
   entities: Array<{

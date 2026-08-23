@@ -3,13 +3,16 @@
 
 import { cn } from '@/lib/utils';
 import { ChevronDown } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface CollapsibleSectionProps {
   title: string;
   icon?: React.ReactNode;
   children: React.ReactNode;
   defaultOpen?: boolean;
+  /** Force open (e.g. citation deeplink selected a chunk). */
+  forceOpen?: boolean;
+  testId?: string;
 }
 
 export function CollapsibleSection({
@@ -17,11 +20,17 @@ export function CollapsibleSection({
   icon,
   children,
   defaultOpen = false,
+  forceOpen = false,
+  testId,
 }: CollapsibleSectionProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [isOpen, setIsOpen] = useState(defaultOpen || forceOpen);
+
+  useEffect(() => {
+    if (forceOpen) setIsOpen(true);
+  }, [forceOpen]);
 
   return (
-    <div className="border rounded-md bg-card overflow-hidden">
+    <div className="border rounded-md bg-card overflow-hidden" data-testid={testId}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
@@ -41,15 +50,17 @@ export function CollapsibleSection({
           )}
         />
       </button>
-      
+
       <div
         className={cn(
-          'overflow-hidden transition-all duration-300 ease-in-out',
-          isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
+          'grid transition-[grid-template-rows] duration-300 ease-in-out',
+          isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
         )}
       >
-        <div className="px-3 pb-3 pt-1.5">
-          {children}
+        <div className="overflow-hidden">
+          <div className="px-3 pb-3 pt-1.5">
+            {children}
+          </div>
         </div>
       </div>
     </div>
