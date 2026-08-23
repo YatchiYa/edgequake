@@ -117,9 +117,13 @@ make kill-app && make backend-bg   # or: make dev
 # Docker stack: LANGFUSE_* is mapped in compose (quickstart / docker / api-only / prebuilt)
 #
 # Local Langfuse v4 (optional, not started by make dev):
-#   make langfuse-up          # UI http://localhost:3310  (isolated Compose project)
+#   make dev-langfuse / make dev-bg-langfuse
+#     full EdgeQuake stack + isolated Langfuse v4 (UI http://localhost:3310)
+#     injects Compose init keys into the backend (overrides .env Cloud/placeholder)
+#   make langfuse-up          # UI only
 #   make langfuse-smoke       # GET /api/public/projects with headless init keys
-#   make spec124-langfuse-e2e # Settings + sessions vs localhost (backend must use local keys)
+#   make spec124-langfuse-e2e # one-command: Langfuse + stack + Settings/sessions Playwright
+#     Sessions test needs a working /api/v1/query (Ollama or OPENAI_API_KEY)
 # Headless keys (must match edgequake/docker/docker-compose.langfuse.yml):
 #   LANGFUSE_PUBLIC_KEY=pk-lf-edgequake-local
 #   LANGFUSE_SECRET_KEY=sk-lf-edgequake-local-dev
@@ -127,6 +131,7 @@ make kill-app && make backend-bg   # or: make dev
 #   LANGFUSE_PROJECT_ID=edgequake-local
 # Login: dev@example.com / edgequake-local-dev
 # make langfuse-down keeps volumes; make langfuse-reset CONFIRM=yes wipes them.
+# make stop does not tear Langfuse down.
 ```
 
 `make dev` / `backend-bg` / `backend-dev` call `APPLY_LANGFUSE_ENV`: source repo-root `.env`, apply Make/CLI overrides only when the shell var is empty (so bash-sourced values are not clobbered by Make-quoted includes), strip matching quotes, and never force `LANGFUSE_*=""`. Look for `LANGFUSE_* keys detected` in the make output.

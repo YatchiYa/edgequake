@@ -32,8 +32,8 @@ test.describe("SPEC-124 Langfuse settings", () => {
     expect(body).toHaveProperty("config_requirements");
     expect(JSON.stringify(body)).not.toMatch(/sk-lf-[A-Za-z0-9]/);
 
-    await waitForAppReady(page);
     await page.goto("/settings");
+    await waitForAppReady(page);
     await expect(page.getByTestId("langfuse-settings-card")).toBeVisible({
       timeout: 30_000,
     });

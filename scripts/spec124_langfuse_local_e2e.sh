@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPEC-124: live E2E against local Langfuse Docker + EdgeQuake backend.
-# Requires: make langfuse-up, backend with LANGFUSE_BASE_URL=http://localhost:3310
-#           and the Compose init keys, frontend up.
+# Preferred: make spec124-langfuse-e2e (starts Langfuse + stack with init keys).
+# Manual: make dev-bg-langfuse, then this script.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,7 +27,7 @@ LANGFUSE_PORT="${PORT}" LANGFUSE_UI_URL="${LF_BASE}" \
   "${ROOT}/scripts/langfuse_local_smoke.sh"
 
 if ! curl -sf "${BACKEND_URL}/health" >/dev/null; then
-  echo "✗ EdgeQuake backend not healthy at ${BACKEND_URL} (make backend-bg / make dev-bg)" >&2
+  echo "✗ EdgeQuake backend not healthy at ${BACKEND_URL} (make dev-bg-langfuse / make spec124-langfuse-e2e)" >&2
   exit 1
 fi
 
@@ -36,18 +36,38 @@ if ! curl -sf "${FRONTEND_URL}/" 2>/dev/null | grep -qi EdgeQuake; then
   exit 1
 fi
 
+# Next.js compiles routes on first hit; wait until /settings is a real app shell.
+ready_fe=0
+for _ in $(seq 1 30); do
+  html="$(curl -sf "${FRONTEND_URL}/settings" 2>/dev/null || true)"
+  if printf '%s' "${html}" | grep -qiE 'EdgeQuake|<main|langfuse'; then
+    ready_fe=1
+    break
+  fi
+  sleep 2
+done
+if [ "${ready_fe}" != "1" ]; then
+  echo "✗ Frontend /settings did not become ready at ${FRONTEND_URL}" >&2
+  exit 1
+fi
+
 curl -sf "${BACKEND_URL}/api/v1/settings/langfuse" > /tmp/eq-langfuse-settings.json
 python3 - "${LF_BASE}" "${EXPECT_ID}" <<'PY'
 import json, sys
-with open("/tmp/eq-langfuse-settings.json", encoding="utf-8") as f:
-    body = json.load(f)
+raw = open("/tmp/eq-langfuse-settings.json", encoding="utf-8").read()
+# Placeholders in env_snippet are `sk-lf-...` — only reject real-looking secrets.
+if __import__("re").search(r"sk-lf-[A-Za-z0-9]", raw):
+    raise SystemExit("settings JSON leaked a Langfuse secret (sk-lf-)")
+body = json.loads(raw)
 lf_base = sys.argv[1].rstrip("/")
 expect_id = sys.argv[2]
 ui = (body.get("ui_url") or body.get("base_url") or "").rstrip("/")
+if "cloud.langfuse.com" in ui:
+    raise SystemExit(f"backend ui_url={ui!r} points at Langfuse Cloud, not local {lf_base!r}")
 if ui != lf_base:
     raise SystemExit(
         f"backend ui_url={ui!r} is not local Langfuse {lf_base!r}. "
-        "Set LANGFUSE_BASE_URL + init keys in .env and restart the backend."
+        "Run make spec124-langfuse-e2e (or make dev-bg-langfuse) so init keys override .env."
     )
 if not body.get("export_active"):
     raise SystemExit("export_active=false — keys missing or otel feature off")

@@ -30,6 +30,7 @@ test.describe("SPEC-124 Langfuse sessions", () => {
   test("two queries with same session_id surface in Langfuse when export active", async ({
     request,
   }) => {
+    test.setTimeout(360_000);
     const statusRes = await request.get("/api/v1/settings/langfuse");
     expect(statusRes.ok()).toBeTruthy();
     const status = (await statusRes.json()) as {

@@ -136,7 +136,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
 	cd edgequake && cargo release $$VERSION --workspace --no-publish --execute
 
 
-.PHONY: help install dev dev-auth dev-bg dev-auth-bg dev-memory kill-app stop clean build test lint format sync-dev-ports \
+.PHONY: help install dev dev-auth dev-bg dev-auth-bg dev-langfuse dev-bg-langfuse dev-memory kill-app stop clean build test lint format sync-dev-ports \
         ops17-smoke spec046-acc data-access-perf-matrix data-access-perf-matrix-release data-access-perf-matrix-prod data-access-perf-capacity-ladder ann-scale-battle ceiling-proof recall-pareto dedicated-midscale diskann-battle diskann-recall-pareto diskann-rescore-smoke filtered-recall-gate precision-layers-gate binary-quantize-bakeoff filtered-diskann-labels-bakeoff midscale-quantize-labels tiny-slice-exact-gate serving-view-check push-scale-ladder wave2-greenfield-env product-limits-check compare-eq-perf \
         postgres-image-build-pg18-vectorscale \
         dev-pg16 dev-pg17 dev-pg18 dev-bg-pg16 dev-bg-pg17 dev-bg-pg18 \
@@ -206,6 +206,9 @@ LANGFUSE_UI_URL := http://localhost:$(LANGFUSE_PORT)
 LANGFUSE_LOCAL_PK := pk-lf-edgequake-local
 LANGFUSE_LOCAL_SK := sk-lf-edgequake-local-dev
 LANGFUSE_LOCAL_PROJECT_ID := edgequake-local
+# 1 = start isolated Langfuse v4 and force Compose init keys into the backend
+# (overrides .env Cloud/placeholder keys). Used by make dev-langfuse / spec124-langfuse-e2e.
+WITH_LANGFUSE ?=
 
 # SPEC-042: PostgreSQL major profile (pg16|pg17|pg18). PG18 is recommended for new dev installs.
 # Override via: make dev-pg17 | EQ_POSTGRES_PROFILE=pg16 make dev | .env EQ_POSTGRES_PROFILE=pg17
@@ -434,6 +437,29 @@ else \
 fi
 endef
 
+# SPEC-124: force Compose headless init keys (wins over .env Cloud/placeholder).
+define APPLY_LANGFUSE_LOCAL_ENV
+export LANGFUSE_PUBLIC_KEY="$(LANGFUSE_LOCAL_PK)"; \
+export LANGFUSE_SECRET_KEY="$(LANGFUSE_LOCAL_SK)"; \
+export LANGFUSE_BASE_URL="$(LANGFUSE_UI_URL)"; \
+export LANGFUSE_HOST="$(LANGFUSE_UI_URL)"; \
+export LANGFUSE_PROJECT_ID="$(LANGFUSE_LOCAL_PROJECT_ID)"; \
+export EDGEQUAKE_LANGFUSE_ENABLED=1; \
+echo "$(YELLOW)→ WITH_LANGFUSE=1 — forcing local Langfuse keys ($(LANGFUSE_UI_URL))$(RESET)"
+endef
+
+define APPLY_LANGFUSE_ENV_EFFECTIVE
+$(APPLY_LANGFUSE_ENV); \
+if [ "$(WITH_LANGFUSE)" = "1" ]; then \
+	$(APPLY_LANGFUSE_LOCAL_ENV); \
+fi
+endef
+
+# Exit 0 when GET /api/v1/settings/langfuse is export_active against local UI.
+define LANGFUSE_LOCAL_BACKEND_WIRED
+curl -sf "$(BACKEND_URL)/api/v1/settings/langfuse" | python3 -c 'import json,sys; b=json.load(sys.stdin); ui=(b.get("ui_url") or b.get("base_url") or "").rstrip("/"); want=sys.argv[1].rstrip("/"); sys.exit(0 if b.get("export_active") and ui==want else 1)' "$(LANGFUSE_UI_URL)"
+endef
+
 # Shared exports appended to /tmp/edgequake-start.sh by backend-bg.
 # SPEC-047: also pin VLM + chart modality so bench restarts do not silently drop MV-32.
 define BACKEND_STABILITY_EXPORTS
@@ -534,11 +560,13 @@ help: ## Show this help message
 	@echo "$(BOLD)$(BLUE)🚀 Quick Start$(RESET)"
 	@echo "  $(GREEN)make install$(RESET)      Install all dependencies"
 	@echo "  $(GREEN)make dev$(RESET)          Start full development stack (PostgreSQL PG18 — default)"
+	@echo "  $(GREEN)make dev-langfuse$(RESET) Full stack + local Langfuse v4 (UI :3310; injects init keys)"
 	@echo "  $(GREEN)make dev-pg16$(RESET)     Start dev stack with PostgreSQL 16 (legacy)"
 	@echo "  $(GREEN)make dev-pg17$(RESET)     Start dev stack with PostgreSQL 17"
 	@echo "  $(GREEN)make dev-pg18$(RESET)     Start dev stack with PostgreSQL 18 (same as make dev)"
 	@echo "  $(GREEN)make dev-auth$(RESET)     Start full development stack with authentication enabled"
 	@echo "  $(GREEN)make dev-bg$(RESET)       Start full stack in BACKGROUND without authentication"
+	@echo "  $(GREEN)make dev-bg-langfuse$(RESET) Background stack + local Langfuse v4 (UI :3310)"
 	@echo "  $(GREEN)make dev-bg-pg16$(RESET)  Background dev with PostgreSQL 16"
 	@echo "  $(GREEN)make dev-bg-pg17$(RESET)  Background dev with PostgreSQL 17"
 	@echo "  $(GREEN)make dev-bg-pg18$(RESET)  Background dev with PostgreSQL 18"
@@ -600,7 +628,7 @@ help: ## Show this help message
 	@echo "  $(GREEN)make langfuse-up$(RESET)             Start local Langfuse v4 (UI :3310, optional)"
 	@echo "  $(GREEN)make langfuse-down$(RESET)           Stop local Langfuse (keeps volumes)"
 	@echo "  $(GREEN)make langfuse-smoke$(RESET)          Health + GET /api/public/projects"
-	@echo "  $(GREEN)make spec124-langfuse-e2e$(RESET)    Live Settings + sessions vs local Langfuse"
+	@echo "  $(GREEN)make spec124-langfuse-e2e$(RESET)    One-command live Settings + sessions vs local Langfuse (starts stack; needs Ollama or OPENAI_API_KEY)"
 	@echo ""
 	@echo "$(BOLD)$(BLUE)📦 SDKs$(RESET)"
 	@echo "  $(GREEN)make sdk-rust-build$(RESET)    Build Rust SDK (sdks/rust)"
@@ -739,6 +767,10 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	@echo ""
 	@echo "$(YELLOW)→ Ensuring PostgreSQL availability (profile: $(EQ_POSTGRES_PROFILE))...$(RESET)"
 	@$(MAKE) db-start --no-print-directory
+	@if [ "$(WITH_LANGFUSE)" = "1" ]; then \
+		echo "$(YELLOW)→ Starting local Langfuse v4 (WITH_LANGFUSE=1)...$(RESET)"; \
+		$(MAKE) langfuse-up --no-print-directory; \
+	fi
 	@echo ""
 	@echo "  $(BLUE)PostgreSQL$(RESET): $(EQ_POSTGRES_PROFILE) (see extension-pins.sh)"
 	@echo "  $(BLUE)Backend$(RESET):  $(BACKEND_URL)"
@@ -753,6 +785,9 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 		echo "  $(BLUE)Provider$(RESET): OpenAI"; \
 	else \
 		echo "  $(BLUE)Provider$(RESET): Ollama (http://localhost:11434)"; \
+	fi
+	@if [ "$(WITH_LANGFUSE)" = "1" ]; then \
+		echo "  $(BLUE)Langfuse$(RESET): $(LANGFUSE_UI_URL)  (login: dev@example.com / edgequake-local-dev)"; \
 	fi
 	@echo ""
 	@DEV_LOCK="/tmp/edgequake-make-dev.lock"; \
@@ -772,6 +807,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	BACKEND_PID=""; \
 	FRONTEND_PID=""; \
 	$(LOAD_EFF_DB_URL); \
+	$(APPLY_LANGFUSE_ENV_EFFECTIVE); \
 	$(VISIBLE_MIGRATE_STEP); \
 	for BPID in $$(lsof -nP -iTCP:$$BACKEND_PORT -sTCP:LISTEN -t 2>/dev/null || true); do \
 		echo "$(YELLOW)→ Freeing port $$BACKEND_PORT (PID $$BPID) before backend start$(RESET)"; \
@@ -779,7 +815,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	done; \
 	sleep 0.3; \
 	echo "$(YELLOW)→ Starting backend on port $$BACKEND_PORT (DATABASE_URL port: $$(printf '%s' $$_EFF_DB_URL | sed -E 's|.*:([0-9]+)/.*|\1|'))...$(RESET)"; \
-	$(APPLY_LANGFUSE_ENV); \
+	$(APPLY_LANGFUSE_ENV_EFFECTIVE); \
 	if [ -n "$(OPENAI_API_KEY)" ]; then \
 		(cd $(BACKEND_DIR) && \
 			PORT="$$BACKEND_PORT" \
@@ -850,6 +886,12 @@ $(foreach p,$(PG_PROFILES),$(eval $(call PG_DB_START_RULE,$(p))))
 dev-auth: ## Start full development stack with authentication enabled
 	@$(MAKE) dev --no-print-directory DEV_AUTH_ENABLED=true DEV_DISABLE_DEMO_LOGIN=true
 
+dev-langfuse: ## Start full development stack with local Langfuse v4 (UI :3310)
+	@$(MAKE) dev --no-print-directory WITH_LANGFUSE=1
+
+dev-bg-langfuse: ## Start background stack with local Langfuse v4 (UI :3310)
+	@$(MAKE) dev-bg --no-print-directory WITH_LANGFUSE=1
+
 dev-frontend: ## Start only frontend dev server
 	@$(MAKE) frontend-dev --no-print-directory
 
@@ -885,12 +927,16 @@ dev-bg: check-deps check-ports ## Start full development stack in BACKGROUND wit
 	fi
 	@echo "$(YELLOW)→ Ensuring PostgreSQL availability (profile: $(EQ_POSTGRES_PROFILE))...$(RESET)"
 	@$(MAKE) db-wait --no-print-directory
+	@if [ "$(WITH_LANGFUSE)" = "1" ]; then \
+		echo "$(YELLOW)→ Starting local Langfuse v4 (WITH_LANGFUSE=1)...$(RESET)"; \
+		$(MAKE) langfuse-up --no-print-directory; \
+	fi
 	@echo ""
-	@if curl -fsS "$(BACKEND_URL)/health" >/dev/null 2>&1; then \
+	@if curl -fsS "$(BACKEND_URL)/health" >/dev/null 2>&1 && [ "$(WITH_LANGFUSE)" != "1" ]; then \
 		echo "$(GREEN)✓ Backend already healthy on port $(BACKEND_PORT)$(RESET)"; \
 	else \
 		echo "$(YELLOW)→ Starting backend in background...$(RESET)"; \
-		$(MAKE) backend-bg --no-print-directory DEV_AUTH_ENABLED="$(DEV_AUTH_ENABLED)"; \
+		$(MAKE) backend-bg --no-print-directory DEV_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" WITH_LANGFUSE="$(WITH_LANGFUSE)"; \
 	fi
 	@echo ""
 	@echo "$(YELLOW)→ Waiting for backend to start...$(RESET)"
@@ -958,6 +1004,9 @@ dev-bg: check-deps check-ports ## Start full development stack in BACKGROUND wit
 	else \
 		echo "  $(BLUE)LLM Provider$(RESET): ollama (gemma4:latest)"; \
 		echo "  $(BLUE)Embedding$(RESET): ollama (embeddinggemma:latest, 768d)"; \
+	fi
+	@if [ "$(WITH_LANGFUSE)" = "1" ]; then \
+		echo "  $(BLUE)Langfuse$(RESET): $(LANGFUSE_UI_URL)  (login: dev@example.com / edgequake-local-dev)"; \
 	fi
 	@echo ""
 	@echo "  Use $(BOLD)make status$(RESET) to check service health"
@@ -1103,9 +1152,9 @@ backend-dev: db-wait ## Run backend in development mode with PostgreSQL (uses .e
 	@if [ -n "$(EDGEQUAKE_DEFAULT_LLM_PROVIDER)" ]; then \
 		echo "$(GREEN)✓ LLM Provider: $(EDGEQUAKE_DEFAULT_LLM_PROVIDER) ($(EDGEQUAKE_DEFAULT_LLM_MODEL))$(RESET)"; \
 	fi
-	@$(LOAD_EFF_DB_URL); \
+	@	$(LOAD_EFF_DB_URL); \
 	$(VISIBLE_MIGRATE_STEP); \
-	$(APPLY_LANGFUSE_ENV); \
+	$(APPLY_LANGFUSE_ENV_EFFECTIVE); \
 	cd $(BACKEND_DIR) && \
 		PORT="$(BACKEND_PORT)" \
 		DATABASE_URL="$$_EFF_DB_URL" \
@@ -1132,9 +1181,9 @@ backend-db: db-wait ## Run backend with PostgreSQL storage (uses .env configurat
 	@if [ -n "$(EDGEQUAKE_DEFAULT_LLM_PROVIDER)" ]; then \
 		echo "$(GREEN)✓ LLM Provider: $(EDGEQUAKE_DEFAULT_LLM_PROVIDER) ($(EDGEQUAKE_DEFAULT_LLM_MODEL))$(RESET)"; \
 	fi
-	@$(LOAD_EFF_DB_URL); \
+	@	$(LOAD_EFF_DB_URL); \
 	$(VISIBLE_MIGRATE_STEP); \
-	$(APPLY_LANGFUSE_ENV); \
+	$(APPLY_LANGFUSE_ENV_EFFECTIVE); \
 	cd $(BACKEND_DIR) && \
 		PORT="$(BACKEND_PORT)" \
 		DATABASE_URL="$$_EFF_DB_URL" \
@@ -1172,13 +1221,25 @@ backend-memory: ## DEPRECATED - In-memory storage removed, use backend-dev with 
 	@exit 1
 
 backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL (respects MISTRAL_API_KEY, OPENAI_API_KEY if set)
+	@if [ "$(WITH_LANGFUSE)" = "1" ]; then \
+		$(MAKE) langfuse-up --no-print-directory; \
+	fi
 	@if curl -fsS "$(BACKEND_URL)/health" >/dev/null 2>&1; then \
 		_llm_code=$$(curl -s -o /dev/null -w '%{http_code}' "$(BACKEND_URL)/api/v1/settings/llm-defaults" 2>/dev/null || echo 000); \
-		if [ "$$_llm_code" = "200" ] || [ "$$_llm_code" = "401" ]; then \
-			echo "$(GREEN)✓ Backend already healthy on port $(BACKEND_PORT)$(RESET)"; \
-			exit 0; \
+		_langfuse_ok=1; \
+		if [ "$(WITH_LANGFUSE)" = "1" ]; then \
+			_langfuse_ok=0; \
+			if $(LANGFUSE_LOCAL_BACKEND_WIRED); then _langfuse_ok=1; fi; \
 		fi; \
-		echo "$(YELLOW)⚠ Backend on port $(BACKEND_PORT) is stale (llm-defaults HTTP $$_llm_code) — restarting...$(RESET)"; \
+		if [ "$$_llm_code" = "200" ] || [ "$$_llm_code" = "401" ]; then \
+			if [ "$$_langfuse_ok" = "1" ]; then \
+				echo "$(GREEN)✓ Backend already healthy on port $(BACKEND_PORT)$(RESET)"; \
+				exit 0; \
+			fi; \
+			echo "$(YELLOW)⚠ Backend healthy but not wired to local Langfuse ($(LANGFUSE_UI_URL)) — restarting...$(RESET)"; \
+		else \
+			echo "$(YELLOW)⚠ Backend on port $(BACKEND_PORT) is stale (llm-defaults HTTP $$_llm_code) — restarting...$(RESET)"; \
+		fi; \
 		if [ -f /tmp/edgequake-backend.pid ]; then kill -9 $$(cat /tmp/edgequake-backend.pid) 2>/dev/null || true; fi; \
 		pkill -9 -f "target/debug/edgequake" 2>/dev/null || true; \
 		pkill -9 -f "target/release/edgequake" 2>/dev/null || true; \
@@ -1189,8 +1250,8 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 	@# Read the effective DATABASE_URL resolved by db-start (may differ in port
 	@# when another PostgreSQL occupies the default 5432).
 	@$(LOAD_EFF_DB_URL); \
+	$(APPLY_LANGFUSE_ENV_EFFECTIVE); \
 	$(VISIBLE_MIGRATE_STEP); \
-	$(APPLY_LANGFUSE_ENV); \
 	set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
 	for BPID in $$(lsof -nP -iTCP:$${BACKEND_PORT:-$(BACKEND_PORT)} -sTCP:LISTEN -t 2>/dev/null || true); do \
 		echo "$(YELLOW)→ Freeing port $${BACKEND_PORT:-$(BACKEND_PORT)} (PID $$BPID) before backend-bg start$(RESET)"; \
@@ -2007,7 +2068,8 @@ langfuse-up: ## Start local Langfuse v4 (UI http://localhost:3310)
 		exit 1; \
 	fi
 	@echo "$(GREEN)✓ Langfuse UI $(LANGFUSE_UI_URL)$(RESET)"
-	@echo "  Point repo-root .env at local keys, then restart the backend:"
+	@echo "  One-command stack: $(GREEN)make dev-langfuse$(RESET) / $(GREEN)make dev-bg-langfuse$(RESET) (injects init keys; no .env edit)"
+	@echo "  Or point repo-root .env at local keys, then restart the backend:"
 	@echo "    LANGFUSE_PUBLIC_KEY=$(LANGFUSE_LOCAL_PK)"
 	@echo "    LANGFUSE_SECRET_KEY=$(LANGFUSE_LOCAL_SK)"
 	@echo "    LANGFUSE_BASE_URL=$(LANGFUSE_UI_URL)"
@@ -2048,9 +2110,12 @@ langfuse-reset: ## Delete local Langfuse volumes (CONFIRM=yes required)
 	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse.yml --project-name $(LANGFUSE_COMPOSE_PROJECT) down -v
 	@echo "$(GREEN)✓ Langfuse volumes removed$(RESET)"
 
-spec124-langfuse-e2e: langfuse-up ## Live Settings + sessions E2E vs local Langfuse Docker
+spec124-langfuse-e2e: ## One-command live Settings + sessions E2E vs local Langfuse (starts stack)
+	@$(MAKE) langfuse-up --no-print-directory
+	@$(MAKE) dev-bg --no-print-directory WITH_LANGFUSE=1
+	@$(MAKE) langfuse-smoke --no-print-directory
 	@chmod +x $(ROOT_DIR)/scripts/spec124_langfuse_local_e2e.sh
-	@$(APPLY_LANGFUSE_ENV); \
+	@$(APPLY_LANGFUSE_LOCAL_ENV); \
 	LANGFUSE_PORT="$(LANGFUSE_PORT)" LANGFUSE_UI_URL="$(LANGFUSE_UI_URL)" \
 		LANGFUSE_LOCAL_PK="$(LANGFUSE_LOCAL_PK)" LANGFUSE_LOCAL_SK="$(LANGFUSE_LOCAL_SK)" \
 		LANGFUSE_LOCAL_PROJECT_ID="$(LANGFUSE_LOCAL_PROJECT_ID)" \

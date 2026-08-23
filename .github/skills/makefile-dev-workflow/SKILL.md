@@ -43,6 +43,16 @@ make dev
 
 Starts PostgreSQL, Rust backend, and Next.js frontend in parallel. Displays URLs for all services.
 
+### Start full stack with local Langfuse v4
+
+```bash
+make dev-langfuse          # foreground
+make dev-bg-langfuse       # background (agentic)
+make spec124-langfuse-e2e  # one-command live Settings + sessions (needs Ollama or OPENAI_API_KEY)
+```
+
+Starts isolated Langfuse (UI http://localhost:3310) plus the EdgeQuake stack, and injects Compose init keys into the backend (overrides Cloud/placeholder keys in `.env`). `make stop` does not tear Langfuse down (`make langfuse-down`).
+
 ### Stop all services
 
 ```bash

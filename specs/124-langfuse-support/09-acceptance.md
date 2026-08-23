@@ -21,7 +21,7 @@
 | A15 | Honest session Open link (not fake TraceId) | WebUI `LangfuseOpenSessionLink` + vitest href |
 | A16 | Tenant/workspace slugs additive to GUIDs | [15-pipeline-observe-and-slugs.md](15-pipeline-observe-and-slugs.md) + InMemory |
 | A17 | Query pipeline meta + ingest parse/vision/chunk stages | I8 + `make spec124-proof` |
-| A18 | Local Langfuse v4 Docker (optional) + smoke/E2E | `make langfuse-up` / `make spec124-langfuse-e2e` |
+| A18 | Local Langfuse v4 Docker (optional) + smoke/E2E | `make langfuse-up` / `make dev-langfuse` / `make spec124-langfuse-e2e` |
 
 ## Partner acceptance script
 
@@ -34,7 +34,7 @@
 7. Ingest a document → `ingest.document` / `pipeline_chunk_extraction` / glean generations Input/Output non-null
 8. Confirm EdgeQuake did not send cost attrs (CI denylist); Langfuse may still show computed cost from model pricing
 9. `make spec124-proof` passes without Langfuse credentials
-10. Optional local Docker: `make langfuse-up` then point `.env` at `http://localhost:3310` + init keys, restart backend, `make spec124-langfuse-e2e`
+10. Optional local Docker: `make spec124-langfuse-e2e` (or `make dev-bg-langfuse` then the same target). No `.env` edit required.
 
 ## Honest gaps allowed in v1
 
