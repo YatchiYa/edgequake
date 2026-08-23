@@ -113,7 +113,7 @@ describe('reconfigure persist payload', () => {
 });
 
 describe('embedding live catalog onChange contract', () => {
-  it('buildWorkspaceUpdatePayload accepts dimension 0 from live catalog miss', () => {
+  it('buildWorkspaceUpdatePayload resolves dimension when live catalog miss sent 0', () => {
     const payload = buildWorkspaceUpdatePayload({
       useServerDefaults: false,
       llm: { provider: 'mistral', model: 'mistral-small-latest' },
@@ -128,6 +128,6 @@ describe('embedding live catalog onChange contract', () => {
       entityTypesStrict: true,
     });
     expect(payload.embedding_model).toBe('mistral-embed-live');
-    expect(payload.embedding_dimension).toBe(0);
+    expect(payload.embedding_dimension).toBeGreaterThan(0);
   });
 });

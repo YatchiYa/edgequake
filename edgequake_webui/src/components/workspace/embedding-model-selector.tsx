@@ -10,6 +10,7 @@ import {
   type ModelPickerValue,
 } from '@/components/models/model-picker-panel';
 import { useEmbeddingModels } from '@/hooks/use-providers';
+import { resolveEmbeddingDimension } from '@/lib/onboarding/resolve-embedding-dimension';
 import { cn } from '@/lib/utils';
 import { Brain, Loader2 } from 'lucide-react';
 
@@ -82,11 +83,12 @@ export function EmbeddingModelSelector({
     const match = embeddingData.models.find(
       (m) => m.provider === v.provider && m.name === v.model,
     );
-    // Always emit — live catalog hits may not be in the static list (SPEC reconfigure persist).
-    const dimension =
-      match?.dimension ??
-      options.find((o) => o.fullId === v.fullId)?.dimension ??
-      0;
+    const catalogDim = match?.dimension ?? options.find((o) => o.fullId === v.fullId)?.dimension;
+    const dimension = resolveEmbeddingDimension({
+      provider: v.provider,
+      model: v.model,
+      catalogDimension: catalogDim,
+    });
     onChange?.({
       provider: v.provider,
       model: v.model,

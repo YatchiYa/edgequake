@@ -6,6 +6,7 @@ import {
   bootstrapDeterministicUiContext,
   seedTenantStoreOnPage,
   wizardGoNext,
+  wizardGoToReconfigureReview,
 } from './helpers/spec013-bootstrap';
 import {
   API_V1_URL,
@@ -89,6 +90,12 @@ test.describe('SPEC-101 reconfigure workspace wizard', () => {
     await expect(page.getByTestId('wizard-step-document-parsing')).toBeVisible();
 
     await wizardGoNext(page);
+    await expect(page.getByTestId('wizard-step-chunking')).toBeVisible();
+
+    await wizardGoNext(page);
+    await expect(page.getByTestId('wizard-step-extract-budget')).toBeVisible();
+
+    await wizardGoNext(page);
     await expect(page.getByTestId('wizard-step-extraction')).toBeVisible();
     await expect(page.getByTestId('create-workspace-extraction-language')).toBeVisible();
 
@@ -107,6 +114,8 @@ test.describe('SPEC-101 reconfigure workspace wizard', () => {
 
     await openReconfigureWizard(page);
     await wizardGoNext(page); // document-parsing
+    await wizardGoNext(page); // chunking
+    await wizardGoNext(page); // extract-budget
     await wizardGoNext(page); // extraction
 
     const lang = page.getByTestId('create-workspace-extraction-language');
@@ -172,18 +181,35 @@ test.describe('SPEC-101 reconfigure workspace wizard', () => {
     const emb = page.getByTestId('embedding-model-selector');
     await pickProviderAndModel(page, emb, 'mistral');
 
-    await wizardGoNext(page); // document-parsing
-    await wizardGoNext(page); // extraction
-    await wizardGoNext(page); // review
+    const patchPromise = page.waitForRequest(
+      (req) =>
+        (req.method() === 'PUT' || req.method() === 'PATCH') &&
+        req.url().includes(`/workspaces/${ctx.workspaceId}`),
+      { timeout: 60_000 },
+    );
+
+    await wizardGoToReconfigureReview(page);
     await expect(page.getByTestId('wizard-finish')).toBeEnabled();
     await page.getByTestId('wizard-finish').click();
+
+    const patchReq = await patchPromise;
+    const payload = patchReq.postDataJSON() as {
+      llm_provider?: string;
+      llm_model?: string;
+      embedding_provider?: string;
+      embedding_model?: string;
+      embedding_dimension?: number;
+    };
+    expect(payload.llm_provider).toBe('mistral');
+    expect(payload.llm_model).toBeTruthy();
+    expect(payload.embedding_provider).toBe('mistral');
+    expect(payload.embedding_model).toBeTruthy();
+    expect(payload.embedding_dimension).toBeGreaterThan(0);
+
     await expect(page.getByTestId('reconfigure-workspace-wizard')).toBeHidden({
       timeout: 30_000,
     });
 
-    await expect(page.getByText(/mistral/i).first()).toBeVisible({
-      timeout: 15_000,
-    });
     const ws = await request.get(`${API_V1_URL}/workspaces/${ctx.workspaceId}`, {
       headers: {
         'X-Tenant-ID': ctx.tenantId,
@@ -194,9 +220,15 @@ test.describe('SPEC-101 reconfigure workspace wizard', () => {
     const body = (await ws.json()) as {
       llm_provider?: string;
       embedding_provider?: string;
+      embedding_model?: string;
+      embedding_resolution_source?: string;
+      embedding_dimension?: number;
     };
     expect(body.llm_provider).toBe('mistral');
     expect(body.embedding_provider).toBe('mistral');
+    expect(body.embedding_model).toBeTruthy();
+    expect(body.embedding_resolution_source).toBe('workspace');
+    expect(body.embedding_dimension).toBeGreaterThan(0);
   });
 
   test('Use tenant defaults clears overrides to tenant mistral', async ({
@@ -247,9 +279,7 @@ test.describe('SPEC-101 reconfigure workspace wizard', () => {
     await page.getByTestId('wizard-models-use-defaults').click();
     await expect(page.getByTestId('wizard-models-advanced')).toBeHidden();
 
-    await wizardGoNext(page);
-    await wizardGoNext(page);
-    await wizardGoNext(page);
+    await wizardGoToReconfigureReview(page);
     await expect(page.getByTestId('wizard-finish')).toBeEnabled();
     await page.getByTestId('wizard-finish').click();
     await expect(page.getByTestId('reconfigure-workspace-wizard')).toBeHidden({
@@ -339,9 +369,7 @@ test.describe('SPEC-101 reconfigure workspace wizard', () => {
     const emb = page.getByTestId('embedding-model-selector');
     await pickProviderAndModel(page, emb, 'mistral');
 
-    await wizardGoNext(page);
-    await wizardGoNext(page);
-    await wizardGoNext(page);
+    await wizardGoToReconfigureReview(page);
     await page.getByTestId('wizard-finish').click();
 
     const patchReq = await patchPromise;

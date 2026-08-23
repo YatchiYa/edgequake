@@ -200,6 +200,65 @@ async fn test_embedding_provider_switch_updates_config() {
     assert_eq!(updated.embedding_model, "text-embedding-nomic");
 }
 
+/// SPEC-101 — reconfigure wizard may send `embedding_dimension: 0` when the live
+/// catalog omits dimension. Must persist workspace override (not clear to tenant).
+#[tokio::test]
+async fn test_embedding_dimension_zero_with_provider_persists_override() {
+    let state = AppState::test_state();
+
+    let workspace = create_workspace_with_providers(
+        &state,
+        "Dim Zero Persist",
+        "mistral",
+        "mistral-small-latest",
+        "ollama",
+        "embeddinggemma",
+        768,
+    )
+    .await;
+
+    let update = UpdateWorkspaceRequest {
+        name: None,
+        description: None,
+        max_documents: None,
+        is_active: None,
+        llm_model: None,
+        llm_provider: None,
+        embedding_model: Some("mistral-embed".to_string()),
+        embedding_provider: Some("mistral".to_string()),
+        embedding_dimension: Some(0),
+        vision_llm_provider: None,
+        vision_llm_model: None,
+        pdf_parser_backend: None,
+        ..Default::default()
+    };
+
+    state
+        .workspace_service
+        .update_workspace(workspace.workspace_id, update)
+        .await
+        .expect("Update should succeed");
+
+    let updated = state
+        .workspace_service
+        .get_workspace(workspace.workspace_id)
+        .await
+        .expect("Get")
+        .expect("Exists");
+
+    assert_eq!(updated.embedding_provider, "mistral");
+    assert_eq!(updated.embedding_model, "mistral-embed");
+    assert_eq!(updated.embedding_dimension, 1024);
+    assert!(
+        updated.metadata.contains_key("embedding_provider"),
+        "workspace embedding override metadata must be written"
+    );
+    assert!(
+        updated.metadata.contains_key("embedding_model"),
+        "workspace embedding override metadata must be written"
+    );
+}
+
 /// Test: Multiple workspaces have independent embedding configs.
 #[tokio::test]
 async fn test_independent_embedding_configs_per_workspace() {

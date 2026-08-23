@@ -178,8 +178,7 @@ pub fn extraction_completion_options_with_effort(
     // Extract must always send a legal enabled effort when the model supports
     // reasoning — omit-env (SPEC-131) is for non-reasoning models only. Mandatory-
     // reasoning endpoints 400 when the field is absent or explicitly `none`.
-    let reasoning_effort =
-        resolve_extraction_reasoning_effort(provider, model, desired);
+    let reasoning_effort = resolve_extraction_reasoning_effort(provider, model, desired);
     CompletionOptions {
         max_tokens: Some(max_tokens),
         temperature: resolve_effective_temperature(model, 0.0),

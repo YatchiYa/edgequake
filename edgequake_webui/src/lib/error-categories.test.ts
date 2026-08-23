@@ -86,14 +86,42 @@ describe('categorizeError', () => {
       const errors = [
         'Embedding dimension mismatch',
         'Vector dimension does not match',
-        'Error in embedding process',
-        'Failed to encode text',
+        'expected 1536 dimensions, not 768',
       ];
 
       for (const msg of errors) {
         const result = categorizeError(msg);
         expect(result.category).toBe('embedding');
         expect(result.isTransient).toBe(false);
+        expect(result.suggestion).toMatch(/Embedding dimension mismatch/i);
+      }
+    });
+
+    it('detects embedding provider unreachable before dimension mismatch', () => {
+      const msg =
+        'Pipeline processing failed: Embedding error: All embedding sub-batches failed: Network error: error sending request for url (http://localhost:11434/api/embeddings)';
+      const result = categorizeError(msg);
+      expect(result.category).toBe('embedding');
+      expect(result.isTransient).toBe(true);
+      expect(result.suggestion).toMatch(/unreachable/i);
+      expect(result.suggestion).not.toMatch(/dimension mismatch/i);
+    });
+
+    it('does not label generic sub-batch failure as dimension mismatch', () => {
+      const msg =
+        'Pipeline processing failed: Embedding error: All embedding sub-batches failed [failure_class=unknown]';
+      const result = categorizeError(msg);
+      expect(result.category).toBe('embedding');
+      expect(result.suggestion).not.toMatch(/dimension mismatch/i);
+    });
+
+    it('still classifies generic embedding process errors', () => {
+      const errors = ['Error in embedding process', 'Failed to encode text'];
+
+      for (const msg of errors) {
+        const result = categorizeError(msg);
+        expect(result.category).toBe('embedding');
+        expect(result.isTransient).toBe(true);
       }
     });
 

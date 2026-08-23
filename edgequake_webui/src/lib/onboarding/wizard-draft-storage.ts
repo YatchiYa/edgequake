@@ -12,10 +12,19 @@ import {
 
 export const DRAFT_STORAGE_PREFIX = 'edgequake:wizard-draft:';
 
+/** Reconfigure wizard model picks (SPEC-101 — survive session reopen). */
+export type WizardModelPicks = {
+  llm?: { provider: string; model: string; fullId?: string };
+  embedding?: { provider: string; model: string; dimension: number };
+  vision?: { provider: string; model: string; fullId?: string };
+  advancedOpen?: boolean;
+};
+
 export type PersistedWizardPayload = {
-  version: 1;
+  version: 1 | 2;
   stepIndex: number;
   draft: ReturnType<typeof draftForStorage>;
+  modelPicks?: WizardModelPicks;
 };
 
 /** Optional scope (e.g. workspaceId) for reconfigure drafts. */
@@ -34,16 +43,18 @@ export function loadWizardDraft(
     const raw = sessionStorage.getItem(draftStorageKey(kind, scope));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedWizardPayload;
-    if (parsed?.version !== 1 || !parsed.draft) return null;
+    if (!parsed?.draft) return null;
+    if (parsed.version !== 1 && parsed.version !== 2) return null;
     // Defense in depth — strip secrets if an older payload leaked them
     const { adminPassword: _p, adminPasswordConfirm: _c, ...safe } = parsed.draft as WizardDraft & {
       adminPassword?: string;
       adminPasswordConfirm?: string;
     };
     return {
-      version: 1,
+      version: parsed.version === 2 ? 2 : 1,
       stepIndex: Math.max(0, Number(parsed.stepIndex) || 0),
       draft: safe as ReturnType<typeof draftForStorage>,
+      modelPicks: parsed.version === 2 ? parsed.modelPicks : undefined,
     };
   } catch {
     return null;
@@ -55,12 +66,14 @@ export function saveWizardDraft(
   draft: WizardDraft,
   stepIndex: number,
   scope?: string | null,
+  modelPicks?: WizardModelPicks,
 ): void {
   if (typeof sessionStorage === 'undefined') return;
   const payload: PersistedWizardPayload = {
-    version: 1,
+    version: modelPicks ? 2 : 1,
     stepIndex,
     draft: draftForStorage(draft),
+    ...(modelPicks ? { modelPicks } : {}),
   };
   try {
     sessionStorage.setItem(draftStorageKey(kind, scope), JSON.stringify(payload));

@@ -89,23 +89,49 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     suggestion:
       "The document may be too large. Try splitting it into smaller parts.",
   },
-  // Embedding Errors (must precede storage — pgvector dim errors often wrap as StorageError)
+  // Embedding provider unreachable (local Ollama/LM Studio) — before dim-mismatch heuristics.
+  {
+    category: "embedding",
+    patterns: [
+      /all embedding sub-batches failed:.*network error/i,
+      /all embedding sub-batches failed:.*error sending request/i,
+      /all embedding sub-batches failed:.*connection refused/i,
+      /embedding error:.*network error/i,
+      /embedding error:.*error sending request/i,
+      /embedding error:.*connection refused/i,
+      /localhost:11434/i,
+    ],
+    isTransient: true,
+    suggestion:
+      "Embedding provider is unreachable. If using Ollama, run `ollama serve` and ensure the embedding model is pulled, then retry.",
+  },
+  // Embedding dimension mismatch (must precede storage — pgvector dim errors often wrap as StorageError)
   {
     category: "embedding",
     patterns: [
       /expected\s+\d+\s+dimensions,\s*not/i,
       /embedding\s+dimension\s+mismatch/i,
       /mixed\s+dimensions\s+in\s+one\s+batch/i,
-      /embedding/i,
       /dimension.*mismatch/i,
       /vector.*dimension/i,
-      /encode.*error/i,
-      /failed.*to.*encode/i,
-      /embed.*error/i,
     ],
     isTransient: false,
     suggestion:
       "Embedding dimension mismatch: model produced N dims but store/index expects M. Use a matching embedding model or re-embed after schema generation.",
+  },
+  // Generic embedding failures (avoid mislabeling provider outages as dimension mismatch)
+  {
+    category: "embedding",
+    patterns: [
+      /all embedding sub-batches failed/i,
+      /embedding error/i,
+      /embedding process/i,
+      /encode.*error/i,
+      /failed.*to.*encode/i,
+    ],
+    isTransient: true,
+    suggestion:
+      "Embedding step failed. Check the embedding provider configuration (model, API key, or local service) and retry.",
   },
   // Graph / typed fleet / shell status — before generic storage (not transient DB outage)
   {

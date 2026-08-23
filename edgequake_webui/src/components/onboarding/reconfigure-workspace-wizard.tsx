@@ -25,6 +25,7 @@ import { useWizardDraftPersistence } from '@/lib/onboarding/use-wizard-draft-per
 import {
   hydrateWizardDraft,
   loadWizardDraft,
+  saveWizardDraft,
 } from '@/lib/onboarding/wizard-draft-storage';
 import {
   diffWorkspaceConfig,
@@ -121,9 +122,17 @@ export function ReconfigureWorkspaceWizard({
       // Never keep useServerDefaults=true while Advanced is open / picks exist —
       // that makes Apply clear overrides and drop picker selections.
       const advanced =
+        stored.modelPicks?.advancedOpen ??
         prefill.advancedOpen ||
-        !prefill.draft.useServerDefaults ||
-        Boolean(prefill.llm || prefill.embedding || prefill.vision);
+        !hydrated.useServerDefaults ||
+        Boolean(
+          stored.modelPicks?.llm ||
+            stored.modelPicks?.embedding ||
+            stored.modelPicks?.vision ||
+            prefill.llm ||
+            prefill.embedding ||
+            prefill.vision,
+        );
       setDraft({
         ...hydrated,
         useServerDefaults: resolveHydratedUseServerDefaults({
@@ -134,9 +143,29 @@ export function ReconfigureWorkspaceWizard({
         }),
       });
       setStepIndex(clampStepIndex(stored.stepIndex, steps.length));
-      setLlm(prefill.llm);
-      setEmbedding(prefill.embedding);
-      setVision(prefill.vision);
+      setLlm(
+        stored.modelPicks?.llm
+          ? {
+              provider: stored.modelPicks.llm.provider,
+              model: stored.modelPicks.llm.model,
+              fullId:
+                stored.modelPicks.llm.fullId ??
+                `${stored.modelPicks.llm.provider}/${stored.modelPicks.llm.model}`,
+            }
+          : prefill.llm,
+      );
+      setEmbedding(stored.modelPicks?.embedding ?? prefill.embedding);
+      setVision(
+        stored.modelPicks?.vision
+          ? {
+              provider: stored.modelPicks.vision.provider,
+              model: stored.modelPicks.vision.model,
+              fullId:
+                stored.modelPicks.vision.fullId ??
+                `${stored.modelPicks.vision.provider}/${stored.modelPicks.vision.model}`,
+            }
+          : prefill.vision,
+      );
       setAdvancedOpen(advanced);
     } else {
       setDraft(prefill.draft);
@@ -148,6 +177,44 @@ export function ReconfigureWorkspaceWizard({
     }
     prefilledForId.current = workspace.id;
   }, [open, workspace, steps.length]);
+
+  // Persist model picks alongside draft (EC-101-22 v2).
+  useEffect(() => {
+    if (!open || !workspaceId) return;
+    const hasPicks = Boolean(llm || embedding || vision || advancedOpen);
+    saveWizardDraft(
+      'reconfigure-workspace',
+      draft,
+      stepIndex,
+      workspaceId,
+      hasPicks
+        ? {
+            llm: llm
+              ? {
+                  provider: llm.provider,
+                  model: llm.model,
+                  fullId: llm.fullId,
+                }
+              : undefined,
+            embedding: embedding
+              ? {
+                  provider: embedding.provider,
+                  model: embedding.model,
+                  dimension: embedding.dimension,
+                }
+              : undefined,
+            vision: vision
+              ? {
+                  provider: vision.provider,
+                  model: vision.model,
+                  fullId: vision.fullId,
+                }
+              : undefined,
+            advancedOpen,
+          }
+        : undefined,
+    );
+  }, [open, workspaceId, draft, stepIndex, llm, embedding, vision, advancedOpen]);
 
   const stepId = steps[clampStepIndex(stepIndex, steps.length)];
   const meta =

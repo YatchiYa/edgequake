@@ -118,4 +118,23 @@ describe('wizard-draft-storage', () => {
     expect(loaded?.stepIndex).toBe(2);
     expect(draftStorageKey('reconfigure-workspace', 'ws-1')).toContain('ws-1');
   });
+
+  it('persists reconfigure model picks (v2)', () => {
+    saveWizardDraft(
+      'reconfigure-workspace',
+      { ...EMPTY_WIZARD_DRAFT, useServerDefaults: false },
+      1,
+      'ws-2',
+      {
+        llm: { provider: 'mistral', model: 'mistral-small-latest' },
+        embedding: { provider: 'mistral', model: 'mistral-embed', dimension: 1024 },
+        advancedOpen: true,
+      },
+    );
+    const loaded = loadWizardDraft('reconfigure-workspace', 'ws-2');
+    expect(loaded?.version).toBe(2);
+    expect(loaded?.modelPicks?.embedding?.provider).toBe('mistral');
+    expect(loaded?.modelPicks?.embedding?.dimension).toBe(1024);
+    expect(loaded?.modelPicks?.advancedOpen).toBe(true);
+  });
 });

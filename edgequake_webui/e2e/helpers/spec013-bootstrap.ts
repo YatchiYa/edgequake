@@ -4,6 +4,7 @@
  */
 
 import type { APIRequestContext, Page } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { waitForAppReady } from './app-ready';
 import {
   createTenantWorkspaceViaApi,
@@ -95,4 +96,16 @@ export async function openCreateTenantDialog(page: Page): Promise<void> {
 /** Advance the SPEC-101 wizard one step. */
 export async function wizardGoNext(page: Page): Promise<void> {
   await page.getByTestId('wizard-next').click();
+}
+
+/**
+ * Reconfigure wizard: models → document-parsing → chunking → extract-budget → extraction → review.
+ */
+export async function wizardGoToReconfigureReview(page: Page): Promise<void> {
+  for (let i = 0; i < 5; i += 1) {
+    await wizardGoNext(page);
+  }
+  await expect(page.getByTestId('wizard-step-review')).toBeVisible({
+    timeout: 15_000,
+  });
 }

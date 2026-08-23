@@ -384,10 +384,14 @@ async fn embed_with_token_budget(
 
     let mut indexed: Vec<(usize, Vec<Vec<f32>>)> = Vec::with_capacity(results.len());
     let mut failed_ranges: Vec<(usize, usize, crate::error::PipelineError)> = Vec::new();
+    let mut last_error_msg: Option<String> = None;
     for r in results {
         match r {
             Ok(v) => indexed.push(v),
-            Err(f) => failed_ranges.push(f),
+            Err((start, end, e)) => {
+                last_error_msg = Some(e.to_string());
+                failed_ranges.push((start, end, e));
+            }
         }
     }
 
@@ -414,6 +418,7 @@ async fn embed_with_token_budget(
                 indexed.push((start, emb));
             }
             Err(e) => {
+                last_error_msg = Some(e.to_string());
                 tracing::warn!(
                     start,
                     end,
@@ -426,9 +431,10 @@ async fn embed_with_token_budget(
     }
 
     if indexed.is_empty() && !texts.is_empty() {
-        return Err(crate::error::PipelineError::EmbeddingError(
-            "All embedding sub-batches failed".to_string(),
-        ));
+        let detail = last_error_msg.unwrap_or_else(|| "unknown".to_string());
+        return Err(crate::error::PipelineError::EmbeddingError(format!(
+            "All embedding sub-batches failed: {detail}"
+        )));
     }
 
     indexed.sort_by_key(|(start, _)| *start);
@@ -904,6 +910,59 @@ mod tests {
             // Return a dummy 4-dim vector per text
             Ok(texts.iter().map(|_| vec![0.1, 0.2, 0.3, 0.4]).collect())
         }
+    }
+
+    struct FailingEmbedProvider {
+        max_tokens: usize,
+        max_batch: usize,
+    }
+
+    #[async_trait::async_trait]
+    impl edgequake_llm::traits::EmbeddingProvider for FailingEmbedProvider {
+        fn name(&self) -> &str {
+            "failing"
+        }
+        fn model(&self) -> &str {
+            "failing-embed"
+        }
+        fn dimension(&self) -> usize {
+            4
+        }
+        fn max_tokens(&self) -> usize {
+            self.max_tokens
+        }
+        fn max_batch_size(&self) -> usize {
+            self.max_batch
+        }
+
+        async fn embed(&self, _texts: &[String]) -> edgequake_llm::Result<Vec<Vec<f32>>> {
+            Err(edgequake_llm::error::LlmError::NetworkError(
+                "error sending request for url (http://localhost:11434/api/embeddings)".into(),
+            ))
+        }
+    }
+
+    /// Parallel sub-batch path must surface the underlying provider error (not a generic shell).
+    #[tokio::test]
+    async fn test_embed_parallel_path_propagates_last_provider_error() {
+        let texts: Vec<String> = (0..6).map(|_| "x".repeat(100)).collect();
+        let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(FailingEmbedProvider {
+            max_tokens: 80,
+            max_batch: 2,
+        });
+
+        let err = embed_with_token_budget(&provider, &texts, None, None)
+            .await
+            .expect_err("all sub-batches should fail");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("All embedding sub-batches failed"),
+            "expected aggregate prefix, got: {msg}"
+        );
+        assert!(
+            msg.contains("error sending request"),
+            "underlying provider error must be preserved, got: {msg}"
+        );
     }
 
     /// When total estimated tokens fit within the budget, exactly ONE call is made.

@@ -5,6 +5,7 @@
  */
 
 import type { PdfParserBackendDraft } from '@/lib/onboarding/wizard-state';
+import { resolveEmbeddingDimension } from '@/lib/onboarding/resolve-embedding-dimension';
 import { extractionLanguageToUpdatePayload } from '@/constants/extraction-languages';
 import {
   ACC_FAIR_CHUNK_OVERLAP,
@@ -102,9 +103,11 @@ export function buildWorkspaceModelPayload(args: {
   if (args.embedding?.provider && args.embedding?.model) {
     payload.embedding_provider = args.embedding.provider;
     payload.embedding_model = args.embedding.model;
-    if (typeof args.embedding.dimension === 'number' && args.embedding.dimension > 0) {
-      payload.embedding_dimension = args.embedding.dimension;
-    }
+    payload.embedding_dimension = resolveEmbeddingDimension({
+      provider: args.embedding.provider,
+      model: args.embedding.model,
+      dimension: args.embedding.dimension,
+    });
   }
   if (args.vision?.provider && args.vision?.model) {
     payload.vision_llm_provider = args.vision.provider;
@@ -250,7 +253,13 @@ export function buildWorkspaceUpdatePayload(args: {
     embedding_model: args.embedding?.model ?? '',
     embedding_provider: args.embedding?.provider ?? '',
     embedding_dimension:
-      typeof args.embedding?.dimension === 'number' ? args.embedding.dimension : 0,
+      args.embedding?.provider && args.embedding?.model
+        ? resolveEmbeddingDimension({
+            provider: args.embedding.provider,
+            model: args.embedding.model,
+            dimension: args.embedding.dimension,
+          })
+        : 0,
     vision_llm_model: args.vision?.model ?? '',
     vision_llm_provider: args.vision?.provider ?? '',
     pdf_parser_backend: args.pdfParserBackend,

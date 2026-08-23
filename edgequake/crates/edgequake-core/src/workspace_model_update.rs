@@ -117,13 +117,14 @@ pub fn apply_embedding_config_update_with_tenant(
     embedding_dimension: Option<usize>,
     tenant: TenantEmbeddingDefaults<'_>,
 ) {
+    // Empty provider/model clear overrides. `embedding_dimension: 0` alone must NOT clear —
+    // the reconfigure wizard may send dimension 0 when the live catalog omits it (SPEC-101).
     let clear = embedding_model
         .as_ref()
         .is_some_and(|v| is_clear_override_value(v))
         || embedding_provider
             .as_ref()
-            .is_some_and(|v| is_clear_override_value(v))
-        || embedding_dimension == Some(0);
+            .is_some_and(|v| is_clear_override_value(v));
 
     if clear {
         let (model, provider, dimension) = resolve_embedding_defaults(tenant);
@@ -135,6 +136,10 @@ pub fn apply_embedding_config_update_with_tenant(
         workspace.metadata.remove("embedding_dimension");
         return;
     }
+
+    let dimension_only_noop = embedding_dimension == Some(0)
+        && embedding_model.is_none()
+        && embedding_provider.is_none();
 
     if let Some(embedding_model) = embedding_model {
         workspace.embedding_model = embedding_model.clone();
@@ -151,11 +156,18 @@ pub fn apply_embedding_config_update_with_tenant(
         );
     }
     if let Some(embedding_dimension) = embedding_dimension {
-        workspace.embedding_dimension = embedding_dimension;
-        workspace.metadata.insert(
-            "embedding_dimension".to_string(),
-            serde_json::json!(embedding_dimension),
-        );
+        if !dimension_only_noop {
+            let resolved = if embedding_dimension == 0 {
+                Workspace::detect_dimension_from_model(&workspace.embedding_model)
+            } else {
+                embedding_dimension
+            };
+            workspace.embedding_dimension = resolved;
+            workspace.metadata.insert(
+                "embedding_dimension".to_string(),
+                serde_json::json!(resolved),
+            );
+        }
     }
 }
 
@@ -368,6 +380,74 @@ mod tests {
 
         restore_env(key_runtime, prev_runtime);
         restore_env(key_model, prev_model);
+    }
+
+    #[test]
+    fn mistral_embed_with_dimension_zero_does_not_clear() {
+        let mut ws = Workspace::new(Uuid::new_v4(), "t", "t");
+        ws.llm_provider = "mistral".into();
+        ws.llm_model = "mistral-small-latest".into();
+        ws.metadata
+            .insert("llm_provider".to_string(), serde_json::json!("mistral"));
+        ws.metadata
+            .insert("llm_model".to_string(), serde_json::json!("mistral-small-latest"));
+        ws.embedding_provider = "ollama".into();
+        ws.embedding_model = "embeddinggemma".into();
+        ws.embedding_dimension = 768;
+
+        apply_embedding_config_update_with_tenant(
+            &mut ws,
+            Some("mistral-embed".to_string()),
+            Some("mistral".to_string()),
+            Some(0),
+            Some(("ollama", "embeddinggemma", 768)),
+        );
+
+        assert_eq!(ws.embedding_provider, "mistral");
+        assert_eq!(ws.embedding_model, "mistral-embed");
+        assert_eq!(ws.embedding_dimension, 1024);
+        assert_eq!(
+            ws.metadata.get("embedding_provider").and_then(|v| v.as_str()),
+            Some("mistral")
+        );
+        assert_eq!(
+            ws.metadata.get("embedding_model").and_then(|v| v.as_str()),
+            Some("mistral-embed")
+        );
+        assert_eq!(
+            ws.metadata
+                .get("embedding_dimension")
+                .and_then(|v| v.as_u64()),
+            Some(1024)
+        );
+    }
+
+    #[test]
+    fn dimension_only_zero_without_empty_strings_does_not_clear() {
+        let mut ws = Workspace::new(Uuid::new_v4(), "t", "t");
+        ws.embedding_provider = "ollama".into();
+        ws.embedding_model = "embeddinggemma".into();
+        ws.embedding_dimension = 768;
+        ws.metadata.insert(
+            "embedding_provider".to_string(),
+            serde_json::json!("ollama"),
+        );
+        ws.metadata.insert(
+            "embedding_model".to_string(),
+            serde_json::json!("embeddinggemma"),
+        );
+
+        apply_embedding_config_update(
+            &mut ws,
+            None,
+            None,
+            Some(0),
+        );
+
+        assert_eq!(ws.embedding_provider, "ollama");
+        assert_eq!(ws.embedding_model, "embeddinggemma");
+        assert_eq!(ws.embedding_dimension, 768);
+        assert!(ws.metadata.contains_key("embedding_provider"));
     }
 
     #[test]
