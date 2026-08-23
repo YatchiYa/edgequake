@@ -185,6 +185,26 @@ jobs:
           echo "Running PostgreSQL task storage tests..."
           cargo test --package edgequake-tasks --features postgres -- --test-threads=1
 
+      - name: Run SPEC-129 touch-status CHECK e2e (#381)
+        working-directory: edgequake
+        env:
+          DATABASE_URL: postgresql://edgequake_test:test_password_123@localhost:5432/edgequake_test
+          EDGEQUAKE_REQUIRE_POSTGRES_TESTS: "1"
+        run: |
+          echo "Running SPEC-129 / #381 CHECK-safe document status proof..."
+          cargo test -p edgequake-api --features postgres --test e2e_spec129_touch_status_check -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --lib update_document_status_re_embedding_projects_processing_column -- --test-threads=1
+
+      - name: Run SPEC-136 durable lid stamp-UPDATE absorb (#377)
+        working-directory: edgequake
+        env:
+          DATABASE_URL: postgresql://edgequake_test:test_password_123@localhost:5432/edgequake_test
+          EDGEQUAKE_REQUIRE_POSTGRES_TESTS: "1"
+        run: |
+          echo "Running SPEC-136 / #377 durable NULL-lid stamp-UPDATE absorb proof..."
+          cargo test -p edgequake-storage --features postgres --test contract_spec120_legacy_vector_id_race -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test e2e_spec136_durable_lid_retry -- --test-threads=1
+
       - name: Run All Integration Tests (optional)
         if: github.event.inputs.run_all_tests == 'true'
         working-directory: edgequake

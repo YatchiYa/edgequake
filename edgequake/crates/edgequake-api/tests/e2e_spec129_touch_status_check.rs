@@ -10,12 +10,42 @@ use edgequake_storage::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
+fn require_postgres_tests() -> bool {
+    matches!(
+        std::env::var("EDGEQUAKE_REQUIRE_POSTGRES_TESTS").as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE")
+    )
+}
+
 fn require_db() -> Option<String> {
-    let base = std::env::var("DATABASE_URL").ok()?;
-    if base.trim().is_empty() {
+    let required = require_postgres_tests();
+    let Some(base) = std::env::var("DATABASE_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+    else {
+        if required {
+            panic!(
+                "DATABASE_URL required when EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1 (SPEC-129 / #381)"
+            );
+        }
         return None;
-    }
+    };
     Some(test_db::isolated_test_url(&base))
+}
+
+async fn connect_pool(url: &str) -> Option<PgPool> {
+    match PgPool::connect(url).await {
+        Ok(pool) => Some(pool),
+        Err(e) if require_postgres_tests() => {
+            panic!(
+                "postgres connect failed (SPEC-129 / #381, EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1): {e}"
+            );
+        }
+        Err(e) => {
+            eprintln!("skip: cannot connect to DATABASE_URL: {e}");
+            None
+        }
+    }
 }
 
 async fn seed_tenant_workspace_doc(pool: &PgPool) -> (Uuid, Uuid, Uuid) {
@@ -70,21 +100,51 @@ async fn e2e_spec129_touch_status_check() {
         eprintln!("skip: DATABASE_URL unset");
         return;
     };
-    let Ok(pool) = PgPool::connect(&url).await else {
-        eprintln!("skip: cannot connect to DATABASE_URL");
+    let Some(pool) = connect_pool(&url).await else {
         return;
     };
 
     let (_tenant, _workspace, doc_id) = seed_tenant_workspace_doc(&pool).await;
 
-    // Raw KV stage must still be rejected by CHECK (no widen).
+    // Live CHECK must not allowlist the KV stage (no widen).
+    let check_def: String = sqlx::query_scalar(
+        r#"
+        SELECT pg_get_constraintdef(c.oid)
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE t.relname = 'documents'
+          AND n.nspname = 'public'
+          AND c.conname = 'documents_valid_status'
+        "#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("documents_valid_status must exist");
+    assert!(
+        !check_def.to_ascii_lowercase().contains("re_embedding"),
+        "documents_valid_status must not allowlist re_embedding, got: {check_def}"
+    );
+
+    // Raw KV stage must still be rejected by CHECK (SQLSTATE 23514).
     let raw = sqlx::query("UPDATE documents SET status = 're_embedding' WHERE id = $1")
         .bind(doc_id)
         .execute(&pool)
         .await;
+    let err = raw.expect_err("raw re_embedding must violate documents_valid_status");
+    let db_err = err
+        .as_database_error()
+        .expect("CHECK violation must be a database error");
+    assert_eq!(
+        db_err.code().as_deref(),
+        Some("23514"),
+        "expected CHECK SQLSTATE 23514, got {:?} ({db_err})",
+        db_err.code()
+    );
+    let msg = db_err.message().to_ascii_lowercase();
     assert!(
-        raw.is_err(),
-        "raw re_embedding must violate documents_valid_status"
+        msg.contains("documents_valid_status"),
+        "error must name documents_valid_status, got: {db_err}"
     );
 
     let storage = PostgresPdfStorage::new(pool.clone());
@@ -156,8 +216,7 @@ async fn e2e_spec129_ensure_document_record_projects_re_embedding() {
         eprintln!("skip: DATABASE_URL unset");
         return;
     };
-    let Ok(pool) = PgPool::connect(&url).await else {
-        eprintln!("skip: cannot connect to DATABASE_URL");
+    let Some(pool) = connect_pool(&url).await else {
         return;
     };
 

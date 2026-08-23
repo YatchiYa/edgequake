@@ -880,3 +880,163 @@ mod merge_progress_patch_tests {
         assert_eq!(meta["stage_progress"].as_f64().unwrap(), 1.0);
     }
 }
+
+/// SPEC-129 / #381: production dual-write must project KV `re_embedding` onto
+/// CHECK-safe `processing` without dropping KV honesty.
+#[cfg(all(test, feature = "postgres"))]
+mod spec129_dual_write_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use edgequake_llm::MockProvider;
+    use edgequake_pipeline::Pipeline;
+    use edgequake_storage::{
+        kv_keys, KVStorage, MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage,
+        MemoryWorkspaceVectorRegistry, PostgresPdfStorage,
+    };
+    use serde_json::json;
+    use sqlx::PgPool;
+    use uuid::Uuid;
+
+    fn require_postgres_tests() -> bool {
+        matches!(
+            std::env::var("EDGEQUAKE_REQUIRE_POSTGRES_TESTS").as_deref(),
+            Ok("1") | Ok("true") | Ok("TRUE")
+        )
+    }
+
+    fn require_db() -> Option<String> {
+        match std::env::var("DATABASE_URL") {
+            Ok(url) if !url.trim().is_empty() => Some(url),
+            _ if require_postgres_tests() => {
+                panic!(
+                    "DATABASE_URL required when EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1 (SPEC-129 / #381)"
+                );
+            }
+            _ => None,
+        }
+    }
+
+    async fn connect_pool(url: &str) -> Option<PgPool> {
+        match PgPool::connect(url).await {
+            Ok(pool) => Some(pool),
+            Err(e) if require_postgres_tests() => {
+                panic!(
+                    "postgres connect failed (SPEC-129 / #381, EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1): {e}"
+                );
+            }
+            Err(e) => {
+                eprintln!("skip: cannot connect to DATABASE_URL: {e}");
+                None
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn update_document_status_re_embedding_projects_processing_column() {
+        let Some(url) = require_db() else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let Some(pool) = connect_pool(&url).await else {
+            return;
+        };
+
+        let apply = include_str!("../../../../migrations/support/141/apply.sql");
+        sqlx::raw_sql(apply)
+            .execute(&pool)
+            .await
+            .expect("apply support/141");
+
+        let tenant = Uuid::new_v4();
+        let workspace = Uuid::new_v4();
+        let doc_id = Uuid::new_v4();
+        let doc_id_str = doc_id.to_string();
+
+        sqlx::query("INSERT INTO tenants (tenant_id, name, slug) VALUES ($1, $2, $3)")
+            .bind(tenant)
+            .bind(format!("t-{tenant}"))
+            .bind(format!("t-{tenant}"))
+            .execute(&pool)
+            .await
+            .expect("tenant");
+        sqlx::query(
+            "INSERT INTO workspaces (workspace_id, tenant_id, name, slug) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(workspace)
+        .bind(tenant)
+        .bind(format!("w-{workspace}"))
+        .bind(format!("w-{workspace}"))
+        .execute(&pool)
+        .await
+        .expect("workspace");
+        sqlx::query(
+            r#"
+            INSERT INTO documents (id, tenant_id, workspace_id, title, content, status, content_hash)
+            VALUES ($1, $2, $3, 'spec129-dual', 'body', 'failed', $4)
+            "#,
+        )
+        .bind(doc_id)
+        .bind(tenant)
+        .bind(workspace)
+        .bind(format!("hash-{doc_id}"))
+        .execute(&pool)
+        .await
+        .expect("insert failed doc");
+
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("spec129-dual-write"));
+        let metadata_key = kv_keys::doc_metadata(&doc_id_str);
+        kv.upsert(&[(
+            metadata_key.clone(),
+            json!({
+                "document_id": doc_id_str,
+                "status": "processing"
+            }),
+        )])
+        .await
+        .unwrap();
+
+        let vector: Arc<dyn edgequake_storage::traits::VectorStorage> =
+            Arc::new(MemoryVectorStorage::new("spec129-dual-write", 1536));
+        let vector_registry = Arc::new(MemoryWorkspaceVectorRegistry::new(Arc::clone(&vector)));
+        let graph = Arc::new(MemoryGraphStorage::new("spec129-dual-write"));
+        let pdf = Arc::new(PostgresPdfStorage::new(pool.clone()));
+
+        let processor = DocumentTaskProcessor::new(
+            Arc::new(Pipeline::default_pipeline()),
+            Arc::new(MockProvider::new()),
+            kv.clone(),
+            vector,
+            vector_registry,
+            graph,
+            PipelineState::new(),
+        )
+        .with_pdf_storage(pdf);
+
+        processor
+            .update_document_status(
+                &doc_id_str,
+                "re_embedding",
+                Some("Re-generating embeddings after slim checkpoint (embeddings_omitted)"),
+            )
+            .await
+            .expect("update_document_status(re_embedding) must succeed");
+
+        let metadata = kv.get_by_id(&metadata_key).await.unwrap().unwrap();
+        assert_eq!(
+            metadata["status"].as_str(),
+            Some("re_embedding"),
+            "KV must keep honest re_embedding stage"
+        );
+
+        let column: String = sqlx::query_scalar("SELECT status FROM documents WHERE id = $1")
+            .bind(doc_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read column status");
+        assert_eq!(
+            column, "processing",
+            "relational column must be CHECK-safe processing"
+        );
+    }
+}

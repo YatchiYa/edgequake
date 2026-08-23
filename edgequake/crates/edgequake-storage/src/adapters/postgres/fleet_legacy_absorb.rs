@@ -1,9 +1,11 @@
-//! SPEC-120 — DRY absorb upsert for typed fleet embeddings.
+//! SPEC-120 / SPEC-136 — DRY absorb upsert for typed fleet embeddings.
 //!
-//! Single conflict policy for entity / relationship / report (LAW-120-3):
-//! 1. stamp-once UPDATE by PK when `legacy_vector_id` is NULL
+//! Single conflict policy for entity / relationship / report (LAW-120-3, LAW-136-1):
+//! 1. stamp-once UPDATE by PK when `legacy_vector_id` is NULL **and** the lid is
+//!    not already owned in the workspace (UPDATE has no `ON CONFLICT`; 23505 is
+//!    absorbed — durable #377 / NULL-lid loser PK)
 //! 2. INSERT with targetless `ON CONFLICT DO NOTHING` (absorbs PK + legacy unique)
-//! 3. count absorbed lid-bearing rows whose FK was not written
+//! 3. count lid-bearing FKs that do not own the lid while another row does
 //!
 //! Table / FK identifiers come only from [`EmbeddingFamily`] (closed set — SOLID OCP
 //! for new families: extend the enum + metadata, not copy another upsert path).
@@ -46,51 +48,102 @@ pub(super) async fn upsert_with_legacy_absorb(
     Ok((stamped + inserted, absorbed))
 }
 
+/// Stamp NULL lids only when this workspace does not already own the lid.
+///
+/// Postgres UPDATE cannot `ON CONFLICT`. A losing FK with a pre-existing
+/// NULL-lid PK would otherwise 23505 against `idx_*_legacy_vector_id` (#377).
+/// `NOT EXISTS` is the happy path; 23505 is absorbed for the concurrent race.
+fn stamp_owned_lid_predicate(table: &str) -> String {
+    format!(
+        r#"
+              AND NOT EXISTS (
+                SELECT 1 FROM {table} owned
+                WHERE owned.workspace_id = t.w
+                  AND owned.legacy_vector_id = NULLIF(t.lid, '')
+              )
+        "#
+    )
+}
+
+fn is_legacy_unique_violation(err: &sqlx::Error) -> bool {
+    let sqlx::Error::Database(db) = err else {
+        return false;
+    };
+    if db.code().as_deref() != Some("23505") {
+        return false;
+    }
+    let constraint = db.constraint().unwrap_or("");
+    constraint.contains("legacy_vector_id") || db.message().contains("legacy_vector_id")
+}
+
+fn map_stamp_result(
+    result: Result<sqlx::postgres::PgQueryResult, sqlx::Error>,
+) -> Result<u64, StorageError> {
+    match result {
+        Ok(r) => Ok(r.rows_affected()),
+        Err(e) if is_legacy_unique_violation(&e) => {
+            tracing::warn!(
+                error = %e,
+                "SPEC-136: absorbed stamp-once legacy_vector_id unique violation"
+            );
+            Ok(0)
+        }
+        Err(e) => Err(StorageError::from(e)),
+    }
+}
+
 async fn stamp_legacy_once(pool: &PgPool, batch: &AbsorbBatch<'_>) -> Result<u64, StorageError> {
     let table = batch.family.typed_table();
     let fk = batch.family.typed_fk_column();
+    let skip_owned = stamp_owned_lid_predicate(table);
     if batch.family.typed_fk_is_uuid() {
         let ids = require_uuid_fks(batch)?;
         let sql = format!(
             r#"
             UPDATE {table} AS ee
             SET legacy_vector_id = COALESCE(ee.legacy_vector_id, NULLIF(t.lid, ''))
-            FROM unnest($2::uuid[], $3::text[]) AS t(e, lid)
+            FROM unnest($2::uuid[], $3::uuid[], $4::text[]) AS t(e, w, lid)
             WHERE ee.model_id = $1
               AND ee.{fk} = t.e
+              AND ee.workspace_id = t.w
               AND ee.legacy_vector_id IS NULL
               AND NULLIF(t.lid, '') IS NOT NULL
+              {skip_owned}
             "#
         );
-        Ok(sqlx::query(&sql)
-            .bind(batch.model_id)
-            .bind(ids)
-            .bind(batch.legacy_ids)
-            .execute(pool)
-            .await
-            .map_err(StorageError::from)?
-            .rows_affected())
+        map_stamp_result(
+            sqlx::query(&sql)
+                .bind(batch.model_id)
+                .bind(ids)
+                .bind(batch.workspace_ids)
+                .bind(batch.legacy_ids)
+                .execute(pool)
+                .await,
+        )
     } else {
         let ids = require_text_fks(batch)?;
         let sql = format!(
             r#"
             UPDATE {table} AS ee
             SET legacy_vector_id = COALESCE(ee.legacy_vector_id, NULLIF(t.lid, ''))
-            FROM unnest($2::text[], $3::text[]) AS t(e, lid)
+            FROM unnest($2::text[], $3::uuid[], $4::text[]) AS t(e, w, lid)
             WHERE ee.model_id = $1
               AND ee.{fk} = t.e
+              AND ee.workspace_id = t.w
               AND ee.legacy_vector_id IS NULL
               AND NULLIF(t.lid, '') IS NOT NULL
+              {skip_owned}
             "#
         );
-        Ok(sqlx::query(&sql)
-            .bind(batch.model_id)
-            .bind(ids)
-            .bind(batch.legacy_ids)
-            .execute(pool)
-            .await
-            .map_err(StorageError::from)?
-            .rows_affected())
+        map_stamp_result(
+            sqlx::query(&sql)
+                .bind(batch.model_id)
+                .bind(ids)
+                .bind(batch.workspace_ids)
+                .bind(batch.legacy_ids)
+                .execute(pool)
+                .await,
+        )
     }
 }
 
@@ -149,6 +202,9 @@ async fn insert_absorbing_conflicts(
     }
 }
 
+/// Lid-bearing FKs that do not own the lid while another workspace row does.
+///
+/// Covers INSERT-skip (no PK) **and** stamp-skip (NULL-lid PK left in place).
 async fn count_absorbed_lid_misses(
     pool: &PgPool,
     batch: &AbsorbBatch<'_>,
@@ -160,17 +216,25 @@ async fn count_absorbed_lid_misses(
         let sql = format!(
             r#"
             SELECT COUNT(*)::bigint
-            FROM unnest($2::uuid[], $3::text[]) AS t(e, lid)
+            FROM unnest($2::uuid[], $3::uuid[], $4::text[]) AS t(e, w, lid)
             WHERE NULLIF(t.lid, '') IS NOT NULL
               AND NOT EXISTS (
                 SELECT 1 FROM {table} ee
-                WHERE ee.model_id = $1 AND ee.{fk} = t.e
+                WHERE ee.model_id = $1
+                  AND ee.{fk} = t.e
+                  AND ee.legacy_vector_id = NULLIF(t.lid, '')
+              )
+              AND EXISTS (
+                SELECT 1 FROM {table} owned
+                WHERE owned.workspace_id = t.w
+                  AND owned.legacy_vector_id = NULLIF(t.lid, '')
               )
             "#
         );
         Ok(sqlx::query_scalar::<_, i64>(&sql)
             .bind(batch.model_id)
             .bind(ids)
+            .bind(batch.workspace_ids)
             .bind(batch.legacy_ids)
             .fetch_one(pool)
             .await
@@ -180,17 +244,25 @@ async fn count_absorbed_lid_misses(
         let sql = format!(
             r#"
             SELECT COUNT(*)::bigint
-            FROM unnest($2::text[], $3::text[]) AS t(e, lid)
+            FROM unnest($2::text[], $3::uuid[], $4::text[]) AS t(e, w, lid)
             WHERE NULLIF(t.lid, '') IS NOT NULL
               AND NOT EXISTS (
                 SELECT 1 FROM {table} ee
-                WHERE ee.model_id = $1 AND ee.{fk} = t.e
+                WHERE ee.model_id = $1
+                  AND ee.{fk} = t.e
+                  AND ee.legacy_vector_id = NULLIF(t.lid, '')
+              )
+              AND EXISTS (
+                SELECT 1 FROM {table} owned
+                WHERE owned.workspace_id = t.w
+                  AND owned.legacy_vector_id = NULLIF(t.lid, '')
               )
             "#
         );
         Ok(sqlx::query_scalar::<_, i64>(&sql)
             .bind(batch.model_id)
             .bind(ids)
+            .bind(batch.workspace_ids)
             .bind(batch.legacy_ids)
             .fetch_one(pool)
             .await

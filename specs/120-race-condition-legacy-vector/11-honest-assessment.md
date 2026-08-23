@@ -23,6 +23,7 @@
 | Stamp job soft-Ok on 23505 | **Never** | Would false-GREEN cutover |
 | Historical unstamped / 131 | Deferred SPEC-111 | Ops cutover |
 | HTTP upload+worker dual-doc | Deferred soak | Merger bound suffices for LAW-120-7 |
+| Durable NULL-lid stamp UPDATE (#377) | **SPEC-136** | INSERT absorb (this spec) does not cover stamp-once UPDATE; see [`../136-durable-legacy-collision/`](../136-durable-legacy-collision/00-why.md) |
 
 ## Scorecard
 
@@ -30,7 +31,7 @@
 |-----------|-------|------|
 | Diagnosis | 9/10 | Nuanced vs issue text |
 | Symptom fix (#374) | **9/10** | Entity + relationship merger e2e |
-| Durable identity | 3/10 | Correctly out of SPEC-120 |
+| Durable identity | 3/10 | Alias merge still SPEC-083; stamp-UPDATE durability is SPEC-136 |
 | Test honesty | **9/10** | Contract + mirror + merger entity/rel; HTTP skipped on purpose |
 | DRY/SOLID | **8/10** | Absorb module + family metadata |
 | Ship state | 4/10 | Still unmerged locally |

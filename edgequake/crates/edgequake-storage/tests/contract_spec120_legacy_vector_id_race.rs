@@ -342,3 +342,269 @@ async fn contract_spec120_mixed_collide_and_fresh() {
     .expect("mix_b");
     assert_eq!(mix_b, 1);
 }
+
+/// SPEC-136 / #377: unique index is still the arbiter (unfakable control).
+async fn assert_legacy_unique_index(pool: &sqlx::PgPool, index_name: &str) {
+    let def: Option<String> = sqlx::query_scalar("SELECT pg_get_indexdef($1::regclass)")
+        .bind(index_name)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or_else(|e| panic!("{index_name} lookup failed: {e}"));
+    let def = def.unwrap_or_else(|| panic!("{index_name} must exist"));
+    assert!(
+        def.to_lowercase().contains("legacy_vector_id"),
+        "{index_name} must still unique-index legacy_vector_id: {def}"
+    );
+    assert!(
+        def.to_lowercase().contains("workspace_id"),
+        "{index_name} must remain workspace-scoped (migration 144): {def}"
+    );
+}
+
+async fn insert_null_lid_clone(
+    pool: &sqlx::PgPool,
+    table: &str,
+    fk_column: &str,
+    winner_fk: Uuid,
+    loser_fk: Uuid,
+) {
+    let sql = format!(
+        "INSERT INTO {table} (model_id, {fk_column}, workspace_id, embedding, dimensions, legacy_vector_id) \
+         SELECT model_id, $1, workspace_id, embedding, dimensions, NULL \
+         FROM {table} WHERE {fk_column} = $2 LIMIT 1"
+    );
+    let inserted = sqlx::query(&sql)
+        .bind(loser_fk)
+        .bind(winner_fk)
+        .execute(pool)
+        .await
+        .unwrap_or_else(|e| panic!("NULL-lid clone into {table} failed: {e}"))
+        .rows_affected();
+    assert_eq!(inserted, 1, "expected one NULL-lid row cloned into {table}");
+}
+
+fn assert_sqlstate_23505_legacy(err: sqlx::Error, what: &str) {
+    match err {
+        sqlx::Error::Database(db) => {
+            assert_eq!(
+                db.code().as_deref(),
+                Some("23505"),
+                "{what}: expected unique_violation, got code={:?}",
+                db.code()
+            );
+            let constraint = db.constraint().unwrap_or("");
+            let message = db.message();
+            assert!(
+                constraint.contains("legacy_vector_id") || message.contains("legacy_vector_id"),
+                "{what}: 23505 must name legacy_vector_id (constraint={constraint:?} message={message})"
+            );
+        }
+        other => panic!("{what}: expected Database(23505), got {other:?}"),
+    }
+}
+
+/// T-377-0 / T-377-1: NULL-lid loser PK + committed lid → absorb, retry Ok, one owner.
+#[tokio::test]
+async fn contract_spec136_null_lid_loser_pk_entity_absorb_and_retry() {
+    let Some(cfg) = require_or_skip_postgres("spec136_entity_null_lid") else {
+        return;
+    };
+    let pool = contract_pg_pool(&cfg).await;
+    assert_legacy_unique_index(&pool, "idx_entity_embeddings_legacy_vector_id").await;
+
+    let (tenant, workspace) = seed_tenant_ws(&pool).await;
+    let winner = Uuid::new_v4();
+    let loser = Uuid::new_v4();
+    insert_entity(&pool, winner, "John Smith", tenant, workspace).await;
+    insert_entity(&pool, loser, "JOHN_SMITH", tenant, workspace).await;
+
+    let index = edgequake_storage::PgFleetEmbeddingIndex::new(pool.clone(), "spec136-entity");
+    let lid = "entity:JOHN_SMITH";
+    index
+        .upsert_batch(
+            EmbeddingFamily::Entity,
+            ModelId(Uuid::nil()),
+            &[entity_row(workspace, winner, lid, 0.11)],
+        )
+        .await
+        .expect("winner stamp");
+
+    insert_null_lid_clone(&pool, "entity_embeddings", "entity_id", winner, loser).await;
+
+    let raw =
+        sqlx::query("UPDATE entity_embeddings SET legacy_vector_id = $1 WHERE entity_id = $2")
+            .bind(lid)
+            .bind(loser)
+            .execute(&pool)
+            .await
+            .expect_err("T-377-0: raw stamp of loser PK must 23505");
+    assert_sqlstate_23505_legacy(raw, "T-377-0 entity control UPDATE");
+
+    let first = index
+        .upsert_batch(
+            EmbeddingFamily::Entity,
+            ModelId(Uuid::nil()),
+            &[entity_row(workspace, loser, lid, 0.12)],
+        )
+        .await
+        .expect("loser upsert must absorb, not 23505");
+    assert!(
+        first.absorbed_legacy_collisions >= 1,
+        "NULL-lid loser must count as absorbed: {first:?}"
+    );
+
+    let second = index
+        .upsert_batch(
+            EmbeddingFamily::Entity,
+            ModelId(Uuid::nil()),
+            &[entity_row(workspace, loser, lid, 0.13)],
+        )
+        .await
+        .expect("retry must absorb again");
+    assert!(
+        second.absorbed_legacy_collisions >= 1,
+        "retry must still absorb: {second:?}"
+    );
+
+    let owners: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM entity_embeddings \
+         WHERE workspace_id = $1 AND legacy_vector_id = $2",
+    )
+    .bind(workspace)
+    .bind(lid)
+    .fetch_one(&pool)
+    .await
+    .expect("owners");
+    assert_eq!(owners, 1, "exactly one lid owner after absorb+retry");
+
+    let winner_owns: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM entity_embeddings \
+         WHERE entity_id = $1 AND legacy_vector_id = $2)",
+    )
+    .bind(winner)
+    .bind(lid)
+    .fetch_one(&pool)
+    .await
+    .expect("winner owns");
+    assert!(winner_owns, "winner must keep the lid");
+
+    let loser_stole: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM entity_embeddings \
+         WHERE entity_id = $1 AND legacy_vector_id = $2)",
+    )
+    .bind(loser)
+    .bind(lid)
+    .fetch_one(&pool)
+    .await
+    .expect("loser stole");
+    assert!(!loser_stole, "loser PK must not steal the lid");
+}
+
+/// T-377-2: relationship twin of the durable NULL-lid PK collision.
+#[tokio::test]
+async fn contract_spec136_null_lid_loser_pk_relationship_absorb_and_retry() {
+    let Some(cfg) = require_or_skip_postgres("spec136_rel_null_lid") else {
+        return;
+    };
+    let pool = contract_pg_pool(&cfg).await;
+    assert_legacy_unique_index(&pool, "idx_relationship_embeddings_legacy_vector_id").await;
+
+    let (tenant, workspace) = seed_tenant_ws(&pool).await;
+    let src = Uuid::new_v4();
+    let tgt = Uuid::new_v4();
+    insert_entity(&pool, src, "SRC_B", tenant, workspace).await;
+    insert_entity(&pool, tgt, "TGT_B", tenant, workspace).await;
+
+    let winner = Uuid::new_v4();
+    let loser = Uuid::new_v4();
+    for (rid, rel_type) in [(winner, "LINKS"), (loser, "RELATED")] {
+        sqlx::query(
+            "INSERT INTO relationships \
+             (id, source_id, target_id, tenant_id, workspace_id, relation_type, description, weight, sync_status) \
+             VALUES ($1, $2, $3, $4, $5, $6, 'x', 1.0, 'synced')",
+        )
+        .bind(rid)
+        .bind(src)
+        .bind(tgt)
+        .bind(tenant)
+        .bind(workspace)
+        .bind(rel_type)
+        .execute(&pool)
+        .await
+        .expect("rel");
+    }
+
+    let index = edgequake_storage::PgFleetEmbeddingIndex::new(pool.clone(), "spec136-rel");
+    let lid = "SRC_B->TGT_B:LINKS";
+    let mk = |rid: Uuid, seed: f32| FleetEmbeddingRow {
+        workspace_id: WorkspaceId(workspace),
+        embedding: emb(seed),
+        dimensions: DIM as i32,
+        key: FleetEmbeddingKey::Relationship(rid),
+        legacy_vector_id: Some(lid.to_string()),
+    };
+    index
+        .upsert_batch(
+            EmbeddingFamily::Relationship,
+            ModelId(Uuid::nil()),
+            &[mk(winner, 0.21)],
+        )
+        .await
+        .expect("winner rel stamp");
+
+    insert_null_lid_clone(
+        &pool,
+        "relationship_embeddings",
+        "relationship_id",
+        winner,
+        loser,
+    )
+    .await;
+
+    let raw = sqlx::query(
+        "UPDATE relationship_embeddings SET legacy_vector_id = $1 WHERE relationship_id = $2",
+    )
+    .bind(lid)
+    .bind(loser)
+    .execute(&pool)
+    .await
+    .expect_err("T-377-0 rel: raw stamp must 23505");
+    assert_sqlstate_23505_legacy(raw, "T-377-0 relationship control UPDATE");
+
+    let first = index
+        .upsert_batch(
+            EmbeddingFamily::Relationship,
+            ModelId(Uuid::nil()),
+            &[mk(loser, 0.22)],
+        )
+        .await
+        .expect("rel loser upsert must absorb");
+    assert!(
+        first.absorbed_legacy_collisions >= 1,
+        "rel NULL-lid loser must absorb: {first:?}"
+    );
+
+    let second = index
+        .upsert_batch(
+            EmbeddingFamily::Relationship,
+            ModelId(Uuid::nil()),
+            &[mk(loser, 0.23)],
+        )
+        .await
+        .expect("rel retry must absorb");
+    assert!(
+        second.absorbed_legacy_collisions >= 1,
+        "rel retry must absorb: {second:?}"
+    );
+
+    let owners: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM relationship_embeddings \
+         WHERE workspace_id = $1 AND legacy_vector_id = $2",
+    )
+    .bind(workspace)
+    .bind(lid)
+    .fetch_one(&pool)
+    .await
+    .expect("rel owners");
+    assert_eq!(owners, 1, "exactly one relationship lid owner");
+}
