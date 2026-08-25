@@ -414,7 +414,7 @@ Relational data-layer cutover (typed SSOT) and the LightRAG-parity response cach
 | Variable | Type | Default | Description |
 | -------- | ---- | ------- | ----------- |
 | `EDGEQUAKE_MIGRATION_MODE` | String | `verify` | Migration engine mode (`off` \| `verify` \| `automatic`); `edgequake migrate` console is the canonical path |
-| `EDGEQUAKE_MIGRATION_CONFIRM_DROP` | Boolean | `0` | Acknowledge irreversible drops (**125** KV, **126/131** vectors); also via `edgequake migrate --confirm-drop` |
+| `EDGEQUAKE_MIGRATION_CONFIRM_DROP` | Boolean | `0` | Acknowledge irreversible drops (**125** KV, **126/131** vectors); also via `edgequake migrate --confirm-drop` (alias `--drop-confirm`, SPEC-137) |
 | `EDGEQUAKE_VECTOR_BACKEND` | String | `typed_embeddings` | Vector write SSOT; `legacy_tables` only for pre-drop fleets |
 | `EDGEQUAKE_CHUNK_TEXT_AUTHORITY` | String | `relational` | Chunk-text SSOT (`relational` post-SPEC-091; `kv` pre-drop) |
 | `EDGEQUAKE_KV_FAMILY_*` | String | `relational` | Per-family KV routing (`artifact`, `cache`, `checkpoint`, `compensation_quarantine`, `doc_hash`, `injection`, `metadata`, `wsdoc`) |
@@ -437,7 +437,7 @@ Relational data-layer cutover (typed SSOT) and the LightRAG-parity response cach
 | `LANGFUSE_PROJECT_ID` | String | (auto) | **SPEC-124** — optional project id for Settings deep-link; else fetched once from `/api/public/projects`. |
 | `EDGEQUAKE_LANGFUSE_ENABLED` | Boolean | follows keys | **SPEC-124** — force-enable when keys present; see [OBSERVABILITY.md](../OBSERVABILITY.md). |
 
-> **Acc note:** The benchmark pins `EDGEQUAKE_LLM_CACHE=0` for fair cold peers (response cache). Provider KV cache (`EDGEQUAKE_PROMPT_CACHE`) stays **on** — it does not change answers. Irreversible drops (**125** KV, **126/131** vectors) are human-gated via the CLI flag `edgequake migrate --confirm-drop` or the `EDGEQUAKE_MIGRATION_CONFIRM_DROP=1` env var — never set it casually in shared env files.
+> **Acc note:** The benchmark pins `EDGEQUAKE_LLM_CACHE=0` for fair cold peers (response cache). Provider KV cache (`EDGEQUAKE_PROMPT_CACHE`) stays **on** — it does not change answers. Irreversible drops (**125** KV, **126/131** vectors) are human-gated via `edgequake migrate --confirm-drop` (alias `--drop-confirm`) or `EDGEQUAKE_MIGRATION_CONFIRM_DROP=1` — never set it casually in shared env files.
 
 ---
 

@@ -1,0 +1,35 @@
+=== LAW-C3 advisor ≡ SQL (125/126/111) ===
+   Compiling edgequake-storage v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.60s
+     Running tests/e2e_spec091_console.rs (target/debug/deps/e2e_spec091_console-9609a7632aecbb30)
+
+running 1 test
+test contract_spec091_advisor_matches_125_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.40s
+
+   Compiling edgequake-storage v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.97s
+     Running tests/e2e_spec091_vector_retire.rs (target/debug/deps/e2e_spec091_vector_retire-bf835c94d31348c6)
+
+running 1 test
+test contract_spec091_advisor_matches_126_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.41s
+
+   Compiling edgequake-storage v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.98s
+     Running tests/e2e_spec111_provenance_parity.rs (target/debug/deps/e2e_spec111_provenance_parity-789c53df5e544011)
+
+running 8 tests
+test e2e_spec111_15_chunk_vs_fleet_retirable_distinct ... ok
+test e2e_spec111_13_missing_workspace_uncovered ... ok
+test e2e_spec111_16_confirm_drop_fleet_after_provenance ... ok
+test e2e_spec111_14_dual_legacy_second_uncovered ... ok
+test e2e_spec111_11_stamp_makes_fleet_retirable ... ok
+test e2e_spec111_10_no_provenance_not_fleet_retirable ... ok
+test e2e_spec111_12_mirror_stamps_provenance ... ok
+test e2e_spec111_17_abort_without_provenance ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.18s
+

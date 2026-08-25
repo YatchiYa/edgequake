@@ -1,0 +1,78 @@
+=== unit: confirm flags + abort classifier ===
+   Compiling edgequake-observability v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-observability)
+   Compiling edgequake-pdf v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-pdf)
+   Compiling edgequake-rate-limiter v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-rate-limiter)
+   Compiling edgequake-api v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-api)
+   Compiling edgequake-auth v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-auth)
+   Compiling edgequake v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake)
+   Compiling edgequake-storage v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+   Compiling edgequake-tasks v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-tasks)
+   Compiling edgequake-pipeline v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-pipeline)
+   Compiling edgequake-query v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-query)
+   Compiling edgequake-core v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 59.30s
+     Running unittests src/main.rs (target/debug/deps/edgequake-3a21a28ead52300f)
+
+running 4 tests
+
+ APPLY INTENT
+  pending total:              2
+  SAFE SCHEMA (will apply):   1
+  DROP OLD (needs confirm):    1 → [131]
+  consent: NOT given — will apply SAFE SCHEMA only, leave DROP OLD pending
+  tip: edgequake migrate dry-run  →  then --confirm-drop when GREEN
+
+
+ WHAT THIS COMMAND DOES (first principles)
+  1. SAFE SCHEMA  — create/alter tables this binary needs.
+                   Applied now. No data deleted.
+  2. DATA MOVE    — background backfills copy old → new stores.
+                   Watched via: edgequake migrate status / dry-run.
+  3. DROP OLD     — delete legacy tables after copy is proven.
+                   NEVER automatic. Needs --confirm-drop + GREEN readiness.
+  Server start never applies migrations; it only refuses when SAFE SCHEMA
+  is still missing. Optional DROP OLD may stay pending while you serve.
+
+
+══════════════════════════════════════════════════════════════════
+ VERDICT: OK TO START THE SERVER
+══════════════════════════════════════════════════════════════════
+ Why: every required SAFE SCHEMA migration is applied.
+      Only optional DROP OLD step(s) remain — and/or SPEC-105
+      assert 142 deferred while durable legacy rows remain.
+      They are NOT required for serving on typed defaults.
+
+ Still pending (human-gated / deferred):
+  • 131 — fleet vector drop  [DROP OLD — irreversible vector fleet]
+      plain English: deletes all remaining eq_*_vectors tables
+
+ Readiness light (above):
+  • GREEN = copy verified → safe to drop old tables
+  • RED   = some old rows still need backfill/verify → do NOT drop yet
+
+ When readiness is GREEN:
+    1. Take a backup
+    2. edgequake migrate --confirm-drop
+    3. edgequake migrate            # applies deferred 142 assert
+ Preview anytime: edgequake migrate dry-run
+ Rollback after a drop = restore from backup (no undo SQL).
+══════════════════════════════════════════════════════════════════
+
+══════════════════════════════════════════════════════════════════
+ VERDICT: STOP — cannot finish SAFE SCHEMA yet
+══════════════════════════════════════════════════════════════════
+ Migration 131 (deletes all remaining eq_*_vectors tables) is next and blocks later SAFE SCHEMA steps.
+ sqlx applies migrations in order — it cannot skip the drop.
+
+ What to do:
+  1. edgequake migrate dry-run     # see readiness
+  2. When readiness is GREEN: edgequake migrate --confirm-drop
+  3. Then re-run: edgequake migrate   # remaining SAFE SCHEMA
+══════════════════════════════════════════════════════════════════
+test migrate_console::first_principles_tests::confirm_drop_flags_and_unknown_apply_flags ... ok
+test migrate_console::first_principles_tests::class_tags_and_plain_english ... ok
+test migrate_console::first_principles_tests::apply_intent_and_verdicts_do_not_panic ... ok
+test migrate_console::first_principles_tests::classify_migrate_abort_markers ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

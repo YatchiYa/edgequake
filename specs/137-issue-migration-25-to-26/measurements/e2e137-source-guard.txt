@@ -1,0 +1,5 @@
+=== source guards ===
+51:pub const CONFIRM_DROP_FLAGS: &[&str] = &["--confirm-drop", "--drop-confirm"];
+55:    CONFIRM_DROP_FLAGS.contains(&arg)
+982:            if let Some(flag) = migrate_console::first_unknown_migrate_apply_flag(rest) {
+47:### Leftover SPEC-091 DROP OLD (125 / 126 / 131)

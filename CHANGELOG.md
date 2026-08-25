@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.26.1] — 2026-08-25
+
+Patch: SPEC-137 0.25→0.26 migrate honesty (CLI consent alias + abort classification).
+**No new migration.** Schema train remains **149**. Upgrade: [`docs/operations/upgrade-to-0.26.1.md`](docs/operations/upgrade-to-0.26.1.md).
+
+**Deps (crates.io):** unchanged from 0.26.0 (`edgequake-llm` **0.10.8**, `edgequake-pdf2md` **0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0`).
+
+**SPEC-001 Acc:** attested from existing [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **PDF geometry not re-scored**.
+
+### Fixed
+- **SPEC-137 — 0.25→0.26 migrate honesty** — Mid-cutover leftover DROP OLD (125/126/131) is not migration 149. Accept `--drop-confirm` as `--confirm-drop`; reject unknown apply flags; classify Wave D / W4 / IW2 / 142 / checksum abort hints; tag 144–149 as SAFE SCHEMA. GHCR `0.26.0` still has the old CLI — pull **0.26.1**. Runbook: [`upgrade-to-0.26.1.md`](docs/operations/upgrade-to-0.26.1.md) · leftover 091: [`upgrade-to-0.26.0.md`](docs/operations/upgrade-to-0.26.0.md). Spec: [`specs/137-issue-migration-25-to-26/`](specs/137-issue-migration-25-to-26/).
+- **Local release-gates stack** — `scripts/release_gates.sh` now sets `RUST_MIN_STACK=16777216` (same as CI nextest) so debug lib tests do not SIGABRT on the default ~2 MiB thread stack.
+
 ## [0.26.0] — 2026-08-23
 
 Minor: PDF pack-to-budget (SPEC-135), manuscript page-as-unit convert (SPEC-134),

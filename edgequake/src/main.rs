@@ -770,7 +770,6 @@ async fn run_migrate_cli(args: &[String]) -> Result<()> {
                     Ok(r) => r,
                     Err(e) => {
                         migrate_console::print_failure_hint(&e);
-                        migrate_console::print_wave_d_abort_hint(&e);
                         return Err(e).context("partial migrate (expandables) failed");
                     }
                 };
@@ -850,7 +849,6 @@ async fn run_migrate_cli(args: &[String]) -> Result<()> {
             Ok(r) => r,
             Err(e) => {
                 migrate_console::print_failure_hint(&e);
-                migrate_console::print_wave_d_abort_hint(&e);
                 return Err(e).context("migrate failed");
             }
         };
@@ -893,7 +891,7 @@ async fn run_migrate_cli(args: &[String]) -> Result<()> {
 /// `--confirm-drop` flag or the `EDGEQUAKE_MIGRATION_CONFIRM_DROP` env var.
 #[cfg(feature = "postgres")]
 fn drop_confirmed(args: &[String]) -> bool {
-    args.iter().any(|a| a == "--confirm-drop")
+    migrate_console::drop_consent_from_args(args)
         || matches!(
             std::env::var("EDGEQUAKE_MIGRATION_CONFIRM_DROP")
                 .unwrap_or_default()
@@ -964,7 +962,7 @@ async fn run_migrate_status_cli() -> Result<()> {
 
 /// SPEC-091 Migration Console (doc 15 §7) — usage for the `migrate` verb family.
 const MIGRATE_USAGE: &str = "usage:
-  edgequake migrate [--confirm-drop]            apply schema migrations (+ reconcile)
+  edgequake migrate [--confirm-drop|--drop-confirm]  apply schema migrations (+ reconcile)
   edgequake migrate dry-run                     preview pending + posture (no writes)
   edgequake migrate status                      raw per-job progress ledger
   edgequake migrate console [--watch]           intelligent posture dashboard + next steps
@@ -980,7 +978,15 @@ async fn dispatch_migrate(rest: &[String]) -> Result<()> {
     match rest.first().map(String::as_str) {
         // The apply path (schema owner). Flags (e.g. --confirm-drop, C3) belong to it.
         None => run_migrate_cli(rest).await,
-        Some(s) if s.starts_with("--") => run_migrate_cli(rest).await,
+        Some(s) if s.starts_with("--") => {
+            if let Some(flag) = migrate_console::first_unknown_migrate_apply_flag(rest) {
+                anyhow::bail!(
+                    "{}\n{MIGRATE_USAGE}",
+                    migrate_console::unknown_migrate_apply_flag_message(flag)
+                );
+            }
+            run_migrate_cli(rest).await
+        }
         Some("dry-run") => run_migrate_dry_run_cli().await,
         Some("status") => run_migrate_status_cli().await,
         Some("console") => migrate_advisor_cli::run_console(has_flag(rest, "--watch")).await,

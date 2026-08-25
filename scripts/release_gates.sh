@@ -69,6 +69,10 @@ else
       EDGEQUAKE_VLM_REASONING_EFFORT EDGEQUAKE_KEYWORD_REASONING_EFFORT \
       EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER EDGEQUAKE_DEFAULT_EMBEDDING_MODEL \
       EDGEQUAKE_EMBEDDING_PROVIDER EDGEQUAKE_EMBEDDING_MODEL || true
+    # Match CI.yml: debug tokio tests (pdf resume / hybrid) overflow the default
+    # ~2 MiB thread stack. GitHub Actions sets this on nextest; local cargo test
+    # must too or `make release-gates` SIGABRTs while CI stays green.
+    export RUST_MIN_STACK="${RUST_MIN_STACK:-16777216}"
     cargo test --workspace --lib --locked --no-fail-fast
   )
 fi

@@ -1,0 +1,27 @@
+SPEC-137 — field ticket (anonymized)
+
+From: v0.25.0 serving
+To:   v0.26.0 binary / image
+DB:   postgresql://edgequake:***@db.example.internal:5432/edgequake
+
+Steps:
+
+  1. edgequake migrate
+     Result: OK (exit 0). Remaining migrations require DROP OLD consent.
+
+  2. edgequake migrate --drop-confirm
+     Result: failure (same class on retry). See reconstructed-*.txt.
+
+  3. edgequake migrate guard
+     Result: read-only probe (does not apply schema).
+
+  4. edgequake migrate --drop-confirm
+     Result: same failure as step 2.
+
+Notes (code is law):
+
+  - Canonical consent token is --confirm-drop (env EDGEQUAKE_MIGRATION_CONFIRM_DROP).
+  - Alias --drop-confirm was NOT recognized before SPEC-137.
+  - Unknown apply flags were silently ignored (dispatch: any --* → apply path).
+  - v0.26.0 additive schema is migration 149 only (SAFE SCHEMA).
+  - Pending DROP OLD 125/126/131 is legal on 0.25 typed-default serving (LD-15).

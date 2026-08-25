@@ -1,0 +1,35 @@
+=== cli_migrate_console SPEC-137 ===
+   Compiling edgequake-api v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-api)
+   Compiling edgequake v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.08s
+     Running tests/cli_migrate_console.rs (target/debug/deps/cli_migrate_console-f95d4299d0734635)
+
+running 1 test
+test cli_migrate_unknown_apply_flag_rejected ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 3.96s
+
+   Compiling edgequake-api v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-api)
+   Compiling edgequake v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.55s
+     Running tests/cli_migrate_console.rs (target/debug/deps/cli_migrate_console-f95d4299d0734635)
+
+running 1 test
+test cli_migrate_bare_confirm_is_not_drop_consent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 3.72s
+
+   Compiling edgequake-api v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-api)
+   Compiling edgequake v0.26.1 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.07s
+     Running tests/cli_migrate_console.rs (target/debug/deps/cli_migrate_console-f95d4299d0734635)
+
+running 5 tests
+test cli_migrate_spec137_applies_149_leaves_drops ... ok
+test cli_migrate_spec137_drop_confirm_alias_and_age_untouched ... ok
+test cli_migrate_spec137_guard_does_not_mutate_ledger ... ok
+test cli_migrate_spec137_iw2_abort_hint ... ok
+test cli_migrate_spec137_wave_d_abort_hint ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 19 filtered out; finished in 13.27s
+

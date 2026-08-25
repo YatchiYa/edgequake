@@ -1,0 +1,42 @@
+SPEC-137 Track A — reconstructed apply when --drop-confirm is ignored
+(HEAD before SPEC-137; consent SSOT matches only --confirm-drop)
+
+EdgeQuake migrate v0.26.0
+database: postgresql://edgequake:***@db.example.internal:5432/edgequake
+
+ WHAT THIS COMMAND DOES (first principles)
+  1. SAFE SCHEMA  — create/alter tables this binary needs.
+  2. DATA MOVE    — background backfills copy old → new stores.
+  3. DROP OLD     — NEVER automatic. Needs --confirm-drop + GREEN readiness.
+
+preflight: 4 pending migration(s)
+  pending 125 — spec091 kv drop  [DROP OLD — irreversible KV tables]
+  pending 126 — spec091 vector drop  [DROP OLD — irreversible chunk vectors]
+  pending 131 — spec091 fleet vector drop  [DROP OLD — irreversible vector fleet]
+  pending 142 — spec105 legacy cutover assert  [ASSERT — SPEC-105; after confirm-drop / empty residue]
+
+ APPLY INTENT
+  pending total:              4
+  SAFE SCHEMA (will apply):   1   (149 if not yet applied; 0 if already applied)
+  DROP OLD (needs confirm):    3 → [125, 126, 131]
+  consent: NOT given — will apply SAFE SCHEMA only, leave DROP OLD pending
+  tip: edgequake migrate dry-run  →  then --confirm-drop when GREEN
+
+(or, if 149 already applied this run / previous run)
+
+══════════════════════════════════════════════════════════════════
+ VERDICT: OK TO START THE SERVER
+══════════════════════════════════════════════════════════════════
+ Still pending (human-gated / deferred):
+  • 125 — spec091 kv drop  [DROP OLD — irreversible KV tables]
+  • 126 — spec091 vector drop  [DROP OLD — irreversible chunk vectors]
+  • 131 — spec091 fleet vector drop  [DROP OLD — irreversible vector fleet]
+  • 142 — spec105 legacy cutover assert  [ASSERT — SPEC-105]
+
+ When readiness is GREEN:
+    2. edgequake migrate --confirm-drop
+
+Exit: 0 (soft-exit). Operator may still call this a "failure" because DROP OLD
+did not run. Retry after `migrate guard` cannot change ignored flags.
+
+Pin: ticket used the token --drop-confirm three times.

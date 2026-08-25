@@ -649,3 +649,353 @@ async fn cli_migrate_applies_expandables_before_fleet_drop_without_confirm() {
 
     drop_db(&db, &name).await;
 }
+
+// ---------------------------------------------------------------------------
+// SPEC-137 — 0.25→0.26 mid-cutover honesty (consent alias, abort class, 149).
+// ---------------------------------------------------------------------------
+
+/// E2E-137-03: unknown apply flags fail closed (no database required).
+#[test]
+fn cli_migrate_unknown_apply_flag_rejected() {
+    let out = run_cli(
+        &["--confirm-drp"],
+        "postgres://edgequake:edgequake@127.0.0.1:1/edgequake",
+        &[],
+    );
+    assert!(
+        !out.status.success(),
+        "unknown flag must be non-zero: stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+    let combined = format!("{}{}", out.stdout, out.stderr);
+    assert!(
+        combined.contains("--confirm-drp"),
+        "must echo the unknown flag: {combined}"
+    );
+    assert!(
+        combined.contains("--confirm-drop"),
+        "must hint canonical consent token: {combined}"
+    );
+}
+
+#[test]
+fn cli_migrate_bare_confirm_is_not_drop_consent() {
+    let out = run_cli(
+        &["--confirm"],
+        "postgres://edgequake:edgequake@127.0.0.1:1/edgequake",
+        &[],
+    );
+    assert!(
+        !out.status.success(),
+        "stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+    let combined = format!("{}{}", out.stdout, out.stderr);
+    assert!(combined.contains("--confirm-drop"), "{combined}");
+}
+
+/// E2E-137-01: expandable mid-cutover applies 149; DROP OLD stays pending.
+#[tokio::test]
+async fn cli_migrate_spec137_applies_149_leaves_drops() {
+    let Some(db) = dev_db_url() else {
+        eprintln!("SKIP: DATABASE_URL not set");
+        return;
+    };
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let name = format!("edgequake_cli_13701_{}_{}", std::process::id(), nanos);
+    let Some(fresh) = create_fresh_db(&db, &name).await else {
+        eprintln!("SKIP: could not create fresh DB");
+        return;
+    };
+
+    unsafe {
+        std::env::set_var("EDGEQUAKE_MIGRATE_CLI", "1");
+    }
+    let pool = sqlx::PgPool::connect(&fresh).await.expect("connect seed");
+    edgequake_api::state::migration_bootstrap::run_postgres_expandable_migrations(&pool)
+        .await
+        .expect("expandable seed (omit 125/126/131)");
+
+    let _ = sqlx::query("DROP INDEX IF EXISTS idx_tasks_workspace_document_id")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE tasks DROP COLUMN IF EXISTS document_id")
+        .execute(&pool)
+        .await;
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 149")
+        .execute(&pool)
+        .await
+        .expect("rewind 149");
+    pool.close().await;
+    unsafe {
+        std::env::remove_var("EDGEQUAKE_MIGRATE_CLI");
+    }
+
+    let out = run_cli(&[], &fresh, &[]);
+    assert!(
+        out.status.success(),
+        "expandable migrate must apply 149: stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+
+    let pool = sqlx::PgPool::connect(&fresh).await.expect("connect");
+    let applied_149: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version = 149 AND success)",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("149");
+    let applied_125: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version = 125 AND success)",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("125");
+    assert!(applied_149, "migration 149 must apply without confirm");
+    assert!(!applied_125, "migration 125 must remain pending");
+    pool.close().await;
+
+    drop_db(&db, &name).await;
+}
+
+/// E2E-137-02 + E2E-137-07: `--drop-confirm` applies empty leftover drops; AGE graphs stay.
+#[tokio::test]
+async fn cli_migrate_spec137_drop_confirm_alias_and_age_untouched() {
+    let Some(db) = dev_db_url() else {
+        eprintln!("SKIP: DATABASE_URL not set");
+        return;
+    };
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let name = format!("edgequake_cli_13702_{}_{}", std::process::id(), nanos);
+    let Some(fresh) = create_fresh_db(&db, &name).await else {
+        eprintln!("SKIP: could not create fresh DB");
+        return;
+    };
+    seed_schema_through(&fresh, 124).await;
+
+    let pool = sqlx::PgPool::connect(&fresh).await.expect("connect");
+    let graphs_before: Option<i64> =
+        sqlx::query_scalar("SELECT COUNT(*)::bigint FROM ag_catalog.ag_graph")
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten();
+    pool.close().await;
+
+    let out = run_cli(&["--drop-confirm"], &fresh, &[]);
+    assert!(
+        out.status.success(),
+        "--drop-confirm on empty leftover must apply: stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+
+    let pool = sqlx::PgPool::connect(&fresh).await.expect("connect after");
+    let applied_125: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version = 125 AND success)",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("125");
+    let applied_142: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version = 142 AND success)",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("142");
+    assert!(applied_125, "125 must apply with --drop-confirm");
+    assert!(applied_142, "142 must apply after empty leftover drops");
+
+    if let Some(before) = graphs_before {
+        let after: i64 = sqlx::query_scalar("SELECT COUNT(*)::bigint FROM ag_catalog.ag_graph")
+            .fetch_one(&pool)
+            .await
+            .expect("ag_graph after");
+        assert_eq!(before, after, "AGE graph count must be unchanged");
+    }
+    pool.close().await;
+
+    drop_db(&db, &name).await;
+}
+
+/// E2E-137-04: Wave D abort class — KV residue, not tasks/pg_locks.
+#[tokio::test]
+async fn cli_migrate_spec137_wave_d_abort_hint() {
+    let Some(db) = dev_db_url() else {
+        eprintln!("SKIP: DATABASE_URL not set");
+        return;
+    };
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let name = format!("edgequake_cli_13704_{}_{}", std::process::id(), nanos);
+    let Some(fresh) = create_fresh_db(&db, &name).await else {
+        eprintln!("SKIP: could not create fresh DB");
+        return;
+    };
+    seed_schema_through(&fresh, 124).await;
+
+    let pool = sqlx::PgPool::connect(&fresh).await.expect("connect");
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS public.eq_spec137_kv (key TEXT PRIMARY KEY, value JSONB)",
+    )
+    .execute(&pool)
+    .await
+    .expect("kv table");
+    sqlx::query(
+        "INSERT INTO public.eq_spec137_kv (key, value) VALUES \
+         ('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee-chunk-0', '{\"content\":\"orphan\"}'::jsonb)",
+    )
+    .execute(&pool)
+    .await
+    .expect("kv residue");
+    pool.close().await;
+
+    let out = run_cli(&["--confirm-drop"], &fresh, &[]);
+    assert!(
+        !out.status.success(),
+        "Wave D must fail closed: stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+    let combined = format!("{}{}", out.stdout, out.stderr);
+    assert!(
+        combined.contains("Wave D") || combined.contains("un-migrated durable KV"),
+        "must name Wave D: {combined}"
+    );
+    assert!(
+        !combined.contains("pg_locks"),
+        "must not classify as tasks lock: {combined}"
+    );
+
+    drop_db(&db, &name).await;
+}
+
+/// E2E-137-05: IW2 abort names provenance-stamp.
+#[tokio::test]
+async fn cli_migrate_spec137_iw2_abort_hint() {
+    let Some(db) = dev_db_url() else {
+        eprintln!("SKIP: DATABASE_URL not set");
+        return;
+    };
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let name = format!("edgequake_cli_13705_{}_{}", std::process::id(), nanos);
+    let Some(fresh) = create_fresh_db(&db, &name).await else {
+        eprintln!("SKIP: could not create fresh DB");
+        return;
+    };
+    unsafe {
+        std::env::set_var("EDGEQUAKE_MIGRATE_CLI", "1");
+    }
+    let pool = sqlx::PgPool::connect(&fresh).await.expect("connect");
+    edgequake_api::state::migration_bootstrap::run_postgres_expandable_migrations(&pool)
+        .await
+        .expect("expandable seed (143 before pending 131)");
+    unsafe {
+        std::env::remove_var("EDGEQUAKE_MIGRATE_CLI");
+    }
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS public.eq_spec137_vectors \
+         (id TEXT PRIMARY KEY, embedding vector, metadata JSONB DEFAULT '{}')",
+    )
+    .execute(&pool)
+    .await;
+    sqlx::query(
+        "INSERT INTO public.eq_spec137_vectors (id) VALUES ('entity:ORPHAN_SPEC137') \
+         ON CONFLICT DO NOTHING",
+    )
+    .execute(&pool)
+    .await
+    .expect("uncovered entity vector");
+    pool.close().await;
+
+    let out = run_cli(&["--confirm-drop"], &fresh, &[]);
+    assert!(
+        !out.status.success(),
+        "IW2 must fail closed: stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+    let combined = format!("{}{}", out.stdout, out.stderr).to_ascii_lowercase();
+    assert!(
+        combined.contains("iw2")
+            || combined.contains("provenance")
+            || combined.contains("legacy_vector_id"),
+        "must name IW2 / provenance: stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+    assert!(
+        combined.contains("provenance-stamp") || combined.contains("iw2-fleet"),
+        "hint must name stamp job: stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+
+    drop_db(&db, &name).await;
+}
+
+/// E2E-137-08: `migrate guard` does not mutate `_sqlx_migrations`.
+#[tokio::test]
+async fn cli_migrate_spec137_guard_does_not_mutate_ledger() {
+    let Some(db) = dev_db_url() else {
+        eprintln!("SKIP: DATABASE_URL not set");
+        return;
+    };
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let name = format!("edgequake_cli_13708_{}_{}", std::process::id(), nanos);
+    let Some(fresh) = create_fresh_db(&db, &name).await else {
+        eprintln!("SKIP: could not create fresh DB");
+        return;
+    };
+    let first = run_cli(&[], &fresh, &[]);
+    assert!(first.status.success(), "fresh seed: {}", first.stderr);
+
+    let pool = sqlx::PgPool::connect(&fresh).await.expect("connect");
+    let before_count: i64 = sqlx::query_scalar("SELECT COUNT(*)::bigint FROM _sqlx_migrations")
+        .fetch_one(&pool)
+        .await
+        .expect("count before");
+    let before_max: i64 =
+        sqlx::query_scalar("SELECT coalesce(max(version), 0) FROM _sqlx_migrations")
+            .fetch_one(&pool)
+            .await
+            .expect("max before");
+    pool.close().await;
+
+    let guard = run_cli(&["guard"], &fresh, &[]);
+    assert!(guard.status.success(), "guard: {}", guard.stderr);
+
+    let pool = sqlx::PgPool::connect(&fresh).await.expect("connect after");
+    let after_count: i64 = sqlx::query_scalar("SELECT COUNT(*)::bigint FROM _sqlx_migrations")
+        .fetch_one(&pool)
+        .await
+        .expect("count after");
+    let after_max: i64 =
+        sqlx::query_scalar("SELECT coalesce(max(version), 0) FROM _sqlx_migrations")
+            .fetch_one(&pool)
+            .await
+            .expect("max after");
+    pool.close().await;
+
+    assert_eq!(before_count, after_count, "guard must not add ledger rows");
+    assert_eq!(before_max, after_max, "guard must not advance versions");
+
+    drop_db(&db, &name).await;
+}

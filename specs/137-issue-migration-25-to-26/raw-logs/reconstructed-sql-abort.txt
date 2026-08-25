@@ -1,0 +1,29 @@
+SPEC-137 Track B — reconstructed SQL fail-closed classes
+(consent INCLUDED via --confirm-drop or EDGEQUAKE_MIGRATION_CONFIRM_DROP=1)
+
+ APPLY INTENT
+  consent: INCLUDED — --confirm-drop / fresh-install gate open
+
+applying N migration(s) + support reconcile on admin pool…
+
+--- class Wave D (migration 125) ---
+migrate failed: while executing migration 125: error returned from database:
+  SPEC-091 Wave D ABORT: eq_example_kv still holds N un-migrated durable KV rows (...)
+hint (pre-SPEC-137): re-run with RUST_LOG=...; if stuck on tasks DDL, check pg_locks
+  (WRONG class — not a tasks lock)
+
+--- class W4 (migration 126) ---
+SPEC-091 W4 ABORT: eq_example_vectors holds N legacy chunk vectors not in chunk_embeddings.
+
+--- class IW2 (migration 131) ---
+SPEC-091 IW2 ABORT: eq_example_vectors holds N legacy entity vectors without legacy_vector_id provenance.
+
+--- class 142 ---
+SPEC-105 migration 142: public.eq_example_kv still has N row(s). Finish SPEC-091 irreversible drops first.
+
+--- class checksum ---
+Migration 125 checksum drift detected (...). Refusing silent repair without authorization.
+
+sqlx: migration not recorded as success (transaction rollback). Retry is deterministic
+until residue / provenance / checksum auth is fixed. `migrate guard` does not mutate
+_sqlx_migrations.

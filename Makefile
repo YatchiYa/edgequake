@@ -150,7 +150,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         spec091-upgrade-soak spec091-gates spec103-llm-cache-proof \
         spec109-reasoning-effort-proof \
-        spec110-migrate-118-proof \
+        spec110-migrate-118-proof spec137-migrate-025-026-proof \
         spec93-migration-assessment spec93-migration-assessment-pg16 \
         spec93-migration-assessment-pg17 spec93-migration-assessment-pg18 \
         check-deps status \
@@ -2202,7 +2202,8 @@ QUICKSTART_COMPOSE := $(ROOT_DIR)/docker-compose.quickstart.yml
 .PHONY: stack stack-down stack-logs stack-status stack-restart stack-pull \
 	spec091-upgrade-soak spec091-gates \
 	spec93-migration-assessment spec93-migration-assessment-pg16 \
-	spec93-migration-assessment-pg17 spec93-migration-assessment-pg18
+	spec93-migration-assessment-pg17 spec93-migration-assessment-pg18 \
+	spec137-migrate-025-026-proof
 
 # SPEC-091: v0.22.0 GHCR → HEAD smoke soak (tiny corpus; migrations 106–141 + confirm-drop).
 # Formal realism matrix: make spec93-migration-assessment (see specs/93-migration-assessment/).
@@ -2261,6 +2262,12 @@ spec110-migrate-118-proof: ## SPEC-110: wsdoc/injection ON CONFLICT dedup + chec
 	@chmod +x $(ROOT_DIR)/scripts/spec110_migrate_118_proof.sh
 	@$(ROOT_DIR)/scripts/spec110_migrate_118_proof.sh
 	@echo "$(GREEN)SPEC-110 proof OK$(RESET) — see specs/110-migration-issue/measurements/"
+
+spec137-migrate-025-026-proof: ## SPEC-137: 0.25→0.26 migrate consent alias + abort class + 149
+	@echo "$(BOLD)$(BLUE)SPEC-137 migrate 0.25→0.26 proof$(RESET)"
+	@chmod +x $(ROOT_DIR)/scripts/spec137_migrate_025_026_proof.sh
+	@$(ROOT_DIR)/scripts/spec137_migrate_025_026_proof.sh
+	@echo "$(GREEN)SPEC-137 proof OK$(RESET) — see specs/137-issue-migration-25-to-26/measurements/"
 
 spec109-e2e: dev-bg ## SPEC-109 reasoning effort UI E2E + measurement screenshots
 	@echo "$(BLUE)SPEC-109 E2E → frontend $(FRONTEND_URL) backend $(BACKEND_URL)$(RESET)"

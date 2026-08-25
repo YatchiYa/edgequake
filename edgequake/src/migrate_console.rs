@@ -5,7 +5,9 @@
 //! First principles (expand → migrate → contract):
 //! - **Safe schema** (expand): add tables/indexes the binary needs — apply automatically.
 //! - **Destroy-data** (contract): DROP old stores — never silent; needs `--confirm-drop`
-//!   and a GREEN readiness check (data already copied to the new store).
+//!   (alias `--drop-confirm`) and a GREEN readiness check (data already copied).
+//!
+//! SPEC-137: consent tokens, abort classification, and class tags live here (DRY).
 
 #[cfg(feature = "postgres")]
 use sqlx::PgPool;
@@ -25,7 +27,9 @@ pub fn print_first_principles() {
     println!("  2. DATA MOVE    — background backfills copy old → new stores.");
     println!("                   Watched via: edgequake migrate status / dry-run.");
     println!("  3. DROP OLD     — delete legacy tables after copy is proven.");
-    println!("                   NEVER automatic. Needs --confirm-drop + GREEN readiness.");
+    println!(
+        "                   NEVER automatic. Needs {CANONICAL_CONFIRM_DROP_FLAG} + GREEN readiness."
+    );
     println!("  Server start never applies migrations; it only refuses when SAFE SCHEMA");
     println!("  is still missing. Optional DROP OLD may stay pending while you serve.");
     println!();
@@ -39,6 +43,89 @@ pub const VECTOR_DROP_MIGRATION: i64 = 126;
 
 /// SPEC-091 IW2: irreversible full legacy vector fleet drop.
 pub const FLEET_VECTOR_DROP_MIGRATION: i64 = 131;
+
+/// Canonical DROP OLD consent flag (LAW-137-1). Alias `--drop-confirm` is accepted.
+pub const CANONICAL_CONFIRM_DROP_FLAG: &str = "--confirm-drop";
+
+/// Consent tokens recognized on `edgequake migrate` apply path (LAW-137-1).
+pub const CONFIRM_DROP_FLAGS: &[&str] = &["--confirm-drop", "--drop-confirm"];
+
+/// True when `arg` is a DROP OLD consent flag (canonical or alias).
+pub fn is_confirm_drop_flag(arg: &str) -> bool {
+    CONFIRM_DROP_FLAGS.contains(&arg)
+}
+
+/// True when CLI args include a consent flag (env is checked by the caller).
+pub fn drop_consent_from_args(args: &[String]) -> bool {
+    args.iter().any(|a| is_confirm_drop_flag(a))
+}
+
+/// First unknown `--flag` on the apply path (not a consent token).
+pub fn first_unknown_migrate_apply_flag(args: &[String]) -> Option<&str> {
+    args.iter()
+        .map(String::as_str)
+        .find(|a| a.starts_with("--") && !is_confirm_drop_flag(a))
+}
+
+/// Operator message when an apply-path flag is not a consent token (LAW-137-2).
+pub fn unknown_migrate_apply_flag_message(flag: &str) -> String {
+    if flag.contains("confirm") || flag.contains("drop") {
+        format!(
+            "unknown migrate flag '{flag}'. \
+             Irreversible DROP OLD consent is `{CANONICAL_CONFIRM_DROP_FLAG}` \
+             (alias `--drop-confirm`)."
+        )
+    } else {
+        format!(
+            "unknown migrate flag '{flag}'. \
+             Apply path accepts only `{CANONICAL_CONFIRM_DROP_FLAG}` \
+             (alias `--drop-confirm`)."
+        )
+    }
+}
+
+/// Class of a migrate failure for operator hints (LAW-137-4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MigrateAbortClass {
+    WaveD,
+    W4,
+    Iw2,
+    LegacyAssert142,
+    ChecksumRefuse,
+    Lock,
+    Other,
+}
+
+/// Classify stderr/sqlx error text without mutating anything.
+pub fn classify_migrate_abort(msg: &str) -> MigrateAbortClass {
+    let lower = msg.to_ascii_lowercase();
+    if msg.contains("Wave D ABORT") || msg.contains("un-migrated durable KV") {
+        MigrateAbortClass::WaveD
+    } else if msg.contains("W4 ABORT")
+        || msg.contains("legacy chunk vectors not in chunk_embeddings")
+    {
+        MigrateAbortClass::W4
+    } else if msg.contains("IW2 ABORT")
+        || msg.contains("legacy_vector_id provenance")
+        || msg.contains("unclassified legacy vector")
+    {
+        MigrateAbortClass::Iw2
+    } else if msg.contains("SPEC-105 migration 142")
+        || msg.contains("Finish SPEC-091 irreversible drops")
+    {
+        MigrateAbortClass::LegacyAssert142
+    } else if msg.contains("checksum drift") || msg.contains("Refusing silent repair") {
+        MigrateAbortClass::ChecksumRefuse
+    } else if lower.contains("pg_locks")
+        || lower.contains("40p01")
+        || lower.contains("55p03")
+        || (lower.contains("lock") && lower.contains("tasks"))
+    {
+        MigrateAbortClass::Lock
+    } else {
+        MigrateAbortClass::Other
+    }
+}
 
 /// Human one-liner for an irreversible drop version.
 pub fn irreversible_drop_plain(version: i64) -> &'static str {
@@ -82,11 +169,7 @@ pub fn migration_class_tag(version: i64) -> &'static str {
         "  [DROP OLD — irreversible vector fleet]"
     } else if version == 142 {
         "  [ASSERT — SPEC-105; after confirm-drop / empty residue]"
-    } else if (106..=124).contains(&version)
-        || (127..=130).contains(&version)
-        || (132..=141).contains(&version)
-        || version == 143
-    {
+    } else if version >= 106 && !is_irreversible_drop_version(version) {
         "  [SAFE SCHEMA — expandable]"
     } else {
         ""
@@ -149,7 +232,7 @@ pub fn print_irreversible_pending_soft_exit(remaining: &[(i64, String)]) {
     eprintln!();
     eprintln!(" When readiness is GREEN:");
     eprintln!("    1. Take a backup");
-    eprintln!("    2. edgequake migrate --confirm-drop");
+    eprintln!("    2. edgequake migrate {CANONICAL_CONFIRM_DROP_FLAG}");
     eprintln!("    3. edgequake migrate            # applies deferred 142 assert");
     eprintln!(" Preview anytime: edgequake migrate dry-run");
     eprintln!(" Rollback after a drop = restore from backup (no undo SQL).");
@@ -170,7 +253,7 @@ pub fn print_blocked_by_irreversible(blocking: i64) {
     eprintln!();
     eprintln!(" What to do:");
     eprintln!("  1. edgequake migrate dry-run     # see readiness");
-    eprintln!("  2. When readiness is GREEN: edgequake migrate --confirm-drop");
+    eprintln!("  2. When readiness is GREEN: edgequake migrate {CANONICAL_CONFIRM_DROP_FLAG}");
     eprintln!("  3. Then re-run: edgequake migrate   # remaining SAFE SCHEMA");
     eprintln!("══════════════════════════════════════════════════════════════════");
 }
@@ -213,10 +296,14 @@ pub fn print_apply_intent(pending: &[(i64, String)], drop_confirmed: bool) {
     );
     if !irreversible.is_empty() {
         if drop_confirmed {
-            println!("  consent: INCLUDED — --confirm-drop / fresh-install gate open");
+            println!(
+                "  consent: INCLUDED — {CANONICAL_CONFIRM_DROP_FLAG} / alias --drop-confirm / fresh-install gate open"
+            );
         } else {
             println!("  consent: NOT given — will apply SAFE SCHEMA only, leave DROP OLD pending");
-            println!("  tip: edgequake migrate dry-run  →  then --confirm-drop when GREEN");
+            println!(
+                "  tip: edgequake migrate dry-run  →  then {CANONICAL_CONFIRM_DROP_FLAG} when GREEN"
+            );
         }
     }
     println!();
@@ -233,7 +320,9 @@ pub fn print_upgrade_risk_box(has_drop_pending: bool) {
     println!("  3. Keep flags relational (EDGEQUAKE_CHUNK_TEXT_AUTHORITY + EDGEQUAKE_KV_FAMILY_*=relational).");
     println!("  4. Server boot never applies migrations — this CLI owns schema; boot STOPS if SAFE SCHEMA is missing.");
     if has_drop_pending {
-        println!("  5. When drop-readiness is GREEN, apply DROP OLD with: edgequake migrate --confirm-drop");
+        println!(
+            "  5. When drop-readiness is GREEN, apply DROP OLD with: edgequake migrate {CANONICAL_CONFIRM_DROP_FLAG}"
+        );
         println!("     Rollback after a drop = RESTORE FROM BACKUP only.");
     } else {
         println!("  5. Apply SAFE SCHEMA with: edgequake migrate");
@@ -248,17 +337,61 @@ pub fn print_kv_drop_applied() {
     println!();
 }
 
-/// Extra failure guidance when Wave D abort / residue blocks the drop.
-pub fn print_wave_d_abort_hint(err: &dyn std::fmt::Display) {
+/// Extra failure guidance when a DROP OLD / checksum / lock abort is classified.
+pub fn print_drop_abort_hint(err: &dyn std::fmt::Display) {
     let msg = err.to_string();
-    if msg.contains("Wave D ABORT") || msg.contains("un-migrated durable KV") {
-        eprintln!("hint: residue remains outside typed SSOT.");
-        eprintln!("      1) edgequake migrate dry-run");
-        eprintln!("      2) edgequake migrate guard");
-        eprintln!(
-            "      3) finish family backfills / migration engine, then re-run --confirm-drop"
-        );
+    match classify_migrate_abort(&msg) {
+        MigrateAbortClass::WaveD => {
+            eprintln!("hint: Wave D — durable KV residue remains outside typed SSOT.");
+            eprintln!("      1) edgequake migrate dry-run");
+            eprintln!("      2) edgequake migrate guard");
+            eprintln!(
+                "      3) finish family backfills (117-122 / migration engine), then re-run {CANONICAL_CONFIRM_DROP_FLAG}"
+            );
+        }
+        MigrateAbortClass::W4 => {
+            eprintln!("hint: W4 — uncovered legacy chunk vectors (not in chunk_embeddings).");
+            eprintln!("      1) edgequake migrate guard");
+            eprintln!(
+                "      2) run w3-chunk-embedding-backfill (EDGEQUAKE_MIGRATION_MODE=automatic)"
+            );
+            eprintln!("      3) re-run {CANONICAL_CONFIRM_DROP_FLAG} when vector-chunk drop-readiness is GREEN");
+        }
+        MigrateAbortClass::Iw2 => {
+            eprintln!("hint: IW2 — uncovered fleet vectors (missing legacy_vector_id provenance).");
+            eprintln!("      1) edgequake migrate guard");
+            eprintln!(
+                "      2) run iw2-fleet-embedding-backfill and/or iw2-fleet-provenance-stamp"
+            );
+            eprintln!("      3) re-run {CANONICAL_CONFIRM_DROP_FLAG} when vector-fleet drop-readiness is GREEN");
+        }
+        MigrateAbortClass::LegacyAssert142 => {
+            eprintln!("hint: SPEC-105 — leftover eq_* rows; finish 125/126/131 first.");
+            eprintln!("      1) edgequake migrate guard");
+            eprintln!("      2) {CANONICAL_CONFIRM_DROP_FLAG} when GREEN");
+            eprintln!("      3) edgequake migrate  # deferred 142");
+        }
+        MigrateAbortClass::ChecksumRefuse => {
+            eprintln!("hint: checksum drift — refusing silent repair.");
+            eprintln!(
+                "      one-shot: EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=<versions> edgequake migrate"
+            );
+            eprintln!(
+                "      then UNSET the var. Spec: specs/111-issues/10-migration-immutability.md"
+            );
+        }
+        MigrateAbortClass::Lock => {
+            eprintln!(
+                "hint: lock / contention — check pg_locks / other backends holding locks on public.tasks"
+            );
+        }
+        MigrateAbortClass::Other => {}
     }
+}
+
+/// SPEC-091 Wave D alias (LAW-137-4 classifier is the SSOT).
+pub fn print_wave_d_abort_hint(err: &dyn std::fmt::Display) {
+    print_drop_abort_hint(err);
 }
 
 /// List versions applied in this run.
@@ -284,10 +417,8 @@ pub fn print_summary(pending_before: usize, latest: Option<i64>, applied_count: 
 /// Actionable stderr hint when migrate fails.
 pub fn print_failure_hint(err: &dyn std::fmt::Display) {
     eprintln!("migrate failed: {err}");
-    eprintln!(
-        "hint: re-run with RUST_LOG=edgequake.migration=info,edgequake=info; \
-         if stuck on tasks DDL, check pg_locks / other backends holding locks on public.tasks"
-    );
+    eprintln!("hint: re-run with RUST_LOG=edgequake.migration=info,edgequake=info");
+    print_wave_d_abort_hint(err);
 }
 
 /// SPEC-091 P4: one status line per migration job (`edgequake migrate status`).
@@ -623,9 +754,9 @@ pub fn print_actions(actions: &[GuardedAction]) {
 #[cfg(feature = "postgres")]
 fn confirm_tag(a: &GuardedAction) -> &'static str {
     if a.requires_confirmation && a.irreversible {
-        "  [requires --confirm, IRREVERSIBLE]"
+        "  [requires --confirm-drop, IRREVERSIBLE]"
     } else if a.requires_confirmation {
-        "  [requires --confirm]"
+        "  [requires --confirm-drop]"
     } else {
         ""
     }
@@ -773,6 +904,69 @@ mod first_principles_tests {
         assert!(migration_class_tag(131).contains("DROP OLD"));
         assert!(migration_class_tag(130).contains("SAFE SCHEMA"));
         assert!(migration_class_tag(143).contains("SAFE SCHEMA"));
+        assert!(migration_class_tag(144).contains("SAFE SCHEMA"));
+        assert!(migration_class_tag(148).contains("SAFE SCHEMA"));
+        assert!(migration_class_tag(149).contains("SAFE SCHEMA"));
+        assert!(migration_class_tag(142).contains("ASSERT"));
+    }
+
+    #[test]
+    fn confirm_drop_flags_and_unknown_apply_flags() {
+        assert!(is_confirm_drop_flag("--confirm-drop"));
+        assert!(is_confirm_drop_flag("--drop-confirm"));
+        assert!(!is_confirm_drop_flag("--confirm"));
+        assert!(!is_confirm_drop_flag("--confirm-drp"));
+        assert!(drop_consent_from_args(&["--drop-confirm".into()]));
+        assert_eq!(
+            first_unknown_migrate_apply_flag(&["--confirm-drp".into()]),
+            Some("--confirm-drp")
+        );
+        assert!(first_unknown_migrate_apply_flag(&["--confirm-drop".into()]).is_none());
+        let msg = unknown_migrate_apply_flag_message("--confirm-drp");
+        assert!(msg.contains(CANONICAL_CONFIRM_DROP_FLAG));
+        assert!(msg.contains("--drop-confirm"));
+    }
+
+    #[test]
+    fn classify_migrate_abort_markers() {
+        assert_eq!(
+            classify_migrate_abort(
+                "SPEC-091 Wave D ABORT: eq_x_kv still holds 3 un-migrated durable KV rows"
+            ),
+            MigrateAbortClass::WaveD
+        );
+        assert_eq!(
+            classify_migrate_abort(
+                "SPEC-091 W4 ABORT: eq_x_vectors holds 2 legacy chunk vectors not in chunk_embeddings"
+            ),
+            MigrateAbortClass::W4
+        );
+        assert_eq!(
+            classify_migrate_abort(
+                "SPEC-091 IW2 ABORT: eq_x_vectors holds 4 legacy entity vectors without legacy_vector_id provenance"
+            ),
+            MigrateAbortClass::Iw2
+        );
+        assert_eq!(
+            classify_migrate_abort(
+                "SPEC-105 migration 142: public.eq_x_kv still has 1 row(s). Finish SPEC-091 irreversible drops first."
+            ),
+            MigrateAbortClass::LegacyAssert142
+        );
+        assert_eq!(
+            classify_migrate_abort(
+                "Migration 125 checksum drift detected (SPEC-111). Refusing silent repair without authorization."
+            ),
+            MigrateAbortClass::ChecksumRefuse
+        );
+        assert_eq!(
+            classify_migrate_abort("deadlock detected on public.tasks lock pg_locks"),
+            MigrateAbortClass::Lock
+        );
+        assert_eq!(
+            classify_migrate_abort("connection refused"),
+            MigrateAbortClass::Other
+        );
     }
 
     #[test]
