@@ -149,6 +149,7 @@ pub fn workspace_to_response(workspace: &Workspace, tenant: Option<&Tenant>) -> 
             .get(edgequake_pdf::META_FIGURE_SYSTEM_PROMPT)
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
+        stats: None,
         created_at: workspace.created_at.to_rfc3339(),
         updated_at: workspace.updated_at.to_rfc3339(),
     }
