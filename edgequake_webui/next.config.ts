@@ -11,6 +11,18 @@ const nextConfig: NextConfig = {
   // Prevents CPU overload during compilation
   // ============================================================================
 
+  // ============================================================================
+  // SSE STREAMING FIX
+  // ============================================================================
+  // Next.js gzips proxied responses by default (`compress: true`). The gzip
+  // encoder buffers the whole body, so `text/event-stream` responses arrive as
+  // ONE chunk at the end instead of token-by-token — the API itself does NOT
+  // compress SSE (verified: no content-encoding on :8090, `Content-Encoding:
+  // gzip` added by Next on :3010). Disabling Next compression restores real
+  // streaming in the browser. In production, terminate compression at the
+  // reverse proxy AND exclude text/event-stream there.
+  compress: false,
+
   // Limit experimental workers to prevent CPU overload
   experimental: {
     // Reduce worker count to prevent memory/CPU exhaustion

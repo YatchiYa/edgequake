@@ -24,7 +24,7 @@
 # Supported default configurations:
 #   - OpenAI (default): gpt-4.1-mini (LLM), text-embedding-3-small (embedding), gpt-4o (vision)
 #   - Anthropic: claude-sonnet-4-6 (LLM), claude-opus-4-6 (flagship LLM)
-#   - Mistral: mistral-large-latest (LLM+vision), mistral-embed (embedding); pixtral-* still available
+#   - Mistral: mistral-large-latest (LLM), mistral-embed (embedding), pixtral-large-latest (vision)
 #   - Gemini: gemini-2.5-flash (LLM), gemini-embedding-001 (embedding)
 #   - xAI: grok-4.3 (LLM)
 #   - MiniMax: MiniMax-M2.7 (LLM)
@@ -455,16 +455,14 @@ description = "Mistral AI La Plateforme — high-efficiency frontier models, nat
 name = "mistral-small-latest"
 display_name = "Mistral Small (latest)"
 model_type = "llm"
-description = "Default Mistral chat model — multimodal (text+vision), 128K+ context, tool calling (SPEC-047)"
+description = "Default Mistral chat model — cost-effective, 128K context, tool calling"
 deprecated = false
-tags = ["recommended", "default", "fast", "tools", "vision", "multimodal"]
+tags = ["recommended", "default", "fast", "tools"]
 
 [providers.models.capabilities]
 context_length = 131072
 max_output_tokens = 4096
-# WHY (SPEC-047 / Mistral Vision docs): mistral-small-latest resolves to Small 4
-# with native image input. Previously false caused silent image drops in chat routing.
-supports_vision = true
+supports_vision = false
 supports_function_calling = true
 supports_json_mode = true
 supports_streaming = true
@@ -475,42 +473,18 @@ embedding_dimension = 0
 input_per_1k = 0.0002
 output_per_1k = 0.0006
 embedding_per_1k = 0.0
-image_per_unit = 0.0002
-
-[[providers.models]]
-name = "mistral-medium-3-5"
-display_name = "Mistral Medium 3.5"
-model_type = "llm"
-description = "Frontier multimodal (SPEC-047 W1 stronger vision) — official API id mistral-medium-3-5; Pixtral Large replacement"
-deprecated = false
-tags = ["recommended", "multimodal", "tools", "vision", "spec047-w1"]
-
-[providers.models.capabilities]
-context_length = 262144
-max_output_tokens = 4096
-supports_vision = true
-supports_function_calling = true
-supports_json_mode = true
-supports_streaming = true
-supports_system_message = true
-embedding_dimension = 0
-
-[providers.models.cost]
-input_per_1k = 0.0015
-output_per_1k = 0.0075
-embedding_per_1k = 0.0
 image_per_unit = 0.0
 
 [[providers.models]]
 name = "mistral-medium-latest"
 display_name = "Mistral Medium (latest)"
 model_type = "llm"
-description = "Alias → Mistral Medium 3.5 (2604); prefer mistral-medium-3-5 for SPEC-047 scorecard pins"
+description = "Frontier multimodal Mistral model — best balance of capability and cost"
 deprecated = false
-tags = ["recommended", "multimodal", "tools", "vision"]
+tags = ["recommended", "multimodal", "tools"]
 
 [providers.models.capabilities]
-context_length = 262144
+context_length = 131072
 max_output_tokens = 4096
 supports_vision = true
 supports_function_calling = true
@@ -520,8 +494,8 @@ supports_system_message = true
 embedding_dimension = 0
 
 [providers.models.cost]
-input_per_1k = 0.0015
-output_per_1k = 0.0075
+input_per_1k = 0.0004
+output_per_1k = 0.002
 embedding_per_1k = 0.0
 image_per_unit = 0.0
 
@@ -529,15 +503,14 @@ image_per_unit = 0.0
 name = "mistral-large-latest"
 display_name = "Mistral Large (latest)"
 model_type = "llm"
-description = "Highest-capability Mistral chat model — multimodal (text+vision), advanced reasoning, 128K+ context (SPEC-047)"
+description = "Highest-capability Mistral chat model — advanced reasoning, 128K context"
 deprecated = false
-tags = ["premium", "reasoning", "tools", "vision", "multimodal"]
+tags = ["premium", "reasoning", "tools"]
 
 [providers.models.capabilities]
 context_length = 131072
 max_output_tokens = 4096
-# WHY (SPEC-047 / Mistral Vision docs): Large 3 (mistral-large-latest / 2512) is multimodal.
-supports_vision = true
+supports_vision = false
 supports_function_calling = true
 supports_json_mode = true
 supports_streaming = true
@@ -545,10 +518,10 @@ supports_system_message = true
 embedding_dimension = 0
 
 [providers.models.cost]
-input_per_1k = 0.0005
-output_per_1k = 0.0015
+input_per_1k = 0.002
+output_per_1k = 0.006
 embedding_per_1k = 0.0
-image_per_unit = 0.0005
+image_per_unit = 0.0
 
 [[providers.models]]
 name = "magistral-small-latest"
@@ -1573,182 +1546,6 @@ embedding_per_1k = 0.0
 image_per_unit = 0.0
 
 # =============================================================================
-# LOCAL APPLE / OPENAI-COMPATIBLE SERVERS (edgequake-llm 0.10.3+)
-# =============================================================================
-# Catalog coverage for omlx / mtplx / llamacpp / vllm-mlx / mlx-lm.
-# Defaults match edgequake-llm host constants; override via *_HOST env vars.
-
-[[providers]]
-name = "omlx"
-display_name = "oMLX"
-type = "openaicompatible"
-api_base = "http://127.0.0.1:9050"
-api_key_env = ""
-enabled = true
-priority = 31
-description = "Local oMLX OpenAI-compatible server (Apple Silicon MLX)"
-
-[[providers.models]]
-name = "default"
-display_name = "oMLX Default"
-model_type = "llm"
-description = "Model loaded in oMLX (dynamic inventory via /v1/models)"
-deprecated = false
-tags = ["local", "mlx", "apple-silicon"]
-
-[providers.models.capabilities]
-context_length = 128000
-max_output_tokens = 16384
-supports_vision = false
-supports_function_calling = true
-supports_json_mode = true
-supports_streaming = true
-supports_system_message = true
-embedding_dimension = 0
-
-[providers.models.cost]
-input_per_1k = 0.0
-output_per_1k = 0.0
-embedding_per_1k = 0.0
-image_per_unit = 0.0
-
-[[providers]]
-name = "mtplx"
-display_name = "MTPLX"
-type = "openaicompatible"
-api_base = "http://127.0.0.1:8000"
-api_key_env = ""
-enabled = true
-priority = 32
-description = "Local MTPLX OpenAI-compatible server"
-
-[[providers.models]]
-name = "default"
-display_name = "MTPLX Default"
-model_type = "llm"
-description = "Model loaded in MTPLX (dynamic inventory via /v1/models)"
-deprecated = false
-tags = ["local", "mlx"]
-
-[providers.models.capabilities]
-context_length = 128000
-max_output_tokens = 16384
-supports_vision = false
-supports_function_calling = true
-supports_json_mode = true
-supports_streaming = true
-supports_system_message = true
-embedding_dimension = 0
-
-[providers.models.cost]
-input_per_1k = 0.0
-output_per_1k = 0.0
-embedding_per_1k = 0.0
-image_per_unit = 0.0
-
-[[providers]]
-name = "llamacpp"
-display_name = "llama.cpp server"
-type = "openaicompatible"
-api_base = "http://127.0.0.1:8080"
-api_key_env = ""
-enabled = true
-priority = 33
-description = "Local llama-server (llama.cpp) OpenAI-compatible API"
-
-[[providers.models]]
-name = "default"
-display_name = "llama.cpp Default"
-model_type = "llm"
-description = "Model loaded in llama-server (dynamic inventory via /v1/models)"
-deprecated = false
-tags = ["local", "gguf", "llama.cpp"]
-
-[providers.models.capabilities]
-context_length = 128000
-max_output_tokens = 16384
-supports_vision = false
-supports_function_calling = true
-supports_json_mode = true
-supports_streaming = true
-supports_system_message = true
-embedding_dimension = 0
-
-[providers.models.cost]
-input_per_1k = 0.0
-output_per_1k = 0.0
-embedding_per_1k = 0.0
-image_per_unit = 0.0
-
-[[providers]]
-name = "vllm-mlx"
-display_name = "vLLM-MLX"
-type = "openaicompatible"
-api_base = "http://127.0.0.1:8000"
-api_key_env = ""
-enabled = true
-priority = 34
-description = "Local vLLM-MLX OpenAI-compatible server"
-
-[[providers.models]]
-name = "default"
-display_name = "vLLM-MLX Default"
-model_type = "llm"
-description = "Model loaded in vLLM-MLX (dynamic inventory via /v1/models)"
-deprecated = false
-tags = ["local", "mlx", "vllm"]
-
-[providers.models.capabilities]
-context_length = 128000
-max_output_tokens = 16384
-supports_vision = false
-supports_function_calling = true
-supports_json_mode = true
-supports_streaming = true
-supports_system_message = true
-embedding_dimension = 0
-
-[providers.models.cost]
-input_per_1k = 0.0
-output_per_1k = 0.0
-embedding_per_1k = 0.0
-image_per_unit = 0.0
-
-[[providers]]
-name = "mlx-lm"
-display_name = "MLX-LM"
-type = "openaicompatible"
-api_base = "http://127.0.0.1:8080"
-api_key_env = ""
-enabled = true
-priority = 35
-description = "Local mlx_lm.server (official Apple MLX-LM OpenAI server)"
-
-[[providers.models]]
-name = "default"
-display_name = "MLX-LM Default"
-model_type = "llm"
-description = "Model loaded in mlx_lm.server (dynamic inventory via /v1/models)"
-deprecated = false
-tags = ["local", "mlx", "apple-silicon"]
-
-[providers.models.capabilities]
-context_length = 128000
-max_output_tokens = 16384
-supports_vision = false
-supports_function_calling = true
-supports_json_mode = true
-supports_streaming = true
-supports_system_message = true
-embedding_dimension = 0
-
-[providers.models.cost]
-input_per_1k = 0.0
-output_per_1k = 0.0
-embedding_per_1k = 0.0
-image_per_unit = 0.0
-
-# =============================================================================
 # ANTHROPIC PROVIDER
 # =============================================================================
 # Claude models from Anthropic
@@ -2532,7 +2329,7 @@ api_base = ""
 api_key_env = ""
 enabled = true
 priority = 19
-description = "Google Cloud Vertex AI Gemini (enterprise IAM; ADC or service account)"
+description = "Google Cloud Vertex AI Gemini (paid, high-quota, ADC auth)"
 
 [[providers.models]]
 name = "gemini-2.5-flash"
@@ -2594,9 +2391,9 @@ display_name = "Mock Provider"
 type = "mock"
 api_base = ""
 api_key_env = ""
-enabled = false
+enabled = true
 priority = 100
-description = "Mock provider for testing - Fast, free, deterministic responses (never shown in WebUI)"
+description = "Mock provider for testing - Fast, free, deterministic responses"
 
 [[providers.models]]
 name = "mock-llm"
@@ -2645,222 +2442,6 @@ input_per_1k = 0.0
 output_per_1k = 0.0
 embedding_per_1k = 0.0
 image_per_unit = 0.0
-
-# =============================================================================
-# NVIDIA NIM (SPEC-043)
-# =============================================================================
-
-[[providers]]
-name = "nvidia"
-display_name = "NVIDIA NIM"
-type = "openaicompatible"
-api_base = "https://integrate.api.nvidia.com/v1"
-api_key_env = "NVIDIA_API_KEY"
-enabled = true
-priority = 25
-description = "NVIDIA NIM — cloud and free-tier inference models"
-
-[[providers.models]]
-name = "meta/llama-3.1-8b-instruct"
-display_name = "Llama 3.1 8B Instruct"
-model_type = "llm"
-description = "Meta Llama 3.1 8B on NVIDIA NIM"
-deprecated = false
-tags = ["recommended", "fast"]
-
-[providers.models.capabilities]
-context_length = 131072
-max_output_tokens = 4096
-supports_vision = false
-supports_function_calling = true
-supports_json_mode = true
-supports_streaming = true
-supports_system_message = true
-embedding_dimension = 0
-
-[providers.models.cost]
-input_per_1k = 0.0
-output_per_1k = 0.0
-embedding_per_1k = 0.0
-image_per_unit = 0.0
-
-# =============================================================================
-# COHERE (SPEC-043)
-# =============================================================================
-
-[[providers]]
-name = "cohere"
-display_name = "Cohere"
-type = "openaicompatible"
-api_base = "https://api.cohere.com"
-api_key_env = "COHERE_API_KEY"
-enabled = true
-priority = 26
-description = "Cohere Command and Embed models"
-
-[[providers.models]]
-name = "command-r-plus-08-2024"
-display_name = "Command R+"
-model_type = "llm"
-description = "Cohere Command R+ for RAG and tool use"
-deprecated = false
-tags = ["recommended", "rag"]
-
-[providers.models.capabilities]
-context_length = 128000
-max_output_tokens = 4096
-supports_vision = false
-supports_function_calling = true
-supports_json_mode = true
-supports_streaming = true
-supports_system_message = true
-embedding_dimension = 0
-
-[[providers.models]]
-name = "embed-v4.0"
-display_name = "Embed v4"
-model_type = "embedding"
-description = "Cohere Embed v4"
-deprecated = false
-tags = ["recommended"]
-
-[providers.models.capabilities]
-context_length = 8192
-max_output_tokens = 0
-supports_vision = false
-supports_function_calling = false
-supports_json_mode = false
-supports_streaming = false
-supports_system_message = false
-embedding_dimension = 1024
-
-# =============================================================================
-# JINA (embeddings only, SPEC-043)
-# =============================================================================
-
-[[providers]]
-name = "jina"
-display_name = "Jina AI"
-type = "openaicompatible"
-api_base = "https://api.jina.ai/v1"
-api_key_env = "JINA_API_KEY"
-enabled = true
-priority = 27
-description = "Jina embeddings API"
-
-[[providers.models]]
-name = "jina-embeddings-v3"
-display_name = "Jina Embeddings v3"
-model_type = "embedding"
-description = "Jina Embeddings v3 — 1024 dimensions"
-deprecated = false
-tags = ["recommended"]
-
-[providers.models.capabilities]
-context_length = 8192
-max_output_tokens = 0
-supports_vision = false
-supports_function_calling = false
-supports_json_mode = false
-supports_streaming = false
-supports_system_message = false
-embedding_dimension = 1024
-
-# =============================================================================
-# HUGGINGFACE (SPEC-043)
-# =============================================================================
-
-[[providers]]
-name = "huggingface"
-display_name = "HuggingFace"
-type = "openaicompatible"
-api_base = "https://api-inference.huggingface.co"
-api_key_env = "HF_TOKEN"
-enabled = true
-priority = 28
-description = "HuggingFace Inference API"
-
-[[providers.models]]
-name = "meta-llama/Meta-Llama-3-8B-Instruct"
-display_name = "Llama 3 8B Instruct"
-model_type = "llm"
-description = "Meta Llama 3 8B via HuggingFace Inference"
-deprecated = false
-tags = ["recommended"]
-
-[providers.models.capabilities]
-context_length = 8192
-max_output_tokens = 2048
-supports_vision = false
-supports_function_calling = false
-supports_json_mode = false
-supports_streaming = true
-supports_system_message = true
-embedding_dimension = 0
-
-# =============================================================================
-# VS CODE COPILOT (SPEC-043)
-# =============================================================================
-
-[[providers]]
-name = "vscode-copilot"
-display_name = "GitHub Copilot"
-type = "openaicompatible"
-api_base = ""
-api_key_env = ""
-enabled = true
-priority = 29
-description = "GitHub Copilot direct auth — use auto routing"
-
-[[providers.models]]
-name = "auto"
-display_name = "Copilot Auto"
-model_type = "llm"
-description = "GitHub Copilot Auto model routing"
-deprecated = false
-tags = ["recommended", "default"]
-
-[providers.models.capabilities]
-context_length = 128000
-max_output_tokens = 16384
-supports_vision = false
-supports_function_calling = true
-supports_json_mode = true
-supports_streaming = true
-supports_system_message = true
-embedding_dimension = 0
-
-# =============================================================================
-# AWS BEDROCK (SPEC-043 — disabled by default, enable when AWS credentials configured)
-# =============================================================================
-
-[[providers]]
-name = "bedrock"
-display_name = "AWS Bedrock"
-type = "openaicompatible"
-api_base = ""
-api_key_env = ""
-enabled = false
-priority = 30
-description = "Amazon Bedrock foundation models (requires AWS credentials and bedrock feature)"
-
-[[providers.models]]
-name = "anthropic.claude-3-5-sonnet-20241022-v2:0"
-display_name = "Claude 3.5 Sonnet (Bedrock)"
-model_type = "llm"
-description = "Anthropic Claude 3.5 Sonnet on AWS Bedrock"
-deprecated = false
-tags = ["recommended", "bedrock"]
-
-[providers.models.capabilities]
-context_length = 200000
-max_output_tokens = 8192
-supports_vision = true
-supports_function_calling = true
-supports_json_mode = true
-supports_streaming = true
-supports_system_message = true
-embedding_dimension = 0
 
 # =============================================================================
 # CUSTOM OPENAI-COMPATIBLE PROVIDERS
