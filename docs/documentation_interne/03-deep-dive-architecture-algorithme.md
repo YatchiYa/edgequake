@@ -1,12 +1,12 @@
 ---
 title: "EdgeQuake — Deep dive architecture & algorithme"
-version: "0.25.0"
+version: "0.26.1"
 audience: "Architectes, développeurs, data scientists"
 ---
 
 # EdgeQuake — Deep dive architecture & algorithme
 
-> **Produit** : EdgeQuake v0.25.0 · **Base algorithmique** : LightRAG ([arXiv:2410.05779](https://arxiv.org/abs/2410.05779))
+> **Produit** : EdgeQuake v0.26.1 · **Base algorithmique** : LightRAG ([arXiv:2410.05779](https://arxiv.org/abs/2410.05779))
 > **Documents liés** : [Déploiement technique](01-deploiement-technique.md) · [Intégration IT](02-integration-it.md)
 
 Ce document explique **comment EdgeQuake fonctionne à l'intérieur** : le découpage du
@@ -108,6 +108,7 @@ un corpus vivant.
 | Marche PPR par défaut | Personalized PageRank au lieu d'un simple BFS |
 | Pipeline PDF vision | Conversion multimodale avec repli texte |
 | Lignage complet | Traçabilité chunk → entité → document |
+| Remplissage PDF au budget | Chunks pleins traversant les pages, citations `p.N–M` (SPEC-135, v0.26) |
 
 ---
 
@@ -252,6 +253,32 @@ EdgeQuake ajoute deux raffinements : un **préambule de contexte** attaché à c
 chunk (`chunk_context_preamble`, migration 135) qui rappelle la section d'origine, et
 une **induction de structure** (`structure_induce.rs`) exploitant les titres du
 markdown pour ne pas couper au milieu d'une unité logique.
+
+#### Remplissage au budget pour les PDF (SPEC-135, v0.26.0)
+
+Depuis la v0.26.0, l'ingestion PDF ne découpe plus page par page : le markdown
+converti est **rempli jusqu'au budget de tokens** de l'espace de travail, y compris
+**à cheval sur plusieurs pages** (*cross-page packing*).
+
+**Le problème traité** : une page de PDF fait rarement 1200 tokens. Un découpage
+page-à-page produit des chunks très inégaux — beaucoup trop courts — ce qui dilue le
+signal, multiplie les appels LLM d'extraction et dégrade le rappel.
+
+| Réglage | Défaut | Effet |
+|---|---|---|
+| `EDGEQUAKE_PDF_PACK` | activé | Remplissage au budget de l'espace de travail |
+| `EDGEQUAKE_PDF_CROSS_PAGE_PACK` | activé | Autorise un chunk à enjamber deux pages |
+
+Les deux variables sont des **coupe-circuits** : les positionner à `0` restaure le
+découpage page-à-page antérieur.
+
+**Conséquence sur la traçabilité** — chaque chunk porte désormais un intervalle de
+pages `page_start` / `page_end`, restitué dans les citations sous la forme `p.N–M`
+(et exposé dans `ChunkDetail` du SDK depuis la version **0.4.0**). Un chunk pouvant
+couvrir plusieurs pages, une citation n'est plus systématiquement mono-page.
+
+Télémétrie associée dans le span `ingest.chunking` : `fill_p50` (médiane de
+remplissage du budget) et `mm_sidecar_appended`.
 
 ### 3.3 Étape 2 — Extraction d'entités par LLM
 
@@ -443,6 +470,10 @@ Traitements complémentaires : extraction des images intégrées, recadrage de g
 (`chart_crop.rs`), filtre de figures en deux passes (`figure_filter.rs`), persistance
 du layout de page (`page_layout.rs`, migration 148).
 
+Depuis la v0.26.0, un chemin de conversion **page-as-unit** dédié aux manuscrits
+(SPEC-134) traite chaque page comme une unité autonome, et le markdown produit est
+ensuite remis au remplissage au budget décrit en §3.2.
+
 **Repli automatique** : un échec vision retombe sur l'extraction texte plutôt que de
 faire échouer le document.
 
@@ -512,11 +543,13 @@ l'impact d'une suppression (`/documents/{id}/deletion-impact`).
 
 ### 4.6 Gouvernance du schéma
 
-- 146 fichiers de migration SQL, numérotés 001 → **148** (numérotation non contiguë).
+- 147 fichiers de migration SQL, numérotés 001 → **149** (numérotation non contiguë).
 - Empreintes verrouillées (`checksums.lock`) : une migration publiée est immuable.
 - Le moteur de migration (`storage/migration_engine/`) distingue les migrations
   **extensibles** (rétrocompatibles) des **suppressions irréversibles**, ces dernières
   exigeant `--confirm-drop`.
+- Les migrations **144–149** sont classées **SAFE SCHEMA** (extensibles) ; les
+  seules suppressions irréversibles restent 125 / 126 / 131 / 142.
 - L'API ne migre jamais : décalage → sortie **78**.
 
 ---
