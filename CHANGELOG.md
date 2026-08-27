@@ -26,6 +26,11 @@ SSE/conversation restore, workspace `include_stats`.
 - **Uncompressed `text/event-stream`** — Compression middleware skips SSE so proxies and the WebUI do not gzip-buffer the stream (tower-http DefaultPredicate / Next.js `compress` class). Ingress kind profile already sets `proxy-buffering: "off"`.
 - **rustdoc private intra-doc links** — Public `edgequake-pdf` docs no longer link to private constants (`FALLBACK_CROP`, `CHARS_PER_DENSE_PAGE`, `MAX_SAMPLE_PAGES`) so CI `cargo doc -D warnings` stays green.
 - **Frontend Docker pnpm pin** — Image install uses `pnpm@10.13.1` (package.json `packageManager`) so Alpine/ARM CD does not fail with `ERR_PNPM_PNPM_ENGINE_IDENTITY_UNVERIFIABLE`.
+- **pdf.js worker copy** — Direct `pdfjs-dist` 5.4.296 dep plus Node `require.resolve` so CI `pnpm install --frozen-lockfile` finds `pdf.worker.min.mjs` (pnpm does not hoist the transitive worker from `react-pdf`).
+- **SPEC-091 e2e stack** — Data-layer workflow sets `RUST_MIN_STACK=16777216` so typed header-scope tests do not overflow the default ~2 MiB thread stack.
+
+### Changed
+- **h2 0.4.16** — Cargo lock bump for [RUSTSEC-2026-0258](https://rustsec.org/advisories/RUSTSEC-2026-0258) (continuation-flood DoS in h2 0.4.10–0.4.15).
 
 ## [0.26.1] — 2026-08-25
 
