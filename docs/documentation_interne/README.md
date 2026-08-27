@@ -3,11 +3,11 @@
 ## Contrôle documentaire
 
 | Champ           | Valeur                                                                                                               |
-| --------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Produit couvert | EdgeQuake **v0.26.1** (schéma de base : migrations 001 → 149)                                                        |
+| -----------------| ----------------------------------------------------------------------------------------------------------------------|
+| Produit couvert | EdgeQuake **v0.26.2** (schéma de base : migrations 001 → 149)                                                        |
 | Statut          | Bon pour diffusion client                                                                                            |
 | Date d'édition  | 2026-08-26                                                                                                           |
-| Méthode         | Rédigé sur la base du code source v0.26.1 ; toute affirmation technique est vérifiable par référence `fichier:ligne` |
+| Méthode         | Rédigé sur la base du code source v0.26.2 ; toute affirmation technique est vérifiable par référence `fichier:ligne` |
 
 ## Composition du dossier
 
@@ -26,6 +26,7 @@
 | 1.1     | 2026-08-19     | Doc 01 : refonte §7.2 en procédure complète d'activation de l'authentification (modes, amorçage, clés d'API, OIDC, sessions, dépannage). Ajout du doc 04 et de la présente page de garde                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 1.2     | 2026-08-19     | Passe de vérification factuelle intégrale contre le code v0.25.0. Corrections : décompte des migrations (146 fichiers SQL, 001→148 non contigu), version Web UI (Next.js 16), mode de livraison multi-réplique (`EDGEQUAKE_TASK_DELIVERY=notify_only`), noms des tables `document_originals` / `document_mm_assets`, schéma de création des clés d'API (`name`/`scopes`/`expires_in_days`), statut pdfium hors-ligne (embarqué à la compilation — doc 04), statuts de tâche en minuscules dans les exemples `jq`/SQL, formulation exacte du contrôle des versions d'extensions au démarrage. Clarification du fichier `docker-compose.prod.yml` (modèle dérivé, non livré tel quel) |
 | **1.3** | **2026-08-26** | **Mise à niveau v0.25.0 → v0.26.1** : schéma 148 → **149** (`149_tasks_document_id_column`, SAFE), CLI `migrate` SPEC-137 (alias `--drop-confirm`, drapeaux inconnus fail-closed, sous-commandes `plan` / `guard`), remplissage PDF au budget SPEC-135 (`EDGEQUAKE_PDF_PACK`, citations `p.N–M`), convert page-as-unit SPEC-134, tags d'images 0.26.1. Renumérotation du document Langfuse en **04**                                                                                                                                                                                                                                                                                |
+| **1.4** | **2026-08-27** | **Pin produit v0.26.2** : Langfuse 3.1.x ingestion fallback (SPEC-124), Helm/kind Kubernetes (SPEC-138), SSE, `include_stats`. Schéma **149** inchangé. |
 
 ## Conventions
 

@@ -276,7 +276,7 @@ BOOT_GATE_REFUSAL: STOP — database schema is behind this binary
 
 ```bash
 kubectl run edgequake-migrate --rm -i --restart=Never -n edgequake \
-  --image=ghcr.io/raphaelmansuy/edgequake:0.26.1 \
+  --image=ghcr.io/raphaelmansuy/edgequake:0.26.2 \
   --env="DATABASE_URL=postgres://edgequake:edgequake_secret@edgequake-postgres:5432/edgequake" \
   --env="EDGEQUAKE_ALLOW_MOCK_PROVIDER=1" \
   --command -- edgequake migrate

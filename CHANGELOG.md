@@ -4,8 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.26.2] — 2026-08-27
+
+Patch: Langfuse 3.1.x ingestion fallback (SPEC-124), Kubernetes Helm/kind (SPEC-138),
+SSE/conversation restore, workspace `include_stats`.
+**No new migration.** Schema train remains **149**. Upgrade: [`docs/operations/upgrade-to-0.26.2.md`](docs/operations/upgrade-to-0.26.2.md).
+
+**Deps (crates.io):** unchanged from 0.26.1 (`edgequake-llm` **0.10.8**, `edgequake-pdf2md` **0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0`).
+
+**SPEC-001 Acc:** attested from existing [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **PDF geometry not re-scored**.
+
 ### Added
 - **SPEC-124 — Langfuse 3.1.x ingestion fallback** — Self-hosted Langfuse **3.1.x** has no OTLP path (`POST /api/public/otel/v1/traces` → 404, added in [v3.22.0](https://github.com/langfuse/langfuse/releases/tag/v3.22.0)). Default `EDGEQUAKE_LANGFUSE_API=auto` probes once and falls back to native `POST /api/public/ingestion` (envelope types `trace-create` / `span-create` / `generation-create` only). Settings/health expose requested `api` and resolved `api_resolved`. Isolated 3.1.1 stack: `make langfuse-3.1-up` (UI `:3320`); unfakable proof: `make spec124-langfuse-3.1-e2e`. Helm: `api.langfuse.api`. Operator guide: [`docs/operations/langfuse-3.1.md`](docs/operations/langfuse-3.1.md) · Kubernetes: [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md#existing-langfuse-31x). Ingestion remains a bridge (Cloud sunset 2026-11-16); upgrade to ≥ 3.22 / v4 is still recommended.
+- **SPEC-138 — Kubernetes Helm/kind stack** — Umbrella chart `edgequake-stack` deploys EdgeQuake (web + API + postgres) plus in-cluster Langfuse v4 for OTLP. Kind E2E: `make spec138-kubernetes-proof`. Helm template (no cluster): `make spec138-helm-template`. Operator: [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md). Spec: [`specs/138-kubernetes/`](specs/138-kubernetes/).
+- **Workspace list `include_stats`** — `GET /tenants/{tenant_id}/workspaces?include_stats=true` attaches per-item `stats` from the same 60s cache as `/workspaces/{id}/stats` (default off; existing clients stay byte-identical). E2E: `e2e_workspace_include_stats`.
+
+### Fixed
+- **SSE token streaming + conversation history** — Restore chat token streaming and conversation history after the post-0.26.1 regression (PR #389 train).
+- **Conversation identity resolution** — Chat/SSE handlers share one identity-resolution path so anonymous/guest and authenticated conversation lookup stay consistent.
+- **Uncompressed `text/event-stream`** — Compression middleware skips SSE so proxies and the WebUI do not gzip-buffer the stream (tower-http DefaultPredicate / Next.js `compress` class). Ingress kind profile already sets `proxy-buffering: "off"`.
+- **rustdoc private intra-doc links** — Public `edgequake-pdf` docs no longer link to private constants (`FALLBACK_CROP`, `CHARS_PER_DENSE_PAGE`, `MAX_SAMPLE_PAGES`) so CI `cargo doc -D warnings` stays green.
+- **Frontend Docker pnpm pin** — Image install uses `pnpm@10.13.1` (package.json `packageManager`) so Alpine/ARM CD does not fail with `ERR_PNPM_PNPM_ENGINE_IDENTITY_UNVERIFIABLE`.
 
 ## [0.26.1] — 2026-08-25
 

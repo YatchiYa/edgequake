@@ -385,7 +385,7 @@ const CHART_FRAGMENT_AREA_RATIO: f32 = 0.35;
 
 /// Build a [`CropDescriptor`] from real asset geometry (SPEC-134 WP-4).
 ///
-/// Resolution order (each signal fails open to [`FALLBACK_CROP`] values):
+/// Resolution order (each signal fails open to `FALLBACK_CROP` values):
 ///
 /// - **bytes**: inline data-URI bytes, else read `{asset_base_dir}/{asset_path}`.
 /// - **aspect_ratio / crop area**: header-only dimension probe of the crop PNG.

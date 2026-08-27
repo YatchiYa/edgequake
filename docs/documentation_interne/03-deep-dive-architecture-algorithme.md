@@ -1,12 +1,12 @@
 ---
 title: "EdgeQuake — Deep dive architecture & algorithme"
-version: "0.26.1"
+version: "0.26.2"
 audience: "Architectes, développeurs, data scientists"
 ---
 
 # EdgeQuake — Deep dive architecture & algorithme
 
-> **Produit** : EdgeQuake v0.26.1 · **Base algorithmique** : LightRAG ([arXiv:2410.05779](https://arxiv.org/abs/2410.05779))
+> **Produit** : EdgeQuake v0.26.2 · **Base algorithmique** : LightRAG ([arXiv:2410.05779](https://arxiv.org/abs/2410.05779))
 > **Documents liés** : [Déploiement technique](01-deploiement-technique.md) · [Intégration IT](02-integration-it.md)
 
 Ce document explique **comment EdgeQuake fonctionne à l'intérieur** : le découpage du
