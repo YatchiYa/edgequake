@@ -2,17 +2,36 @@
  * SPEC-123: Documents page honesty — Workspace Default (Vision) never
  * implies Auto, and upload selector exposes Auto explicitly.
  *
- * Run (with WebUI up): `pnpm exec playwright test e2e/spec123-parser-priority.spec.ts`
+ * UI-only gate: mock + seed (same as SPEC-038) so `/documents` renders
+ * without a live backend. `make test-e2e-ui` uses a 30s test timeout.
+ *
+ * Run: `PLAYWRIGHT_SKIP_STACK_CHECK=1 pnpm exec playwright test e2e/spec123-parser-priority.spec.ts --project=chromium`
  */
 import { expect, test } from "@playwright/test";
+import { GOTO_OPTS } from "./helpers/app-ready";
+import {
+  mockSpec038AdmissionRoutes,
+  seedSpec038TenantContext,
+} from "./helpers/spec038-admission-mocks";
 
 test.describe("SPEC-123 parser priority UI", () => {
+  test.setTimeout(60_000);
+
+  test.beforeEach(async ({ page }) => {
+    await mockSpec038AdmissionRoutes(page);
+    await seedSpec038TenantContext(page);
+    await page.goto("/documents", GOTO_OPTS);
+    await page.getByRole("heading", { name: "Documents" }).waitFor({
+      state: "visible",
+      timeout: 20_000,
+    });
+  });
+
   test("upload parser select includes Vision, EdgeParse, and Auto", async ({
     page,
   }) => {
-    await page.goto("/documents");
     const select = page.getByTestId("spec038-upload-parser-select");
-    await expect(select).toBeVisible({ timeout: 60_000 });
+    await expect(select).toBeVisible({ timeout: 15_000 });
     await select.click();
     await expect(page.getByRole("option", { name: /Vision/i })).toBeVisible();
     await expect(
