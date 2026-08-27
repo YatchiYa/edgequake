@@ -1,13 +1,15 @@
 # EdgeQuake v0.26.1 — Démarrage local avec Langfuse
 
-> Validé le 2026-08-26 sur cette machine. Chaîne de traçage prouvée de bout en bout.
+> Révision 2.0 — 2026-08-27. Chaîne de traçage **et** suivi des coûts validés de bout
+> en bout sur Langfuse **3.1.1** et **4**.
 
 ## Démarrage
 
 ```bash
-make dev-bg-langfuse      # stack complète + Langfuse (clés locales injectées)
-make status               # état des services
-make stop                 # arrêt
+make dev-bg-langfuse       # stack complète + Langfuse v4 local (clés injectées)
+make langfuse-sync-prices  # tarifs des modèles → sans cela, coûts à $0.00
+make status                # état des services
+make stop                  # arrêt
 ```
 
 | Service | URL | Notes |
@@ -19,6 +21,59 @@ make stop                 # arrêt
 
 Les ports viennent de `scripts/select_edgequake_port.py` (8090/3010), **pas** de
 `EDGEQUAKE_PORT` du `.env`.
+
+## Les deux transports Langfuse
+
+EdgeQuake exporte vers **toutes les versions de Langfuse ≥ 2.x**. Le transport est
+choisi au démarrage :
+
+| Version Langfuse | Endpoint OTLP | Transport retenu |
+|---|---|---|
+| ≥ 3.22x, 4.x | présent | **OTLP/HTTP** |
+| ≤ 3.1 | **404** | **API d'ingestion native** |
+
+```bash
+EDGEQUAKE_LANGFUSE_API=auto        # défaut : sonde puis choisit
+                      =otlp        # force OTLP
+                      =ingestion   # force l'API native
+```
+
+Vérifier le choix effectué :
+```bash
+grep 'Langfuse API auto-detected' /tmp/edgequake-backend.log
+# → Langfuse API auto-detected → Otlp   (ou Ingestion)
+```
+
+> Seul un **404** déclenche le repli. Un 401 (mauvaises clés) ou une panne réseau
+> conserve OTLP : une erreur d'authentification ne doit pas changer silencieusement de
+> transport et masquer le vrai problème.
+
+## Suivi des coûts
+
+Langfuse calcule les coûts depuis **son propre catalogue** ; EdgeQuake n'émet jamais
+d'attribut de coût (`LAW-124-12` — Langfuse reste la source unique de vérité). Le
+catalogue livré avec Langfuse 3.1 datant de 2024, tout modèle récent affiche **$0.00**.
+
+```bash
+make langfuse-sync-prices              # pousse models.toml → Langfuse
+make langfuse-sync-prices DRY_RUN=1    # aperçu sans écrire
+make langfuse-sync-prices FORCE=1      # réécrit les modèles existants
+```
+
+Mesuré après synchronisation (catalogue 88 → 133 modèles) :
+
+| Modèle | Tokens | Coût |
+|---|---|---|
+| `gpt-5.4` | 10 000 / 1 000 | $0.0400 |
+| `claude-sonnet-4-6` | 10 000 / 1 000 | $0.0450 |
+| `gemini-2.5-flash` | 10 000 / 1 000 | $0.0021 |
+| `mistral-small-latest` | 10 000 / 1 000 | $0.0026 |
+
+**À relancer** après tout ajout de modèle dans `models.toml`.
+
+**Limite connue** — sans tokens, pas de coût possible : `query.embed` (l'API
+d'embedding ne remonte pas de décompte) et `generate-answer` via `/query/stream`
+(la branche `llm.stream` ne renseigne pas l'usage, contrairement à `llm.chat`).
 
 ## Points de vigilance découverts
 
@@ -47,12 +102,29 @@ cd edgequake/docker && LANGFUSE_PORT=3310 NEXTAUTH_URL=http://localhost:3310 \
 ```
 Vérifier ensuite : `docker logs edgequake-langfuse-langfuse-worker-1 | grep -c "does not exist"` → **0**.
 
-### 4. Deux faux positifs à ne PAS diagnostiquer comme des pannes
+### 4. `make stop` supprime le conteneur PostgreSQL
+
+Si un **PostgreSQL hôte** occupe déjà le port 5432, le Makefile le détecte au
+redémarrage (« PostgreSQL already reachable ») et l'utilise **à la place** de celui
+d'EdgeQuake — d'où des `permission denied for schema public` au `migrate`.
+
+Les données ne sont pas perdues : elles vivent dans le volume
+`edgequake-dev_postgres-data-pg18`. Correctif — déplacer EdgeQuake sur un port libre :
+```bash
+# .env
+POSTGRES_PORT=5433
+DATABASE_URL=postgresql://edgequake:edgequake_secret@localhost:5433/edgequake?options=-c%20search_path%3Dpublic
+```
+Vérifier : `docker volume ls | grep edgequake` puis
+`psql -h localhost -p 5433 -U edgequake -d edgequake -c 'SELECT count(*) FROM conversations;'`
+
+### 5. Deux faux positifs à ne PAS diagnostiquer comme des pannes
 - **`HttpTraceClient.ResponseParseError: invalid wire type value: 6`** dans les logs
   backend : cosmétique. Langfuse répond en JSON là où le client Rust attend du
   protobuf. La livraison réussit (HTTP 200).
-- **`GET /api/public/traces` renvoie 0** : API *legacy*. Langfuse v4 stocke dans
-  ClickHouse `events_core`. Utiliser l'UI ou :
+- **`GET /api/public/traces` renvoie 0 en v4** : API *legacy*. v4 stocke dans
+  `events_core`, **v3 dans `observations`** (et son API `/traces` fonctionne).
+  Utiliser l'UI ou :
   ```bash
   docker exec edgequake-langfuse-clickhouse-1 clickhouse-client \
     --user clickhouse --password clickhouse \
@@ -72,9 +144,19 @@ Spans attendus après une ingestion + une requête : `ingest.document`,
 `query.fuse`, `query.rerank`, `generate-answer`.
 Les spans LLM portent `type=GENERATION`, le modèle et les tokens.
 
+**Sur Langfuse 3.x** (table `observations`) :
+```bash
+docker exec eq-langfuse3-clickhouse-1 clickhouse-client \
+  --user clickhouse --password clickhouse \
+  -q "SELECT name, type, provided_model_name, toString(usage_details), total_cost \
+      FROM default.observations ORDER BY start_time DESC LIMIT 10 FORMAT PrettyCompact"
+```
+`total_cost` à `NULL` sur une génération avec des tokens ⇒ modèle absent du catalogue
+Langfuse → `make langfuse-sync-prices`.
+
 ## Fournisseur LLM
 
-État au 2026-08-26 : la clé **OpenAI du `.env` est invalide** (401 `invalid_api_key`,
+État constaté le 2026-08-26 (à revérifier) : la clé **OpenAI du `.env` était invalide** (401 `invalid_api_key`,
 vérifié directement auprès d'OpenAI). Le `.env` racine est donc configuré sur
 **Mistral** (clé valide).
 
@@ -94,6 +176,9 @@ des documents, prévoir `POST /api/v1/workspaces/{ws}/rebuild-embeddings`.
 ---
 
 # Annexe — Langfuse en Kubernetes (pods séparés)
+
+> Version complète et à jour : **[04-langfuse-kubernetes.md](04-langfuse-kubernetes.md)**
+> (compatibilité par version, suivi des coûts, manifests, validation en 9 points).
 
 ## Le piège n°1 : repli silencieux vers Langfuse Cloud
 

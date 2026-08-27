@@ -1,57 +1,72 @@
 ---
-title: "EdgeQuake × Langfuse — Compatibilité, déploiement Kubernetes et remédiation"
-version: "1.0"
-date: "2026-08-26"
+title: "EdgeQuake × Langfuse — Compatibilité, suivi des coûts et déploiement Kubernetes"
+version: "2.0"
+date: "2026-08-27"
 produit: "EdgeQuake v0.26.1"
 methode: "Tests empiriques sur Langfuse 3.1.1, 3.225.5 et 4 — résultats reproductibles"
 ---
 
-# EdgeQuake × Langfuse — Compatibilité et déploiement Kubernetes
+# EdgeQuake × Langfuse — Compatibilité, coûts et Kubernetes
 
-> **Conclusion en une phrase** : EdgeQuake exporte ses traces **exclusivement** via
-> OTLP/HTTP sur `/api/public/otel/v1/traces`. Cet endpoint **n'existe pas dans
-> Langfuse 3.1** — aucune configuration Kubernetes ne peut compenser cette absence.
-> La correction est une **montée de version mineure** de Langfuse (3.1 → 3.225+),
-> sans changement de majeure.
+> **Conclusion en une phrase** : EdgeQuake sait exporter ses traces vers **toutes les
+> versions de Langfuse ≥ 2.x**, y compris **3.1**. Le transport est choisi
+> automatiquement au démarrage : OTLP quand l'endpoint existe, **API d'ingestion
+> native** sinon. Aucune montée de version n'est requise.
+
+> **Révision 2.0 — ce qui a changé.** La version 1.0 de ce document concluait que
+> Langfuse 3.1 était **incompatible** et qu'une montée en 3.225+ était obligatoire.
+> C'était exact à l'époque : EdgeQuake n'exportait qu'en OTLP. Depuis, un
+> **exportateur natif** a été ajouté (`langfuse_ingestion.rs`) et la contrainte a
+> disparu. Les sections traitant de la montée de version sont conservées à titre
+> d'option, plus d'obligation.
 
 ---
 
-## 1. Constat : pourquoi ça marche en local et pas chez le client
+## 1. Compatibilité par version
 
-| Environnement | Version Langfuse | `POST /api/public/otel/v1/traces` | Traces reçues |
-|---|---|---|---|
-| Poste de développement | **4** | 200 (avec auth) | ✅ oui |
-| **Client (Kubernetes)** | **3.1** | **404 — endpoint absent** | ❌ **non** |
-| Cible recommandée | **3.225.5** | 200 (avec auth) | ✅ **oui — validé de bout en bout** (§4.4) |
+| Version Langfuse | `/api/public/otel/v1/traces` | `/api/public/ingestion` | Transport retenu | Traces |
+|---|---|---|---|---|
+| **3.1.1** | **404 — absent** | ✅ 207 | **Ingestion** (auto) | ✅ **validé** |
+| **3.225.5** | ✅ 200 | ✅ | OTLP (auto) | ✅ validé |
+| **4.x** | ✅ 200 | ✅ | OTLP (auto) | ✅ validé |
 
-Le problème n'est **ni** le découpage en pods, **ni** le DNS, **ni** une NetworkPolicy :
-EdgeQuake pousse vers une URL qui n'est pas servie par Langfuse 3.1.
+L'endpoint OTLP n'existe qu'à partir de Langfuse **3.22x**. L'API d'ingestion native,
+elle, est présente **depuis la v2** — c'est le socle commun sur lequel s'appuie le
+repli.
 
-### Preuve
+### Sélection du transport
 
-Langfuse 3.1.1 déployé et interrogé :
+```bash
+EDGEQUAKE_LANGFUSE_API=auto        # défaut : sonde puis choisit
+                      =otlp        # force OTLP
+                      =ingestion   # force l'API native
 ```
-POST http://<langfuse>/api/public/otel/v1/traces
-  sans authentification → HTTP 404 (page HTML Next.js)
-  avec authentification → HTTP 404 (page HTML Next.js)
-```
 
-Langfuse 3.225.5, même requête :
+En `auto`, EdgeQuake envoie une requête de sonde sur l'endpoint OTLP au démarrage :
+
+- **404** → l'instance précède le support OTLP → bascule sur l'ingestion native
+- **toute autre réponse** (200, 401, 405) ou échec réseau → **conserve OTLP**
+
+> **Garde-fou volontaire** : seul un 404 déclenche la bascule. Une erreur
+> d'authentification ou une panne réseau ne doit pas changer silencieusement de
+> transport et masquer le vrai problème.
+
+Le transport retenu est journalisé au démarrage :
 ```
-  sans authentification → HTTP 401   (endpoint présent, auth exigée)
-  avec authentification → HTTP 200   {}
+Langfuse API auto-detected → Ingestion
+Langfuse native ingestion exporter enabled → http://…/api/public/ingestion
 ```
 
 ### Le code concerné
 
-`edgequake/crates/edgequake-observability/src/langfuse.rs:105-110`
+`edgequake/crates/edgequake-observability/src/langfuse.rs`
 ```rust
-pub fn otlp_endpoint(&self) -> String {
-    format!("{}/api/public/otel/v1/traces", self.base_url.trim_end_matches('/'))
-}
+pub enum LangfuseApi { Otlp, Ingestion, Auto }
+pub fn probe_langfuse_api(base_url: &str, auth_token: &str) -> LangfuseApi
 ```
-Chemin **en dur**, sans mécanisme de repli. Aucune variable d'environnement ne permet
-de le contourner.
+`edgequake/crates/edgequake-observability/src/langfuse_ingestion.rs` — exportateur
+`SpanExporter` traduisant les spans OTel en événements `trace-create` /
+`generation-create` / `span-create`.
 
 ---
 
@@ -99,79 +114,106 @@ Toute valeur autre que l'URL interne attendue est une anomalie bloquante.
 
 ---
 
-## 4. Options de remédiation
+## 4. Suivi des coûts
 
-| # | Option | Effort | Risque | Recommandation |
-|---|---|---|---|---|
-| **A** | **Monter Langfuse 3.1 → 3.225+** (même majeure) | Faible | Faible | ✅ **Retenue** |
-| B | Monter vers Langfuse 4 | Moyen | Moyen (rupture de schéma) | Si le client le planifiait déjà |
-| C | Collecteur OTel intermédiaire traduisant vers l'API d'ingestion Langfuse | Élevé | Élevé | ❌ Non — pas d'exportateur officiel, format propriétaire |
-| D | Désactiver l'export Langfuse | Nul | — | Repli temporaire (§4.3) |
+### 4.1 Pourquoi les coûts s'affichent à $0.00
 
-### 4.1 Option A — montée de version mineure *(recommandée)*
+Langfuse calcule le coût d'une observation à partir de **son propre catalogue de
+modèles**, et EdgeQuake **n'émet jamais** d'attribut de coût — c'est une règle
+explicite du code :
 
-Reste dans la majeure **3** : pas de migration de schéma majeure, pas de changement
-d'architecture (web + worker + PostgreSQL + ClickHouse + Redis + S3 déjà en place
-depuis la 3.0).
+```rust
+/// LAW-124-12: never emit these attribute keys (Langfuse cost ingestion).
+COST_ATTR_DENYLIST = ["gen_ai.usage.cost", "langfuse.observation.cost_details", …]
+```
+
+Langfuse reste ainsi la **source unique de vérité** pour les coûts. La conséquence :
+une instance auto-hébergée ne sait tarifer que les modèles présents dans le catalogue
+livré avec sa version. Langfuse **3.1 embarque une liste datant de 2024** :
+
+| Fournisseur | Présent en 3.1 | Absent |
+|---|---|---|
+| OpenAI | `gpt-4o`, `gpt-4`, `gpt-3.5` | `gpt-4.1`, `gpt-5.x` |
+| Google | `gemini-1.5-*` | `gemini-2.5-*` |
+| Anthropic | `claude-3.5-*` | `claude-sonnet-4-x`, `claude-opus-4-x` |
+| Mistral | *(aucun)* | tous |
+| xAI, MiniMax | *(aucun)* | tous |
+
+Tout modèle récent affiche donc **$0.00**, quels que soient les tokens remontés.
+
+### 4.2 Correctif : synchroniser les tarifs depuis `models.toml`
+
+`models.toml` contient déjà les tarifs de tous les fournisseurs supportés. Un script
+les pousse dans Langfuse via `POST /api/public/models` — **sans toucher au chemin
+d'export ni contourner LAW-124-12**.
+
+```bash
+make langfuse-sync-prices              # synchronise
+make langfuse-sync-prices DRY_RUN=1    # aperçu, n'écrit rien
+make langfuse-sync-prices FORCE=1      # réécrit les modèles déjà présents
+```
+
+Équivalent direct (utile en Kubernetes, hors dépôt) :
+```bash
+LANGFUSE_BASE_URL=https://langfuse.intra.example \
+LANGFUSE_PUBLIC_KEY=pk-lf-… LANGFUSE_SECRET_KEY=sk-lf-… \
+python3 scripts/langfuse_sync_model_prices.py
+```
+
+**Comportement** : conversion per-1k → per-token (Langfuse tarife au token), modèles
+d'embedding tarifés côté entrée uniquement, modèles locaux gratuits (Ollama,
+LM Studio) ignorés, idempotent — les modèles déjà connus sont sautés.
+
+**Résultat mesuré** — catalogue 88 → 133 modèles, puis :
+
+| Modèle | Tokens | Coût calculé |
+|---|---|---|
+| `gpt-5.4` | 10 000 / 1 000 | **$0.0400** |
+| `claude-sonnet-4-6` | 10 000 / 1 000 | **$0.0450** |
+| `gemini-2.5-flash` | 10 000 / 1 000 | **$0.0021** |
+| `mistral-small-latest` | 10 000 / 1 000 | **$0.0026** |
+
+> **À faire une fois par instance Langfuse**, et à rejouer après chaque ajout de
+> modèle dans `models.toml`.
+
+### 4.3 Limite connue : observations sans tokens
+
+Sans décompte de tokens, aucun coût n'est calculable, quel que soit le catalogue.
+Deux cas subsistent :
+
+| Observation | Cause | État |
+|---|---|---|
+| `query.embed` | l'API d'embedding ne remonte pas de décompte | Non résolu — un chiffre estimé serait trompeur dans un tableau de coûts |
+| `generate-answer` **via `/query/stream`** | la branche `llm.stream(&prompt)` ne renseigne pas l'usage, contrairement à `llm.chat()` | Non résolu |
+
+Le correctif propre passerait par `chat_with_tools_stream`, qui porte à la fois les
+rôles system/user **et** un `Done { usage }` — il résoudrait aussi le compromis
+streaming/fidélité de prompt. C'est une réécriture du chemin de génération, non
+engagée à ce jour.
+
+### 4.4 Repli : désactiver l'export
 
 ```yaml
-# Deployment langfuse-web ET langfuse-worker
+- name: EDGEQUAKE_LANGFUSE_ENABLED
+  value: "0"          # coupe l'export quelles que soient les clés
+```
+Le reste de l'observabilité (métriques Prometheus `/metrics`, journaux structurés,
+`retrieval_id` rejouable via `/api/v1/query/context/{id}`) demeure **pleinement
+opérationnel**.
+
+### 4.5 Montée de version Langfuse — désormais optionnelle
+
+La montée en 3.225+ n'est **plus nécessaire** pour le traçage. Elle reste pertinente
+pour bénéficier des correctifs amont et d'un catalogue de modèles plus récent.
+
+```yaml
 image: langfuse/langfuse:3.225.5          # web
 image: langfuse/langfuse-worker:3.225.5   # worker
 ```
 > Épingler une version exacte, jamais `:3` ni `:latest`.
 
-**Séquence :**
-1. Sauvegarde PostgreSQL et ClickHouse de Langfuse
-2. Mise à l'échelle à 0 du **worker**
-3. Montée du **web** (il applique les migrations au démarrage)
-4. Attente de `GET /api/public/health` → 200
-5. Remontée du worker
-6. Validation §6
-
-### 4.4 Validation de bout en bout sur Langfuse 3.225.5
-
-EdgeQuake v0.26.1 a été branché sur une instance Langfuse **3.225.5** réelle, puis
-soumis à une ingestion et une requête RAG. Résultat côté Langfuse :
-
-```
-┌─name────────────────┬─type───────┬──n─┐
-│ HTTP                │ SPAN       │ 32 │
-│ retrieval edgequake │ RETRIEVER  │  3 │
-│ query.rerank        │ SPAN       │  1 │
-│ query.fuse          │ SPAN       │  1 │
-│ generate-answer     │ GENERATION │  1 │
-│ query_pipeline      │ SPAN       │  1 │
-│ extract-keywords    │ GENERATION │  1 │
-│ query.embed         │ EMBEDDING  │  1 │
-│ query_execute       │ SPAN       │  1 │
-└─────────────────────┴────────────┴────┘
-```
-
-42 observations au total, avec **typage sémantique correct** : `RETRIEVER` pour la
-récupération RAG, `GENERATION` pour les appels LLM, `EMBEDDING` pour la vectorisation.
-
-> **La montée en 3.x suffit** : aucune adaptation d'EdgeQuake n'est nécessaire.
-
-### 4.2 Version minimale — à faire confirmer
-
-Testé : **3.1.1 = absent** · **3.225.5 = présent**. La version exacte d'apparition de
-l'endpoint se situe entre les deux et n'a pas été bissectée.
-
-**Recommandation opérationnelle** : viser la dernière **3.x** stable plutôt que la
-version minimale théorique — même effort de déploiement, davantage de correctifs.
-
-### 4.3 Option D — repli propre si la montée est impossible à court terme
-
-Pour éviter des exports qui échouent en boucle **et** tout risque de fuite vers le
-cloud :
-```yaml
-- name: EDGEQUAKE_LANGFUSE_ENABLED
-  value: "0"          # force_off : coupe l'export quelles que soient les clés
-```
-Le reste de l'observabilité (métriques Prometheus `/metrics`, journaux structurés,
-`retrieval_id` rejouable via `/api/v1/query/context/{id}`) demeure **pleinement
-opérationnel** — seul l'export Langfuse est suspendu.
+Séquence : sauvegarde PostgreSQL + ClickHouse → worker à 0 → montée du web (il applique
+les migrations) → `GET /api/public/health` 200 → remontée du worker → validation §6.
 
 ---
 
@@ -209,7 +251,7 @@ env:
 
 1. **Jamais `localhost`** — dans un pod, `localhost` désigne le pod lui-même.
 2. **Port du Service** (typiquement 3000), pas le port d'un mapping hôte local.
-3. **Pas de chemin ni de `/` final** — le code ajoute `/api/public/otel/v1/traces`.
+3. **Pas de chemin ni de `/` final** — le code ajoute lui-même le chemin du transport retenu (`/api/public/otel/v1/traces` ou `/api/public/ingestion`).
 4. **Jamais de valeur vide** — équivaut à « non défini » → repli vers Langfuse Cloud (§3).
 5. **Clés du projet de CETTE instance** — les clés d'une autre instance donnent un 401 silencieux.
 
@@ -284,8 +326,8 @@ Ne pas passer à l'étape suivante tant que la précédente échoue.
 
 | # | Contrôle | Commande | Attendu |
 |---|---|---|---|
-| 1 | **Version Langfuse** | `curl <svc>/api/public/health` | `version` ≥ 3.225 |
-| 2 | **Endpoint OTLP présent** | `curl -o /dev/null -w '%{http_code}' -X POST <svc>/api/public/otel/v1/traces -d '{}'` | **401** (pas 404) |
+| 1 | **Version Langfuse** | `curl <svc>/api/public/health` | toute version ≥ 2.x — informatif seulement |
+| 2 | **Transport retenu** | `kubectl logs deploy/edgequake \| grep 'Langfuse API auto-detected'` | `Otlp` ou `Ingestion` — un **404** sur l'endpoint OTLP est normal en 3.1 et déclenche le repli |
 | 3 | Variables injectées | `kubectl exec deploy/edgequake -- env \| grep LANGFUSE` | 3 variables **non vides** |
 | 4 | **Cible réelle** | `curl .../api/v1/settings/langfuse \| jq .base_url` | URL interne (**pas** cloud.langfuse.com) |
 | 5 | Joignabilité | `curl <svc>/api/public/health` depuis le pod EdgeQuake | 200 |
@@ -324,6 +366,16 @@ kubectl exec -n <ns> deploy/edgequake -- \
 ```
 Une liste non vide après une requête RAG prouve la chaîne complète.
 
+**Étape 9 — coûts.** Après `make langfuse-sync-prices`, une génération doit porter un
+coût non nul :
+```bash
+curl -s -u "$LANGFUSE_PUBLIC_KEY:$LANGFUSE_SECRET_KEY" \
+  "http://langfuse-web.<ns>.svc.cluster.local:3000/api/public/observations?limit=5" \
+  | jq '.data[] | {name, model, usage, calculatedTotalCost}'
+```
+`calculatedTotalCost: null` sur une génération avec des tokens ⇒ le modèle manque au
+catalogue Langfuse (§4).
+
 > ⚠️ Après une éventuelle montée en v4, ce contrôle cesse d'être valable : basculer
 > sur la requête ClickHouse `events_core`.
 
@@ -336,25 +388,29 @@ Une liste non vide après une requête RAG prouve la chaîne complète.
 | `HttpTraceClient.ResponseParseError: invalid wire type value: 6` | Langfuse répond en **JSON**, le client Rust attend du **protobuf**. Erreur de lecture de la réponse — la **livraison a réussi** (HTTP 200) | Aucune |
 | `GET /api/public/traces` renvoie 0 **en v4** | API legacy — en v4 les données sont dans `events_core` (en **v3 elle fonctionne**) | Utiliser ClickHouse ou l'UI |
 | `export_active: true` sans trace | N'atteste que de la présence des clés | Dérouler §6 |
+| Coût **$0.00** sur une génération | Modèle absent du catalogue Langfuse — EdgeQuake n'émet jamais le coût (LAW-124-12) | `make langfuse-sync-prices` (§4) |
+| Coût **$0.00** sur `query.embed` | Aucun décompte de tokens remonté par l'API d'embedding | Limite connue (§4.3) |
 
 ---
 
 ## 8. Synthèse pour le client
 
-1. **Cause** : Langfuse 3.1 ne dispose pas de l'endpoint OTLP requis par EdgeQuake
-   (404 vérifié). Aucun réglage Kubernetes ne peut y remédier.
-2. **Correctif** : montée de Langfuse en **3.225+** — même majeure, migration
-   standard, sans changement d'architecture.
+1. **Traçage** : aucune montée de Langfuse n'est requise. EdgeQuake détecte
+   l'absence d'endpoint OTLP (404) et bascule seul sur l'API d'ingestion native,
+   présente depuis Langfuse v2. **Rien à configurer.**
+2. **Coûts** : lancer **une fois** `make langfuse-sync-prices` (ou le script
+   équivalent) sur l'instance Langfuse — sans quoi tout modèle récent affiche $0.00,
+   le catalogue de 3.1 datant de 2024.
 3. **Contrôle préalable indispensable** : vérifier que `base_url` ne pointe pas vers
    `cloud.langfuse.com` (repli silencieux avec risque d'émission de données hors du SI).
 4. **Point de vigilance déploiement** : ordonner web → worker (course aux migrations),
    quoter les valeurs hexadécimales en YAML.
-5. **Repli** : `EDGEQUAKE_LANGFUSE_ENABLED=0` si la montée n'est pas immédiate — le
-   reste de l'observabilité demeure opérationnel.
+5. **Repli** : `EDGEQUAKE_LANGFUSE_ENABLED=0` — le reste de l'observabilité demeure
+   opérationnel.
 
 ---
 
-*Document établi le 2026-08-26 à partir de tests exécutés sur Langfuse 3.1.1, 3.225.5
+*Révision 2.0 du 2026-08-27, à partir de tests exécutés sur Langfuse 3.1.1, 3.225.5
 et 4, avec EdgeQuake v0.26.1. Documents liés :
 [Déploiement technique](01-deploiement-technique.md) ·
 [Intégration IT](02-integration-it.md).*

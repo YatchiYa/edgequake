@@ -2099,6 +2099,20 @@ langfuse-smoke: ## Health + GET /api/public/projects (headless init keys)
 		LANGFUSE_LOCAL_PROJECT_ID="$(LANGFUSE_LOCAL_PROJECT_ID)" \
 		$(ROOT_DIR)/scripts/langfuse_local_smoke.sh
 
+langfuse-sync-prices: ## Push models.toml pricing into Langfuse (fixes $0.00 cost)
+	@echo "$(YELLOW)→ Syncing EdgeQuake model prices into Langfuse...$(RESET)"
+	@# WHY: Langfuse prices observations from ITS OWN catalogue, and EdgeQuake never
+	@# emits cost attributes (LAW-124-12 — Langfuse stays the single source of truth
+	@# for cost). A self-hosted Langfuse only knows the models its bundled catalogue
+	@# shipped with: 3.1 carries a 2024 list (gpt-4o but no gpt-5, gemini-1.5 but no
+	@# 2.5, claude-3.5 but no 4.x, zero Mistral), so every newer model costs $$0.00.
+	@# This pushes models.toml pricing so cost works for every provider.
+	@set -a; [ -f "$(ROOT_DIR)/.env" ] && . "$(ROOT_DIR)/.env"; set +a; \
+	LANGFUSE_BASE_URL="$${LANGFUSE_BASE_URL:-$(LANGFUSE_UI_URL)}" \
+	LANGFUSE_PUBLIC_KEY="$${LANGFUSE_PUBLIC_KEY:-$(LANGFUSE_LOCAL_PK)}" \
+	LANGFUSE_SECRET_KEY="$${LANGFUSE_SECRET_KEY:-$(LANGFUSE_LOCAL_SK)}" \
+	python3 $(ROOT_DIR)/scripts/langfuse_sync_model_prices.py $(if $(DRY_RUN),--dry-run) $(if $(FORCE),--force)
+
 langfuse-reset: ## Delete local Langfuse volumes (CONFIRM=yes required)
 	@if [ "$(CONFIRM)" != "yes" ]; then \
 		echo "$(RED)Refusing to wipe Langfuse volumes.$(RESET)"; \
