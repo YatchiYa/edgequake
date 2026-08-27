@@ -33,11 +33,16 @@ test.describe("SPEC-123 parser priority UI", () => {
     const select = page.getByTestId("spec038-upload-parser-select");
     await expect(select).toBeVisible({ timeout: 15_000 });
     await select.click();
-    await expect(page.getByRole("option", { name: /Vision/i })).toBeVisible();
+    // `/Vision/i` also matches "Workspace Default (Vision)" (strict-mode fail).
     await expect(
-      page.getByRole("option", { name: /EdgeParse/i }),
+      page.getByRole("option", { name: "Vision", exact: true }),
     ).toBeVisible();
-    await expect(page.getByRole("option", { name: /Auto/i })).toBeVisible();
+    await expect(
+      page.getByRole("option", { name: "EdgeParse", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("option", { name: "Auto", exact: true }),
+    ).toBeVisible();
     // Inherit option must not silently say Auto when resolving Vision.
     const inherit = page.getByRole("option", { name: /Workspace Default/i });
     await expect(inherit).toBeVisible();
