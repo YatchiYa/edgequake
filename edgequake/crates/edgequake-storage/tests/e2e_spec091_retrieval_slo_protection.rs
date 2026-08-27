@@ -49,6 +49,10 @@ async fn e2e_spec091_retrieval_slo_protection() {
         .await
         .expect("seed corpus");
 
+    // Discard first acquires so p95 is not dominated by TLS/TCP setup on GH runners.
+    for _ in 0..5 {
+        drop(pool.acquire().await.expect("warmup acquire"));
+    }
     let mut pool_samples = Vec::with_capacity(SAMPLES);
     for _ in 0..SAMPLES {
         let t0 = Instant::now();
