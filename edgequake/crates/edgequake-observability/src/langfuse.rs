@@ -217,9 +217,90 @@ pub fn langfuse_otlp_headers_from_env() -> Option<HashMap<String, String>> {
     Some(langfuse_otlp_headers(&public, &secret))
 }
 
+/// Which Langfuse transport to use for trace export.
+///
+/// `/api/public/otel/v1/traces` (OTLP) only exists from Langfuse **3.22x**;
+/// on **3.1 it 404s**. `/api/public/ingestion` (native) has shipped since v2.
+/// `Auto` probes once at startup and picks whichever the server actually
+/// serves, so self-hosted fleets pinned to 3.1 need no configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LangfuseApi {
+    /// OTLP/HTTP — Langfuse >= 3.22x and 4.x.
+    Otlp,
+    /// Native ingestion API — every Langfuse >= 2.x, including 3.1.
+    Ingestion,
+    /// Probe the OTLP endpoint at startup, fall back to ingestion on 404.
+    Auto,
+}
+
+impl LangfuseApi {
+    /// Read `EDGEQUAKE_LANGFUSE_API` (`otlp` | `ingestion` | `auto`).
+    /// Defaults to `Auto` — unknown values also fall back to `Auto` rather than
+    /// silently disabling export.
+    pub fn from_env() -> Self {
+        match std::env::var("EDGEQUAKE_LANGFUSE_API")
+            .ok()
+            .map(|v| unquote_env_value(&v).trim().to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("otlp") => Self::Otlp,
+            Some("ingestion") | Some("native") => Self::Ingestion,
+            _ => Self::Auto,
+        }
+    }
+}
+
+/// Resolve [`LangfuseApi::Auto`] by probing the OTLP endpoint.
+///
+/// A **404** means the server predates OTLP support (3.1) → use ingestion.
+/// Anything else (200/401/405/network error) keeps OTLP: an auth or transient
+/// failure must not silently switch transports.
+pub fn probe_langfuse_api(base_url: &str, auth_token: &str) -> LangfuseApi {
+    let url = format!(
+        "{}/api/public/otel/v1/traces",
+        base_url.trim_end_matches('/')
+    );
+    let auth = format!("Basic {auth_token}");
+
+    // The probe runs on a dedicated OS thread: `reqwest::blocking` spins up its
+    // own Tokio runtime, and dropping a runtime from inside an async context
+    // panics ("Cannot drop a runtime in a context where blocking is not
+    // allowed"). Observability init is called from within the server runtime,
+    // so the nested runtime must live on a thread of its own.
+    let handle = std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .ok()?;
+        let status = client
+            .post(&url)
+            .header("Authorization", auth)
+            .header("Content-Type", "application/x-protobuf")
+            .body(Vec::new())
+            .send()
+            .ok()?
+            .status()
+            .as_u16();
+        Some(status)
+    });
+
+    match handle.join() {
+        // 404 = server predates OTLP support (Langfuse 3.1) → native ingestion.
+        // Anything else (200/401/405) or a failed probe keeps OTLP: an auth or
+        // transient error must not silently switch transports.
+        Ok(Some(404)) => LangfuseApi::Ingestion,
+        _ => LangfuseApi::Otlp,
+    }
+}
+
+/// Basic-auth token shared by the OTLP headers and the ingestion exporter.
+pub fn basic_auth_token(public_key: &str, secret_key: &str) -> String {
+    base64_encode(format!("{public_key}:{secret_key}").as_bytes())
+}
+
 /// Pure header builder (testable).
 pub fn langfuse_otlp_headers(public_key: &str, secret_key: &str) -> HashMap<String, String> {
-    let token = base64_encode(format!("{public_key}:{secret_key}").as_bytes());
+    let token = basic_auth_token(public_key, secret_key);
     let mut headers = HashMap::new();
     headers.insert("Authorization".into(), format!("Basic {token}"));
     headers.insert("x-langfuse-ingestion-version".into(), "4".into());

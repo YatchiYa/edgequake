@@ -10,6 +10,8 @@ pub mod langfuse;
 pub mod langfuse_attrs;
 pub mod langfuse_context;
 pub mod langfuse_meta;
+#[cfg(feature = "otel")]
+pub mod langfuse_ingestion;
 pub mod propagation;
 pub mod rag_span;
 pub mod request_context;

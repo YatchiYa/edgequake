@@ -271,33 +271,73 @@ fn init_otel_layers(
         }
     }
 
-    // --- Langfuse OTLP/HTTP (SPEC-124; Langfuse does not support gRPC) ---
+    // --- Langfuse (SPEC-124; Langfuse does not support gRPC) ---
+    //
+    // Two transports, because `/api/public/otel/v1/traces` only exists from
+    // Langfuse 3.22x onward — on 3.1 it 404s and no trace can ever arrive.
+    // `EDGEQUAKE_LANGFUSE_API=auto` (default) probes once and falls back to the
+    // native ingestion API, which every Langfuse >= 2.x serves.
     if config.langfuse.enabled {
-        if let Some(headers) = crate::langfuse::langfuse_otlp_headers_from_env() {
-            let endpoint = config.langfuse.otlp_endpoint();
-            let builder = opentelemetry_otlp::SpanExporter::builder()
-                .with_http()
-                .with_endpoint(endpoint)
-                .with_headers(headers);
-            match builder.build() {
-                Ok(exporter) => {
-                    provider_builder = provider_builder.with_batch_exporter(exporter);
-                    any_exporter = true;
-                    eprintln!(
-                        "Langfuse OTLP/HTTP exporter enabled → {}",
-                        config.langfuse.otlp_endpoint()
-                    );
+        let keys = std::env::var("LANGFUSE_PUBLIC_KEY")
+            .ok()
+            .map(|p| crate::langfuse::unquote_env_value(&p))
+            .zip(
+                std::env::var("LANGFUSE_SECRET_KEY")
+                    .ok()
+                    .map(|s| crate::langfuse::unquote_env_value(&s)),
+            )
+            .filter(|(p, s)| !p.is_empty() && !s.is_empty());
+
+        match keys {
+            Some((public_key, secret_key)) => {
+                let mut api = crate::langfuse::LangfuseApi::from_env();
+                if api == crate::langfuse::LangfuseApi::Auto {
+                    let token = crate::langfuse::basic_auth_token(&public_key, &secret_key);
+                    api = crate::langfuse::probe_langfuse_api(&config.langfuse.base_url, &token);
+                    eprintln!("Langfuse API auto-detected → {api:?}");
                 }
-                Err(e) => {
-                    eprintln!(
-                        "Langfuse OTLP/HTTP exporter build failed: {e}; continuing without Langfuse"
-                    );
+
+                match api {
+                    crate::langfuse::LangfuseApi::Ingestion => {
+                        let exporter = crate::langfuse_ingestion::LangfuseIngestionExporter::new(
+                            &config.langfuse.base_url,
+                            &public_key,
+                            &secret_key,
+                        );
+                        eprintln!("Langfuse native ingestion exporter enabled → {}", exporter.endpoint());
+                        provider_builder = provider_builder.with_batch_exporter(exporter);
+                        any_exporter = true;
+                    }
+                    _ => {
+                        let headers =
+                            crate::langfuse::langfuse_otlp_headers(&public_key, &secret_key);
+                        let builder = opentelemetry_otlp::SpanExporter::builder()
+                            .with_http()
+                            .with_endpoint(config.langfuse.otlp_endpoint())
+                            .with_headers(headers);
+                        match builder.build() {
+                            Ok(exporter) => {
+                                provider_builder = provider_builder.with_batch_exporter(exporter);
+                                any_exporter = true;
+                                eprintln!(
+                                    "Langfuse OTLP/HTTP exporter enabled → {}",
+                                    config.langfuse.otlp_endpoint()
+                                );
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "Langfuse OTLP/HTTP exporter build failed: {e}; continuing without Langfuse"
+                                );
+                            }
+                        }
+                    }
                 }
             }
-        } else {
-            eprintln!(
-                "WARNING: Langfuse enabled but keys missing at exporter build — skipping HTTP OTLP"
-            );
+            None => {
+                eprintln!(
+                    "WARNING: Langfuse enabled but keys missing at exporter build — skipping export"
+                );
+            }
         }
     }
 
