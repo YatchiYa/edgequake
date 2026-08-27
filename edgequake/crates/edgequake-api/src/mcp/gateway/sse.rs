@@ -125,13 +125,15 @@ pub fn retrieve_sse_stream(ctx: &DispatchContext<'_>, params: Value, request_id:
 
 /// Axum SSE response with MCP-required keep-alive comments.
 pub fn sse_response(body: SseBody) -> axum::response::Response {
-    Sse::new(body)
+    let mut response = Sse::new(body)
         .keep_alive(
             KeepAlive::new()
                 .interval(std::time::Duration::from_secs(15))
                 .text(":"),
         )
-        .into_response()
+        .into_response();
+    crate::streaming::attach_sse_proxy_headers(&mut response);
+    response
 }
 
 #[cfg(test)]

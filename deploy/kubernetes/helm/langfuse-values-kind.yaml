@@ -1,0 +1,74 @@
+# Langfuse v4 — kind/E2E profile (install separately: helm install langfuse ... -n langfuse)
+#
+# Upstream: https://langfuse.github.io/langfuse-k8s chart v2.x
+# Prereqs: make k8s-prereqs (cert-manager + ClickHouse.COM operator — not Altinity)
+#
+# OOM fix: langfuse.web.resources + NODE_OPTIONS (Next.js default heap ~256MB is too small)
+# Do NOT set TELEMETRY_ENABLED in additionalEnv when features.telemetryEnabled is set
+
+langfuse:
+  features:
+    telemetryEnabled: false
+  additionalEnv:
+    - name: LANGFUSE_INIT_ORG_ID
+      value: edgequake
+    - name: LANGFUSE_INIT_ORG_NAME
+      value: EdgeQuake
+    - name: LANGFUSE_INIT_PROJECT_ID
+      value: edgequake-k8s
+    - name: LANGFUSE_INIT_PROJECT_NAME
+      value: EdgeQuake K8s
+    - name: LANGFUSE_INIT_PROJECT_PUBLIC_KEY
+      value: pk-lf-edgequake-k8s
+    - name: LANGFUSE_INIT_PROJECT_SECRET_KEY
+      value: sk-lf-edgequake-k8s-dev
+    - name: LANGFUSE_INIT_USER_EMAIL
+      value: dev@example.com
+    - name: LANGFUSE_INIT_USER_NAME
+      value: EdgeQuake Dev
+    - name: LANGFUSE_INIT_USER_PASSWORD
+      value: edgequake-k8s-dev
+  web:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 768Mi
+      limits:
+        memory: 2048Mi
+    pod:
+      additionalEnv:
+        - name: NODE_OPTIONS
+          value: "--max-old-space-size=1536"
+  worker:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 1536Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: langfuse.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+postgresql:
+  primary:
+    resources:
+      requests:
+        memory: 256Mi
+
+redis:
+  master:
+    resources:
+      requests:
+        memory: 128Mi
+
+clickhouse:
+  resources:
+    requests:
+      memory: 512Mi

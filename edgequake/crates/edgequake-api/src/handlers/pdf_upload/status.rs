@@ -1,9 +1,8 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::sse::Event;
+use axum::response::Response;
 use axum::Json;
-use futures_util::stream::Stream;
-use std::convert::Infallible;
 use std::time::Duration;
 use tracing::info;
 use uuid::Uuid;
@@ -13,6 +12,7 @@ use super::types::*;
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
 use crate::state::AppState;
+use crate::streaming::live_sse;
 use edgequake_storage::ListPdfFilter;
 use edgequake_tasks::PdfUploadProgress;
 
@@ -335,7 +335,7 @@ pub async fn get_pdf_progress_stream(
     State(state): State<AppState>,
     context: TenantContext,
     Path(track_id): Path<String>,
-) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
+) -> Result<Response, ApiError> {
     // SPEC-083 S-02: ownership check before opening the SSE stream.
     crate::services::task_scope::get_task_for_context(&state, &track_id, &context).await?;
 
@@ -418,9 +418,5 @@ pub async fn get_pdf_progress_stream(
         }
     };
 
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("ping"),
-    ))
+    Ok(live_sse(stream))
 }

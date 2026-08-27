@@ -3,11 +3,44 @@
 //! Auth ON: use authenticated `user_id` (JWT/API key) — never mint per-browser anon rows.
 //! Auth OFF + `EDGEQUAKE_ALLOW_ANONYMOUS`: ensure one shared per-tenant guest (FK-safe).
 //! Auth OFF + allow_anonymous=false: 401, no INSERT.
+//!
+//! HTTP handlers must not read `X-User-ID` for persistence. The client header is
+//! not the ownership principal: anonymous/dev mode maps every caller to one
+//! shared guest. Use [`resolve_conversation_identity`] so list and write paths
+//! cannot diverge (PR #389: raw-header reads returned 0 conversations).
 
 use uuid::Uuid;
 
 use crate::error::ApiError;
+use crate::middleware::TenantContext;
 use crate::state::AppState;
+
+/// Effective tenant + persistence user for conversation/chat ownership.
+///
+/// `user_id` may differ from the client `X-User-ID` when SPEC-087 maps the
+/// caller to the shared per-tenant guest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConversationIdentity {
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+}
+
+/// Resolve the persistence principal from raw tenant/user headers.
+///
+/// Missing/invalid tenant → 400. Missing/invalid user → 401. Then apply
+/// [`ensure_postgres_user_exists`] (Auth ON = principal, Auth OFF + anonymous =
+/// shared guest).
+pub async fn resolve_conversation_identity(
+    state: &AppState,
+    tenant_ctx: &TenantContext,
+) -> Result<ConversationIdentity, ApiError> {
+    let tenant_id = tenant_ctx
+        .tenant_id_uuid()
+        .ok_or_else(|| ApiError::BadRequest("Missing X-Tenant-ID header".into()))?;
+    let client_user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
+    let user_id = ensure_postgres_user_exists(state, tenant_id, client_user_id).await?;
+    Ok(ConversationIdentity { tenant_id, user_id })
+}
 
 /// Pure policy for SPEC-087 identity bootstrap (unit-testable, no I/O).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +111,8 @@ pub async fn ensure_postgres_user_exists(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::AppState;
+    use axum::http::StatusCode;
 
     #[test]
     fn policy_auth_on_uses_principal() {
@@ -101,5 +136,27 @@ mod tests {
             resolve_identity_bootstrap_policy(false, false),
             IdentityBootstrapPolicy::DenyAnonymous
         );
+    }
+
+    #[tokio::test]
+    async fn resolve_identity_missing_tenant_is_400() {
+        let state = AppState::test_state();
+        let err = resolve_conversation_identity(&state, &TenantContext::default())
+            .await
+            .unwrap_err();
+        assert_eq!(err.status_code(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn resolve_identity_missing_user_is_401() {
+        let state = AppState::test_state();
+        let ctx = TenantContext {
+            tenant_id: Some(Uuid::new_v4().to_string()),
+            ..TenantContext::default()
+        };
+        let err = resolve_conversation_identity(&state, &ctx)
+            .await
+            .unwrap_err();
+        assert_eq!(err.status_code(), StatusCode::UNAUTHORIZED);
     }
 }

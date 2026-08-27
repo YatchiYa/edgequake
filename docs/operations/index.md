@@ -3,7 +3,7 @@ title: Operations
 description: Deploy, monitor, and tune EdgeQuake in production.
 ---
 
-> **Product: v0.23.0** · Contract: OpenAPI
+> **Product: v0.26.2** · Contract: OpenAPI
 
 Production deployment and operations guides.
 
@@ -23,6 +23,7 @@ EdgeQuake now documents and follows a few simple operational invariants:
 - **[Deployment](/docs/operations/deployment/)** — Docker, Kubernetes, and bare-metal deployment.
 - **[Configuration](/docs/operations/configuration/)** — Environment variables and runtime settings.
 - **[Monitoring](/docs/operations/monitoring/)** — Health checks, metrics, and observability.
+- **[Langfuse 3.1.x](/docs/operations/langfuse-3.1/)** — Wire EdgeQuake to self-hosted Langfuse 3.1 (ingestion fallback).
 - **[Performance Tuning](/docs/operations/performance-tuning/)** — Optimize throughput and latency.
 - **[Metadata Debugging](/docs/operations/metadata-debugging/)** — Inspect and debug extracted metadata.
 - **[Runtime auth hardening](/docs/operations/runtime-auth-hardening/)** — Production auth and bootstrap.

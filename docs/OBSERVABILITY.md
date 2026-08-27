@@ -23,6 +23,7 @@ See [SPEC-018](../specs/018-observability/README.md) for the full audit and proo
 | `LANGFUSE_SECRET_KEY` | Langfuse secret key (`sk-lf-…`) — never logged | (disabled) |
 | `LANGFUSE_BASE_URL` | Langfuse UI + OTLP base (alias `LANGFUSE_HOST`) | `https://cloud.langfuse.com` |
 | `EDGEQUAKE_LANGFUSE_ENABLED` | Force on (`1`) / off (`0`); default = both keys set | auto |
+| `EDGEQUAKE_LANGFUSE_API` | `auto` (probe OTLP, ingest on 404) / `otlp` / `ingestion` | `auto` |
 | `EDGEQUAKE_PROMPT_CACHE` | Provider KV/prompt-cache (SPEC-126); observation meta `cache_hit_tokens` | on |
 | `EDGEQUAKE_ENVIRONMENT` | `deployment.environment` on traces | `development` |
 | `EDGEQUAKE_QUEUE_PENDING_WARN` | Pending depth → elevated queue pressure | `100` |
@@ -103,7 +104,11 @@ The overlay sets `ENABLE_OTEL=true`, JSON logs, span-close events, and `OTEL_EXP
 
 ## Langfuse (SPEC-124)
 
-Langfuse accepts **OTLP/HTTP only** (not gRPC). When `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set, EdgeQuake registers a second BatchSpanProcessor that exports to `{LANGFUSE_BASE_URL}/api/public/otel/v1/traces` (`otel` is on by default). Programmatic OTLP exporters must use the full `/v1/traces` path — the SDK does not append it when `with_endpoint` is set.
+**Self-hosted 3.1.x (no OTLP):** step-by-step wiring, local `:3320` stack, Helm, and verify `api_resolved=ingestion` — **[operations/langfuse-3.1.md](operations/langfuse-3.1.md)**. Kubernetes: [deploy/kubernetes/README.md](../deploy/kubernetes/README.md#existing-langfuse-31x).
+
+Langfuse Cloud and self-hosted **≥ 3.22** accept **OTLP/HTTP** at `{LANGFUSE_BASE_URL}/api/public/otel/v1/traces` (not gRPC). When `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set, EdgeQuake registers a BatchSpanProcessor on that path (`otel` is on by default). Programmatic OTLP exporters must use the full `/v1/traces` path — the SDK does not append it when `with_endpoint` is set.
+
+Self-hosted **Langfuse 3.1.x** returns **404** on that OTLP path (added in 3.22.0). Default `EDGEQUAKE_LANGFUSE_API=auto` probes once at startup and falls back to `POST /api/public/ingestion` **only on HTTP 404**. That path maps LAW-124-13 types (`retriever` / `embedding` / `chain`) onto 3.1.1 envelope types (`span-create` / `generation-create`) — never `{type}-create` stringification. Ingestion is a **bridge**, not a replacement: Cloud sunsets it 2026-11-16; upgrade to **≥ 3.22** (or the in-repo v4 compose) remains recommended.
 
 ```bash
 # Preferred: uncomment in repo-root `.env` (make dev sources it)
@@ -112,6 +117,7 @@ Langfuse accepts **OTLP/HTTP only** (not gRPC). When `LANGFUSE_PUBLIC_KEY` and `
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_BASE_URL=https://cloud.langfuse.com   # or US / self-hosted / http://localhost:3310
+# EDGEQUAKE_LANGFUSE_API=auto   # otlp | ingestion | auto (default)
 # Same shell alternative: export the three vars, then restart
 make kill-app && make backend-bg   # or: make dev
 # Docker stack: LANGFUSE_* is mapped in compose (quickstart / docker / api-only / prebuilt)
@@ -132,13 +138,20 @@ make kill-app && make backend-bg   # or: make dev
 # Login: dev@example.com / edgequake-local-dev
 # make langfuse-down keeps volumes; make langfuse-reset CONFIRM=yes wipes them.
 # make stop does not tear Langfuse down.
+#
+# Langfuse 3.1.x (how-to: docs/operations/langfuse-3.1.md):
+#   make langfuse-3.1-up          # isolated 3.1.1 UI :3320
+#   make spec124-langfuse-3.1-e2e # unfakable ingestion-fallback proof
+# Cost $0.00 on recent models is Langfuse's catalogue, not EdgeQuake (LAW-124-12).
+#   make langfuse-sync-prices          # POST /api/public/models
+#   make langfuse-sync-prices FORCE=1  # PUT existing rows
 ```
 
 `make dev` / `backend-bg` / `backend-dev` call `APPLY_LANGFUSE_ENV`: source repo-root `.env`, apply Make/CLI overrides only when the shell var is empty (so bash-sourced values are not clobbered by Make-quoted includes), strip matching quotes, and never force `LANGFUSE_*=""`. Look for `LANGFUSE_* keys detected` in the make output.
 
 - Settings → **Langfuse Observability** card shows status + **Open in Langfuse** (no secrets in UI).
 - `GET /api/v1/settings/langfuse` returns the same status DTO.
-- `/health.operational.observability.langfuse_enabled` + `langfuse_base_url`.
+- `/health.operational.observability.langfuse_enabled` + `langfuse_base_url` + `langfuse_api` / `langfuse_api_resolved`.
 - Query responses may include `trace_id`. Deep links use `{LANGFUSE_BASE_URL}/project/{projectId}/traces/{traceId}` (and sessions `{base}/project/{id}/sessions/{sessionId}`). Bare `/sessions/{id}` is a Cloud 404.
 - **Sessions:** chat turns bind durable `conversation_id` as Langfuse session / `gen_ai.conversation.id` (see [specs/124-langfuse-support/12-sessions-and-genai.md](../specs/124-langfuse-support/12-sessions-and-genai.md)). After two turns in the same conversation, open Langfuse → Observability → Sessions. Optional `/query` and `/query/stream` field `session_id` for API clients; never invent a session when omitted.
 - **Tokens yes / cost never:** generation and embedding spans record `gen_ai.usage.input_tokens` / `output_tokens` when the LLM returns counts. EdgeQuake **never** emits `gen_ai.usage.cost` or `langfuse.observation.cost_details`. Observation types: `generation`, `retriever`, `embedding`, `chain` (ingest root). See [13-metadata-tokens-and-coverage.md](../specs/124-langfuse-support/13-metadata-tokens-and-coverage.md).

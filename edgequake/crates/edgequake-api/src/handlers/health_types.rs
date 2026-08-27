@@ -259,6 +259,12 @@ pub struct ObservabilityHealthSnapshot {
     /// SPEC-124: non-secret Langfuse base URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub langfuse_base_url: Option<String>,
+    /// SPEC-124: requested transport (`auto` | `otlp` | `ingestion`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub langfuse_api: Option<String>,
+    /// SPEC-124: transport wired at init (`otlp` | `ingestion`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub langfuse_api_resolved: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

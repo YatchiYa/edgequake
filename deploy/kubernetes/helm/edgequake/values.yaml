@@ -1,0 +1,117 @@
+# EdgeQuake Helm chart — default values (production-oriented baseline).
+# Use values-kind.yaml for local kind / E2E proof.
+
+global:
+  edgequakeVersion: "0.26.2"
+
+namespace:
+  create: true
+  name: edgequake
+
+postgres:
+  enabled: true
+  image:
+    repository: ghcr.io/raphaelmansuy/edgequake-postgres
+    tag: "" # defaults to global.edgequakeVersion
+    pullPolicy: IfNotPresent
+  auth:
+    username: edgequake
+    password: edgequake_secret
+    database: edgequake
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+
+api:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/raphaelmansuy/edgequake
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+  preStopSleepSeconds: 15
+  env:
+    EDGEQUAKE_HOST: "0.0.0.0"
+    EDGEQUAKE_PORT: "8080"
+    EDGEQUAKE_LLM_PROVIDER: ollama
+    EDGEQUAKE_DEV_MODE: "false"
+    EDGEQUAKE_AUTH_ENABLED: "true"
+    EDGEQUAKE_ENVIRONMENT: production
+    EDGEQUAKE_LOG_FORMAT: json
+    RUST_LOG: edgequake=info
+    OTEL_SERVICE_NAME: edgequake-api
+    OLLAMA_HOST: "http://host.docker.internal:11434"
+  # Langfuse — set base URL; keys from existingSecret or langfuse subchart bootstrap
+  langfuse:
+    baseUrl: ""
+    projectId: ""
+    existingSecret: ""
+    publicKey: ""
+    secretKey: ""
+    # auto | otlp | ingestion — auto probes OTLP and falls back on HTTP 404 (Langfuse 3.1.x).
+    # How-to: docs/operations/langfuse-3.1.md
+    api: auto
+  extraEnv: {}
+  extraSecretEnv: {}
+
+web:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/raphaelmansuy/edgequake-frontend
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  env:
+    NODE_ENV: production
+    NEXT_PUBLIC_AUTH_ENABLED: "true"
+  # Browser-reachable API URL (override for ingress host)
+  apiUrl: ""
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+  hosts:
+    - host: edgequake.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: web
+        - path: /api
+          pathType: Prefix
+          service: api
+  tls: []
+
+networkPolicy:
+  enabled: false
+  langfuseNamespace: langfuse
+  langfuseServiceName: langfuse-web
+
+serviceAccount:
+  create: false
+  name: ""

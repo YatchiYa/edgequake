@@ -4,11 +4,7 @@
 //! @implements FEAT0404 (Query Streaming Endpoint)
 //! @implements SPEC-006 (Unified Streaming Response)
 
-use axum::{
-    extract::State,
-    response::sse::{Event, KeepAliveStream, Sse},
-    Extension, Json,
-};
+use axum::{extract::State, response::sse::Event, response::Response, Extension, Json};
 use edgequake_observability::{
     record_llm_request, record_query_completed, record_query_root_io, scope_llm_provider,
     stamp_query_langfuse_identity, ErrorEvent, PropagationHeaders, QueryFailureGuard,
@@ -34,7 +30,7 @@ use crate::services::{
     validate_llm_override_pair, QueryExecutionParams,
 };
 use crate::state::AppState;
-use crate::streaming::StreamAccumulator;
+use crate::streaming::{live_sse, StreamAccumulator};
 use crate::validation::validate_query;
 use edgequake_query::QueryMode;
 
@@ -42,8 +38,6 @@ use super::workspace_resolve::resolve_query_workspace;
 pub use crate::handlers::query_types::{QueryStreamEvent, QueryStreamStats, StreamQueryRequest};
 
 type BoxedSseStream = Pin<Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>>;
-
-type SseStream = KeepAliveStream<BoxedSseStream>;
 
 /// Execute a streaming query.
 ///
@@ -80,7 +74,7 @@ pub async fn stream_query(
     Extension(req_ctx): Extension<RequestContext>,
     Extension(propagation): Extension<PropagationHeaders>,
     Json(request): Json<StreamQueryRequest>,
-) -> ApiResult<Sse<SseStream>> {
+) -> ApiResult<Response> {
     let mode = request
         .mode
         .as_ref()
@@ -300,11 +294,7 @@ pub async fn stream_query(
         }));
 
         query_guard.dismiss();
-        return Ok(Sse::new(sse_stream).keep_alive(
-            axum::response::sse::KeepAlive::new()
-                .interval(std::time::Duration::from_secs(15))
-                .text("keep-alive"),
-        ));
+        return Ok(live_sse(sse_stream));
     }
 
     // SPEC-006: v2 structured event streaming
@@ -582,9 +572,5 @@ pub async fn stream_query(
     }));
 
     query_guard.dismiss();
-    Ok(Sse::new(sse_stream).keep_alive(
-        axum::response::sse::KeepAlive::new()
-            .interval(std::time::Duration::from_secs(15))
-            .text("keep-alive"),
-    ))
+    Ok(live_sse(sse_stream))
 }

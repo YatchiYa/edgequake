@@ -2,7 +2,7 @@
 
 ## What this spec delivers
 
-OTLP/HTTP Langfuse export, Sessions, GenAI observation types, token usage (never cost), Langfuse-mapped observation Input/Output, DRY SSOT helpers, gleaning coverage, session Open link, **tenant/workspace slugs alongside GUIDs**, and query/ingest **pipeline stage** metadata.
+OTLP/HTTP Langfuse export (plus native ingestion fallback on Langfuse 3.1.x OTLP 404), Sessions, GenAI observation types, token usage (never cost), Langfuse-mapped observation Input/Output, DRY SSOT helpers, gleaning coverage, session Open link, **tenant/workspace slugs alongside GUIDs**, and query/ingest **pipeline stage** metadata. Settings/health expose requested `api` and resolved `api_resolved` (`otlp` | `ingestion`).
 
 ## Risks
 
@@ -12,6 +12,8 @@ OTLP/HTTP Langfuse export, Sessions, GenAI observation types, token usage (never
 | Langfuse UI Cost column | Platform may **compute** USD from model + tokens; we never emit cost attrs |
 | I/O truncation | Previews capped (`OBSERVATION_IO_PREVIEW_CHARS`); full prompts not dumped (LAW-124-8) |
 | Live e2e without keys | Playwright may skip; **InMemorySpanExporter tests do not** (LAW-124-15); `make spec124-proof` is the CI floor |
+| Langfuse 3.1.x types | `retriever` / `embedding` / `chain` land as SPAN (`span-create`). Rich types need ≥ 3.22 OTLP |
+| Ingestion API sunset | Compatibility bridge only; Cloud sunsets 2026-11-16; v4 `events_only` rejects it |
 
 ## Gaps closed
 
@@ -22,6 +24,7 @@ OTLP/HTTP Langfuse export, Sessions, GenAI observation types, token usage (never
 | I6 | `langfuse.observation.input`/`output` on retriever, embed, ingest, `pipeline_chunk_extraction`, query roots |
 | I7 | DRY/SOLID SSOT helpers; gleaning `extract-entities-glean`; session Open link; `make spec124-proof` |
 | I8 | Tenant/workspace slugs additive to GUIDs; query pipeline meta; ingest parse/vision/chunk/persist stages |
+| 3.1 fallback | `EDGEQUAKE_LANGFUSE_API=auto`; Settings `api` / `api_resolved`; `make spec124-langfuse-3.1-e2e` |
 
 ## Honest gaps remaining
 

@@ -1,0 +1,13 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: edgequake-postgres-init
+  namespace: {{ include "edgequake.namespace" . }}
+  labels:
+    {{- include "edgequake.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+data:
+  init.sql: |
+{{ .Files.Get "files/init-extensions.sql" | indent 4 }}
+{{- end }}

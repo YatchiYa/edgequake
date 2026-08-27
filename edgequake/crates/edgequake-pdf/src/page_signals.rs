@@ -40,7 +40,7 @@ pub struct PageSignals {
     pub page_num: usize,
     /// Fraction of page area covered by embedded image placements.
     pub image_area_frac: f32,
-    /// Normalized glyph density: text char count / [`CHARS_PER_DENSE_PAGE`],
+    /// Normalized glyph density: text char count / `CHARS_PER_DENSE_PAGE`,
     /// clamped to 1.0.
     pub glyph_text_density: f32,
     /// Dark-pixel fraction of the dominant embedded image; 0.0 when the page
@@ -63,7 +63,7 @@ const MAX_INK_PROBES: usize = 4;
 
 /// Compute per-page modality signals from PDF bytes (blocking, no raster).
 ///
-/// Walks at most [`MAX_SAMPLE_PAGES`] pages (evenly spread, endpoints
+/// Walks at most `MAX_SAMPLE_PAGES` pages (evenly spread, endpoints
 /// included) — a document's modality is evident without parsing every page.
 ///
 /// Note: `lopdf` load cost is proportional to document size (≈24 ms for a

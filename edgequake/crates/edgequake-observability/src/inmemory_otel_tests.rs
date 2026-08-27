@@ -197,6 +197,27 @@ fn inmemory_tracing_generation_retrieval_embedding_ingest_io() {
     assert!(saw_retriever_io, "missing retriever I/O: {spans:?}");
     assert!(saw_embedding_io, "missing embedding I/O: {spans:?}");
     assert!(saw_ingest_io, "missing ingest chain I/O: {spans:?}");
+
+    let batch = crate::langfuse_ingestion::spans_to_batch(&spans);
+    use crate::langfuse_ingestion::{
+        LANGFUSE_V31_EMITTED_ENVELOPE_TYPES, LANGFUSE_V31_GENERATION_CREATE,
+        LANGFUSE_V31_SPAN_CREATE,
+    };
+    for ev in &batch {
+        let ty = ev["type"].as_str().unwrap_or("");
+        assert!(
+            LANGFUSE_V31_EMITTED_ENVELOPE_TYPES.contains(&ty),
+            "wired spans produced illegal 3.1.1 envelope {ty}: {ev}"
+        );
+        assert!(
+            !ty.contains("retriever") && !ty.contains("embedding") && !ty.contains("chain"),
+            "LAW-124-13 type leaked into envelope: {ty}"
+        );
+    }
+    assert!(batch
+        .iter()
+        .any(|e| e["type"] == LANGFUSE_V31_GENERATION_CREATE));
+    assert!(batch.iter().any(|e| e["type"] == LANGFUSE_V31_SPAN_CREATE));
 }
 
 #[test]

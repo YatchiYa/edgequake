@@ -2,7 +2,7 @@
 title: 'Monitoring Guide'
 ---
 
-> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.26.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Monitoring Guide
 
@@ -375,7 +375,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
 export RUST_LOG=edgequake_api=info,edgequake_storage=warn
 ```
 
-Full operator guide: [OBSERVABILITY.md](../OBSERVABILITY.md)
+Full operator guide: [OBSERVABILITY.md](../OBSERVABILITY.md) · Langfuse 3.1.x: [langfuse-3.1.md](langfuse-3.1.md)
 
 ---
 

@@ -1,0 +1,6 @@
+dependencies:
+- name: edgequake
+  repository: file://../edgequake
+  version: 0.1.0
+digest: sha256:be811f5b2291cde3f249390f857fa2a5549c5755cb0df6b942ab30d81ec5949f
+generated: "2026-08-26T22:40:19.310837+08:00"

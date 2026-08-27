@@ -11,8 +11,11 @@ WORKDIR /app
 # Copy package files
 COPY edgequake_webui/package.json edgequake_webui/pnpm-lock.yaml ./
 
-# Install dependencies with pnpm
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+# Install pnpm matching package.json "packageManager" (pnpm@10.13.1).
+# Unpinned `npm install -g pnpm` installs latest, which then tries to switch
+# to 10.13.1 and fail-closes with ERR_PNPM_PNPM_ENGINE_IDENTITY_UNVERIFIABLE
+# on Alpine/ARM (`@pnpm/exe.linux-arm64` is not in this lockfile).
+RUN npm install -g pnpm@10.13.1 && pnpm install --frozen-lockfile
 
 # ============================================
 # Stage 2: Build
@@ -21,7 +24,7 @@ FROM node:20-alpine AS builder
 
 # Build args for Next.js public environment variables
 ARG NEXT_PUBLIC_API_URL=http://localhost:8080
-ARG NEXT_PUBLIC_APP_VERSION=0.21.0
+ARG NEXT_PUBLIC_APP_VERSION=0.26.2
 
 WORKDIR /app
 
@@ -29,7 +32,7 @@ WORKDIR /app
 COPY edgequake_webui/package.json edgequake_webui/pnpm-lock.yaml ./
 
 # Install pnpm
-RUN npm install -g pnpm
+RUN npm install -g pnpm@10.13.1
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
@@ -77,7 +80,7 @@ RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 COPY edgequake_webui/package.json edgequake_webui/pnpm-lock.yaml ./
 
 # Install pnpm and production dependencies only
-RUN npm install -g pnpm && pnpm install --prod --frozen-lockfile
+RUN npm install -g pnpm@10.13.1 && pnpm install --prod --frozen-lockfile
 
 # Copy built application from builder
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next

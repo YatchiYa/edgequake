@@ -67,7 +67,10 @@ test.describe("SPEC-124 Langfuse sessions", () => {
 
     const pk = process.env.LANGFUSE_PUBLIC_KEY?.replace(/^["']|["']$/g, "");
     const sk = process.env.LANGFUSE_SECRET_KEY?.replace(/^["']|["']$/g, "");
-    const base = String(status.base_url || status.ui_url || "")
+    const envBase = process.env.LANGFUSE_BASE_URL?.replace(/^["']|["']$/g, "").replace(/\/$/, "");
+    const base = String(
+      envBase || status.base_url || status.ui_url || "",
+    )
       .replace(/^["']|["']$/g, "")
       .replace(/\/$/, "");
 

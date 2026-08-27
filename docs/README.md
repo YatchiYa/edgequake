@@ -4,7 +4,7 @@ title: 'EdgeQuake Documentation'
 
 # EdgeQuake Documentation
 
-> **Product: v0.23.0** · Contract: [`openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
+> **Product: v0.26.2** · Contract: [`openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
 
 High-performance Graph-Enhanced RAG in Rust. PostgreSQL (pgvector + Apache AGE) is required for all server modes. Auth is enabled by default unless `EDGEQUAKE_DEV_MODE=true` or `AUTH_ENABLED=false`.
 
@@ -142,6 +142,7 @@ SDK packages are independently versioned (typically **0.4.0**) and are **not** t
 | [Metadata debugging](operations/metadata-debugging.md)           | Document status / mapper fields          |
 | [Operations Overview](operations/index.md)                       | Local and CI/CD operating model          |
 | [Observability](OBSERVABILITY.md)                                | OTEL / tracing                           |
+| [Langfuse 3.1.x](operations/langfuse-3.1.md)                     | Native ingestion fallback (no OTLP)      |
 | [SQLx offline mode](sqlx-offline-mode.md)                        | Offline query metadata                   |
 | [SPEC-083 improvements](../specs/083-improvements/README.md)              | First-principles defect pack + register  |
 | [Prod eq_* incident](../specs/083-improvements/INCIDENT-PROD-DIAGNOSIS.md) | Schema readiness / M092 maintenance     |

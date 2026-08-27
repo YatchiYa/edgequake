@@ -2,7 +2,7 @@
 title: 'Deployment Guide'
 ---
 
-> **Product: v0.23.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.26.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Deployment Guide
 
@@ -310,9 +310,56 @@ services:
 
 ## Option 3: Kubernetes
 
-### Helm Chart (Coming Soon)
+EdgeQuake ships Helm charts for Kubernetes deployments with optional in-cluster Langfuse v4 (OTLP trace observability).
 
-For Kubernetes deployments, a Helm chart is in development. For now, use the following manifests as a starting point:
+**Operator guide (start here):** [deploy/kubernetes/README.md](../../deploy/kubernetes/README.md)  
+**Spec pack:** [specs/138-kubernetes/README.md](../../specs/138-kubernetes/README.md)
+
+### What gets deployed
+
+- **edgequake** namespace: web + API + PostgreSQL (pgvector + AGE)
+- **langfuse** namespace: Langfuse v4 (web, worker, bundled stores on kind)
+- API exports **OTLP/HTTP traces** to Langfuse v4 (SPEC-124). Self-hosted Langfuse **3.1.x** has no OTLP path; default `EDGEQUAKE_LANGFUSE_API=auto` falls back to native ingestion. How-to: [langfuse-3.1.md](langfuse-3.1.md) · Helm: [Existing Langfuse 3.1.x](../../deploy/kubernetes/README.md#existing-langfuse-31x). Upgrade to ≥ 3.22 remains recommended.
+
+### Quick start (kind / local)
+
+```bash
+make k8s-prereqs          # cert-manager + ClickHouse.com operator + nginx
+make k8s-kind-up          # create kind cluster (edgequake-spec138)
+make k8s-install          # Langfuse then EdgeQuake (includes migrate Job)
+make k8s-status
+```
+
+Verify OTLP trace delivery:
+
+```bash
+make spec138-kubernetes-proof
+```
+
+### Important behavior (v0.26+)
+
+| Topic | Behavior |
+|-------|----------|
+| **Migrations** | API **does not** auto-migrate at boot. Helm runs a `edgequake migrate` Job before the API Deployment serves traffic. |
+| **Kind E2E LLM** | Uses `mock` provider with `EDGEQUAKE_ALLOW_MOCK_PROVIDER=1` — production must use a real provider. |
+| **Langfuse memory** | Langfuse v4 web needs `NODE_OPTIONS=--max-old-space-size=1536` on kind (see `langfuse-values-kind.yaml`). |
+| **Langfuse prereqs** | Langfuse Helm v2 requires the **ClickHouse.com** operator (`make k8s-prereqs`), not Altinity. |
+
+See [deploy/kubernetes/README.md — Troubleshooting](../../deploy/kubernetes/README.md#troubleshooting) for common failure modes.
+
+### Charts
+
+| Chart | Path |
+|-------|------|
+| EdgeQuake app | `deploy/kubernetes/helm/edgequake/` |
+| Stack wrapper | `deploy/kubernetes/helm/edgequake-stack/` |
+| Langfuse values (kind) | `deploy/kubernetes/helm/langfuse-values-kind.yaml` |
+
+Langfuse installs into namespace `langfuse`; EdgeQuake into namespace `edgequake` (separate Postgres instances).
+
+### Reference manifests
+
+The snippets below remain useful for understanding probe and env wiring. Prefer Helm for production installs.
 
 ### Namespace
 
@@ -567,11 +614,18 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # SSE support for streaming
+        # SSE support for streaming — gzip MUST NOT apply to text/event-stream.
+        # Next.js / nginx gzip buffers the whole body (one chunk at EOF).
+        # Axum already skips SSE compression; reverse proxies must too.
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 86400;
+        gzip off;
     }
+
+    # JSON/static can still be compressed; keep SSE on a dedicated location if
+    # you need gzip elsewhere:
+    # location /api/v1/query/stream { gzip off; proxy_buffering off; ... }
 }
 ```
 
@@ -585,6 +639,23 @@ rag.yourdomain.com {
     }
 }
 ```
+
+Do not wrap the API with `encode gzip` on SSE paths (`/api/v1/query/stream`,
+`/api/v1/chat/completions/stream`, `/api/v1/graph/stream`). Gzip on
+`text/event-stream` buffers the stream the same way Next.js `compress: true` did.
+
+### Traefik / Kubernetes Ingress
+
+nginx ingress defaults to buffering. Set:
+
+```yaml
+nginx.ingress.kubernetes.io/proxy-buffering: "off"
+nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+```
+
+The Helm chart ships these annotations on `ingress.annotations`. Traefik
+`compress` middleware must exclude `text/event-stream` (or be disabled on
+stream routes). The API also sends `X-Accel-Buffering: no` on SSE responses.
 
 ---
 

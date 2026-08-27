@@ -147,6 +147,8 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         db-start postgres-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         langfuse-up langfuse-down langfuse-logs langfuse-status langfuse-smoke langfuse-reset spec124-langfuse-e2e \
+        langfuse-3.1-up langfuse-3.1-down langfuse-3.1-reset spec124-langfuse-3.1-e2e langfuse-sync-prices \
+        k8s-prereqs k8s-kind-up k8s-kind-down k8s-install k8s-uninstall k8s-status spec138-kubernetes-proof spec138-helm-template \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         spec091-upgrade-soak spec091-gates spec103-llm-cache-proof \
         spec109-reasoning-effort-proof \
@@ -200,6 +202,13 @@ FRONTEND_DIR := $(ROOT_DIR)/edgequake_webui
 DOCKER_DIR := $(BACKEND_DIR)/docker
 LANGFUSE_COMPOSE := $(DOCKER_DIR)/docker-compose.langfuse.yml
 LANGFUSE_COMPOSE_PROJECT := edgequake-langfuse
+LANGFUSE_311_COMPOSE := $(DOCKER_DIR)/docker-compose.langfuse-3.1.yml
+LANGFUSE_311_COMPOSE_PROJECT := edgequake-langfuse-3-1
+LANGFUSE_311_PORT ?= 3320
+LANGFUSE_311_UI_URL ?= http://localhost:$(LANGFUSE_311_PORT)
+LANGFUSE_311_PK ?= pk-lf-edgequake-311
+LANGFUSE_311_SK ?= sk-lf-edgequake-311-dev
+LANGFUSE_311_PROJECT_ID ?= edgequake-local-311
 # 3100 is gps-mcp on this machine; 3310 is the EdgeQuake Langfuse UI default.
 LANGFUSE_PORT ?= 3310
 LANGFUSE_UI_URL := http://localhost:$(LANGFUSE_PORT)
@@ -629,6 +638,17 @@ help: ## Show this help message
 	@echo "  $(GREEN)make langfuse-down$(RESET)           Stop local Langfuse (keeps volumes)"
 	@echo "  $(GREEN)make langfuse-smoke$(RESET)          Health + GET /api/public/projects"
 	@echo "  $(GREEN)make spec124-langfuse-e2e$(RESET)    One-command live Settings + sessions vs local Langfuse (starts stack; needs Ollama or OPENAI_API_KEY)"
+	@echo "  $(GREEN)make langfuse-3.1-up$(RESET)         Start Langfuse 3.1.1 (UI :3320, ingestion-fallback E2E)"
+	@echo "  $(GREEN)make spec124-langfuse-3.1-e2e$(RESET) Unfakable ingestion-fallback E2E vs Langfuse 3.1.1"
+	@echo "  $(GREEN)make langfuse-3.1-reset$(RESET)      Wipe Langfuse 3.1.1 volumes (CONFIRM=yes)"
+	@echo "  $(GREEN)make langfuse-sync-prices$(RESET)    Push models.toml pricing into Langfuse"
+	@echo ""
+	@echo "$(BOLD)$(BLUE)☸ Kubernetes (SPEC-138)$(RESET)"
+	@echo "  $(GREEN)make k8s-prereqs$(RESET)             cert-manager + ClickHouse operator + nginx ingress"
+	@echo "  $(GREEN)make k8s-kind-up$(RESET)             Create kind cluster (requires: brew install kind)"
+	@echo "  $(GREEN)make k8s-install$(RESET)             Install Langfuse + EdgeQuake Helm stack"
+	@echo "  $(GREEN)make spec138-helm-template$(RESET)   Render charts (no cluster)"
+	@echo "  $(GREEN)make spec138-kubernetes-proof$(RESET) Full kind E2E — OTLP traces to Langfuse (~16GB RAM)"
 	@echo ""
 	@echo "$(BOLD)$(BLUE)📦 SDKs$(RESET)"
 	@echo "  $(GREEN)make sdk-rust-build$(RESET)    Build Rust SDK (sdks/rust)"
@@ -2110,6 +2130,62 @@ langfuse-reset: ## Delete local Langfuse volumes (CONFIRM=yes required)
 	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse.yml --project-name $(LANGFUSE_COMPOSE_PROJECT) down -v
 	@echo "$(GREEN)✓ Langfuse volumes removed$(RESET)"
 
+langfuse-sync-prices: ## Push models.toml pricing into Langfuse (fixes $0.00 cost)
+	@echo "$(YELLOW)→ Syncing EdgeQuake model prices into Langfuse...$(RESET)"
+	@# LAW-124-12: EdgeQuake never emits cost attrs; Langfuse prices from its catalogue.
+	@set -a; [ -f "$(ROOT_DIR)/.env" ] && . "$(ROOT_DIR)/.env"; set +a; \
+	LANGFUSE_BASE_URL="$${LANGFUSE_BASE_URL:-$(LANGFUSE_UI_URL)}" \
+	LANGFUSE_PUBLIC_KEY="$${LANGFUSE_PUBLIC_KEY:-$(LANGFUSE_LOCAL_PK)}" \
+	LANGFUSE_SECRET_KEY="$${LANGFUSE_SECRET_KEY:-$(LANGFUSE_LOCAL_SK)}" \
+	python3 $(ROOT_DIR)/scripts/langfuse_sync_model_prices.py $(if $(DRY_RUN),--dry-run) $(if $(FORCE),--force)
+
+langfuse-3.1-up: ## Start Langfuse 3.1.1 (UI http://localhost:3320) for ingestion-fallback E2E
+	@echo "$(BOLD)$(BLUE)Starting Langfuse 3.1.1$(RESET)"
+	@cd $(DOCKER_DIR) && LANGFUSE_311_PORT="$(LANGFUSE_311_PORT)" NEXTAUTH_URL="$(LANGFUSE_311_UI_URL)" \
+		docker compose -f docker-compose.langfuse-3.1.yml --project-name $(LANGFUSE_311_COMPOSE_PROJECT) up -d
+	@echo "$(YELLOW)→ Waiting for Langfuse 3.1.1 health (up to 180s)...$(RESET)"
+	@ready=0; \
+	for i in $$(seq 1 90); do \
+		if curl -sf "$(LANGFUSE_311_UI_URL)/api/public/health" >/dev/null 2>&1 \
+			&& curl -sf "$(LANGFUSE_311_UI_URL)/api/public/ready" >/dev/null 2>&1; then \
+			ready=1; break; \
+		fi; \
+		printf "."; sleep 2; \
+	done; \
+	echo ""; \
+	if [ "$$ready" != "1" ]; then \
+		echo "$(RED)✗ Langfuse 3.1.1 did not become ready at $(LANGFUSE_311_UI_URL)$(RESET)"; \
+		cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.1.yml --project-name $(LANGFUSE_311_COMPOSE_PROJECT) ps; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ Langfuse 3.1.1 ready at $(LANGFUSE_311_UI_URL)$(RESET)"
+	@echo "$(YELLOW)→ Restarting worker after web Prisma migrations (3.1 race)$(RESET)"
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.1.yml --project-name $(LANGFUSE_311_COMPOSE_PROJECT) restart langfuse-worker
+	@sleep 5
+	@echo "$(GREEN)✓ Langfuse 3.1.1 worker restarted$(RESET)"
+
+langfuse-3.1-down: ## Stop Langfuse 3.1.1 stack (volumes kept)
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.1.yml --project-name $(LANGFUSE_311_COMPOSE_PROJECT) down
+
+langfuse-3.1-reset: ## Delete Langfuse 3.1.1 volumes (CONFIRM=yes required; does not touch v4)
+	@if [ "$(CONFIRM)" != "yes" ]; then \
+		echo "$(RED)Refusing to wipe Langfuse 3.1.1 volumes.$(RESET)"; \
+		echo "  This removes ClickHouse/Postgres/MinIO/Redis data for project $(LANGFUSE_311_COMPOSE_PROJECT)."; \
+		echo "  Re-run: $(GREEN)make langfuse-3.1-reset CONFIRM=yes$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)→ Removing Langfuse 3.1.1 containers and volumes$(RESET)"
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.1.yml --project-name $(LANGFUSE_311_COMPOSE_PROJECT) down -v
+	@echo "$(GREEN)✓ Langfuse 3.1.1 volumes removed$(RESET)"
+
+spec124-langfuse-3.1-e2e: ## Unfakable ingestion-fallback E2E vs Langfuse 3.1.1 (starts 3.1.1)
+	@$(MAKE) langfuse-3.1-up --no-print-directory
+	@chmod +x $(ROOT_DIR)/scripts/spec124_langfuse_3_1_ingestion_e2e.sh
+	@LANGFUSE_311_PORT="$(LANGFUSE_311_PORT)" LANGFUSE_311_UI_URL="$(LANGFUSE_311_UI_URL)" \
+		LANGFUSE_311_PK="$(LANGFUSE_311_PK)" LANGFUSE_311_SK="$(LANGFUSE_311_SK)" \
+		LANGFUSE_311_PROJECT_ID="$(LANGFUSE_311_PROJECT_ID)" \
+		$(ROOT_DIR)/scripts/spec124_langfuse_3_1_ingestion_e2e.sh
+
 spec124-langfuse-e2e: ## One-command live Settings + sessions E2E vs local Langfuse (starts stack)
 	@$(MAKE) langfuse-up --no-print-directory
 	@$(MAKE) dev-bg --no-print-directory WITH_LANGFUSE=1
@@ -2121,6 +2197,51 @@ spec124-langfuse-e2e: ## One-command live Settings + sessions E2E vs local Langf
 		LANGFUSE_LOCAL_PROJECT_ID="$(LANGFUSE_LOCAL_PROJECT_ID)" \
 		BACKEND_URL="$(BACKEND_URL)" FRONTEND_URL="$(FRONTEND_URL)" \
 		$(ROOT_DIR)/scripts/spec124_langfuse_local_e2e.sh
+
+# ── SPEC-138 Kubernetes (EdgeQuake + in-cluster Langfuse) ─────────────────────
+K8S_DIR := $(ROOT_DIR)/deploy/kubernetes
+K8S_SCRIPTS := $(K8S_DIR)/scripts
+K8S_HELM := $(K8S_DIR)/helm
+
+.PHONY: k8s-prereqs k8s-kind-up k8s-kind-down k8s-install k8s-uninstall k8s-status spec138-kubernetes-proof spec138-helm-template
+
+k8s-prereqs: ## SPEC-138: cert-manager + ClickHouse operator + nginx ingress
+	@chmod +x $(K8S_SCRIPTS)/k8s_prereqs.sh
+	@$(K8S_SCRIPTS)/k8s_prereqs.sh
+
+k8s-kind-up: ## SPEC-138: create kind cluster (edgequake-spec138)
+	@chmod +x $(K8S_SCRIPTS)/k8s_kind_up.sh
+	@$(K8S_SCRIPTS)/k8s_kind_up.sh
+
+k8s-kind-down: ## SPEC-138: delete kind cluster
+	@chmod +x $(K8S_SCRIPTS)/k8s_kind_down.sh
+	@$(K8S_SCRIPTS)/k8s_kind_down.sh
+
+k8s-install: k8s-prereqs ## SPEC-138: install Langfuse + EdgeQuake on current cluster
+	@chmod +x $(K8S_SCRIPTS)/k8s_install_stack.sh $(K8S_SCRIPTS)/k8s_wait_ready.sh
+	@$(K8S_SCRIPTS)/k8s_install_stack.sh
+	@$(K8S_SCRIPTS)/k8s_wait_ready.sh
+
+k8s-uninstall: ## SPEC-138: uninstall Langfuse + EdgeQuake releases
+	@chmod +x $(K8S_SCRIPTS)/k8s_uninstall_stack.sh
+	@$(K8S_SCRIPTS)/k8s_uninstall_stack.sh
+
+k8s-status: ## SPEC-138: show EdgeQuake + Langfuse pod status
+	@chmod +x $(K8S_SCRIPTS)/k8s_context.sh
+	@. $(K8S_SCRIPTS)/k8s_context.sh; \
+	kubectl --context "$$KUBECTL_CONTEXT" get pods -n edgequake 2>/dev/null || echo "namespace edgequake not found"; \
+	kubectl --context "$$KUBECTL_CONTEXT" get pods -n langfuse 2>/dev/null || echo "namespace langfuse not found"
+
+spec138-helm-template: ## SPEC-138: render Helm charts (no cluster required)
+	@helm dependency build $(K8S_HELM)/edgequake-stack
+	@helm template edgequake-stack $(K8S_HELM)/edgequake-stack \
+		-f $(K8S_HELM)/edgequake-stack/values-kind.yaml \
+		--namespace edgequake > /dev/null
+	@echo "$(GREEN)✓ Helm templates render OK$(RESET)"
+
+spec138-kubernetes-proof: ## SPEC-138: full kind E2E — traces to Langfuse (requires kind, ~16GB RAM)
+	@chmod +x $(K8S_SCRIPTS)/*.sh $(ROOT_DIR)/scripts/langfuse_e2e_common.sh
+	@$(K8S_SCRIPTS)/spec138_kubernetes_e2e.sh
 
 docker-prebuilt: ## Start full stack (API + Web UI + DB) from latest published GHCR images — no build needed
 	@echo ""
@@ -3035,7 +3156,7 @@ logs: ## Show recent logs from all services
 	@echo "$(BOLD)Docker Container Status:$(RESET)"
 	@cd $(DOCKER_DIR) && docker compose ps 2>/dev/null || echo "Docker not running"
 
-.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates spec124-proof spec124-langfuse-e2e spec125-proof spec128-proof
+.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates spec124-proof spec124-langfuse-e2e spec124-langfuse-3.1-e2e spec125-proof spec128-proof
 
 resource-proof: ## Run SPEC-006 resource safety proof suite (mock; no Postgres required)
 	@chmod +x specifications/006-ensure-perf/e2e/run_resource_proof.sh scripts/spec006_no_get_all_api.sh scripts/spec006_budget_catalog_sync.sh scripts/spec006_source_ids_migration.sh scripts/spec006_no_unguarded_community_api.sh scripts/spec006_no_adhoc_resource_budget.sh scripts/spec006_apply_migration_038.sh edgequake/scripts/migrations/apply_038.sh

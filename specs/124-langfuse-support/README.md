@@ -6,7 +6,7 @@
 
 | Layer | Finding |
 |-------|---------|
-| Gap | Prometheus + optional OTLP **gRPC** exist; Langfuse requires **OTLP/HTTP** → current exporter cannot target Langfuse |
+| Gap | Prometheus + optional OTLP **gRPC** exist; Langfuse requires **OTLP/HTTP** (≥ 3.22). Self-hosted **3.1.x** 404s that path → native ingestion fallback |
 | Product | Operators cannot debug RAG quality/cost in an LLM-native UI; LightRAG already ships Langfuse |
 | Fix posture | Dual export (gRPC Jaeger + HTTP Langfuse); wire unused `with_rag_generation_span`; Settings card + Open link |
 
@@ -15,7 +15,9 @@
        │
        ├─ Prometheus /metrics          (unchanged)
        ├─ OTLP gRPC → Jaeger           (optional, existing)
-       └─ OTLP HTTP → Langfuse         (NEW, LANGFUSE_* gated)
+       └─ Langfuse (LANGFUSE_* gated)
+            ├─ OTLP HTTP ≥ 3.22 / Cloud
+            └─ native ingestion on OTLP 404 (3.1.x fallback)
 ```
 
 ## Document map
@@ -56,6 +58,7 @@
 | T1 | Unit + API + Playwright + edge matrix | Done |
 | T2 | CI-unfakable InMemory + stream/gleaning/pipeline contracts (`make spec124-proof`) | Done |
 | T3 | Optional local Langfuse v4 Docker (`make langfuse-up` / `spec124-langfuse-e2e`) | Done |
+| T4 | Langfuse 3.1.1 ingestion fallback (`make spec124-langfuse-3.1-e2e`: version pin, probe, `LangfuseIngestionExporter::export`) | Done |
 
 ## Related
 

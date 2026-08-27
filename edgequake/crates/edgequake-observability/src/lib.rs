@@ -9,6 +9,8 @@ pub mod http_span;
 pub mod langfuse;
 pub mod langfuse_attrs;
 pub mod langfuse_context;
+#[cfg(feature = "otel")]
+pub mod langfuse_ingestion;
 pub mod langfuse_meta;
 pub mod propagation;
 pub mod rag_span;
@@ -47,8 +49,11 @@ pub use utf8_truncate::{
     utf8_clamp_span, utf8_prefix, utf8_prefix_at_sentence, utf8_prefix_ellipsis,
 };
 
+#[cfg(feature = "otel")]
+pub use langfuse::probe_langfuse_api;
 pub use langfuse::{
-    langfuse_otlp_headers, langfuse_otlp_headers_from_env, normalize_base_url, unquote_env_value,
+    basic_auth_token, langfuse_otlp_headers, langfuse_otlp_headers_from_env, normalize_base_url,
+    record_resolved_langfuse_api, resolved_langfuse_api, unquote_env_value, LangfuseApi,
     LangfuseConfig, LangfuseConfigRequirement, DEFAULT_LANGFUSE_BASE_URL,
 };
 pub use langfuse_attrs::{

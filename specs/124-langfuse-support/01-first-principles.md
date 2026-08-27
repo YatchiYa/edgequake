@@ -14,7 +14,7 @@ Langfuse is an **observability credential domain**, not a SPEC-123 model-resolut
 
 | ID | Law | Rationale |
 |----|-----|-----------|
-| LAW-124-1 | **HTTP for Langfuse** — export via OTLP/HTTP to `{base}/api/public/otel`; never assume gRPC works | Langfuse platform constraint |
+| LAW-124-1 | **HTTP for Langfuse** — never gRPC. Primary export is OTLP/HTTP to `{base}/api/public/otel/v1/traces` (Langfuse ≥ 3.22 / Cloud). Self-hosted **3.1.x** 404s that path; `EDGEQUAKE_LANGFUSE_API=auto` then falls back to `POST /api/public/ingestion`. Upgrade to ≥ 3.22 remains recommended (ingestion is deprecated; Cloud sunsets 2026-11-16). | Langfuse platform constraint |
 | LAW-124-2 | **Env-only secrets** — `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` never in DB, never in API responses, never in UI fields | Matches OpenAI key pattern |
 | LAW-124-3 | **Dual export independence** — Jaeger gRPC and Langfuse HTTP may both be on; neither requires the other | Ops flexibility |
 | LAW-124-4 | **Non-blocking export** — batch processor; Langfuse down must not fail user requests | Reliability |
@@ -36,6 +36,7 @@ Langfuse is an **observability credential domain**, not a SPEC-123 model-resolut
 | LAW-124-20 | **Filterable metadata prefix** — only `langfuse.trace.metadata.*` / `langfuse.observation.metadata.*` for Langfuse UI filters | Official OTEL mapping |
 | LAW-124-21 | **Query pipeline meta SSOT** — `QueryPipelineMeta` from QueryStats via observability helpers | DRY; mode/fusion/rerank/cache visible |
 | LAW-124-22 | **Ingest stages** — parse/vision/chunk/extract/embed/persist observations; ingest session = `document_id` | Full ingest observe |
+| LAW-124-23 | **3.1.1 envelope SSOT** — `langfuse_v31_envelope_type` maps LAW-124-13 types onto `generation-create` / `span-create` only. Never `{retriever,embedding,chain}-create`. HTTP 207 must read `errors[]`. Probe fallback only on OTLP 404. | Unfakable 3.1.x bridge |
 
 ## Env contract
 
@@ -45,9 +46,10 @@ Langfuse is an **observability credential domain**, not a SPEC-123 model-resolut
 | `LANGFUSE_SECRET_KEY` | Yes (to enable) | Secret key `sk-lf-…` |
 | `LANGFUSE_BASE_URL` | No (default cloud EU) | UI + OTLP base; alias `LANGFUSE_HOST` |
 | `EDGEQUAKE_LANGFUSE_ENABLED` | No | Force on/off (`1`/`0`); default = keys present |
+| `EDGEQUAKE_LANGFUSE_API` | No (default `auto`) | `auto` / `otlp` / `ingestion` — auto probes OTLP, ingest only on 404 |
 | Build feature `otel` | Yes for export | Same as existing OTLP |
 
-Default base: `https://cloud.langfuse.com`. OTLP path: `/api/public/otel`. Auth: Basic `base64(pk:sk)`. Header: `x-langfuse-ingestion-version: 4`.
+Default base: `https://cloud.langfuse.com`. OTLP path: `/api/public/otel/v1/traces`. Auth: Basic `base64(pk:sk)`. Header: `x-langfuse-ingestion-version: 4`. Ingestion fallback: `POST /api/public/ingestion` (3.1.1 fern types only).
 
 ## Trace unit
 

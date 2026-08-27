@@ -5,7 +5,6 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::Json;
 use tracing::{debug, error, info, warn};
-use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::auth::OptionalAuth;
@@ -65,23 +64,11 @@ pub async fn chat_completion(
         auth_user.as_ref().map(|u| u.role.clone()),
     )?;
 
-    let tenant_id = tenant_ctx
-        .tenant_id
-        .ok_or(ApiError::unauthorized())?
-        .parse::<Uuid>()
-        .map_err(|_| ApiError::BadRequest("Invalid tenant ID".to_string()))?;
-    let client_user_id = tenant_ctx
-        .user_id
-        .ok_or(ApiError::unauthorized())?
-        .parse::<Uuid>()
-        .map_err(|_| ApiError::BadRequest("Invalid user ID".to_string()))?;
-
-    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
-        &state,
-        tenant_id,
-        client_user_id,
-    )
-    .await?;
+    let identity =
+        super::super::postgres_user_bootstrap::resolve_conversation_identity(&state, &tenant_ctx)
+            .await?;
+    let tenant_id = identity.tenant_id;
+    let user_id = identity.user_id;
 
     debug!(
         tenant_id = %tenant_id,

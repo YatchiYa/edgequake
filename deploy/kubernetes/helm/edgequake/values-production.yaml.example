@@ -1,0 +1,40 @@
+# Production example — copy and customize. External Langfuse Cloud or self-hosted URL.
+
+global:
+  edgequakeVersion: "0.26.2"
+
+api:
+  replicaCount: 2
+  env:
+    EDGEQUAKE_LLM_PROVIDER: openai
+    EDGEQUAKE_DEV_MODE: "false"
+    EDGEQUAKE_AUTH_ENABLED: "true"
+    EDGEQUAKE_TASK_DELIVERY: bridged
+    EDGEQUAKE_REPLICAS: "2"
+  langfuse:
+    baseUrl: "https://cloud.langfuse.com" # or in-cluster 3.1 Service — never empty
+    projectId: "your-project-id"
+    existingSecret: edgequake-langfuse-secret
+    api: auto # 3.1.x → ingestion on OTLP 404; see docs/operations/langfuse-3.1.md
+
+web:
+  apiUrl: "https://edgequake.example.com"
+
+ingress:
+  enabled: true
+  hosts:
+    - host: edgequake.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: web
+        - path: /api
+          pathType: Prefix
+          service: api
+  tls:
+    - secretName: edgequake-tls
+      hosts:
+        - edgequake.example.com
+
+networkPolicy:
+  enabled: true

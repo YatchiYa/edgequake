@@ -240,9 +240,14 @@ pub async fn list_workspaces(
         // Best-effort per item — a slow workspace yields `stats: null`
         // rather than failing the whole listing.
         if include_stats {
-            for item in items.iter_mut() {
-                item.stats =
-                    super::stats::workspace_stats_best_effort(&stats_state, item.id).await;
+            let stats = futures::future::join_all(items.iter().map(|item| {
+                let state = stats_state.clone();
+                let id = item.id;
+                async move { super::stats::workspace_stats_best_effort(&state, id).await }
+            }))
+            .await;
+            for (item, stat) in items.iter_mut().zip(stats) {
+                item.stats = stat;
             }
         }
 

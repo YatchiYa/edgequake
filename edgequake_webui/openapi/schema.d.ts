@@ -7665,6 +7665,8 @@ export interface components {
         /**
          * @description Public Langfuse status for Settings / operators.
          * @example {
+         *       "api": {},
+         *       "api_resolved": {},
          *       "base_url": {},
          *       "config_requirements": [],
          *       "enabled": {},
@@ -7679,6 +7681,10 @@ export interface components {
          *     }
          */
         LangfuseSettingsResponse: {
+            /** @description Requested transport: `auto` | `otlp` | `ingestion` (`EDGEQUAKE_LANGFUSE_API`). */
+            api: string;
+            /** @description Transport wired at process init (`otlp` | `ingestion`). Omitted until observability starts. */
+            api_resolved?: string | null;
             /** @description Non-secret base URL (`LANGFUSE_BASE_URL` / `LANGFUSE_HOST`). */
             base_url: string;
             config_requirements: components["schemas"]["LangfuseRequirementDto"][];
@@ -8883,6 +8889,8 @@ export interface components {
         };
         /**
          * @example {
+         *       "langfuse_api": {},
+         *       "langfuse_api_resolved": {},
          *       "langfuse_base_url": {},
          *       "langfuse_enabled": {},
          *       "log_format": {},
@@ -8890,6 +8898,10 @@ export interface components {
          *     }
          */
         ObservabilityHealthSnapshot: {
+            /** @description SPEC-124: requested transport (`auto` | `otlp` | `ingestion`). */
+            langfuse_api?: string | null;
+            /** @description SPEC-124: transport wired at init (`otlp` | `ingestion`). */
+            langfuse_api_resolved?: string | null;
             /** @description SPEC-124: non-secret Langfuse base URL. */
             langfuse_base_url?: string | null;
             /** @description SPEC-124: Langfuse keys present and not force-disabled. */
@@ -13668,6 +13680,7 @@ export interface components {
             resolved_vision_llm_provider?: string | null;
             /** @description URL-friendly slug. */
             slug: string;
+            stats?: null | components["schemas"]["WorkspaceStatsResponse"];
             /**
              * Format: uuid
              * @description Parent tenant ID.
@@ -18821,6 +18834,11 @@ export interface operations {
                 offset?: number;
                 /** @description Limit (default 20, max 100). */
                 limit?: number;
+                /**
+                 * @description When true, each item carries its `stats` object (served from the same
+                 *     60s cache as `/workspaces/{id}/stats`).
+                 */
+                include_stats?: boolean;
             };
             header?: never;
             path: {

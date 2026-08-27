@@ -12,11 +12,14 @@
               SdkTracerProvider
                    │
                    ├─ BatchSpanProcessor → OTLP gRPC (Jaeger)     [if OTEL endpoint]
-                   └─ BatchSpanProcessor → OTLP HTTP (Langfuse)   [if LANGFUSE keys]
+                   └─ BatchSpanProcessor → Langfuse              [if LANGFUSE keys]
                                               │
+                                              probe OTLP (auto)
+                                              ├─ ≥ 3.22 / Cloud → POST {base}/api/public/otel/v1/traces
+                                              └─ 3.1.x 404 → POST {base}/api/public/ingestion
+                                                 (trace-create / span-create / generation-create)
                                               Authorization: Basic pk:sk
-                                              x-langfuse-ingestion-version: 4
-                                              POST {base}/api/public/otel/v1/traces
+                                              x-langfuse-ingestion-version: 4  (OTLP path)
 ```
 
 ## Config SSOT

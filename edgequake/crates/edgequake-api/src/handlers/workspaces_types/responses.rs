@@ -284,7 +284,6 @@ pub struct ListWorkspacesParams {
     pub include_stats: bool,
 }
 
-
 /// Pagination query params.
 #[derive(Debug, Serialize, Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct PaginationParams {

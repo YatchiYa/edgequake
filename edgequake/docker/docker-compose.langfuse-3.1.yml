@@ -1,0 +1,162 @@
+# Isolated Langfuse 3.1.1 stack for SPEC-124 ingestion-fallback E2E.
+#
+# Official 3.1.1 compose: https://github.com/langfuse/langfuse/blob/v3.1.1/docker-compose.yml
+# Images: langfuse/langfuse:3.1.1 + langfuse/langfuse-worker:3.1.1
+# (OTLP `/api/public/otel` does not exist yet — added in 3.22.0.)
+#
+# Do NOT merge with docker-compose.langfuse.yml (v4 on :3310).
+# Host publish: UI only (${LANGFUSE_311_PORT:-3320} → container 3000).
+#
+#   make langfuse-3.1-up
+#   make spec124-langfuse-3.1-e2e
+
+name: edgequake-langfuse-3-1
+
+services:
+  langfuse-worker:
+    image: docker.io/langfuse/langfuse-worker:3.1.1
+    restart: unless-stopped
+    depends_on: &langfuse-depends-on
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment: &langfuse-worker-env
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3320}
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      SALT: ${LANGFUSE_SALT:-edgequake-local-salt-311}
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: myredissecret
+
+  langfuse-web:
+    image: docker.io/langfuse/langfuse:3.1.1
+    restart: unless-stopped
+    depends_on: *langfuse-depends-on
+    ports:
+      - "127.0.0.1:${LANGFUSE_311_PORT:-3320}:3000"
+    environment:
+      <<: *langfuse-worker-env
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-edgequake-local-nextauth-311}
+      LANGFUSE_INIT_ORG_ID: edgequake
+      LANGFUSE_INIT_ORG_NAME: EdgeQuake
+      LANGFUSE_INIT_PROJECT_ID: edgequake-local-311
+      LANGFUSE_INIT_PROJECT_NAME: EdgeQuake Langfuse 3.1.1
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-edgequake-311
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-edgequake-311-dev
+      LANGFUSE_INIT_USER_EMAIL: dev311@example.com
+      LANGFUSE_INIT_USER_NAME: EdgeQuake Dev 311
+      LANGFUSE_INIT_USER_PASSWORD: edgequake-local-dev
+      LANGFUSE_SDK_CI_SYNC_PROCESSING_ENABLED: "true"
+      # 3.1 dual-writes PG then CH. ClickHouse-only reads hide traces until the
+      # worker finishes PG→CH migration (it also races web Prisma at first boot).
+      LANGFUSE_READ_FROM_POSTGRES_ONLY: "false"
+      LANGFUSE_READ_FROM_CLICKHOUSE_ONLY: "false"
+      LANGFUSE_RETURN_FROM_CLICKHOUSE: "false"
+
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:24.8
+    restart: unless-stopped
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      TZ: UTC
+    volumes:
+      - langfuse311_clickhouse_data:/var/lib/clickhouse
+      - langfuse311_clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+
+  minio:
+    image: docker.io/minio/minio:RELEASE.2024-11-07T00-52-20Z
+    restart: unless-stopped
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    volumes:
+      - langfuse311_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  redis:
+    image: docker.io/redis:7
+    restart: unless-stopped
+    command: >
+      --requirepass myredissecret
+      --maxmemory-policy noeviction
+    environment:
+      REDISCLI_AUTH: myredissecret
+    volumes:
+      - langfuse311_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "myredissecret", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+
+  postgres:
+    image: docker.io/postgres:16
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - langfuse311_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  langfuse311_postgres_data:
+    driver: local
+  langfuse311_clickhouse_data:
+    driver: local
+  langfuse311_clickhouse_logs:
+    driver: local
+  langfuse311_minio_data:
+    driver: local
+  langfuse311_redis_data:
+    driver: local

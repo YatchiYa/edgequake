@@ -4,8 +4,9 @@
 
 | Path | Role |
 |------|------|
-| `edgequake-observability/src/subscriber.rs` | Dual OTLP: gRPC (Jaeger) + HTTP (Langfuse); baggage processor |
-| `…/langfuse.rs` | `LangfuseConfig::from_env`, OTLP URL/auth, unquote |
+| `edgequake-observability/src/subscriber.rs` | Dual export: gRPC (Jaeger) + Langfuse OTLP/HTTP or ingestion fallback; baggage processor |
+| `…/langfuse.rs` | `LangfuseConfig::from_env`, OTLP URL/auth, `LangfuseApi` probe, unquote |
+| `…/langfuse_ingestion.rs` | 3.1.1 envelope SSOT + `LangfuseIngestionExporter` |
 | `…/langfuse_attrs.rs` | Session/user/usage keys, I/O keys, `COST_ATTR_DENYLIST`, observation types |
 | `…/langfuse_context.rs` | `bind_langfuse_identity`, `with_langfuse_identity_async` |
 | `…/baggage_span_processor.rs` | Allowlisted baggage → span attributes |
@@ -20,8 +21,10 @@
        └─ SdkTracerProvider
             ├─ LangfuseBaggageSpanProcessor
             ├─ BatchSpanProcessor → OTLP gRPC (if endpoint / EDGEQUAKE_OTEL_ENABLED)
-            └─ BatchSpanProcessor → OTLP HTTP Langfuse
+            └─ BatchSpanProcessor → Langfuse OTLP HTTP
+                 or native ingestion on OTLP 404 (3.1.x)
                  POST {base}/api/public/otel/v1/traces
+                 POST {base}/api/public/ingestion
 ```
 
 ## GenAI + I/O call sites

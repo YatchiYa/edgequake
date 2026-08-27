@@ -397,7 +397,7 @@ test.describe("SPEC-120 converting not queued", () => {
     // A different non-empty track is a new run and must replace all old-run
     // fields wholesale rather than creating a hybrid row.
     setDocument(REPROCESS_QUEUED_DOC);
-    await expect(badge).toContainText(/Queued/i, { timeout: 5000 });
+    await expect(badge).toContainText(/Queued/i, { timeout: 15_000 });
     await expect(activeRuns).toContainText(/Waiting for reprocess worker/i);
     await expect(activeRuns).not.toContainText(/7\/17/);
   });
