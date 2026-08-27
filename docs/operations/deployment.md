@@ -319,7 +319,7 @@ EdgeQuake ships Helm charts for Kubernetes deployments with optional in-cluster 
 
 - **edgequake** namespace: web + API + PostgreSQL (pgvector + AGE)
 - **langfuse** namespace: Langfuse v4 (web, worker, bundled stores on kind)
-- API exports **OTLP/HTTP traces** to Langfuse v4 (SPEC-124). Self-hosted Langfuse **3.1.x** has no OTLP path; set `EDGEQUAKE_LANGFUSE_API=auto` (default) so EdgeQuake falls back to native ingestion. Upgrade to ≥ 3.22 remains recommended.
+- API exports **OTLP/HTTP traces** to Langfuse v4 (SPEC-124). Self-hosted Langfuse **3.1.x** has no OTLP path; default `EDGEQUAKE_LANGFUSE_API=auto` falls back to native ingestion. How-to: [langfuse-3.1.md](langfuse-3.1.md) · Helm: [Existing Langfuse 3.1.x](../../deploy/kubernetes/README.md#existing-langfuse-31x). Upgrade to ≥ 3.22 remains recommended.
 
 ### Quick start (kind / local)
 

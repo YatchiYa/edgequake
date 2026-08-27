@@ -31,6 +31,7 @@ edgequake:
       projectId: edgequake-k8s
       publicKey: pk-lf-edgequake-k8s
       secretKey: sk-lf-edgequake-k8s-dev
+      api: auto
     resources:
       requests:
         cpu: 100m

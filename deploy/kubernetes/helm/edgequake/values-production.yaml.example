@@ -12,9 +12,10 @@ api:
     EDGEQUAKE_TASK_DELIVERY: bridged
     EDGEQUAKE_REPLICAS: "2"
   langfuse:
-    baseUrl: "https://cloud.langfuse.com"
+    baseUrl: "https://cloud.langfuse.com" # or in-cluster 3.1 Service — never empty
     projectId: "your-project-id"
     existingSecret: edgequake-langfuse-secret
+    api: auto # 3.1.x → ingestion on OTLP 404; see docs/operations/langfuse-3.1.md
 
 web:
   apiUrl: "https://edgequake.example.com"

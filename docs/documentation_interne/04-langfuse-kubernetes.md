@@ -8,15 +8,11 @@ methode: "Tests empiriques sur Langfuse 3.1.1, 3.225.5 et 4 — résultats repro
 
 # EdgeQuake × Langfuse — Compatibilité et déploiement Kubernetes
 
-> **Conclusion en une phrase** : EdgeQuake exporte ses traces en **OTLP/HTTP**
-> sur `/api/public/otel/v1/traces` (Langfuse ≥ 3.22 / Cloud). Cet endpoint
-> **n'existe pas dans Langfuse 3.1** (404 vérifié). Depuis cette version du
-> produit, `EDGEQUAKE_LANGFUSE_API=auto` sonde une fois et bascule vers
-> `POST /api/public/ingestion` **uniquement** sur HTTP 404 — repli de
-> compatibilité, pas un remplacement. La **montée vers 3.225+** (ou v4)
-> reste recommandée : l'API d'ingestion est dépréciée (Cloud : fin
-> 2026-11-16 ; v4 `events_only` la refuse). Ne pas affirmer que « tout
-> Langfuse ≥ 2.x » est supporté sans ce repli.
+> **Conclusion en une phrase** : EdgeQuake exporte ses traces **exclusivement** via
+> OTLP/HTTP sur `/api/public/otel/v1/traces`. Cet endpoint **n'existe pas dans
+> Langfuse 3.1** — aucune configuration Kubernetes ne peut compenser cette absence.
+> La correction est une **montée de version mineure** de Langfuse (3.1 → 3.225+),
+> sans changement de majeure.
 
 ---
 
@@ -54,12 +50,8 @@ pub fn otlp_endpoint(&self) -> String {
     format!("{}/api/public/otel/v1/traces", self.base_url.trim_end_matches('/'))
 }
 ```
-`edgequake/crates/edgequake-observability/src/langfuse.rs` construit l'URL OTLP
-en dur (`/api/public/otel/v1/traces`). Le **repli** n'est pas un second chemin
-d'URL OTLP : `EDGEQUAKE_LANGFUSE_API=auto` sonde cet endpoint ; un **404**
-bascule vers `LangfuseIngestionExporter` (`POST /api/public/ingestion`) avec
-les discriminants 3.1.1 uniquement (`trace-create` / `span-create` /
-`generation-create`). Un 401/405/erreur réseau **ne** bascule pas.
+Chemin **en dur**, sans mécanisme de repli. Aucune variable d'environnement ne permet
+de le contourner.
 
 ---
 
@@ -111,9 +103,9 @@ Toute valeur autre que l'URL interne attendue est une anomalie bloquante.
 
 | # | Option | Effort | Risque | Recommandation |
 |---|---|---|---|---|
-| **A** | **Monter Langfuse 3.1 → 3.225+** (même majeure) | Faible | Faible | ✅ **Retenue** (OTLP natif, typage RETRIEVER/EMBEDDING) |
+| **A** | **Monter Langfuse 3.1 → 3.225+** (même majeure) | Faible | Faible | ✅ **Retenue** |
 | B | Monter vers Langfuse 4 | Moyen | Moyen (rupture de schéma) | Si le client le planifiait déjà |
-| C | Repli ingestion EdgeQuake (`EDGEQUAKE_LANGFUSE_API=auto`) | Nul (déjà câblé) | Moyen (API dépréciée ; types 3.1 = SPAN/GENERATION seulement) | Pont court terme — pas un substitut à A |
+| C | Collecteur OTel intermédiaire traduisant vers l'API d'ingestion Langfuse | Élevé | Élevé | ❌ Non — pas d'exportateur officiel, format propriétaire |
 | D | Désactiver l'export Langfuse | Nul | — | Repli temporaire (§4.3) |
 
 ### 4.1 Option A — montée de version mineure *(recommandée)*
@@ -159,10 +151,7 @@ soumis à une ingestion et une requête RAG. Résultat côté Langfuse :
 42 observations au total, avec **typage sémantique correct** : `RETRIEVER` pour la
 récupération RAG, `GENERATION` pour les appels LLM, `EMBEDDING` pour la vectorisation.
 
-> **La montée en 3.x (OTLP) reste le chemin produit.** Le repli ingestion 3.1.1
-> (`make spec124-langfuse-3.1-e2e`) prouve que les traces **arrivent**, mais
-> Langfuse 3.1 ne connaît que `SPAN | GENERATION | EVENT` : `retriever` /
-> `embedding` / `chain` sont exportés en `span-create`.
+> **La montée en 3.x suffit** : aucune adaptation d'EdgeQuake n'est nécessaire.
 
 ### 4.2 Version minimale — à faire confirmer
 
@@ -352,18 +341,16 @@ Une liste non vide après une requête RAG prouve la chaîne complète.
 
 ## 8. Synthèse pour le client
 
-1. **Cause** : Langfuse 3.1 ne dispose pas de l'endpoint OTLP (`404` vérifié).
-   EdgeQuake bascule alors vers `/api/public/ingestion` si
-   `EDGEQUAKE_LANGFUSE_API=auto` (défaut). Ce n'est **pas** « tout ≥ 2.x ».
-2. **Correctif recommandé** : montée de Langfuse en **3.225+** — même majeure,
-   OTLP natif, typage d'observation complet.
+1. **Cause** : Langfuse 3.1 ne dispose pas de l'endpoint OTLP requis par EdgeQuake
+   (404 vérifié). Aucun réglage Kubernetes ne peut y remédier.
+2. **Correctif** : montée de Langfuse en **3.225+** — même majeure, migration
+   standard, sans changement d'architecture.
 3. **Contrôle préalable indispensable** : vérifier que `base_url` ne pointe pas vers
    `cloud.langfuse.com` (repli silencieux avec risque d'émission de données hors du SI).
 4. **Point de vigilance déploiement** : ordonner web → worker (course aux migrations),
    quoter les valeurs hexadécimales en YAML.
-5. **Repli court terme** : laisser `auto` (ingestion 3.1) **ou**
-   `EDGEQUAKE_LANGFUSE_ENABLED=0` si l'export doit être coupé — le reste de
-   l'observabilité demeure opérationnel.
+5. **Repli** : `EDGEQUAKE_LANGFUSE_ENABLED=0` si la montée n'est pas immédiate — le
+   reste de l'observabilité demeure opérationnel.
 
 ---
 

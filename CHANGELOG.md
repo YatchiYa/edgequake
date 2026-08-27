@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **SPEC-124 — Langfuse 3.1.x ingestion fallback** — Self-hosted Langfuse **3.1.x** has no OTLP path (`POST /api/public/otel/v1/traces` → 404, added in [v3.22.0](https://github.com/langfuse/langfuse/releases/tag/v3.22.0)). Default `EDGEQUAKE_LANGFUSE_API=auto` probes once and falls back to native `POST /api/public/ingestion` (envelope types `trace-create` / `span-create` / `generation-create` only). Settings/health expose requested `api` and resolved `api_resolved`. Isolated 3.1.1 stack: `make langfuse-3.1-up` (UI `:3320`); unfakable proof: `make spec124-langfuse-3.1-e2e`. Helm: `api.langfuse.api`. Operator guide: [`docs/operations/langfuse-3.1.md`](docs/operations/langfuse-3.1.md) · Kubernetes: [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md#existing-langfuse-31x). Ingestion remains a bridge (Cloud sunset 2026-11-16); upgrade to ≥ 3.22 / v4 is still recommended.
+
 ## [0.26.1] — 2026-08-25
 
 Patch: SPEC-137 0.25→0.26 migrate honesty (CLI consent alias + abort classification).

@@ -104,6 +104,8 @@ The overlay sets `ENABLE_OTEL=true`, JSON logs, span-close events, and `OTEL_EXP
 
 ## Langfuse (SPEC-124)
 
+**Self-hosted 3.1.x (no OTLP):** step-by-step wiring, local `:3320` stack, Helm, and verify `api_resolved=ingestion` — **[operations/langfuse-3.1.md](operations/langfuse-3.1.md)**. Kubernetes: [deploy/kubernetes/README.md](../deploy/kubernetes/README.md#existing-langfuse-31x).
+
 Langfuse Cloud and self-hosted **≥ 3.22** accept **OTLP/HTTP** at `{LANGFUSE_BASE_URL}/api/public/otel/v1/traces` (not gRPC). When `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set, EdgeQuake registers a BatchSpanProcessor on that path (`otel` is on by default). Programmatic OTLP exporters must use the full `/v1/traces` path — the SDK does not append it when `with_endpoint` is set.
 
 Self-hosted **Langfuse 3.1.x** returns **404** on that OTLP path (added in 3.22.0). Default `EDGEQUAKE_LANGFUSE_API=auto` probes once at startup and falls back to `POST /api/public/ingestion` **only on HTTP 404**. That path maps LAW-124-13 types (`retriever` / `embedding` / `chain`) onto 3.1.1 envelope types (`span-create` / `generation-create`) — never `{type}-create` stringification. Ingestion is a **bridge**, not a replacement: Cloud sunsets it 2026-11-16; upgrade to **≥ 3.22** (or the in-repo v4 compose) remains recommended.
@@ -137,8 +139,9 @@ make kill-app && make backend-bg   # or: make dev
 # make langfuse-down keeps volumes; make langfuse-reset CONFIRM=yes wipes them.
 # make stop does not tear Langfuse down.
 #
-# Langfuse 3.1.1 ingestion-fallback proof (isolated stack, UI :3320):
-#   make spec124-langfuse-3.1-e2e
+# Langfuse 3.1.x (how-to: docs/operations/langfuse-3.1.md):
+#   make langfuse-3.1-up          # isolated 3.1.1 UI :3320
+#   make spec124-langfuse-3.1-e2e # unfakable ingestion-fallback proof
 # Cost $0.00 on recent models is Langfuse's catalogue, not EdgeQuake (LAW-124-12).
 #   make langfuse-sync-prices          # POST /api/public/models
 #   make langfuse-sync-prices FORCE=1  # PUT existing rows

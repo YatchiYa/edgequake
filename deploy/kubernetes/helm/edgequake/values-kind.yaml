@@ -27,6 +27,7 @@ api:
     projectId: edgequake-k8s
     publicKey: pk-lf-edgequake-k8s
     secretKey: sk-lf-edgequake-k8s-dev
+    api: auto # v4 OTLP; set auto so a 3.1 swap still falls back (docs/operations/langfuse-3.1.md)
   resources:
     requests:
       cpu: 100m

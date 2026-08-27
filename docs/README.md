@@ -142,6 +142,7 @@ SDK packages are independently versioned (typically **0.4.0**) and are **not** t
 | [Metadata debugging](operations/metadata-debugging.md)           | Document status / mapper fields          |
 | [Operations Overview](operations/index.md)                       | Local and CI/CD operating model          |
 | [Observability](OBSERVABILITY.md)                                | OTEL / tracing                           |
+| [Langfuse 3.1.x](operations/langfuse-3.1.md)                     | Native ingestion fallback (no OTLP)      |
 | [SQLx offline mode](sqlx-offline-mode.md)                        | Offline query metadata                   |
 | [SPEC-083 improvements](../specs/083-improvements/README.md)              | First-principles defect pack + register  |
 | [Prod eq_* incident](../specs/083-improvements/INCIDENT-PROD-DIAGNOSIS.md) | Schema readiness / M092 maintenance     |
