@@ -88,6 +88,8 @@
 
 pub mod accumulator;
 pub mod flush_manager;
+pub mod sse_response;
 
 pub use accumulator::{ApiResponseMetadata, StreamAccumulator, TokenUsage};
 pub use flush_manager::{FlushConfig, FlushHandle, StreamFlushManager};
+pub use sse_response::{attach_sse_proxy_headers, live_sse, X_ACCEL_BUFFERING};

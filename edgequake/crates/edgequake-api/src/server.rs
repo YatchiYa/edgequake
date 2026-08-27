@@ -29,6 +29,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 use tower_http::{
+    compression::predicate::DefaultPredicate,
     compression::CompressionLayer,
     cors::{AllowOrigin, Any, CorsLayer},
 };
@@ -184,7 +185,9 @@ impl Server {
             .layer(middleware::from_fn(observability_middleware));
 
         if self.config.enable_compression {
-            app = app.layer(CompressionLayer::new());
+            // DefaultPredicate skips `text/event-stream` (tower-http #465 / #420).
+            // Gzip on SSE buffers the whole body; browsers see one chunk at EOF.
+            app = app.layer(CompressionLayer::new().compress_when(DefaultPredicate::new()));
         }
 
         // CORS outermost — covers API, docs, and WebSocket upgrade paths.

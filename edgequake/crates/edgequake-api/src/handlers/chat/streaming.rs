@@ -3,16 +3,15 @@
 use std::sync::Arc;
 
 use axum::extract::{Extension, State};
-use axum::response::sse::{Event, Sse};
+use axum::response::sse::Event;
+use axum::response::Response;
 use axum::Json;
 use edgequake_observability::ErrorEvent;
 use futures::stream::StreamExt;
 use serde_json::json;
-use std::convert::Infallible;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{debug, error, info, warn};
-use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::auth::OptionalAuth;
@@ -26,7 +25,7 @@ use crate::services::{
     resolve_workspace_query_resources,
 };
 use crate::state::AppState;
-use crate::streaming::StreamAccumulator;
+use crate::streaming::{live_sse, StreamAccumulator};
 use edgequake_core::types::{
     CreateConversationRequest, CreateMessageRequest, MessageContext, MessageRole,
     UpdateMessageRequest,
@@ -74,7 +73,7 @@ pub async fn chat_completion_stream(
     OptionalAuth(auth_user): OptionalAuth,
     Extension(req_ctx): Extension<RequestContext>,
     Json(request): Json<ChatCompletionRequest>,
-) -> ApiResult<Sse<impl futures::Stream<Item = Result<Event, Infallible>>>> {
+) -> ApiResult<Response> {
     // Validate request
     if request.message.trim().is_empty() {
         return Err(ApiError::ValidationError(
@@ -91,23 +90,11 @@ pub async fn chat_completion_stream(
         auth_user.as_ref().map(|u| u.role.clone()),
     )?;
 
-    let tenant_id = tenant_ctx
-        .tenant_id
-        .ok_or(ApiError::unauthorized())?
-        .parse::<Uuid>()
-        .map_err(|_| ApiError::BadRequest("Invalid tenant ID".to_string()))?;
-    let client_user_id = tenant_ctx
-        .user_id
-        .ok_or(ApiError::unauthorized())?
-        .parse::<Uuid>()
-        .map_err(|_| ApiError::BadRequest("Invalid user ID".to_string()))?;
-
-    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
-        &state,
-        tenant_id,
-        client_user_id,
-    )
-    .await?;
+    let identity =
+        super::super::postgres_user_bootstrap::resolve_conversation_identity(&state, &tenant_ctx)
+            .await?;
+    let tenant_id = identity.tenant_id;
+    let user_id = identity.user_id;
 
     debug!(
         tenant_id = %tenant_id,
@@ -789,9 +776,5 @@ pub async fn chat_completion_stream(
         Ok(Event::default().data(json))
     });
 
-    Ok(Sse::new(sse_stream).keep_alive(
-        axum::response::sse::KeepAlive::new()
-            .interval(std::time::Duration::from_secs(15))
-            .text("keep-alive"),
-    ))
+    Ok(live_sse(sse_stream))
 }

@@ -34,21 +34,9 @@ pub async fn list_conversations(
     tenant_ctx: TenantContext,
     Query(params): Query<ListConversationsParams>,
 ) -> ApiResult<Json<PaginatedConversationsResponse>> {
-    let tenant_id = tenant_ctx
-        .tenant_id_uuid()
-        .ok_or_else(|| ApiError::BadRequest("Missing X-Tenant-ID header".into()))?;
-
-    // SPEC identity parity: write paths resolve the effective Postgres user via
-    // `ensure_postgres_user_exists` (anonymous/dev mode maps every caller to the
-    // shared guest id). Reading with the raw client header id therefore returned
-    // 0 rows — conversations existed but were invisible. Resolve identically.
-    let client_user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
-    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
-        &state,
-        tenant_id,
-        client_user_id,
-    )
-    .await?;
+    let identity =
+        super::super::postgres_user_bootstrap::resolve_conversation_identity(&state, &tenant_ctx)
+            .await?;
 
     // Parse filter modes
     let filter_modes = params.filter_mode.map(|s| {
@@ -80,8 +68,8 @@ pub async fn list_conversations(
     let result = state
         .conversation_service
         .list_conversations(
-            tenant_id,
-            user_id,
+            identity.tenant_id,
+            identity.user_id,
             filter,
             sort,
             sort_desc,
@@ -118,20 +106,11 @@ pub async fn create_conversation(
     tenant_ctx: TenantContext,
     Json(request): Json<CreateConversationApiRequest>,
 ) -> ApiResult<(StatusCode, Json<ConversationResponse>)> {
-    let tenant_id = tenant_ctx
-        .tenant_id_uuid()
-        .ok_or_else(|| ApiError::BadRequest("Missing X-Tenant-ID header".into()))?;
-
-    let client_user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
+    let identity =
+        super::super::postgres_user_bootstrap::resolve_conversation_identity(&state, &tenant_ctx)
+            .await?;
 
     let workspace_id = tenant_ctx.workspace_id_uuid();
-
-    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
-        &state,
-        tenant_id,
-        client_user_id,
-    )
-    .await?;
 
     let mode = request
         .mode
@@ -141,8 +120,8 @@ pub async fn create_conversation(
     let conversation = state
         .conversation_service
         .create_conversation(
-            tenant_id,
-            user_id,
+            identity.tenant_id,
+            identity.user_id,
             workspace_id,
             CreateConversationRequest {
                 title: request.title,
@@ -219,21 +198,9 @@ pub async fn update_conversation(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateConversationApiRequest>,
 ) -> ApiResult<Json<ConversationResponse>> {
-    let tenant_id = tenant_ctx
-        .tenant_id_uuid()
-        .ok_or_else(|| ApiError::BadRequest("Missing X-Tenant-ID header".into()))?;
-
-    // SPEC identity parity: write paths resolve the effective Postgres user via
-    // `ensure_postgres_user_exists` (anonymous/dev mode maps every caller to the
-    // shared guest id). Reading with the raw client header id therefore returned
-    // 0 rows — conversations existed but were invisible. Resolve identically.
-    let client_user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
-    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
-        &state,
-        tenant_id,
-        client_user_id,
-    )
-    .await?;
+    let identity =
+        super::super::postgres_user_bootstrap::resolve_conversation_identity(&state, &tenant_ctx)
+            .await?;
 
     let mode = request
         .mode
@@ -243,8 +210,8 @@ pub async fn update_conversation(
     let conversation = state
         .conversation_service
         .update_conversation(
-            tenant_id,
-            user_id,
+            identity.tenant_id,
+            identity.user_id,
             id,
             UpdateConversationRequest {
                 title: request.title,

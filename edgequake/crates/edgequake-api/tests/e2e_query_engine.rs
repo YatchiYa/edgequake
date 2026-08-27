@@ -316,6 +316,12 @@ async fn test_list_conversations() {
             "Should have 'pagination' object: {}",
             body
         );
+        let items = body["items"].as_array().expect("items array");
+        assert!(
+            items.iter().any(|c| c["title"] == "List Test Conv"),
+            "created conversation must appear in list: {}",
+            body
+        );
 
         body
     })

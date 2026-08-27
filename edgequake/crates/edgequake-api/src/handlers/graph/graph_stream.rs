@@ -4,7 +4,8 @@
 
 use axum::{
     extract::{Query, State},
-    response::sse::{Event, Sse},
+    response::sse::Event,
+    response::Response,
 };
 use futures::stream::StreamExt;
 use std::convert::Infallible;
@@ -17,6 +18,7 @@ use crate::handlers::graph_types::*;
 use crate::middleware::TenantContext;
 use crate::services::{admit_graph_materialization, run_timed_graph_query};
 use crate::state::{GraphQueryRuntime, StorageRuntime};
+use crate::streaming::live_sse;
 
 /// Stream graph data progressively via SSE.
 ///
@@ -50,7 +52,7 @@ pub async fn stream_graph(
     State(graph): State<GraphQueryRuntime>,
     tenant_ctx: TenantContext,
     Query(params): Query<GraphStreamQueryParams>,
-) -> Result<Sse<impl futures::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+) -> Result<Response, ApiError> {
     // WHY: Defense in depth - clamp params to safe ranges even if client sends invalid values
     let params = params.validated();
 
@@ -289,9 +291,5 @@ pub async fn stream_graph(
         Ok::<_, Infallible>(Event::default().data(json))
     });
 
-    Ok(Sse::new(sse_stream).keep_alive(
-        axum::response::sse::KeepAlive::new()
-            .interval(std::time::Duration::from_secs(15))
-            .text("keep-alive"),
-    ))
+    Ok(live_sse(sse_stream))
 }

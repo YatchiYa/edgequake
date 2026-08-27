@@ -68,7 +68,7 @@ make spec138-kubernetes-proof   # automated
 
 1. **cert-manager** — required by Langfuse ClickHouse operator webhooks
 2. **ClickHouse.com operator** (`ghcr.io/clickhouse/clickhouse-operator-helm`) — **not** the Altinity operator; Langfuse Helm v2 preflights `clickhouseclusters.clickhouse.com` CRDs
-3. **nginx ingress** — kind profile only
+3. **nginx ingress** — kind profile only. Chart defaults set `proxy-buffering: "off"` so SSE (`text/event-stream`) is not gzip-buffered at the ingress.
 
 ---
 

@@ -614,11 +614,18 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # SSE support for streaming
+        # SSE support for streaming — gzip MUST NOT apply to text/event-stream.
+        # Next.js / nginx gzip buffers the whole body (one chunk at EOF).
+        # Axum already skips SSE compression; reverse proxies must too.
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 86400;
+        gzip off;
     }
+
+    # JSON/static can still be compressed; keep SSE on a dedicated location if
+    # you need gzip elsewhere:
+    # location /api/v1/query/stream { gzip off; proxy_buffering off; ... }
 }
 ```
 
@@ -632,6 +639,23 @@ rag.yourdomain.com {
     }
 }
 ```
+
+Do not wrap the API with `encode gzip` on SSE paths (`/api/v1/query/stream`,
+`/api/v1/chat/completions/stream`, `/api/v1/graph/stream`). Gzip on
+`text/event-stream` buffers the stream the same way Next.js `compress: true` did.
+
+### Traefik / Kubernetes Ingress
+
+nginx ingress defaults to buffering. Set:
+
+```yaml
+nginx.ingress.kubernetes.io/proxy-buffering: "off"
+nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+```
+
+The Helm chart ships these annotations on `ingress.annotations`. Traefik
+`compress` middleware must exclude `text/event-stream` (or be disabled on
+stream routes). The API also sends `X-Accel-Buffering: no` on SSE responses.
 
 ---
 

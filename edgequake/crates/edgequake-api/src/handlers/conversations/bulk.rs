@@ -4,7 +4,7 @@
 
 use axum::{extract::State, Json};
 
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 use crate::handlers::conversations_types::*;
 use crate::middleware::TenantContext;
 use crate::state::AppState;
@@ -24,25 +24,13 @@ pub async fn import_conversations(
     tenant_ctx: TenantContext,
     Json(request): Json<ImportConversationsRequest>,
 ) -> ApiResult<Json<ImportConversationsResponse>> {
-    let tenant_id = tenant_ctx
-        .tenant_id_uuid()
-        .ok_or_else(|| ApiError::BadRequest("Missing X-Tenant-ID header".into()))?;
-
-    // SPEC identity parity: write paths resolve the effective Postgres user via
-    // `ensure_postgres_user_exists` (anonymous/dev mode maps every caller to the
-    // shared guest id). Reading with the raw client header id therefore returned
-    // 0 rows — conversations existed but were invisible. Resolve identically.
-    let client_user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
-    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
-        &state,
-        tenant_id,
-        client_user_id,
-    )
-    .await?;
+    let identity =
+        super::super::postgres_user_bootstrap::resolve_conversation_identity(&state, &tenant_ctx)
+            .await?;
 
     let result = state
         .conversation_service
-        .import_conversations(tenant_id, user_id, request.conversations)
+        .import_conversations(identity.tenant_id, identity.user_id, request.conversations)
         .await?;
 
     Ok(Json(ImportConversationsResponse {

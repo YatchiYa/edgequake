@@ -9,7 +9,7 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 use crate::handlers::conversations_types::*;
 use crate::middleware::TenantContext;
 use crate::state::AppState;
@@ -27,25 +27,13 @@ pub async fn list_folders(
     State(state): State<AppState>,
     tenant_ctx: TenantContext,
 ) -> ApiResult<Json<Vec<FolderResponse>>> {
-    let tenant_id = tenant_ctx
-        .tenant_id_uuid()
-        .ok_or_else(|| ApiError::BadRequest("Missing X-Tenant-ID header".into()))?;
-
-    // SPEC identity parity: write paths resolve the effective Postgres user via
-    // `ensure_postgres_user_exists` (anonymous/dev mode maps every caller to the
-    // shared guest id). Reading with the raw client header id therefore returned
-    // 0 rows — conversations existed but were invisible. Resolve identically.
-    let client_user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
-    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
-        &state,
-        tenant_id,
-        client_user_id,
-    )
-    .await?;
+    let identity =
+        super::super::postgres_user_bootstrap::resolve_conversation_identity(&state, &tenant_ctx)
+            .await?;
 
     let folders = state
         .conversation_service
-        .list_folders(tenant_id, user_id)
+        .list_folders(identity.tenant_id, identity.user_id)
         .await?;
 
     Ok(Json(folders.into_iter().map(Into::into).collect()))
@@ -66,25 +54,18 @@ pub async fn create_folder(
     tenant_ctx: TenantContext,
     Json(request): Json<CreateFolderApiRequest>,
 ) -> ApiResult<(StatusCode, Json<FolderResponse>)> {
-    let tenant_id = tenant_ctx
-        .tenant_id_uuid()
-        .ok_or_else(|| ApiError::BadRequest("Missing X-Tenant-ID header".into()))?;
-
-    // SPEC identity parity: write paths resolve the effective Postgres user via
-    // `ensure_postgres_user_exists` (anonymous/dev mode maps every caller to the
-    // shared guest id). Reading with the raw client header id therefore returned
-    // 0 rows — conversations existed but were invisible. Resolve identically.
-    let client_user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
-    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
-        &state,
-        tenant_id,
-        client_user_id,
-    )
-    .await?;
+    let identity =
+        super::super::postgres_user_bootstrap::resolve_conversation_identity(&state, &tenant_ctx)
+            .await?;
 
     let folder = state
         .conversation_service
-        .create_folder(tenant_id, user_id, request.name, request.parent_id)
+        .create_folder(
+            identity.tenant_id,
+            identity.user_id,
+            request.name,
+            request.parent_id,
+        )
         .await?;
 
     Ok((StatusCode::CREATED, Json(folder.into())))
@@ -109,27 +90,15 @@ pub async fn update_folder(
     Path(folder_id): Path<Uuid>,
     Json(request): Json<UpdateFolderApiRequest>,
 ) -> ApiResult<Json<FolderResponse>> {
-    let tenant_id = tenant_ctx
-        .tenant_id_uuid()
-        .ok_or_else(|| ApiError::BadRequest("Missing X-Tenant-ID header".into()))?;
-
-    // SPEC identity parity: write paths resolve the effective Postgres user via
-    // `ensure_postgres_user_exists` (anonymous/dev mode maps every caller to the
-    // shared guest id). Reading with the raw client header id therefore returned
-    // 0 rows — conversations existed but were invisible. Resolve identically.
-    let client_user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
-    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
-        &state,
-        tenant_id,
-        client_user_id,
-    )
-    .await?;
+    let identity =
+        super::super::postgres_user_bootstrap::resolve_conversation_identity(&state, &tenant_ctx)
+            .await?;
 
     let folder = state
         .conversation_service
         .update_folder(
-            tenant_id,
-            user_id,
+            identity.tenant_id,
+            identity.user_id,
             folder_id,
             request.name,
             request.parent_id,
@@ -157,25 +126,13 @@ pub async fn delete_folder(
     tenant_ctx: TenantContext,
     Path(folder_id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    let tenant_id = tenant_ctx
-        .tenant_id_uuid()
-        .ok_or_else(|| ApiError::BadRequest("Missing X-Tenant-ID header".into()))?;
-
-    // SPEC identity parity: write paths resolve the effective Postgres user via
-    // `ensure_postgres_user_exists` (anonymous/dev mode maps every caller to the
-    // shared guest id). Reading with the raw client header id therefore returned
-    // 0 rows — conversations existed but were invisible. Resolve identically.
-    let client_user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
-    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
-        &state,
-        tenant_id,
-        client_user_id,
-    )
-    .await?;
+    let identity =
+        super::super::postgres_user_bootstrap::resolve_conversation_identity(&state, &tenant_ctx)
+            .await?;
 
     state
         .conversation_service
-        .delete_folder(tenant_id, user_id, folder_id)
+        .delete_folder(identity.tenant_id, identity.user_id, folder_id)
         .await?;
 
     Ok(StatusCode::NO_CONTENT)

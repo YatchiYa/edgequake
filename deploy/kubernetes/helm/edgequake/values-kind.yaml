@@ -47,6 +47,9 @@ web:
 
 ingress:
   enabled: true
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
   hosts:
     - host: edgequake.local
       paths:
