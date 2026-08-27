@@ -38,7 +38,17 @@ pub async fn list_conversations(
         .tenant_id_uuid()
         .ok_or_else(|| ApiError::BadRequest("Missing X-Tenant-ID header".into()))?;
 
-    let user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
+    // SPEC identity parity: write paths resolve the effective Postgres user via
+    // `ensure_postgres_user_exists` (anonymous/dev mode maps every caller to the
+    // shared guest id). Reading with the raw client header id therefore returned
+    // 0 rows — conversations existed but were invisible. Resolve identically.
+    let client_user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
+    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
+        &state,
+        tenant_id,
+        client_user_id,
+    )
+    .await?;
 
     // Parse filter modes
     let filter_modes = params.filter_mode.map(|s| {
@@ -213,7 +223,17 @@ pub async fn update_conversation(
         .tenant_id_uuid()
         .ok_or_else(|| ApiError::BadRequest("Missing X-Tenant-ID header".into()))?;
 
-    let user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
+    // SPEC identity parity: write paths resolve the effective Postgres user via
+    // `ensure_postgres_user_exists` (anonymous/dev mode maps every caller to the
+    // shared guest id). Reading with the raw client header id therefore returned
+    // 0 rows — conversations existed but were invisible. Resolve identically.
+    let client_user_id = tenant_ctx.user_id_uuid().ok_or(ApiError::unauthorized())?;
+    let user_id = super::super::postgres_user_bootstrap::ensure_postgres_user_exists(
+        &state,
+        tenant_id,
+        client_user_id,
+    )
+    .await?;
 
     let mode = request
         .mode

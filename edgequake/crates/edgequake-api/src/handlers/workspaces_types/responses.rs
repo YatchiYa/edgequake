@@ -214,6 +214,15 @@ pub struct WorkspaceResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_figure_system_prompt: Option<String>,
 
+    /// Aggregate stats for this workspace.
+    ///
+    /// Only populated when the caller asks for them
+    /// (`GET /tenants/{tenant_id}/workspaces?include_stats=true`), so existing
+    /// clients see byte-identical payloads. Avoids the N+1 round-trip of
+    /// listing workspaces then calling `/workspaces/{id}/stats` for each one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stats: Option<WorkspaceStatsResponse>,
+
     /// Creation timestamp.
     pub created_at: String,
     /// Last update timestamp.
@@ -249,6 +258,32 @@ pub struct WorkspaceListResponse {
 }
 
 // ── Pagination and Stats ──────────────────────────────────────────────────
+
+/// Query params for `GET /tenants/{tenant_id}/workspaces`.
+///
+/// Flattens [`PaginationParams`] and adds an opt-in `include_stats` flag.
+/// Default is `false`, so the endpoint's behaviour is unchanged for callers
+/// that do not ask for stats.
+///
+/// NOTE: the pagination fields are declared explicitly rather than via
+/// `#[serde(flatten)] PaginationParams`. Flattening breaks query-string
+/// deserialization — values arrive as strings and `usize` then fails with
+/// `invalid type: string "1", expected usize`, turning `?limit=1` into a 400.
+#[derive(Debug, Serialize, Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct ListWorkspacesParams {
+    /// Offset (default 0).
+    #[serde(default)]
+    pub offset: usize,
+    /// Limit (default 20, max 100).
+    #[serde(default = "workspaces_default_limit")]
+    pub limit: usize,
+
+    /// When true, each item carries its `stats` object (served from the same
+    /// 60s cache as `/workspaces/{id}/stats`).
+    #[serde(default)]
+    pub include_stats: bool,
+}
+
 
 /// Pagination query params.
 #[derive(Debug, Serialize, Deserialize, ToSchema, utoipa::IntoParams)]

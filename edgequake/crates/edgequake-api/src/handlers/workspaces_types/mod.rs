@@ -245,6 +245,7 @@ mod tests {
             relation_types_strict: true,
             kg_schema_preset: None,
             relation_edges: None,
+            stats: None,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
             default_reasoning_effort: None,

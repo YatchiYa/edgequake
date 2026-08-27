@@ -194,7 +194,7 @@ pub async fn create_workspace(
     path = "/api/v1/tenants/{tenant_id}/workspaces",
     params(
         ("tenant_id" = Uuid, Path, description = "Tenant ID"),
-        PaginationParams
+        ListWorkspacesParams
     ),
     responses(
         (status = 200, description = "List of workspaces", body = WorkspaceListResponse),
@@ -205,9 +205,13 @@ pub async fn create_workspace(
 pub async fn list_workspaces(
     State(state): State<AppState>,
     Path(tenant_id): Path<Uuid>,
-    Query(params): Query<PaginationParams>,
+    Query(params): Query<ListWorkspacesParams>,
 ) -> Result<Json<WorkspaceListResponse>, ApiError> {
+    // Owned handle for the optional stats pass: capturing `&state` inside the
+    // guard closure would conflict with the `&state.read_path_db` borrow.
+    let stats_state = state.clone();
     crate::read_path::run_with_read_path_guard(&state.read_path_db, || async move {
+        let include_stats = params.include_stats;
         let limit = params.limit.min(100);
 
         tracing::debug!(tenant_id = %tenant_id, "Listing workspaces");
@@ -224,12 +228,23 @@ pub async fn list_workspaces(
             .await
             .ok()
             .flatten();
-        let items: Vec<WorkspaceResponse> = workspaces
+        let mut items: Vec<WorkspaceResponse> = workspaces
             .into_iter()
             .skip(params.offset)
             .take(limit)
             .map(|ws| workspace_to_response_with_tenant(&ws, tenant.as_ref()))
             .collect();
+
+        // Opt-in only: keeps the default payload byte-identical and avoids
+        // paying the stats cost for callers that just need the list.
+        // Best-effort per item — a slow workspace yields `stats: null`
+        // rather than failing the whole listing.
+        if include_stats {
+            for item in items.iter_mut() {
+                item.stats =
+                    super::stats::workspace_stats_best_effort(&stats_state, item.id).await;
+            }
+        }
 
         let total = items.len();
 

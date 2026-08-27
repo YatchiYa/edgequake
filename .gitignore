@@ -46,6 +46,12 @@ edgequake/crates/*/target/
 .env.*.local
 *.env
 
+# Sauvegardes et variantes locales de .env (peuvent contenir des secrets).
+# Les motifs `.env` / `*.env` ne couvrent PAS `.env.backup-*` ni `.env.<suffixe>`.
+.env.*
+!.env.example
+!.env.*.example
+
 # Log files
 *.log
 lightrag.log*
