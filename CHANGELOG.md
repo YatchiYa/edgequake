@@ -28,7 +28,7 @@ SSE/conversation restore, workspace `include_stats`.
 - **Frontend Docker pnpm pin** — Image install uses `pnpm@10.13.1` (package.json `packageManager`) so Alpine/ARM CD does not fail with `ERR_PNPM_PNPM_ENGINE_IDENTITY_UNVERIFIABLE`.
 - **pdf.js worker copy** — Direct `pdfjs-dist` 5.4.296 dep plus Node `require.resolve` so CI `pnpm install --frozen-lockfile` finds `pdf.worker.min.mjs` (pnpm does not hoist the transitive worker from `react-pdf`).
 - **SPEC-123 UI-only E2E** — Parser-priority spec seeds the documents workspace (SPEC-038 mocks) and matches parser options with `exact: true` so "Workspace Default (Vision)" does not collide with "Vision".
-- **SPEC-091 e2e stack** — Data-layer workflow sets `RUST_MIN_STACK=16777216` so typed header-scope tests do not overflow the default ~2 MiB thread stack. Retrieval SLO warms the pool before p95 so GH-runner first-acquire latency is not scored.
+- **SPEC-091 e2e stack** — Data-layer workflow sets `RUST_MIN_STACK=16777216` so typed header-scope tests do not overflow the default ~2 MiB thread stack. Retrieval SLO warms the pool before p95 so GH-runner first-acquire latency is not scored. IW3 KV census allowlists `reprocess_stage_reset.rs` (existing IW3 debt).
 
 ### Changed
 - **h2 0.4.16** — Cargo lock bump for [RUSTSEC-2026-0258](https://rustsec.org/advisories/RUSTSEC-2026-0258) (continuation-flood DoS in h2 0.4.10–0.4.15).

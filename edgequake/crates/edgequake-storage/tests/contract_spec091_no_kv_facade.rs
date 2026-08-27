@@ -77,6 +77,7 @@ const ALLOWLIST: &[&str] = &[
     "edgequake-api/src/services/orphan_task_recovery.rs",
     "edgequake-api/src/services/orphan_index_retract.rs",
     "edgequake-api/src/services/retract_document_indexes.rs",
+    "edgequake-api/src/services/reprocess_stage_reset.rs",
     "edgequake-api/src/services/multimodal/cache.rs",
     "edgequake-api/src/services/multimodal/chunks.rs",
     "edgequake-api/src/services/multimodal/chunks_store.rs",
