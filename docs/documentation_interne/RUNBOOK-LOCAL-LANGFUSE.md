@@ -192,3 +192,15 @@ Attendu : **200**.
 | 6 | Ingestion réelle | requête ClickHouse `events_core` (cf. §4 ci-dessus) | spans EdgeQuake présents |
 
 Ne pas conclure sur `/api/public/traces` (API legacy, renvoie 0 en v4).
+
+## Preuve Langfuse 3.1.1 (repli ingestion)
+
+Le compose v4 (`:3310`) n'est **pas** 3.1. Pour un e2e infalsifiable contre
+**3.1.1** (OTLP 404 + enveloppes `span-create` / `generation-create`) :
+
+```bash
+make spec124-langfuse-3.1-e2e   # UI http://localhost:3320
+```
+
+La montée vers ≥ 3.22 / v4 reste recommandée. Ne pas conclure que « tout ≥ 2.x »
+est supporté sans ce repli.

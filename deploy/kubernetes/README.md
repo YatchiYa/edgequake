@@ -27,7 +27,7 @@ Deploy EdgeQuake (web + API + PostgreSQL) with in-cluster Langfuse v4 for OTLP t
 
 ## Observability contract (read this first)
 
-EdgeQuake sends **OTLP/HTTP traces** to Langfuse (SPEC-124), **not** application stdout logs.
+EdgeQuake sends **OTLP/HTTP traces** to Langfuse (SPEC-124), **not** application stdout logs. Kind/Helm in this repo pin **Langfuse v4**. Self-hosted **3.1.x** has no `/api/public/otel` path — default `EDGEQUAKE_LANGFUSE_API=auto` (Helm `api.langfuse.api`) probes once and falls back to native ingestion on HTTP 404. Upgrade to ≥ 3.22 remains recommended (ingestion is deprecated).
 
 | Data | Destination |
 |------|-------------|

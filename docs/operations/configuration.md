@@ -431,11 +431,12 @@ Relational data-layer cutover (typed SSOT) and the LightRAG-parity response cach
 | `EDGEQUAKE_LLM_OMIT_REASONING_EFFORT` | Boolean | `0` | **SPEC-131** — never send `reasoning_effort` upstream. |
 | `EDGEQUAKE_LLM_API_FORMAT` | String | `chat_completions` | **SPEC-131** — upstream transport: `chat_completions` (default) or `responses` (GPT-5.6 Mantle; `store: false`). |
 | `EDGEQUAKE_EXTRACTION_LANGUAGE` | String | `English` | Fleet default KG extraction NL language (SPEC-096); workspace metadata overrides |
-| `LANGFUSE_PUBLIC_KEY` | String | (unset) | **SPEC-124** — Langfuse public key (`pk-lf-…`). With secret key, enables OTLP/HTTP exporter. |
+| `LANGFUSE_PUBLIC_KEY` | String | (unset) | **SPEC-124** — Langfuse public key (`pk-lf-…`). With secret key, enables Langfuse export. |
 | `LANGFUSE_SECRET_KEY` | String | (unset) | **SPEC-124** — Langfuse secret key (`sk-lf-…`); never logged / never shown in UI. |
-| `LANGFUSE_BASE_URL` | String | `https://cloud.langfuse.com` | **SPEC-124** — Langfuse UI + OTLP base (alias `LANGFUSE_HOST`). Local: `http://localhost:3310` after `make langfuse-up`. |
+| `LANGFUSE_BASE_URL` | String | `https://cloud.langfuse.com` | **SPEC-124** — Langfuse UI + OTLP base (alias `LANGFUSE_HOST`). Local v4: `http://localhost:3310` after `make langfuse-up`. |
 | `LANGFUSE_PROJECT_ID` | String | (auto) | **SPEC-124** — optional project id for Settings deep-link; else fetched once from `/api/public/projects`. |
 | `EDGEQUAKE_LANGFUSE_ENABLED` | Boolean | follows keys | **SPEC-124** — force-enable when keys present; see [OBSERVABILITY.md](../OBSERVABILITY.md). |
+| `EDGEQUAKE_LANGFUSE_API` | String | `auto` | **SPEC-124** — `auto` probes OTLP and falls back to native ingestion on HTTP 404 (Langfuse 3.1.x). `otlp` / `ingestion` force a transport. Upgrade to ≥ 3.22 remains recommended. |
 
 > **Acc note:** The benchmark pins `EDGEQUAKE_LLM_CACHE=0` for fair cold peers (response cache). Provider KV cache (`EDGEQUAKE_PROMPT_CACHE`) stays **on** — it does not change answers. Irreversible drops (**125** KV, **126/131** vectors) are human-gated via `edgequake migrate --confirm-drop` (alias `--drop-confirm`) or `EDGEQUAKE_MIGRATION_CONFIRM_DROP=1` — never set it casually in shared env files.
 

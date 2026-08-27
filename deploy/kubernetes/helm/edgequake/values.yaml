@@ -63,6 +63,8 @@ api:
     existingSecret: ""
     publicKey: ""
     secretKey: ""
+    # auto | otlp | ingestion — auto probes OTLP and falls back on HTTP 404 (Langfuse 3.1.x)
+    api: auto
   extraEnv: {}
   extraSecretEnv: {}
 

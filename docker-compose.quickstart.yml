@@ -102,6 +102,7 @@ services:
       LANGFUSE_BASE_URL:            ${LANGFUSE_BASE_URL:-}
       LANGFUSE_HOST:                ${LANGFUSE_HOST:-}
       EDGEQUAKE_LANGFUSE_ENABLED:   ${EDGEQUAKE_LANGFUSE_ENABLED:-}
+      EDGEQUAKE_LANGFUSE_API:       ${EDGEQUAKE_LANGFUSE_API:-}
       # WHY: OPENAI_BASE_URL must NOT be set to an empty string.
       # When unset on the host ${OPENAI_BASE_URL:-} evaluates to "", which the
       # OpenAI provider uses as the base URL, breaking every request with

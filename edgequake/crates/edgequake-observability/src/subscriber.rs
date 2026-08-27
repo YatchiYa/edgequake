@@ -1,6 +1,7 @@
 //! Tracing subscriber initialization (JSON/plain + optional OTLP).
 //!
-//! SPEC-124: optional dual export — OTLP gRPC (Jaeger) + OTLP HTTP (Langfuse).
+//! SPEC-124: dual export — OTLP gRPC (Jaeger) + Langfuse (OTLP/HTTP, with
+//! native-ingestion fallback when OTLP 404s on Langfuse 3.1.x).
 
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::Layer;
@@ -271,33 +272,76 @@ fn init_otel_layers(
         }
     }
 
-    // --- Langfuse OTLP/HTTP (SPEC-124; Langfuse does not support gRPC) ---
+    // --- Langfuse (SPEC-124; Langfuse does not support gRPC) ---
+    //
+    // OTLP/HTTP is LAW-124-1 (Langfuse >= 3.22). Self-hosted 3.1.1 404s that
+    // path. `EDGEQUAKE_LANGFUSE_API=auto` probes once and falls back to the
+    // native ingestion API — a compatibility bridge, not the long-term path.
     if config.langfuse.enabled {
-        if let Some(headers) = crate::langfuse::langfuse_otlp_headers_from_env() {
-            let endpoint = config.langfuse.otlp_endpoint();
-            let builder = opentelemetry_otlp::SpanExporter::builder()
-                .with_http()
-                .with_endpoint(endpoint)
-                .with_headers(headers);
-            match builder.build() {
-                Ok(exporter) => {
-                    provider_builder = provider_builder.with_batch_exporter(exporter);
-                    any_exporter = true;
-                    eprintln!(
-                        "Langfuse OTLP/HTTP exporter enabled → {}",
-                        config.langfuse.otlp_endpoint()
-                    );
+        let keys = std::env::var("LANGFUSE_PUBLIC_KEY")
+            .ok()
+            .map(|p| crate::langfuse::unquote_env_value(&p))
+            .zip(
+                std::env::var("LANGFUSE_SECRET_KEY")
+                    .ok()
+                    .map(|s| crate::langfuse::unquote_env_value(&s)),
+            )
+            .filter(|(p, s)| !p.is_empty() && !s.is_empty());
+
+        match keys {
+            Some((public_key, secret_key)) => {
+                let mut api = crate::langfuse::LangfuseApi::from_env();
+                if api == crate::langfuse::LangfuseApi::Auto {
+                    let token = crate::langfuse::basic_auth_token(&public_key, &secret_key);
+                    api = crate::langfuse::probe_langfuse_api(&config.langfuse.base_url, &token);
+                    eprintln!("Langfuse API auto-detected → {api}");
                 }
-                Err(e) => {
-                    eprintln!(
-                        "Langfuse OTLP/HTTP exporter build failed: {e}; continuing without Langfuse"
-                    );
+                crate::langfuse::record_resolved_langfuse_api(api);
+
+                match api {
+                    crate::langfuse::LangfuseApi::Ingestion => {
+                        let exporter = crate::langfuse_ingestion::LangfuseIngestionExporter::new(
+                            &config.langfuse.base_url,
+                            &public_key,
+                            &secret_key,
+                        );
+                        eprintln!(
+                            "Langfuse native ingestion exporter enabled → {}",
+                            exporter.endpoint()
+                        );
+                        provider_builder = provider_builder.with_batch_exporter(exporter);
+                        any_exporter = true;
+                    }
+                    _ => {
+                        let headers =
+                            crate::langfuse::langfuse_otlp_headers(&public_key, &secret_key);
+                        let builder = opentelemetry_otlp::SpanExporter::builder()
+                            .with_http()
+                            .with_endpoint(config.langfuse.otlp_endpoint())
+                            .with_headers(headers);
+                        match builder.build() {
+                            Ok(exporter) => {
+                                provider_builder = provider_builder.with_batch_exporter(exporter);
+                                any_exporter = true;
+                                eprintln!(
+                                    "Langfuse OTLP/HTTP exporter enabled → {}",
+                                    config.langfuse.otlp_endpoint()
+                                );
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "Langfuse OTLP/HTTP exporter build failed: {e}; continuing without Langfuse"
+                                );
+                            }
+                        }
+                    }
                 }
             }
-        } else {
-            eprintln!(
-                "WARNING: Langfuse enabled but keys missing at exporter build — skipping HTTP OTLP"
-            );
+            None => {
+                eprintln!(
+                    "WARNING: Langfuse enabled but keys missing at exporter build — skipping export"
+                );
+            }
         }
     }
 
@@ -474,6 +518,14 @@ mod tests {
         assert!(
             src.contains("langfuse"),
             "SPEC-124: Langfuse wiring required"
+        );
+        assert!(
+            src.contains("LangfuseIngestionExporter"),
+            "LAW-124-23: 3.1.x ingestion fallback must be wired"
+        );
+        assert!(
+            src.contains("probe_langfuse_api"),
+            "LAW-124-1: auto probe must be wired"
         );
     }
 }

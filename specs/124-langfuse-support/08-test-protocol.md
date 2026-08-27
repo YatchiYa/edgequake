@@ -59,6 +59,8 @@ Open-link `href` must start with the configured `ui_url` (local or Cloud), never
 17. Slugs co-emitted with tenant/workspace GUIDs; blank slug omitted (LAW-124-19)
 18. `record_query_pipeline_meta` writes `langfuse.trace.metadata.mode` (and related) without cost keys
 19. `record_ingest_parse_meta` writes parser/pass/pages on ingest span
+20. 3.1.1 envelopes are only `trace-create` / `span-create` / `generation-create` (LAW-124-23)
+21. Live Langfuse 3.1.1: OTLP 404, `retriever-create` rejected, mapped batch persists (`make spec124-langfuse-3.1-e2e`)
 
 ## Playwright sketch
 

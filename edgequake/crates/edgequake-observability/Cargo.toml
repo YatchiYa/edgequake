@@ -17,6 +17,7 @@ otel = [
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
     "dep:tracing-opentelemetry",
+    "dep:reqwest",
     "dep:rustls",
 ]
 
@@ -37,6 +38,12 @@ opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "testing"], opti
 # reqwest-rustls: HTTPS to cloud.langfuse.com / us.cloud… (reqwest 0.13 blocking has no TLS by default).
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "reqwest-rustls", "trace"], optional = true }
 tracing-opentelemetry = { version = "0.33", optional = true }
+# Native Langfuse ingestion (pre-3.22 self-hosted) needs JSON POST.
+# Direct pin is workspace reqwest 0.12 (async Client in the exporter; `blocking`
+# only for the dedicated-thread OTLP probe at init). opentelemetry-otlp 0.32
+# still pulls reqwest 0.13 transitively — that is OTEL's pin, not a second
+# product client.
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"], optional = true }
 # rustls 0.23 requires an explicit process-default CryptoProvider for HTTPS (reqwest OTLP).
 rustls = { version = "0.23", optional = true, default-features = false, features = ["std", "tls12", "aws-lc-rs"] }
 

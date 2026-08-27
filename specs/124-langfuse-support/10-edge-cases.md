@@ -29,6 +29,10 @@
 | E25 | Cost attrs on spans | `COST_ATTR_DENYLIST` + in-memory exporter assert absence | unit CI |
 | E26 | Stream answer missing generation | `with_rag_generation_span` on stream path + contract grep | unit CI |
 | E27 | Observation Input/Output null in Langfuse UI | Set `langfuse.observation.input`/`output` (LAW-124-16..18) | InMemory CI |
+| E28 | Langfuse 3.1.1 OTLP 404 | `EDGEQUAKE_LANGFUSE_API=auto` → ingestion; 404-only probe | live `make spec124-langfuse-3.1-e2e` |
+| E29 | `{retriever,embedding,chain}-create` envelopes | `langfuse_v31_envelope_type` SSOT → span-create | unit + live 3.1.1 |
+| E30 | HTTP 207 with `errors[]` treated as success | `ingestion_http_outcome` fails the batch | unit |
+| E31 | `--force` price sync still POSTs | PUT `/api/public/models/{id}` | script |
 
 ## Cross-refs
 

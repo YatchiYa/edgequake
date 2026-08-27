@@ -22,6 +22,7 @@
 | A16 | Tenant/workspace slugs additive to GUIDs | [15-pipeline-observe-and-slugs.md](15-pipeline-observe-and-slugs.md) + InMemory |
 | A17 | Query pipeline meta + ingest parse/vision/chunk stages | I8 + `make spec124-proof` |
 | A18 | Local Langfuse v4 Docker (optional) + smoke/E2E | `make langfuse-up` / `make dev-langfuse` / `make spec124-langfuse-e2e` |
+| A19 | Langfuse 3.1.1 ingestion fallback (envelope types + persist) | `make spec124-langfuse-3.1-e2e` — pins `health.version` 3.1.x, OTLP 404, rejects `retriever-create`, mapped batch lands |
 
 ## Partner acceptance script
 
@@ -35,6 +36,7 @@
 8. Confirm EdgeQuake did not send cost attrs (CI denylist); Langfuse may still show computed cost from model pricing
 9. `make spec124-proof` passes without Langfuse credentials
 10. Optional local Docker: `make spec124-langfuse-e2e` (or `make dev-bg-langfuse` then the same target). No `.env` edit required.
+11. Optional 3.1.1 proof: `make spec124-langfuse-3.1-e2e` (isolated compose on :3320). Must fail if health is not 3.1.x.
 
 ## Honest gaps allowed in v1
 

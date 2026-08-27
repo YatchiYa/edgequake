@@ -17,8 +17,9 @@
 | Step | File(s) | Change |
 |------|---------|--------|
 | 1.1 | `edgequake-observability/Cargo.toml` | `otel` feature: add `http-proto` (+ reqwest client features as needed) alongside `grpc-tonic` |
-| 1.2 | `src/langfuse.rs` (new) | `LangfuseConfig`, auth header builder, endpoint URL helper, unit tests |
+| 1.2 | `src/langfuse.rs` (new) | `LangfuseConfig`, auth header builder, endpoint URL helper, `LangfuseApi`, unit tests |
 | 1.3 | `src/subscriber.rs` | Read Langfuse config; register HTTP exporter processor when enabled; keep gRPC path |
+| 1.3b | `src/langfuse_ingestion.rs` | 3.1.1 envelope SSOT + native ingestion exporter (LAW-124-23) |
 | 1.4 | `src/lib.rs` | Export `LangfuseConfig` |
 | 1.5 | Docs | Update `docs/OBSERVABILITY.md`, `.env.example` |
 
@@ -51,11 +52,12 @@ See [08-test-protocol.md](08-test-protocol.md) and [10-edge-cases.md](10-edge-ca
 ## File ownership (SRP)
 
 ```ascii
-  langfuse.rs          → config + URL/auth pure functions
-  subscriber.rs        → wire exporters only
-  rag_span.rs          → GenAI span helpers only
-  settings_langfuse.rs → HTTP status DTO only
-  *-card.tsx           → present DTO only
+  langfuse.rs            → config + URL/auth + transport probe (pure)
+  langfuse_ingestion.rs  → 3.1.1 envelope mapping + ingestion exporter
+  subscriber.rs          → wire exporters only
+  rag_span.rs            → GenAI span helpers only
+  settings_langfuse.rs   → HTTP status DTO only
+  *-card.tsx             → present DTO only
 ```
 
 ## Cross-refs

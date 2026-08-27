@@ -50,6 +50,7 @@ services:
       - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
       - EDGEQUAKE_LANGFUSE_ENABLED=${EDGEQUAKE_LANGFUSE_ENABLED:-}
+      - EDGEQUAKE_LANGFUSE_API=${EDGEQUAKE_LANGFUSE_API:-}
       # WHY host.docker.internal: Ollama typically runs on the host, not inside
       # Docker. Using the gateway address lets the container reach the host port.
       - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}

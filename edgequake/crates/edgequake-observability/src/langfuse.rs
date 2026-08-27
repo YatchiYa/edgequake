@@ -4,6 +4,7 @@
 //! presence flags and non-secret base URL for status DTOs.
 
 use std::collections::HashMap;
+use std::fmt;
 
 /// Default Langfuse EU cloud host (no trailing slash).
 pub const DEFAULT_LANGFUSE_BASE_URL: &str = "https://cloud.langfuse.com";
@@ -217,9 +218,118 @@ pub fn langfuse_otlp_headers_from_env() -> Option<HashMap<String, String>> {
     Some(langfuse_otlp_headers(&public, &secret))
 }
 
+/// Which Langfuse transport to use for trace export.
+///
+/// `/api/public/otel/v1/traces` (OTLP) exists from Langfuse **3.22** onward.
+/// `/api/public/ingestion` has shipped since v2 and is the compatibility
+/// fallback for self-hosted fleets pinned below 3.22 (e.g. 3.1.1).
+///
+/// Default [`LangfuseApi::Auto`] probes once at startup. OTLP remains the
+/// supported path (LAW-124-1); ingestion is a bridge, not a replacement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LangfuseApi {
+    /// OTLP/HTTP — Langfuse >= 3.22 and 4.x.
+    Otlp,
+    /// Native ingestion API — Langfuse 3.x before OTLP (including 3.1.1).
+    Ingestion,
+    /// Probe OTLP at startup; fall back to ingestion only on HTTP 404.
+    Auto,
+}
+
+impl LangfuseApi {
+    /// Read `EDGEQUAKE_LANGFUSE_API` (`otlp` | `ingestion` | `auto`).
+    /// Unknown values fall back to `Auto` rather than disabling export.
+    pub fn from_env() -> Self {
+        match std::env::var("EDGEQUAKE_LANGFUSE_API")
+            .ok()
+            .map(|v| unquote_env_value(&v).trim().to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("otlp") => Self::Otlp,
+            Some("ingestion") | Some("native") => Self::Ingestion,
+            _ => Self::Auto,
+        }
+    }
+}
+
+impl fmt::Display for LangfuseApi {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Otlp => "otlp",
+            Self::Ingestion => "ingestion",
+            Self::Auto => "auto",
+        })
+    }
+}
+
+/// Process-wide resolved transport after observability init (never `Auto`).
+///
+/// Settings/health read this so operators see `otlp` vs `ingestion` instead of
+/// only `export_active: true`. Unset until [`record_resolved_langfuse_api`].
+static RESOLVED_LANGFUSE_API: std::sync::OnceLock<LangfuseApi> = std::sync::OnceLock::new();
+
+/// Record the transport actually wired (OTLP or ingestion). Ignores `Auto`.
+pub fn record_resolved_langfuse_api(api: LangfuseApi) {
+    match api {
+        LangfuseApi::Auto => {}
+        resolved => {
+            let _ = RESOLVED_LANGFUSE_API.set(resolved);
+        }
+    }
+}
+
+/// Transport chosen at init, if observability has run with Langfuse export.
+#[must_use]
+pub fn resolved_langfuse_api() -> Option<LangfuseApi> {
+    RESOLVED_LANGFUSE_API.get().copied()
+}
+
+/// Resolve [`LangfuseApi::Auto`] by probing the OTLP endpoint.
+///
+/// A **404** means the server predates OTLP (Langfuse 3.1.1) → ingestion.
+/// Anything else (200/401/405/network error) keeps OTLP: an auth or transient
+/// failure must not silently switch transports.
+#[cfg(feature = "otel")]
+pub fn probe_langfuse_api(base_url: &str, auth_token: &str) -> LangfuseApi {
+    let url = format!(
+        "{}/api/public/otel/v1/traces",
+        base_url.trim_end_matches('/')
+    );
+    let auth = format!("Basic {auth_token}");
+
+    // reqwest::blocking owns a Tokio runtime; observability init runs inside
+    // the server runtime, so the probe must live on a dedicated OS thread.
+    let handle = std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .ok()?;
+        let status = client
+            .post(&url)
+            .header("Authorization", auth)
+            .header("Content-Type", "application/x-protobuf")
+            .body(Vec::new())
+            .send()
+            .ok()?
+            .status()
+            .as_u16();
+        Some(status)
+    });
+
+    match handle.join() {
+        Ok(Some(404)) => LangfuseApi::Ingestion,
+        _ => LangfuseApi::Otlp,
+    }
+}
+
+/// Basic-auth token shared by OTLP headers and the ingestion exporter.
+pub fn basic_auth_token(public_key: &str, secret_key: &str) -> String {
+    base64_encode(format!("{public_key}:{secret_key}").as_bytes())
+}
+
 /// Pure header builder (testable).
 pub fn langfuse_otlp_headers(public_key: &str, secret_key: &str) -> HashMap<String, String> {
-    let token = base64_encode(format!("{public_key}:{secret_key}").as_bytes());
+    let token = basic_auth_token(public_key, secret_key);
     let mut headers = HashMap::new();
     headers.insert("Authorization".into(), format!("Basic {token}"));
     headers.insert("x-langfuse-ingestion-version".into(), "4".into());
@@ -516,5 +626,44 @@ mod tests {
         let s = cfg.env_snippet();
         assert!(s.contains("pk-lf-..."));
         assert!(!s.contains("sk-lf-y"));
+    }
+
+    #[test]
+    fn langfuse_api_from_env_values() {
+        with_env_vars(&[("EDGEQUAKE_LANGFUSE_API", Some("otlp"))], || {
+            assert_eq!(LangfuseApi::from_env(), LangfuseApi::Otlp);
+        });
+        with_env_vars(&[("EDGEQUAKE_LANGFUSE_API", Some("ingestion"))], || {
+            assert_eq!(LangfuseApi::from_env(), LangfuseApi::Ingestion);
+        });
+        with_env_vars(&[("EDGEQUAKE_LANGFUSE_API", Some("native"))], || {
+            assert_eq!(LangfuseApi::from_env(), LangfuseApi::Ingestion);
+        });
+        with_env_vars(&[("EDGEQUAKE_LANGFUSE_API", Some("auto"))], || {
+            assert_eq!(LangfuseApi::from_env(), LangfuseApi::Auto);
+        });
+        with_env_vars(&[("EDGEQUAKE_LANGFUSE_API", Some("\"AUTO\""))], || {
+            assert_eq!(LangfuseApi::from_env(), LangfuseApi::Auto);
+        });
+        with_env_vars(&[("EDGEQUAKE_LANGFUSE_API", Some("nope"))], || {
+            assert_eq!(LangfuseApi::from_env(), LangfuseApi::Auto);
+        });
+        with_env_vars(&[("EDGEQUAKE_LANGFUSE_API", None)], || {
+            assert_eq!(LangfuseApi::from_env(), LangfuseApi::Auto);
+        });
+        assert_eq!(LangfuseApi::Otlp.to_string(), "otlp");
+        assert_eq!(LangfuseApi::Ingestion.to_string(), "ingestion");
+        assert_eq!(LangfuseApi::Auto.to_string(), "auto");
+    }
+
+    #[test]
+    fn basic_auth_token_matches_otlp_header() {
+        let token = basic_auth_token("pk", "sk");
+        assert_eq!(token, "cGs6c2s=");
+        let h = langfuse_otlp_headers("pk", "sk");
+        assert_eq!(
+            h.get("Authorization").map(String::as_str),
+            Some("Basic cGs6c2s=")
+        );
     }
 }

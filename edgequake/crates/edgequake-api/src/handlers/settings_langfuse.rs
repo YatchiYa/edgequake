@@ -5,7 +5,8 @@ use std::time::Duration;
 
 use axum::Json;
 use edgequake_observability::{
-    langfuse_otlp_headers_from_env, otel_feature_built, LangfuseConfig, ObservabilityConfig,
+    langfuse_otlp_headers_from_env, otel_feature_built, resolved_langfuse_api, LangfuseApi,
+    LangfuseConfig, ObservabilityConfig,
 };
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -52,6 +53,11 @@ pub struct LangfuseSettingsResponse {
     pub otel_feature_built: bool,
     /// Export is actually possible (enabled && otel feature).
     pub export_active: bool,
+    /// Requested transport: `auto` | `otlp` | `ingestion` (`EDGEQUAKE_LANGFUSE_API`).
+    pub api: String,
+    /// Transport wired at process init (`otlp` | `ingestion`). Omitted until observability starts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_resolved: Option<String>,
     /// Copyable operator snippet (placeholders only).
     pub env_snippet: String,
     pub config_requirements: Vec<LangfuseRequirementDto>,
@@ -70,6 +76,8 @@ impl From<&LangfuseConfig> for LangfuseSettingsResponse {
             secret_key_configured: cfg.secret_key_configured,
             otel_feature_built: built,
             export_active: cfg.enabled && built,
+            api: LangfuseApi::from_env().to_string(),
+            api_resolved: resolved_langfuse_api().map(|a| a.to_string()),
             env_snippet: cfg.env_snippet(),
             config_requirements: cfg
                 .config_requirements()
@@ -207,6 +215,13 @@ mod tests {
         assert_eq!(dto.ui_url, cfg.base_url);
         assert_eq!(dto.base_url, "https://us.cloud.langfuse.com");
         assert!(dto.project_id.is_none());
+        assert!(
+            matches!(dto.api.as_str(), "auto" | "otlp" | "ingestion"),
+            "api={}",
+            dto.api
+        );
+        assert!(dto.api_resolved.is_none());
+        assert!(!json.contains("sk-lf-secret-real"));
     }
 
     #[test]

@@ -16,6 +16,9 @@ data:
   {{- if .Values.api.langfuse.projectId }}
   LANGFUSE_PROJECT_ID: {{ .Values.api.langfuse.projectId | quote }}
   {{- end }}
+  {{- if .Values.api.langfuse.api }}
+  EDGEQUAKE_LANGFUSE_API: {{ .Values.api.langfuse.api | quote }}
+  {{- end }}
   {{- range $key, $val := .Values.api.extraEnv }}
   {{ $key }}: {{ $val | quote }}
   {{- end }}

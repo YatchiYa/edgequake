@@ -3156,8 +3156,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_failed",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_failed"
       }
     },
     "/api/v1/documents/scan": {
@@ -8044,6 +8044,15 @@
               "type": "integer",
               "minimum": 0
             }
+          },
+          {
+            "name": "include_stats",
+            "in": "query",
+            "description": "When true, each item carries its `stats` object (served from the same\n60s cache as `/workspaces/{id}/stats`).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -9116,8 +9125,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_embeddings"
+        "x-edgequake-v2-job-type": "rebuild_embeddings",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -9264,8 +9273,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_all",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_all"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -18047,10 +18056,22 @@
           "secret_key_configured",
           "otel_feature_built",
           "export_active",
+          "api",
           "env_snippet",
           "config_requirements"
         ],
         "properties": {
+          "api": {
+            "type": "string",
+            "description": "Requested transport: `auto` | `otlp` | `ingestion` (`EDGEQUAKE_LANGFUSE_API`)."
+          },
+          "api_resolved": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Transport wired at process init (`otlp` | `ingestion`). Omitted until observability starts."
+          },
           "base_url": {
             "type": "string",
             "description": "Non-secret base URL (`LANGFUSE_BASE_URL` / `LANGFUSE_HOST`)."
@@ -18103,6 +18124,8 @@
           }
         },
         "example": {
+          "api": {},
+          "api_resolved": {},
           "base_url": {},
           "config_requirements": [],
           "enabled": {},
@@ -20350,6 +20373,20 @@
           "otel_enabled"
         ],
         "properties": {
+          "langfuse_api": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-124: requested transport (`auto` | `otlp` | `ingestion`)."
+          },
+          "langfuse_api_resolved": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-124: transport wired at init (`otlp` | `ingestion`)."
+          },
           "langfuse_base_url": {
             "type": [
               "string",
@@ -20371,6 +20408,8 @@
           }
         },
         "example": {
+          "langfuse_api": {},
+          "langfuse_api_resolved": {},
           "langfuse_base_url": {},
           "langfuse_enabled": {},
           "log_format": {},
@@ -29648,6 +29687,17 @@
           "slug": {
             "type": "string",
             "description": "URL-friendly slug."
+          },
+          "stats": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkspaceStatsResponse",
+                "description": "Aggregate stats for this workspace.\n\nOnly populated when the caller asks for them\n(`GET /tenants/{tenant_id}/workspaces?include_stats=true`), so existing\nclients see byte-identical payloads. Avoids the N+1 round-trip of\nlisting workspaces then calling `/workspaces/{id}/stats` for each one."
+              }
+            ]
           },
           "tenant_id": {
             "type": "string",

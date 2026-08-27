@@ -223,7 +223,9 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<Healt
 
 async fn build_operational_health(state: &AppState) -> Option<OperationalHealth> {
     use crate::task_queue_pressure::{assess_queue_pressure, publish_queue_observability};
-    use edgequake_observability::{log_format_label, ObservabilityConfig};
+    use edgequake_observability::{
+        log_format_label, resolved_langfuse_api, LangfuseApi, ObservabilityConfig,
+    };
     use edgequake_query::{
         fusion::{mix_fusion_mode_from_env, mix_fusion_mode_label},
         hybrid_merge::{hybrid_fusion_mode_from_env, hybrid_fusion_mode_label},
@@ -301,6 +303,15 @@ async fn build_operational_health(state: &AppState) -> Option<OperationalHealth>
             } else {
                 None
             },
+            langfuse_api: if obs_cfg.langfuse.enabled
+                || obs_cfg.langfuse.public_key_configured
+                || obs_cfg.langfuse.secret_key_configured
+            {
+                Some(LangfuseApi::from_env().to_string())
+            } else {
+                None
+            },
+            langfuse_api_resolved: resolved_langfuse_api().map(|a| a.to_string()),
         },
         read_model: ReadModelHealthSnapshot {
             merge_strategy: crate::document_read_model::MERGE_STRATEGY.to_string(),

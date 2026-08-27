@@ -29,6 +29,8 @@ export type LangfuseSettingsResponse = {
   secret_key_configured: boolean;
   otel_feature_built: boolean;
   export_active: boolean;
+  api: string;
+  api_resolved?: string | null;
   env_snippet: string;
   config_requirements: LangfuseRequirement[];
 };
@@ -84,7 +86,8 @@ export function LangfuseObservabilityCard() {
         <div>
           <CardTitle className="text-base">Langfuse Observability</CardTitle>
           <CardDescription>
-            Optional LLM tracing via OTLP/HTTP. Secrets stay in environment variables.
+            Optional LLM tracing. Cloud and Langfuse ≥ 3.22 use OTLP/HTTP; 3.1.x
+            falls back to native ingestion. Secrets stay in environment variables.
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">
@@ -138,6 +141,17 @@ export function LangfuseObservabilityCard() {
               {data?.base_url ? (
                 <li className="text-xs text-muted-foreground truncate" title={data.base_url}>
                   Base URL: {data.base_url}
+                </li>
+              ) : null}
+              {data?.api ? (
+                <li
+                  className="text-xs text-muted-foreground"
+                  data-testid="langfuse-export-transport"
+                >
+                  Transport:{' '}
+                  {data.api_resolved
+                    ? `${data.api_resolved}${data.api === 'auto' ? ' (auto)' : ''}`
+                    : data.api}
                 </li>
               ) : null}
             </ul>
