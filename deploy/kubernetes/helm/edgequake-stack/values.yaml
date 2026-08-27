@@ -1,0 +1,12 @@
+# EdgeQuake stack wrapper — values passed to edgequake subchart.
+# Langfuse is installed separately into namespace `langfuse`.
+
+edgequake:
+  global:
+    edgequakeVersion: "0.26.1"
+  api:
+    langfuse:
+      baseUrl: "http://langfuse-web.langfuse.svc.cluster.local:3000"
+      projectId: edgequake-k8s
+      publicKey: pk-lf-edgequake-k8s
+      secretKey: sk-lf-edgequake-k8s-dev

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-api-test"
+  namespace: {{ include "edgequake.namespace" . }}
+  labels:
+    {{- include "edgequake.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: curl
+      image: curlimages/curl:8.5.0
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+          curl -sf "http://edgequake-api.{{ include "edgequake.namespace" . }}.svc.cluster.local:{{ .Values.api.service.port }}/ready"
+          echo "API ready OK"
+          curl -sf "http://edgequake-web.{{ include "edgequake.namespace" . }}.svc.cluster.local:{{ .Values.web.service.port }}/" -o /dev/null
+          echo "Web OK"

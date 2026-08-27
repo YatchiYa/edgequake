@@ -147,6 +147,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         db-start postgres-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         langfuse-up langfuse-down langfuse-logs langfuse-status langfuse-smoke langfuse-reset spec124-langfuse-e2e \
+        k8s-prereqs k8s-kind-up k8s-kind-down k8s-install k8s-uninstall k8s-status spec138-kubernetes-proof spec138-helm-template \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         spec091-upgrade-soak spec091-gates spec103-llm-cache-proof \
         spec109-reasoning-effort-proof \
@@ -629,6 +630,13 @@ help: ## Show this help message
 	@echo "  $(GREEN)make langfuse-down$(RESET)           Stop local Langfuse (keeps volumes)"
 	@echo "  $(GREEN)make langfuse-smoke$(RESET)          Health + GET /api/public/projects"
 	@echo "  $(GREEN)make spec124-langfuse-e2e$(RESET)    One-command live Settings + sessions vs local Langfuse (starts stack; needs Ollama or OPENAI_API_KEY)"
+	@echo ""
+	@echo "$(BOLD)$(BLUE)☸ Kubernetes (SPEC-138)$(RESET)"
+	@echo "  $(GREEN)make k8s-prereqs$(RESET)             cert-manager + ClickHouse operator + nginx ingress"
+	@echo "  $(GREEN)make k8s-kind-up$(RESET)             Create kind cluster (requires: brew install kind)"
+	@echo "  $(GREEN)make k8s-install$(RESET)             Install Langfuse + EdgeQuake Helm stack"
+	@echo "  $(GREEN)make spec138-helm-template$(RESET)   Render charts (no cluster)"
+	@echo "  $(GREEN)make spec138-kubernetes-proof$(RESET) Full kind E2E — OTLP traces to Langfuse (~16GB RAM)"
 	@echo ""
 	@echo "$(BOLD)$(BLUE)📦 SDKs$(RESET)"
 	@echo "  $(GREEN)make sdk-rust-build$(RESET)    Build Rust SDK (sdks/rust)"
@@ -2121,6 +2129,51 @@ spec124-langfuse-e2e: ## One-command live Settings + sessions E2E vs local Langf
 		LANGFUSE_LOCAL_PROJECT_ID="$(LANGFUSE_LOCAL_PROJECT_ID)" \
 		BACKEND_URL="$(BACKEND_URL)" FRONTEND_URL="$(FRONTEND_URL)" \
 		$(ROOT_DIR)/scripts/spec124_langfuse_local_e2e.sh
+
+# ── SPEC-138 Kubernetes (EdgeQuake + in-cluster Langfuse) ─────────────────────
+K8S_DIR := $(ROOT_DIR)/deploy/kubernetes
+K8S_SCRIPTS := $(K8S_DIR)/scripts
+K8S_HELM := $(K8S_DIR)/helm
+
+.PHONY: k8s-prereqs k8s-kind-up k8s-kind-down k8s-install k8s-uninstall k8s-status spec138-kubernetes-proof spec138-helm-template
+
+k8s-prereqs: ## SPEC-138: cert-manager + ClickHouse operator + nginx ingress
+	@chmod +x $(K8S_SCRIPTS)/k8s_prereqs.sh
+	@$(K8S_SCRIPTS)/k8s_prereqs.sh
+
+k8s-kind-up: ## SPEC-138: create kind cluster (edgequake-spec138)
+	@chmod +x $(K8S_SCRIPTS)/k8s_kind_up.sh
+	@$(K8S_SCRIPTS)/k8s_kind_up.sh
+
+k8s-kind-down: ## SPEC-138: delete kind cluster
+	@chmod +x $(K8S_SCRIPTS)/k8s_kind_down.sh
+	@$(K8S_SCRIPTS)/k8s_kind_down.sh
+
+k8s-install: k8s-prereqs ## SPEC-138: install Langfuse + EdgeQuake on current cluster
+	@chmod +x $(K8S_SCRIPTS)/k8s_install_stack.sh $(K8S_SCRIPTS)/k8s_wait_ready.sh
+	@$(K8S_SCRIPTS)/k8s_install_stack.sh
+	@$(K8S_SCRIPTS)/k8s_wait_ready.sh
+
+k8s-uninstall: ## SPEC-138: uninstall Langfuse + EdgeQuake releases
+	@chmod +x $(K8S_SCRIPTS)/k8s_uninstall_stack.sh
+	@$(K8S_SCRIPTS)/k8s_uninstall_stack.sh
+
+k8s-status: ## SPEC-138: show EdgeQuake + Langfuse pod status
+	@chmod +x $(K8S_SCRIPTS)/k8s_context.sh
+	@. $(K8S_SCRIPTS)/k8s_context.sh; \
+	kubectl --context "$$KUBECTL_CONTEXT" get pods -n edgequake 2>/dev/null || echo "namespace edgequake not found"; \
+	kubectl --context "$$KUBECTL_CONTEXT" get pods -n langfuse 2>/dev/null || echo "namespace langfuse not found"
+
+spec138-helm-template: ## SPEC-138: render Helm charts (no cluster required)
+	@helm dependency build $(K8S_HELM)/edgequake-stack
+	@helm template edgequake-stack $(K8S_HELM)/edgequake-stack \
+		-f $(K8S_HELM)/edgequake-stack/values-kind.yaml \
+		--namespace edgequake > /dev/null
+	@echo "$(GREEN)✓ Helm templates render OK$(RESET)"
+
+spec138-kubernetes-proof: ## SPEC-138: full kind E2E — traces to Langfuse (requires kind, ~16GB RAM)
+	@chmod +x $(K8S_SCRIPTS)/*.sh $(ROOT_DIR)/scripts/langfuse_e2e_common.sh
+	@$(K8S_SCRIPTS)/spec138_kubernetes_e2e.sh
 
 docker-prebuilt: ## Start full stack (API + Web UI + DB) from latest published GHCR images — no build needed
 	@echo ""

@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate
+  namespace: {{ include "edgequake.namespace" . }}
+  labels:
+    {{- include "edgequake.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "edgequake.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ include "edgequake.postgres.image" . }}
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h edgequake-postgres -U {{ .Values.postgres.auth.username }} -d {{ .Values.postgres.auth.database }}; do
+                sleep 2
+              done
+      containers:
+        - name: migrate
+          image: {{ include "edgequake.api.image" . }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command: ["edgequake", "migrate"]
+          envFrom:
+            - configMapRef:
+                name: edgequake-api-config
+            - secretRef:
+                name: edgequake-api-secret
+            {{- if .Values.api.langfuse.existingSecret }}
+            - secretRef:
+                name: {{ .Values.api.langfuse.existingSecret }}
+            {{- end }}

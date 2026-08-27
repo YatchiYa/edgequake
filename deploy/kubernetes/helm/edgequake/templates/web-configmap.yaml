@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: edgequake-web-config
+  namespace: {{ include "edgequake.namespace" . }}
+  labels:
+    {{- include "edgequake.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+data:
+  {{- range $key, $val := .Values.web.env }}
+  {{ $key }}: {{ $val | quote }}
+  {{- end }}
+  EDGEQUAKE_API_URL: {{ .Values.web.apiUrl | default (printf "http://%s.%s.svc.cluster.local:%v" (include "edgequake.api.serviceName" .) (include "edgequake.namespace" .) .Values.api.service.port) | quote }}

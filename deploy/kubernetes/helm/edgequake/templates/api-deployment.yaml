@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edgequake-api
+  namespace: {{ include "edgequake.namespace" . }}
+  labels:
+    {{- include "edgequake.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "edgequake.api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "edgequake.api.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.postgres.enabled }}
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ include "edgequake.postgres.image" . }}
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h edgequake-postgres -U {{ .Values.postgres.auth.username }} -d {{ .Values.postgres.auth.database }}; do
+                echo "waiting for postgres..."
+                sleep 2
+              done
+      {{- end }}
+      containers:
+        - name: api
+          image: {{ include "edgequake.api.image" . }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: edgequake-api-config
+            - secretRef:
+                name: edgequake-api-secret
+            {{- if .Values.api.langfuse.existingSecret }}
+            - secretRef:
+                name: {{ .Values.api.langfuse.existingSecret }}
+            {{- end }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - sleep {{ .Values.api.preStopSleepSeconds }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 5

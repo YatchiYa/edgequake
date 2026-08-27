@@ -5,6 +5,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=/dev/null
+source "${ROOT}/scripts/langfuse_e2e_common.sh"
 # shellcheck disable=SC1091
 set -a
 [ -f "${ROOT}/.edgequake-dev-ports.env" ] && . "${ROOT}/.edgequake-dev-ports.env"
@@ -36,7 +38,6 @@ if ! curl -sf "${FRONTEND_URL}/" 2>/dev/null | grep -qi EdgeQuake; then
   exit 1
 fi
 
-# Next.js compiles routes on first hit; wait until /settings is a real app shell.
 ready_fe=0
 for _ in $(seq 1 30); do
   html="$(curl -sf "${FRONTEND_URL}/settings" 2>/dev/null || true)"
@@ -51,35 +52,7 @@ if [ "${ready_fe}" != "1" ]; then
   exit 1
 fi
 
-curl -sf "${BACKEND_URL}/api/v1/settings/langfuse" > /tmp/eq-langfuse-settings.json
-python3 - "${LF_BASE}" "${EXPECT_ID}" <<'PY'
-import json, sys
-raw = open("/tmp/eq-langfuse-settings.json", encoding="utf-8").read()
-# Placeholders in env_snippet are `sk-lf-...` — only reject real-looking secrets.
-if __import__("re").search(r"sk-lf-[A-Za-z0-9]", raw):
-    raise SystemExit("settings JSON leaked a Langfuse secret (sk-lf-)")
-body = json.loads(raw)
-lf_base = sys.argv[1].rstrip("/")
-expect_id = sys.argv[2]
-ui = (body.get("ui_url") or body.get("base_url") or "").rstrip("/")
-if "cloud.langfuse.com" in ui:
-    raise SystemExit(f"backend ui_url={ui!r} points at Langfuse Cloud, not local {lf_base!r}")
-if ui != lf_base:
-    raise SystemExit(
-        f"backend ui_url={ui!r} is not local Langfuse {lf_base!r}. "
-        "Run make spec124-langfuse-e2e (or make dev-bg-langfuse) so init keys override .env."
-    )
-if not body.get("export_active"):
-    raise SystemExit("export_active=false — keys missing or otel feature off")
-pid = body.get("project_id")
-if pid != expect_id:
-    raise SystemExit(f"project_id={pid!r} expected {expect_id!r}")
-purl = (body.get("project_ui_url") or "").rstrip("/")
-want = f"{lf_base}/project/{expect_id}"
-if purl != want:
-    raise SystemExit(f"project_ui_url={purl!r} expected {want!r}")
-print(f"✓ settings langfuse ui_url={ui} project_id={pid}")
-PY
+langfuse_verify_settings_dto "${BACKEND_URL}" "${LF_BASE}" "${EXPECT_ID}"
 
 cd "${ROOT}/edgequake_webui"
 export E2E_LIVE_STACK=1

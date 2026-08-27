@@ -1,0 +1,61 @@
+# kind / E2E profile — low resources, mock LLM, dev mode, ingress enabled.
+
+global:
+  edgequakeVersion: "0.26.1"
+
+postgres:
+  persistence:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+api:
+  replicaCount: 1
+    env:
+    EDGEQUAKE_LLM_PROVIDER: mock
+    EDGEQUAKE_ALLOW_MOCK_PROVIDER: "1"
+    EDGEQUAKE_DEV_MODE: "true"
+    EDGEQUAKE_AUTH_ENABLED: "false"
+    EDGEQUAKE_ENVIRONMENT: kubernetes
+    RUST_LOG: edgequake=info
+  langfuse:
+    baseUrl: "http://langfuse-web.langfuse.svc.cluster.local:3000"
+    projectId: edgequake-k8s
+    publicKey: pk-lf-edgequake-k8s
+    secretKey: sk-lf-edgequake-k8s-dev
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+web:
+  apiUrl: "http://edgequake.local"
+  env:
+    NEXT_PUBLIC_AUTH_ENABLED: "false"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+ingress:
+  enabled: true
+  hosts:
+    - host: edgequake.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: web
+        - path: /api
+          pathType: Prefix
+          service: api
+
+networkPolicy:
+  enabled: false

@@ -310,9 +310,56 @@ services:
 
 ## Option 3: Kubernetes
 
-### Helm Chart (Coming Soon)
+EdgeQuake ships Helm charts for Kubernetes deployments with optional in-cluster Langfuse v4 (OTLP trace observability).
 
-For Kubernetes deployments, a Helm chart is in development. For now, use the following manifests as a starting point:
+**Operator guide (start here):** [deploy/kubernetes/README.md](../../deploy/kubernetes/README.md)  
+**Spec pack:** [specs/138-kubernetes/README.md](../../specs/138-kubernetes/README.md)
+
+### What gets deployed
+
+- **edgequake** namespace: web + API + PostgreSQL (pgvector + AGE)
+- **langfuse** namespace: Langfuse v4 (web, worker, bundled stores on kind)
+- API exports **OTLP/HTTP traces** to Langfuse — not stdout logs (SPEC-124)
+
+### Quick start (kind / local)
+
+```bash
+make k8s-prereqs          # cert-manager + ClickHouse.com operator + nginx
+make k8s-kind-up          # create kind cluster (edgequake-spec138)
+make k8s-install          # Langfuse then EdgeQuake (includes migrate Job)
+make k8s-status
+```
+
+Verify OTLP trace delivery:
+
+```bash
+make spec138-kubernetes-proof
+```
+
+### Important behavior (v0.26+)
+
+| Topic | Behavior |
+|-------|----------|
+| **Migrations** | API **does not** auto-migrate at boot. Helm runs a `edgequake migrate` Job before the API Deployment serves traffic. |
+| **Kind E2E LLM** | Uses `mock` provider with `EDGEQUAKE_ALLOW_MOCK_PROVIDER=1` — production must use a real provider. |
+| **Langfuse memory** | Langfuse v4 web needs `NODE_OPTIONS=--max-old-space-size=1536` on kind (see `langfuse-values-kind.yaml`). |
+| **Langfuse prereqs** | Langfuse Helm v2 requires the **ClickHouse.com** operator (`make k8s-prereqs`), not Altinity. |
+
+See [deploy/kubernetes/README.md — Troubleshooting](../../deploy/kubernetes/README.md#troubleshooting) for common failure modes.
+
+### Charts
+
+| Chart | Path |
+|-------|------|
+| EdgeQuake app | `deploy/kubernetes/helm/edgequake/` |
+| Stack wrapper | `deploy/kubernetes/helm/edgequake-stack/` |
+| Langfuse values (kind) | `deploy/kubernetes/helm/langfuse-values-kind.yaml` |
+
+Langfuse installs into namespace `langfuse`; EdgeQuake into namespace `edgequake` (separate Postgres instances).
+
+### Reference manifests
+
+The snippets below remain useful for understanding probe and env wiring. Prefer Helm for production installs.
 
 ### Namespace
 

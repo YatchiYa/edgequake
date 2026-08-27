@@ -1,0 +1,46 @@
+# SPEC-138 kind smoke — manual dispatch (heavy; ~20–30 min).
+name: spec138-kind-smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  kind-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Setup Node for Playwright
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm and Playwright
+        run: |
+          cd edgequake_webui
+          corepack enable
+          pnpm install
+          pnpm exec playwright install chromium --with-deps
+
+      - name: Run SPEC-138 proof
+        run: |
+          chmod +x deploy/kubernetes/scripts/*.sh scripts/langfuse_e2e_common.sh
+          make spec138-kubernetes-proof
+
+      - name: Upload measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spec138-measurements
+          path: specs/138-kubernetes/measurements/
