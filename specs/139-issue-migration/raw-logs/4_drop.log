@@ -1,0 +1,56 @@
+
+> quantalogic@1.73.0 edgequake:migrate:drop /home/steven/quantalogic/quantalogic-platform
+> docker run --rm --network host --add-host host.docker.internal:host-gateway -e DATABASE_URL=postgresql://operator:***@localhost:5432/edgequake-prod ghcr.io/raphaelmansuy/edgequake:0.26.1 migrate --confirm-drop
+
+[2m2026-08-26T15:23:02.493927Z[0m [32m INFO[0m [2medgequake_observability::subscriber[0m[2m:[0m Observability initialized [3mlog_format[0m[2m=[0mPlain [3motel_enabled[0m[2m=[0mfalse [3motel_endpoint[0m[2m=[0mNone [3mlangfuse_enabled[0m[2m=[0mfalse [3mlangfuse_base_url[0m[2m=[0mhttps://cloud.langfuse.com [3mservice_name[0m[2m=[0medgequake-api [3mlog_span_events[0m[2m=[0mfalse
+EdgeQuake migrate v0.26.1
+database: postgresql://operator:***@localhost:5432/edgequake-prod
+
+ WHAT THIS COMMAND DOES (first principles)
+  1. SAFE SCHEMA  — create/alter tables this binary needs.
+                   Applied now. No data deleted.
+  2. DATA MOVE    — background backfills copy old → new stores.
+                   Watched via: edgequake migrate status / dry-run.
+  3. DROP OLD     — delete legacy tables after copy is proven.
+                   NEVER automatic. Needs --confirm-drop + GREEN readiness.
+  Server start never applies migrations; it only refuses when SAFE SCHEMA
+  is still missing. Optional DROP OLD may stay pending while you serve.
+
+[2m2026-08-26T15:23:02.493988Z[0m [32m INFO[0m [2medgequake[0m[2m:[0m edgequake migrate: connecting admin pool [3mdatabase[0m[2m=[0mpostgresql://operator:***@localhost:5432/edgequake-prod
+preflight: 4 pending migration(s)
+  pending 125 — spec091 kv drop  [DROP OLD — irreversible KV tables]
+           → deletes the old key-value tables (eq_*_kv)
+  pending 126 — spec091 vector drop  [DROP OLD — irreversible chunk vectors]
+           → deletes old chunk rows from eq_*_vectors
+  pending 131 — spec091 fleet vector drop  [DROP OLD — irreversible vector fleet]
+           → deletes all remaining eq_*_vectors tables
+  pending 142 — spec105 legacy cutover assert  [ASSERT — SPEC-105; after confirm-drop / empty residue]
+
+ APPLY INTENT
+  pending total:              4
+  SAFE SCHEMA (will apply):   1
+  DROP OLD (needs confirm):    3 → [125, 126, 131]
+  consent: INCLUDED — --confirm-drop / alias --drop-confirm / fresh-install gate open
+
+applying 4 migration(s) + support reconcile on admin pool…
+[2m2026-08-26T15:23:02.509815Z[0m [32m INFO[0m [2medgequake.migration[0m[2m:[0m Database migration bootstrap starting [3mstep[0m[2m=[0m"bootstrap_start" [3mtotal_embedded[0m[2m=[0m147 [3mmigrate_cli[0m[2m=[0mtrue [3mmode[0m[2m=[0mAll [3mmax_version[0m[2m=[0mNone
+[2m2026-08-26T15:23:02.522650Z[0m [32m INFO[0m [2medgequake.migration[0m[2m:[0m Migration preflight complete [3mstep[0m[2m=[0m"preflight" [3mapplied[0m[2m=[0m143 [3mpending[0m[2m=[0m4 [3mlatest_applied[0m[2m=[0m149
+[2m2026-08-26T15:23:02.522665Z[0m [32m INFO[0m [2medgequake.migration[0m[2m:[0m Pending migration queued [3mstep[0m[2m=[0m"pending" [3mprogress[0m[2m=[0m"1/4" [3mversion[0m[2m=[0m125 [3mdescription[0m[2m=[0mspec091 kv drop
+[2m2026-08-26T15:23:02.522669Z[0m [32m INFO[0m [2medgequake.migration[0m[2m:[0m Pending migration queued [3mstep[0m[2m=[0m"pending" [3mprogress[0m[2m=[0m"2/4" [3mversion[0m[2m=[0m126 [3mdescription[0m[2m=[0mspec091 vector drop
+[2m2026-08-26T15:23:02.522671Z[0m [32m INFO[0m [2medgequake.migration[0m[2m:[0m Pending migration queued [3mstep[0m[2m=[0m"pending" [3mprogress[0m[2m=[0m"3/4" [3mversion[0m[2m=[0m131 [3mdescription[0m[2m=[0mspec091 fleet vector drop
+[2m2026-08-26T15:23:02.522673Z[0m [32m INFO[0m [2medgequake.migration[0m[2m:[0m Pending migration queued [3mstep[0m[2m=[0m"pending" [3mprogress[0m[2m=[0m"4/4" [3mversion[0m[2m=[0m142 [3mdescription[0m[2m=[0mspec105 legacy cutover assert
+[2m2026-08-26T15:23:02.525521Z[0m [32m INFO[0m [2medgequake.migration[0m[2m:[0m Applying sqlx migrations (advisory lock held) [3mstep[0m[2m=[0m"sqlx_run" [3mcount[0m[2m=[0m4
+migrate failed: while executing migration 125: error returned from database: SPEC-091 Wave D ABORT: eq_eq_default_kv still holds 2592 un-migrated durable KV rows (chunk text, shells, lineage/MM, or dedup/wsdoc/injection not yet in their typed tables). Run the family backfills (117-122) or the migration engine, then re-apply.
+hint: re-run with RUST_LOG=edgequake.migration=info,edgequake=info
+hint: Wave D — durable KV residue remains outside typed SSOT.
+      1) edgequake migrate dry-run
+      2) edgequake migrate guard
+      3) finish family backfills (117-122 / migration engine), then re-run --confirm-drop
+Error: migrate failed
+
+Caused by:
+    0: while executing migration 125: error returned from database: SPEC-091 Wave D ABORT: eq_eq_default_kv still holds 2592 un-migrated durable KV rows (chunk text, shells, lineage/MM, or dedup/wsdoc/injection not yet in their typed tables). Run the family backfills (117-122) or the migration engine, then re-apply.
+    1: while executing migration 125: error returned from database: SPEC-091 Wave D ABORT: eq_eq_default_kv still holds 2592 un-migrated durable KV rows (chunk text, shells, lineage/MM, or dedup/wsdoc/injection not yet in their typed tables). Run the family backfills (117-122) or the migration engine, then re-apply.
+    2: error returned from database: SPEC-091 Wave D ABORT: eq_eq_default_kv still holds 2592 un-migrated durable KV rows (chunk text, shells, lineage/MM, or dedup/wsdoc/injection not yet in their typed tables). Run the family backfills (117-122) or the migration engine, then re-apply.
+    3: SPEC-091 Wave D ABORT: eq_eq_default_kv still holds 2592 un-migrated durable KV rows (chunk text, shells, lineage/MM, or dedup/wsdoc/injection not yet in their typed tables). Run the family backfills (117-122) or the migration engine, then re-apply.
+ ELIFECYCLE  Command failed with exit code 1.

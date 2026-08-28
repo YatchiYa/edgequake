@@ -75,6 +75,17 @@ Unfakable proof (version pin + OTLP 404 + real exporter persist):
 make spec124-langfuse-3.1-e2e
 ```
 
+OTLP itself starts at **Langfuse 3.22.0**, not 3.2.x. Local pins + current Cloud:
+
+```bash
+make spec124-langfuse-3.22-e2e    # 3.22.0 UI :3330 — route exists + auto-probe=Otlp
+make spec124-langfuse-3.225-e2e   # 3.225.5 UI :3340 — OTLP persist (current 3.x)
+make spec124-langfuse-cloud-e2e   # current Cloud (LANGFUSE_* in .env)
+make spec124-langfuse-matrix      # 3.1.1 + 3.22.0 + 3.225.5 + Cloud
+```
+
+3.22.0’s first-release OTLP protobuf parser raises `Invalid time value` on current OpenTelemetry timestamps. Persist is proven on **3.225.5** and Cloud, not on the 3.22.0 tag.
+
 ---
 
 ## 3. Existing self-hosted 3.1.x (Docker / VM / Kubernetes)

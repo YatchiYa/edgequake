@@ -27,8 +27,9 @@ pub async fn verify_chunk_text_backfill(
 
     // EC-35/Wave D: the KV source may already be dropped — the migration is
     // complete by definition, so report a clean pass instead of a 42P01 error.
+    let chunk_re = super::coverage::LEGACY_CHUNK_VECTOR_ID_RE;
     let kv_chunks = match sqlx::query_scalar::<_, i64>(&format!(
-        "SELECT COUNT(*) FROM {kv_table} WHERE key LIKE '%-chunk-%'"
+        "SELECT COUNT(*) FROM {kv_table} WHERE key ~ '{chunk_re}'"
     ))
     .fetch_one(pool)
     .await
@@ -53,7 +54,7 @@ pub async fn verify_chunk_text_backfill(
     // Sampled content equality (checksum metric, sampled at scale per plan).
     let sample_rows = sqlx::query_as::<_, (String, Value)>(&format!(
         "SELECT key, value FROM {kv_table} \
-         WHERE key LIKE '%-chunk-%' AND md5(key) LIKE '0%' \
+         WHERE key ~ '{chunk_re}' AND md5(key) LIKE '0%' \
          ORDER BY key LIMIT $1"
     ))
     .bind(SAMPLE_LIMIT)
@@ -115,18 +116,18 @@ pub async fn verify_chunk_text_backfill(
 /// SPEC-091 W3 verification: coverage + sampled vector equality between legacy
 /// `eq_*_vectors` chunk rows and typed `chunk_embeddings`. 42P01-safe (EC-35):
 /// dropped legacy source ⇒ complete by definition.
+///
+/// SPEC-139 LAW-139-3: `actual` is **per-table coverage** (chunks ⋈
+/// chunk_embeddings for this legacy table's `-chunk-` ids), never
+/// `COUNT(*) FROM chunk_embeddings` (global).
 pub async fn verify_chunk_embedding_backfill(
     pool: &PgPool,
     vectors_table: &str,
     model_name: &str,
 ) -> Result<VerifyReport, StorageError> {
-    let typed = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM chunk_embeddings")
-        .fetch_one(pool)
-        .await
-        .map_err(|e| StorageError::Database(format!("w3 verify typed count failed: {e}")))?;
-
+    let chunk_re = super::coverage::LEGACY_CHUNK_VECTOR_ID_RE;
     let legacy_chunks = match sqlx::query_scalar::<_, i64>(&format!(
-        "SELECT COUNT(*) FROM {vectors_table} WHERE id LIKE '%-chunk-%'"
+        "SELECT COUNT(*) FROM {vectors_table} WHERE id ~ '{chunk_re}'"
     ))
     .fetch_one(pool)
     .await
@@ -136,7 +137,7 @@ pub async fn verify_chunk_embedding_backfill(
             return Ok(VerifyReport {
                 metric: "chunk_embedding_coverage+vector".into(),
                 expected: 0,
-                actual: typed,
+                actual: 0,
                 sampled: 0,
                 mismatches: 0,
             });
@@ -148,11 +149,32 @@ pub async fn verify_chunk_embedding_backfill(
         }
     };
 
+    let covered = match sqlx::query_scalar::<_, i64>(&format!(
+        "SELECT COUNT(*) FROM {vectors_table} v \
+         WHERE v.id ~ '{chunk_re}' \
+           AND EXISTS ( \
+                SELECT 1 FROM public.chunks c \
+                JOIN public.chunk_embeddings ce ON ce.chunk_id = c.id \
+                WHERE c.document_id = left(v.id, 36)::uuid \
+                  AND c.chunk_index = substring(v.id from 44)::int)"
+    ))
+    .fetch_one(pool)
+    .await
+    {
+        Ok(n) => n,
+        Err(sqlx::Error::Database(db)) if db.code().as_deref() == Some("42P01") => 0,
+        Err(e) => {
+            return Err(StorageError::Database(format!(
+                "w3 verify coverage count failed: {e}"
+            )))
+        }
+    };
+
     // Sampled vector equality: legacy chunk rows joined to typed rows through
     // the chunks spine. Dimension mismatch counts as a mismatch.
     let sample = sqlx::query_as::<_, (String, String)>(&format!(
         "SELECT id, embedding::text FROM {vectors_table} \
-         WHERE id LIKE '%-chunk-%' AND md5(id) LIKE '0%' ORDER BY id LIMIT $1"
+         WHERE id ~ '{chunk_re}' AND md5(id) LIKE '0%' ORDER BY id LIMIT $1"
     ))
     .bind(SAMPLE_LIMIT)
     .fetch_all(pool)
@@ -212,7 +234,7 @@ pub async fn verify_chunk_embedding_backfill(
     Ok(VerifyReport {
         metric: "chunk_embedding_coverage+vector".into(),
         expected: legacy_chunks,
-        actual: typed,
+        actual: covered,
         sampled,
         mismatches,
     })

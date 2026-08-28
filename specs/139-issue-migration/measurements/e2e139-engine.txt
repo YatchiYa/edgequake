@@ -1,0 +1,27 @@
+=== E2E-139-01..08 (Postgres required) ===
+   Compiling edgequake-storage v0.26.2 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.42s
+     Running tests/e2e_spec139_engine.rs (target/debug/deps/e2e_spec139_engine-ea6bbe325a1399d5)
+
+running 8 tests
+test e2e_spec139_01_iw2_within_batch_dedupe_avoids_21000 ... UNFAKABLE SQLSTATE=21000
+UNFAKABLE E2E-139-01 typed_count=1 provenance_stamped=1
+ok
+test e2e_spec139_02_iw2_relationship_normalize_dedupe ... UNFAKABLE SQLSTATE=21000
+UNFAKABLE E2E-139-02 typed_count=1
+ok
+test e2e_spec139_03_w3_verify_coverage_sum_not_global_count ... UNFAKABLE E2E-139-03 expected=8 actual_uncovered=0 actual_covered=8 global_typed=25
+ok
+test e2e_spec139_04_reclaim_verify_failed_w3 ... UNFAKABLE E2E-139-04 reclaimed=1 claim_after=1
+ok
+test e2e_spec139_05_artifact_remainder_after_shell ... UNFAKABLE E2E-139-05 before_artifacts=0 after_lineage=1 residue_lineage=0
+ok
+test e2e_spec139_06_run_engine_continues_after_job_err ... UNFAKABLE E2E-139-06 second_job_ran=1
+ok
+test e2e_spec139_07_shell_remainder_copies_metadata ... UNFAKABLE E2E-139-07 doc_shells_before=1 doc_exists=1 doc_shells_after=0
+ok
+test e2e_spec139_08_orphan_lineage_remainder_verify_passes ... UNFAKABLE E2E-139-08 verify_passes=1 residue_lineage=1
+ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.24s
+

@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+Patch target **v0.26.3**: SPEC-139 mid-cutover engine stall (iw2 Postgres 21000,
+W3 false-terminal verify, KV remainder after 119-before-122). **No new
+migration.** Schema train remains **149**. `VERSION` is still **0.26.2** — GHCR
+`0.26.3` exists only after the tag. Upgrade:
+[`docs/operations/upgrade-to-0.26.3.md`](docs/operations/upgrade-to-0.26.3.md).
+
+### Fixed
+- **SPEC-139 — mid-cutover engine stall** — Field `0.26.1` cannot finish SPEC-091
+  copy: `iw2` crashes on within-batch duplicate `ON CONFLICT` keys (SQLSTATE
+  **21000**); W3 verify used `max(COUNT(*) FROM chunk_embeddings)` then marked
+  the job terminal-`failed` with no reclaim; lineage/multimodal/hash/shell KV
+  plateaued because sqlx **119** ran before **122** and the engine had no
+  remainder job. Engine now last-write-wins-dedupes arbiter keys, sums per-table
+  coverage (UUID-shaped `-chunk-` ids ≡ 126), reclaims `verify_failed` jobs,
+  continues after one job `Err`, and registers `w2-dedup-remainder` /
+  `wc-shell-remainder` / `w5-artifact-remainder` (copy-complete verify so
+  orphans stay advisor-RED, not a fail-loop). DROP SQL **125 / 126 / 131**
+  unchanged. Proof: `make spec139-migrate-engine-proof`. Spec:
+  [`specs/139-issue-migration/`](specs/139-issue-migration/).
+
+### Added
+- **SPEC-124 — Langfuse 3.22 / 3.225 isolated OTLP stacks** — Compose + Make targets for Langfuse **3.22.0** (first OTLP route, UI `:3330`) and **3.225.5** (OTLP persist, UI `:3340`), plus Cloud e2e and `make spec124-langfuse-matrix`. Proof: `make spec124-langfuse-3.22-e2e` / `spec124-langfuse-3.225-e2e`.
+
 ## [0.26.2] — 2026-08-27
 
 Patch: Langfuse 3.1.x ingestion fallback (SPEC-124), Kubernetes Helm/kind (SPEC-138),

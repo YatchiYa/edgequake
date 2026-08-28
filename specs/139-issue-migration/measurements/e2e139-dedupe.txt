@@ -1,0 +1,11 @@
+=== U-139-DEDUP (no DB) ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.39s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_storage-bcfd1a173468c1b4)
+
+running 3 tests
+test migration_engine::conflict_dedupe::tests::contract_spec139_dedupe_empty ... ok
+test migration_engine::conflict_dedupe::tests::contract_spec139_dedupe_unique_passthrough ... ok
+test migration_engine::conflict_dedupe::tests::contract_spec139_dedupe_last_write_wins_and_order ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 241 filtered out; finished in 0.00s
+

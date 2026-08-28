@@ -1,0 +1,26 @@
+=== LAW-C3 advisor ≡ SQL (125/126) + 131 abort (fail-closed) ===
+6
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running tests/e2e_spec091_console.rs (target/debug/deps/e2e_spec091_console-61b76bfde6870dff)
+
+running 1 test
+test contract_spec091_advisor_matches_125_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.33s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running tests/e2e_spec091_vector_retire.rs (target/debug/deps/e2e_spec091_vector_retire-ce9bcadb5aac3151)
+
+running 1 test
+test contract_spec091_advisor_matches_126_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.32s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running tests/e2e_spec111_provenance_parity.rs (target/debug/deps/e2e_spec111_provenance_parity-4cbf2fc67e366027)
+
+running 1 test
+test e2e_spec111_17_abort_without_provenance ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.26s
+

@@ -379,7 +379,8 @@ async fn count_legacy_chunk_rows(pool: &PgPool) -> Result<i64, StorageError> {
     let mut total = 0;
     for t in tables {
         let n = match sqlx::query_scalar::<_, i64>(&format!(
-            "SELECT COUNT(*) FROM public.{t} WHERE id LIKE '%-chunk-%'"
+            "SELECT COUNT(*) FROM public.{t} WHERE id ~ '{re}'",
+            re = crate::migration_engine::coverage::LEGACY_CHUNK_VECTOR_ID_RE
         ))
         .fetch_one(pool)
         .await

@@ -12,8 +12,11 @@ pub mod advisor;
 pub mod chunk_embedding_backfill;
 #[cfg(feature = "postgres")]
 pub mod chunk_text_backfill;
+pub mod conflict_dedupe;
 #[cfg(feature = "postgres")]
 pub mod coverage;
+#[cfg(feature = "postgres")]
+pub mod family_remainder;
 #[cfg(feature = "postgres")]
 pub mod fleet_embedding_backfill;
 #[cfg(feature = "postgres")]
@@ -28,7 +31,7 @@ pub mod verify;
 pub use adaptive::AdaptiveBatchSizer;
 #[cfg(feature = "postgres")]
 pub use runner::{
-    spawn_for_serving, BackfillJob, BatchOutcome, MigrationEngineConfig, VerifyReport,
+    run_engine, spawn_for_serving, BackfillJob, BatchOutcome, MigrationEngineConfig, VerifyReport,
 };
 
 pub const MIGRATION_MODE_ENV: &str = "EDGEQUAKE_MIGRATION_MODE";

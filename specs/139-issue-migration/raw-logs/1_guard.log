@@ -1,0 +1,7 @@
+
+> quantalogic@1.73.0 edgequake:migrate:guard /home/steven/quantalogic/quantalogic-platform
+> docker run --rm --network host --add-host host.docker.internal:host-gateway -e DATABASE_URL=postgresql://operator:***@localhost:5432/edgequake-prod ghcr.io/raphaelmansuy/edgequake:0.26.1 migrate guard
+
+[2m2026-08-26T15:04:44.395335Z[0m [32m INFO[0m [2medgequake_observability::subscriber[0m[2m:[0m Observability initialized [3mlog_format[0m[2m=[0mPlain [3motel_enabled[0m[2m=[0mfalse [3motel_endpoint[0m[2m=[0mNone [3mlangfuse_enabled[0m[2m=[0mfalse [3mlangfuse_base_url[0m[2m=[0mhttps://cloud.langfuse.com [3mservice_name[0m[2m=[0medgequake-api [3mlog_span_events[0m[2m=[0mfalse
+Error: Database error: advisor kv_durable_residue failed (typed SSOT missing?): relation "public.document_artifacts" does not exist
+ ELIFECYCLE  Command failed with exit code 1.

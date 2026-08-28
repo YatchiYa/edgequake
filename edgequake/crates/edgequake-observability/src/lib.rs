@@ -25,6 +25,8 @@ pub mod trace_context;
 
 #[cfg(all(test, feature = "otel"))]
 mod inmemory_otel_tests;
+#[cfg(all(test, feature = "otel"))]
+mod langfuse_otlp_e2e;
 
 pub mod query_guard;
 

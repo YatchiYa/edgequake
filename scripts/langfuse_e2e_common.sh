@@ -124,6 +124,37 @@ PY
   echo "✓ Langfuse observations found for session_id=${session_id}"
 }
 
+# Unfakable: OTLP path must exist (not 404). Empty protobuf is fine — 400/401/200 all prove the route.
+langfuse_assert_otlp_exists() {
+  local base="${1:?LANGFUSE base URL required}"
+  local pk="${2:?public key required}"
+  local sk="${3:?secret key required}"
+  local otlp
+  otlp="$(curl -sS -o /tmp/eq-lf-otlp-probe.txt -w '%{http_code}' \
+    -X POST "${base%/}/api/public/otel/v1/traces" \
+    -u "${pk}:${sk}" \
+    -H "Content-Type: application/x-protobuf" \
+    --data-binary '' || true)"
+  if [ "${otlp}" = "404" ]; then
+    echo "✗ OTLP /api/public/otel/v1/traces → 404 (need Langfuse ≥ 3.22 / Cloud)" >&2
+    cat /tmp/eq-lf-otlp-probe.txt >&2 || true
+    return 1
+  fi
+  echo "✓ OTLP /api/public/otel/v1/traces → HTTP ${otlp} (not 404)"
+}
+
+langfuse_print_health_version() {
+  local file="${1:?health json file}"
+  python3 - "$file" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+ver = str(body.get("version") or "")
+if not ver:
+    raise SystemExit("health.version empty")
+print(f"✓ Langfuse version={ver}")
+PY
+}
+
 edgequake_query_with_session() {
   local backend_url="${1:?backend}"
   local session_id="${2:?session}"

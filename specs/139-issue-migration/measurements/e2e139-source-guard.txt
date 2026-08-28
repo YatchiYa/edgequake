@@ -1,0 +1,16 @@
+=== source guards ===
+83:/// [`super::conflict_dedupe::dedupe_last_write_wins`] can collapse it.
+102:    let kept = super::conflict_dedupe::dedupe_last_write_wins(rows);
+413:pub async fn reclaim_verify_failed_jobs(pool: &PgPool) -> Result<u64, StorageError> {
+21:    "w5-artifact-remainder/v1:",
+68:        "w5-artifact-remainder"
+136:        Ok(remainder_copy_complete("w5-artifact-remainder"))
+482:        assert_eq!(a.step_id(), "w5-artifact-remainder");
+26:    "wc-shell-remainder/v1:",
+231:        "wc-shell-remainder"
+282:        Ok(remainder_copy_complete("wc-shell-remainder"))
+484:        assert_eq!(s.step_id(), "wc-shell-remainder");
+177:        std::sync::Arc::new(super::family_remainder::ShellRemainderJob::new()),
+30:    let chunk_re = super::coverage::LEGACY_CHUNK_VECTOR_ID_RE;
+128:    let chunk_re = super::coverage::LEGACY_CHUNK_VECTOR_ID_RE;
+249:                "SPEC-139: migration job failed — continuing remaining jobs"

@@ -147,12 +147,17 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         db-start postgres-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         langfuse-up langfuse-down langfuse-logs langfuse-status langfuse-smoke langfuse-reset spec124-langfuse-e2e \
-        langfuse-3.1-up langfuse-3.1-down langfuse-3.1-reset spec124-langfuse-3.1-e2e langfuse-sync-prices \
+        langfuse-3.1-up langfuse-3.1-down langfuse-3.1-reset spec124-langfuse-3.1-e2e \
+        langfuse-3.22-up langfuse-3.22-down langfuse-3.22-reset spec124-langfuse-3.22-e2e \
+        langfuse-3.225-up langfuse-3.225-down langfuse-3.225-reset spec124-langfuse-3.225-e2e \
+        spec124-langfuse-cloud-e2e spec124-langfuse-matrix \
+        langfuse-sync-prices \
         k8s-prereqs k8s-kind-up k8s-kind-down k8s-install k8s-uninstall k8s-status spec138-kubernetes-proof spec138-helm-template \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         spec091-upgrade-soak spec091-gates spec103-llm-cache-proof \
         spec109-reasoning-effort-proof \
         spec110-migrate-118-proof spec137-migrate-025-026-proof \
+        spec139-migrate-engine-proof \
         spec93-migration-assessment spec93-migration-assessment-pg16 \
         spec93-migration-assessment-pg17 spec93-migration-assessment-pg18 \
         check-deps status \
@@ -209,6 +214,20 @@ LANGFUSE_311_UI_URL ?= http://localhost:$(LANGFUSE_311_PORT)
 LANGFUSE_311_PK ?= pk-lf-edgequake-311
 LANGFUSE_311_SK ?= sk-lf-edgequake-311-dev
 LANGFUSE_311_PROJECT_ID ?= edgequake-local-311
+LANGFUSE_322_COMPOSE := $(DOCKER_DIR)/docker-compose.langfuse-3.22.yml
+LANGFUSE_322_COMPOSE_PROJECT := edgequake-langfuse-3-22
+LANGFUSE_322_PORT ?= 3330
+LANGFUSE_322_UI_URL ?= http://localhost:$(LANGFUSE_322_PORT)
+LANGFUSE_322_PK ?= pk-lf-edgequake-322
+LANGFUSE_322_SK ?= sk-lf-edgequake-322-dev
+LANGFUSE_322_PROJECT_ID ?= edgequake-local-322
+LANGFUSE_3225_COMPOSE := $(DOCKER_DIR)/docker-compose.langfuse-3.225.yml
+LANGFUSE_3225_COMPOSE_PROJECT := edgequake-langfuse-3-225
+LANGFUSE_3225_PORT ?= 3340
+LANGFUSE_3225_UI_URL ?= http://localhost:$(LANGFUSE_3225_PORT)
+LANGFUSE_3225_PK ?= pk-lf-edgequake-3225
+LANGFUSE_3225_SK ?= sk-lf-edgequake-3225-dev
+LANGFUSE_3225_PROJECT_ID ?= edgequake-local-3225
 # 3100 is gps-mcp on this machine; 3310 is the EdgeQuake Langfuse UI default.
 LANGFUSE_PORT ?= 3310
 LANGFUSE_UI_URL := http://localhost:$(LANGFUSE_PORT)
@@ -641,6 +660,11 @@ help: ## Show this help message
 	@echo "  $(GREEN)make langfuse-3.1-up$(RESET)         Start Langfuse 3.1.1 (UI :3320, ingestion-fallback E2E)"
 	@echo "  $(GREEN)make spec124-langfuse-3.1-e2e$(RESET) Unfakable ingestion-fallback E2E vs Langfuse 3.1.1"
 	@echo "  $(GREEN)make langfuse-3.1-reset$(RESET)      Wipe Langfuse 3.1.1 volumes (CONFIRM=yes)"
+	@echo "  $(GREEN)make langfuse-3.22-up$(RESET)        Start Langfuse 3.22.0 (UI :3330, first OTLP)"
+	@echo "  $(GREEN)make spec124-langfuse-3.22-e2e$(RESET) Unfakable OTLP route+probe vs Langfuse 3.22.0"
+	@echo "  $(GREEN)make spec124-langfuse-3.225-e2e$(RESET) Unfakable OTLP persist E2E vs Langfuse 3.225.5"
+	@echo "  $(GREEN)make spec124-langfuse-cloud-e2e$(RESET) Unfakable OTLP persist E2E vs current Langfuse Cloud"
+	@echo "  $(GREEN)make spec124-langfuse-matrix$(RESET)  3.1.1 + 3.22.0 + 3.225.5 + Cloud (needs Cloud keys)"
 	@echo "  $(GREEN)make langfuse-sync-prices$(RESET)    Push models.toml pricing into Langfuse"
 	@echo ""
 	@echo "$(BOLD)$(BLUE)☸ Kubernetes (SPEC-138)$(RESET)"
@@ -2186,6 +2210,111 @@ spec124-langfuse-3.1-e2e: ## Unfakable ingestion-fallback E2E vs Langfuse 3.1.1 
 		LANGFUSE_311_PROJECT_ID="$(LANGFUSE_311_PROJECT_ID)" \
 		$(ROOT_DIR)/scripts/spec124_langfuse_3_1_ingestion_e2e.sh
 
+langfuse-3.22-up: ## Start Langfuse 3.22.0 (UI http://localhost:3330) for OTLP E2E
+	@echo "$(BOLD)$(BLUE)Starting Langfuse 3.22.0$(RESET)"
+	@cd $(DOCKER_DIR) && LANGFUSE_322_PORT="$(LANGFUSE_322_PORT)" NEXTAUTH_URL="$(LANGFUSE_322_UI_URL)" \
+		docker compose -f docker-compose.langfuse-3.22.yml --project-name $(LANGFUSE_322_COMPOSE_PROJECT) up -d
+	@echo "$(YELLOW)→ Waiting for Langfuse 3.22.0 health (up to 180s)...$(RESET)"
+	@ready=0; \
+	for i in $$(seq 1 90); do \
+		if curl -sf "$(LANGFUSE_322_UI_URL)/api/public/health" >/dev/null 2>&1 \
+			&& curl -sf "$(LANGFUSE_322_UI_URL)/api/public/ready" >/dev/null 2>&1; then \
+			ready=1; break; \
+		fi; \
+		printf "."; sleep 2; \
+	done; \
+	echo ""; \
+	if [ "$$ready" != "1" ]; then \
+		echo "$(RED)✗ Langfuse 3.22.0 did not become ready at $(LANGFUSE_322_UI_URL)$(RESET)"; \
+		cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.22.yml --project-name $(LANGFUSE_322_COMPOSE_PROJECT) ps; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ Langfuse 3.22.0 ready at $(LANGFUSE_322_UI_URL)$(RESET)"
+	@echo "$(YELLOW)→ Restarting worker after web Prisma migrations$(RESET)"
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.22.yml --project-name $(LANGFUSE_322_COMPOSE_PROJECT) restart langfuse-worker
+	@sleep 5
+	@echo "$(GREEN)✓ Langfuse 3.22.0 worker restarted$(RESET)"
+
+langfuse-3.22-down: ## Stop Langfuse 3.22.0 stack (volumes kept)
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.22.yml --project-name $(LANGFUSE_322_COMPOSE_PROJECT) down
+
+langfuse-3.22-reset: ## Delete Langfuse 3.22.0 volumes (CONFIRM=yes required; does not touch 3.1/v4)
+	@if [ "$(CONFIRM)" != "yes" ]; then \
+		echo "$(RED)Refusing to wipe Langfuse 3.22.0 volumes.$(RESET)"; \
+		echo "  This removes ClickHouse/Postgres/MinIO/Redis data for project $(LANGFUSE_322_COMPOSE_PROJECT)."; \
+		echo "  Re-run: $(GREEN)make langfuse-3.22-reset CONFIRM=yes$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)→ Removing Langfuse 3.22.0 containers and volumes$(RESET)"
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.22.yml --project-name $(LANGFUSE_322_COMPOSE_PROJECT) down -v
+	@echo "$(GREEN)✓ Langfuse 3.22.0 volumes removed$(RESET)"
+
+spec124-langfuse-3.22-e2e: ## Unfakable OTLP route+probe vs Langfuse 3.22.0 (starts 3.22.0)
+	@$(MAKE) langfuse-3.22-up --no-print-directory
+	@chmod +x $(ROOT_DIR)/scripts/spec124_langfuse_3_22_otlp_e2e.sh
+	@LANGFUSE_322_PORT="$(LANGFUSE_322_PORT)" LANGFUSE_322_UI_URL="$(LANGFUSE_322_UI_URL)" \
+		LANGFUSE_322_PK="$(LANGFUSE_322_PK)" LANGFUSE_322_SK="$(LANGFUSE_322_SK)" \
+		LANGFUSE_322_PROJECT_ID="$(LANGFUSE_322_PROJECT_ID)" \
+		$(ROOT_DIR)/scripts/spec124_langfuse_3_22_otlp_e2e.sh
+
+langfuse-3.225-up: ## Start Langfuse 3.225.5 (UI http://localhost:3340) for OTLP persist E2E
+	@echo "$(BOLD)$(BLUE)Starting Langfuse 3.225.5$(RESET)"
+	@cd $(DOCKER_DIR) && LANGFUSE_3225_PORT="$(LANGFUSE_3225_PORT)" NEXTAUTH_URL="$(LANGFUSE_3225_UI_URL)" \
+		docker compose -f docker-compose.langfuse-3.225.yml --project-name $(LANGFUSE_3225_COMPOSE_PROJECT) up -d
+	@echo "$(YELLOW)→ Waiting for Langfuse 3.225.5 health (up to 180s)...$(RESET)"
+	@ready=0; \
+	for i in $$(seq 1 90); do \
+		if curl -sf "$(LANGFUSE_3225_UI_URL)/api/public/health" >/dev/null 2>&1 \
+			&& curl -sf "$(LANGFUSE_3225_UI_URL)/api/public/ready" >/dev/null 2>&1; then \
+			ready=1; break; \
+		fi; \
+		printf "."; sleep 2; \
+	done; \
+	echo ""; \
+	if [ "$$ready" != "1" ]; then \
+		echo "$(RED)✗ Langfuse 3.225.5 did not become ready at $(LANGFUSE_3225_UI_URL)$(RESET)"; \
+		cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.225.yml --project-name $(LANGFUSE_3225_COMPOSE_PROJECT) ps; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ Langfuse 3.225.5 ready at $(LANGFUSE_3225_UI_URL)$(RESET)"
+	@echo "$(YELLOW)→ Restarting worker after web Prisma migrations$(RESET)"
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.225.yml --project-name $(LANGFUSE_3225_COMPOSE_PROJECT) restart langfuse-worker
+	@sleep 5
+	@echo "$(GREEN)✓ Langfuse 3.225.5 worker restarted$(RESET)"
+
+langfuse-3.225-down: ## Stop Langfuse 3.225.5 stack (volumes kept)
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.225.yml --project-name $(LANGFUSE_3225_COMPOSE_PROJECT) down
+
+langfuse-3.225-reset: ## Delete Langfuse 3.225.5 volumes (CONFIRM=yes required)
+	@if [ "$(CONFIRM)" != "yes" ]; then \
+		echo "$(RED)Refusing to wipe Langfuse 3.225.5 volumes.$(RESET)"; \
+		echo "  This removes ClickHouse/Postgres/MinIO/Redis data for project $(LANGFUSE_3225_COMPOSE_PROJECT)."; \
+		echo "  Re-run: $(GREEN)make langfuse-3.225-reset CONFIRM=yes$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)→ Removing Langfuse 3.225.5 containers and volumes$(RESET)"
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.langfuse-3.225.yml --project-name $(LANGFUSE_3225_COMPOSE_PROJECT) down -v
+	@echo "$(GREEN)✓ Langfuse 3.225.5 volumes removed$(RESET)"
+
+spec124-langfuse-3.225-e2e: ## Unfakable OTLP persist E2E vs Langfuse 3.225.5 (starts 3.225.5)
+	@$(MAKE) langfuse-3.225-up --no-print-directory
+	@chmod +x $(ROOT_DIR)/scripts/spec124_langfuse_3_225_otlp_e2e.sh
+	@LANGFUSE_3225_PORT="$(LANGFUSE_3225_PORT)" LANGFUSE_3225_UI_URL="$(LANGFUSE_3225_UI_URL)" \
+		LANGFUSE_3225_PK="$(LANGFUSE_3225_PK)" LANGFUSE_3225_SK="$(LANGFUSE_3225_SK)" \
+		LANGFUSE_3225_PROJECT_ID="$(LANGFUSE_3225_PROJECT_ID)" \
+		$(ROOT_DIR)/scripts/spec124_langfuse_3_225_otlp_e2e.sh
+
+spec124-langfuse-cloud-e2e: ## Unfakable OTLP persist E2E vs current Langfuse Cloud (keys from .env)
+	@chmod +x $(ROOT_DIR)/scripts/spec124_langfuse_cloud_e2e.sh
+	@$(ROOT_DIR)/scripts/spec124_langfuse_cloud_e2e.sh
+
+spec124-langfuse-matrix: ## Unfakable 3.1.1 ingestion + 3.22.0 OTLP route + 3.225.5 persist + Cloud
+	@$(MAKE) spec124-langfuse-3.1-e2e --no-print-directory
+	@$(MAKE) spec124-langfuse-3.22-e2e --no-print-directory
+	@$(MAKE) spec124-langfuse-3.225-e2e --no-print-directory
+	@$(MAKE) spec124-langfuse-cloud-e2e --no-print-directory
+	@echo "$(GREEN)✓ spec124-langfuse-matrix passed (3.1.1 + 3.22.0 + 3.225.5 + Cloud)$(RESET)"
+
 spec124-langfuse-e2e: ## One-command live Settings + sessions E2E vs local Langfuse (starts stack)
 	@$(MAKE) langfuse-up --no-print-directory
 	@$(MAKE) dev-bg --no-print-directory WITH_LANGFUSE=1
@@ -2324,7 +2453,7 @@ QUICKSTART_COMPOSE := $(ROOT_DIR)/docker-compose.quickstart.yml
 	spec091-upgrade-soak spec091-gates \
 	spec93-migration-assessment spec93-migration-assessment-pg16 \
 	spec93-migration-assessment-pg17 spec93-migration-assessment-pg18 \
-	spec137-migrate-025-026-proof
+	spec137-migrate-025-026-proof spec139-migrate-engine-proof
 
 # SPEC-091: v0.22.0 GHCR → HEAD smoke soak (tiny corpus; migrations 106–141 + confirm-drop).
 # Formal realism matrix: make spec93-migration-assessment (see specs/93-migration-assessment/).
@@ -2389,6 +2518,12 @@ spec137-migrate-025-026-proof: ## SPEC-137: 0.25→0.26 migrate consent alias + 
 	@chmod +x $(ROOT_DIR)/scripts/spec137_migrate_025_026_proof.sh
 	@$(ROOT_DIR)/scripts/spec137_migrate_025_026_proof.sh
 	@echo "$(GREEN)SPEC-137 proof OK$(RESET) — see specs/137-issue-migration-25-to-26/measurements/"
+
+spec139-migrate-engine-proof: ## SPEC-139: mid-cutover engine (iw2 21000, W3 coverage-sum, remainder)
+	@echo "$(BOLD)$(BLUE)SPEC-139 migrate engine proof$(RESET)"
+	@chmod +x $(ROOT_DIR)/scripts/spec139_migrate_engine_proof.sh
+	@$(ROOT_DIR)/scripts/spec139_migrate_engine_proof.sh
+	@echo "$(GREEN)SPEC-139 proof OK$(RESET) — see specs/139-issue-migration/measurements/"
 
 spec109-e2e: dev-bg ## SPEC-109 reasoning effort UI E2E + measurement screenshots
 	@echo "$(BLUE)SPEC-109 E2E → frontend $(FRONTEND_URL) backend $(BACKEND_URL)$(RESET)"
@@ -3156,7 +3291,7 @@ logs: ## Show recent logs from all services
 	@echo "$(BOLD)Docker Container Status:$(RESET)"
 	@cd $(DOCKER_DIR) && docker compose ps 2>/dev/null || echo "Docker not running"
 
-.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates spec124-proof spec124-langfuse-e2e spec124-langfuse-3.1-e2e spec125-proof spec128-proof
+.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates spec124-proof spec124-langfuse-e2e spec124-langfuse-3.1-e2e spec124-langfuse-3.22-e2e spec124-langfuse-3.225-e2e spec124-langfuse-cloud-e2e spec124-langfuse-matrix spec125-proof spec128-proof
 
 resource-proof: ## Run SPEC-006 resource safety proof suite (mock; no Postgres required)
 	@chmod +x specifications/006-ensure-perf/e2e/run_resource_proof.sh scripts/spec006_no_get_all_api.sh scripts/spec006_budget_catalog_sync.sh scripts/spec006_source_ids_migration.sh scripts/spec006_no_unguarded_community_api.sh scripts/spec006_no_adhoc_resource_budget.sh scripts/spec006_apply_migration_038.sh edgequake/scripts/migrations/apply_038.sh

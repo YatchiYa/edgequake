@@ -44,9 +44,9 @@ pub struct VerifyReport {
 }
 
 impl VerifyReport {
-    /// Coverage gate: typed counterparts for every expected legacy row.
-    /// Equality mismatches fail only when `EDGEQUAKE_MIGRATION_VERIFY_EQUALITY`
-    /// is enabled (default on — copy path; set `0` for regenerate/coverage-only).
+    /// Coverage gate: typed counterparts for every expected legacy row (≡ DROP
+    /// 126 / LAW-139-3). Sampled equality mismatches fail only when
+    /// `EDGEQUAKE_MIGRATION_VERIFY_EQUALITY=1` (opt-in copy-path CI).
     pub fn passes(&self) -> bool {
         let coverage_ok = self.actual >= self.expected;
         if !coverage_ok {
@@ -60,14 +60,15 @@ impl VerifyReport {
     }
 }
 
-/// `EDGEQUAKE_MIGRATION_VERIFY_EQUALITY` — default on; `0`/`false` = coverage-only.
+/// `EDGEQUAKE_MIGRATION_VERIFY_EQUALITY` — default **off** (coverage-only,
+/// SPEC-139). `1` / `true` / `on` = also require sampled mismatches == 0.
 pub fn verify_equality_required() -> bool {
     match std::env::var("EDGEQUAKE_MIGRATION_VERIFY_EQUALITY") {
         Ok(v) => {
             let t = v.trim();
-            !(t == "0" || t.eq_ignore_ascii_case("false") || t.eq_ignore_ascii_case("off"))
+            t == "1" || t.eq_ignore_ascii_case("true") || t.eq_ignore_ascii_case("on")
         }
-        Err(_) => true,
+        Err(_) => false,
     }
 }
 
@@ -172,6 +173,9 @@ pub fn spawn_for_serving(
         std::sync::Arc::new(super::chunk_text_backfill::ChunkTextBackfillJob::new(
             kv_table,
         )),
+        std::sync::Arc::new(super::family_remainder::DedupRemainderJob::new()),
+        std::sync::Arc::new(super::family_remainder::ShellRemainderJob::new()),
+        std::sync::Arc::new(super::family_remainder::ArtifactRemainderJob::new()),
         std::sync::Arc::new(
             super::chunk_embedding_backfill::ChunkEmbeddingBackfillJob::new(
                 vectors_table,
@@ -191,7 +195,7 @@ pub fn spawn_for_serving(
     }))
 }
 
-async fn run_engine(
+pub async fn run_engine(
     pool: PgPool,
     jobs: Vec<std::sync::Arc<dyn BackfillJob>>,
     config: MigrationEngineConfig,
@@ -221,6 +225,14 @@ async fn run_engine(
         );
     }
 
+    let reclaimed = lease::reclaim_verify_failed_jobs(&pool).await.unwrap_or(0);
+    if reclaimed > 0 {
+        tracing::info!(
+            reclaimed,
+            "SPEC-139: reclaimed verify-failed migration jobs for retry"
+        );
+    }
+
     if !mode.runs_jobs() {
         tracing::info!(
             env = MIGRATION_MODE_ENV,
@@ -230,7 +242,13 @@ async fn run_engine(
     }
 
     for job in &jobs {
-        run_job(&pool, job.as_ref(), &config).await?;
+        if let Err(e) = run_job(&pool, job.as_ref(), &config).await {
+            tracing::error!(
+                step = job.step_id(),
+                error = %e,
+                "SPEC-139: migration job failed — continuing remaining jobs"
+            );
+        }
     }
     Ok(())
 }
@@ -460,15 +478,22 @@ mod tests {
             mismatches: 0,
         };
         assert!(pass.passes());
-        let fail = VerifyReport {
-            mismatches: 1,
-            ..pass.clone()
-        };
-        assert!(!fail.passes());
         let under = VerifyReport {
             actual: 9,
             ..pass.clone()
         };
         assert!(!under.passes());
+        let mismatches_ok_by_default = VerifyReport {
+            mismatches: 1,
+            ..pass.clone()
+        };
+        assert!(
+            mismatches_ok_by_default.passes(),
+            "LAW-139: equality is opt-in; coverage-only is default"
+        );
+        let _g = crate::test_env_lock::test_env_lock();
+        std::env::set_var("EDGEQUAKE_MIGRATION_VERIFY_EQUALITY", "1");
+        assert!(!mismatches_ok_by_default.passes());
+        std::env::remove_var("EDGEQUAKE_MIGRATION_VERIFY_EQUALITY");
     }
 }

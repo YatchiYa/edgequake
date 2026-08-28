@@ -130,7 +130,14 @@ pub struct VerifySummary {
 impl VerifySummary {
     /// Same pass rule as `runner::VerifyReport::passes` (SSOT).
     pub fn passes(&self) -> bool {
-        self.mismatches == 0 && self.actual >= self.expected
+        super::super::runner::VerifyReport {
+            metric: String::new(),
+            expected: self.expected,
+            actual: self.actual,
+            sampled: self.sampled,
+            mismatches: self.mismatches,
+        }
+        .passes()
     }
 }
 

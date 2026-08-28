@@ -408,6 +408,30 @@ pub async fn job_detail(
     }))
 }
 
+/// SPEC-139 LAW-139-4: coverage can grow after W1/remainder. Reclaim jobs that
+/// terminal-failed on `verify_failed` so boot retries (reset cursor).
+pub async fn reclaim_verify_failed_jobs(pool: &PgPool) -> Result<u64, StorageError> {
+    let res = sqlx::query(
+        r#"
+        UPDATE edgequake.edgequake_migration_job
+        SET state = 'pending',
+            last_error = NULL,
+            cursor_position = NULL,
+            processed_count = 0,
+            failed_count = 0,
+            completed_at = NULL,
+            lease_owner = NULL,
+            lease_expires_at = NULL
+        WHERE state = 'failed'
+          AND last_error ? 'verify_failed'
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| StorageError::Database(format!("migration reclaim verify-failed: {e}")))?;
+    Ok(res.rows_affected())
+}
+
 /// Terminal state transition (completed/failed), releasing the lease.
 pub async fn finish_job(
     pool: &PgPool,
