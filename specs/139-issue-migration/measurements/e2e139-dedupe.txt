@@ -1,6 +1,7 @@
 === U-139-DEDUP (no DB) ===
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.39s
-     Running unittests src/lib.rs (target/debug/deps/edgequake_storage-bcfd1a173468c1b4)
+   Compiling edgequake-storage v0.26.3 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.58s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_storage-63a5e0514908f616)
 
 running 3 tests
 test migration_engine::conflict_dedupe::tests::contract_spec139_dedupe_empty ... ok

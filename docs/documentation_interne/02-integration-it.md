@@ -1,12 +1,12 @@
 ---
 title: "EdgeQuake — Guide d'intégration IT"
-version: "0.26.2"
+version: "0.26.3"
 audience: "Équipes d'exploitation, DBA, supervision, sécurité opérationnelle"
 ---
 
 # EdgeQuake — Guide d'intégration IT
 
-> **Produit** : EdgeQuake v0.26.2 · **Schéma base** : migrations jusqu'à **149**
+> **Produit** : EdgeQuake v0.26.3 · **Schéma base** : migrations jusqu'à **149**
 > **Documents liés** : [Déploiement technique](01-deploiement-technique.md) · [Deep dive architecture & algorithme](03-deep-dive-architecture-algorithme.md)
 
 Ce guide s'adresse aux équipes IT qui **exploitent** EdgeQuake au quotidien. Il
@@ -564,7 +564,8 @@ sans migration de schéma (`migrate dry-run` renvoie « aucune migration en atte
 
 | Version cible            | Document                                                                                                                                              |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0.26.2** _(courante)_  | [../operations/upgrade-to-0.26.2.md](../operations/upgrade-to-0.26.2.md) — Langfuse 3.1, K8s, SSE, **sans nouvelle migration**                         |
+| **0.26.3** _(courante)_  | [../operations/upgrade-to-0.26.3.md](../operations/upgrade-to-0.26.3.md) — SPEC-139 moteur mid-cutover, **sans nouvelle migration** |
+| 0.26.2                   | [../operations/upgrade-to-0.26.2.md](../operations/upgrade-to-0.26.2.md) — Langfuse 3.1, K8s, SSE, **sans nouvelle migration**                         |
 | 0.26.1                   | [../operations/upgrade-to-0.26.1.md](../operations/upgrade-to-0.26.1.md) — patch CLI migrate, **sans nouvelle migration**                             |
 | 0.26.0                   | [../operations/upgrade-to-0.26.0.md](../operations/upgrade-to-0.26.0.md) — **migration 149**                                                          |
 | 0.25.0                   | [../operations/upgrade-to-0.25.0.md](../operations/upgrade-to-0.25.0.md)                                                                              |

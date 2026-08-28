@@ -1,14 +1,12 @@
-# 09 — Ops runbook (0.26.1 → SPEC-139 engine)
+# 09 — Ops runbook (0.26.1 → 0.26.3)
 
 Confirm-drop remains consent-gated. Backup before DROP OLD.
 
-**Pin:** product `VERSION` is still **0.26.2**. GHCR `0.26.3` exists only after
-`make version-bump VERSION=0.26.3` and `git tag v0.26.3`. Until then deploy
-**this branch / Unreleased binary**, not `ghcr.io/raphaelmansuy/edgequake:0.26.1`.
+**Pin:** `ghcr.io/raphaelmansuy/edgequake:0.26.3`. Do not stay on `0.26.1`.
 
 ```text
 1. Backup (pg_dump -Fc / volume snapshot)
-2. Deploy the SPEC-139 engine binary (schema train still 149 — no new sqlx)
+2. Deploy v0.26.3 API image (schema train still 149 — no new sqlx)
 3. Set EDGEQUAKE_MIGRATION_MODE=automatic
 4. Start the server — engine resumes:
    - w1-chunk-text-backfill
@@ -25,7 +23,7 @@ Confirm-drop remains consent-gated. Backup before DROP OLD.
 7. GREEN + backup:
    edgequake migrate --confirm-drop
 8. edgequake migrate   # 142 emptiness assert
-9. Verify /health version (0.26.3 only after the tag)
+9. Verify /health version 0.26.3
 ```
 
 ## Do not
@@ -49,6 +47,6 @@ stalls (many legacy keys → one typed row). Do not drop; see
 
 ## Detail
 
-- Product pin when tagged: [`docs/operations/upgrade-to-0.26.3.md`](../../docs/operations/upgrade-to-0.26.3.md)
+- Product pin: [`docs/operations/upgrade-to-0.26.3.md`](../../docs/operations/upgrade-to-0.26.3.md)
 - Leftover 091 ladder: [`upgrade-to-0.26.0.md`](../../docs/operations/upgrade-to-0.26.0.md)
 - Consent CLI: [`upgrade-to-0.26.1.md`](../../docs/operations/upgrade-to-0.26.1.md)

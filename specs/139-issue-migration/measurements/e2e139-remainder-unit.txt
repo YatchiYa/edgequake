@@ -1,6 +1,7 @@
 === remainder step ids ===
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
-     Running unittests src/lib.rs (target/debug/deps/edgequake_storage-a4665354aabde008)
+   Compiling edgequake-storage v0.26.3 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.54s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_storage-bf32041ce382258b)
 
 running 1 test
 test migration_engine::family_remainder::tests::contract_spec139_remainder_step_ids_stable ... ok

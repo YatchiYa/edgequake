@@ -3,7 +3,7 @@ name: edgequake
 description: EdgeQuake web UI, API, and PostgreSQL (pgvector + AGE)
 type: application
 version: 0.1.0
-appVersion: "0.26.2"
+appVersion: "0.26.3"
 keywords:
   - edgequake
   - rag

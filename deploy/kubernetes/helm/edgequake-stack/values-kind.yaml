@@ -7,7 +7,7 @@
 
 edgequake:
   global:
-    edgequakeVersion: "0.26.2"
+    edgequakeVersion: "0.26.3"
   postgres:
     persistence:
       size: 5Gi

@@ -4,11 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-Patch target **v0.26.3**: SPEC-139 mid-cutover engine stall (iw2 Postgres 21000,
-W3 false-terminal verify, KV remainder after 119-before-122). **No new
-migration.** Schema train remains **149**. `VERSION` is still **0.26.2** — GHCR
-`0.26.3` exists only after the tag. Upgrade:
+## [0.26.3] — 2026-08-28
+
+Patch: SPEC-139 mid-cutover engine stall (iw2 Postgres 21000, W3 false-terminal
+verify, KV remainder after 119-before-122); Langfuse 3.22/3.225 isolated OTLP
+stacks. **No new migration.** Schema train remains **149**. Upgrade:
 [`docs/operations/upgrade-to-0.26.3.md`](docs/operations/upgrade-to-0.26.3.md).
+
+**Deps (crates.io):** unchanged from 0.26.2 (`edgequake-llm` **0.10.8**, `edgequake-pdf2md` **0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0`).
+
+**SPEC-001 Acc:** attested from existing [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **PDF geometry not re-scored**.
 
 ### Fixed
 - **SPEC-139 — mid-cutover engine stall** — Field `0.26.1` cannot finish SPEC-091

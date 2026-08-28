@@ -2,7 +2,7 @@
 # Use values-kind.yaml for local kind / E2E proof.
 
 global:
-  edgequakeVersion: "0.26.2"
+  edgequakeVersion: "0.26.3"
 
 namespace:
   create: true

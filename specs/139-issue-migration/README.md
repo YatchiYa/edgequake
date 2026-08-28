@@ -5,8 +5,7 @@
 > `iw2` Postgres `21000`, then `--confirm-drop` Wave D ABORTs.
 > **Method:** First principles (code is law) + field logs + unfakable Postgres e2e.
 > **Broken through:** **v0.26.1** (and HEAD until this pack).
-> **Target cut:** **v0.26.3** (Unreleased until tag; `VERSION` is still
-> **0.26.2**). Schema train stays **149**.
+> **Target cut:** **v0.26.3**. Schema train stays **149**.
 
 ## One-screen verdict
 

@@ -1,6 +1,6 @@
 === verify gate (coverage-first) ===
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
-     Running unittests src/lib.rs (target/debug/deps/edgequake_storage-a4665354aabde008)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.14s
+     Running unittests src/lib.rs (target/debug/deps/edgequake_storage-bf32041ce382258b)
 
 running 1 test
 test migration_engine::runner::tests::contract_spec091_verify_report_gate ... ok

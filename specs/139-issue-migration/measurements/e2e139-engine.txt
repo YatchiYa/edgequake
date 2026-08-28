@@ -1,7 +1,7 @@
 === E2E-139-01..08 (Postgres required) ===
-   Compiling edgequake-storage v0.26.2 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.42s
-     Running tests/e2e_spec139_engine.rs (target/debug/deps/e2e_spec139_engine-ea6bbe325a1399d5)
+   Compiling edgequake-storage v0.26.3 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 17.05s
+     Running tests/e2e_spec139_engine.rs (target/debug/deps/e2e_spec139_engine-9607e38ef3de6c58)
 
 running 8 tests
 test e2e_spec139_01_iw2_within_batch_dedupe_avoids_21000 ... UNFAKABLE SQLSTATE=21000
@@ -23,5 +23,5 @@ ok
 test e2e_spec139_08_orphan_lineage_remainder_verify_passes ... UNFAKABLE E2E-139-08 verify_passes=1 residue_lineage=1
 ok
 
-test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.24s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.18s
 

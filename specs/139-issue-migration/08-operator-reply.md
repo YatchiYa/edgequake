@@ -1,9 +1,7 @@
 # 08 — Operator reply
 
-Oui — il faut un **binaire plus récent que 0.26.1**. L’image GHCR `0.26.3`
-n’existe **pas** tant que le tag n’est pas poussé (`VERSION` est encore
-**0.26.2**). La correction SPEC-139 est dans **HEAD / Unreleased** (cible de
-cut **0.26.3**). D’ici le tag : image construite depuis cette branche.
+Oui — il faut **v0.26.3** (`ghcr.io/raphaelmansuy/edgequake:0.26.3`), pas
+`0.26.1`.
 
 L’image `0.26.1` applique bien le SAFE SCHEMA (migration **149**). Les DROP OLD
 **125 / 126 / 131** restent bloqués tant que la copie n’est pas terminée —
@@ -22,10 +20,10 @@ Sur `0.26.1` le moteur de copie plante :
 Après copie, quelques orphelins (pas de parent `documents` / alias SPEC-111)
 peuvent rester RED — ne pas forcer le DROP.
 
-Après upgrade (image **cette branche** ou **0.26.3** une fois taguée) :
+Après upgrade **0.26.3** :
 
 ```bash
-# 1. Déployer l’image (pas 0.26.1)
+# 1. Déployer ghcr.io/raphaelmansuy/edgequake:0.26.3 (pas 0.26.1)
 # 2. Démarrer le serveur (EDGEQUAKE_MIGRATION_MODE=automatic)
 # 3. Suivre : edgequake migrate status / guard
 # 4. Quand GREEN + backup :

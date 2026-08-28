@@ -659,7 +659,25 @@ mod tests {
     #[test]
     fn contract_spec091_phase_ready_to_flip_chunk_requires_verify() {
         let done = job("completed", Some(100.0));
-        let bad = VerifySummary {
+        let uncovered = VerifySummary {
+            expected: 10,
+            actual: 9,
+            sampled: 5,
+            mismatches: 0,
+        };
+        assert_eq!(
+            derive_family_phase(
+                FamilyMode::Dual,
+                true,
+                Some(&done),
+                Some(&uncovered),
+                0,
+                false,
+                false
+            ),
+            FamilyPhase::DualWriting
+        );
+        let mismatches_ok = VerifySummary {
             expected: 10,
             actual: 10,
             sampled: 5,
@@ -670,12 +688,13 @@ mod tests {
                 FamilyMode::Dual,
                 true,
                 Some(&done),
-                Some(&bad),
+                Some(&mismatches_ok),
                 0,
                 false,
                 false
             ),
-            FamilyPhase::DualWriting
+            FamilyPhase::ReadyToFlip,
+            "LAW-139: sampled mismatches do not block flip (coverage-first)"
         );
         let good = VerifySummary {
             expected: 10,

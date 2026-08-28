@@ -3,7 +3,7 @@
 
 edgequake:
   global:
-    edgequakeVersion: "0.26.2"
+    edgequakeVersion: "0.26.3"
   api:
     langfuse:
       baseUrl: "http://langfuse-web.langfuse.svc.cluster.local:3000"

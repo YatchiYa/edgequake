@@ -2,7 +2,7 @@
 title: 'Deployment Guide'
 ---
 
-> **Product: v0.26.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.26.3** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Deployment Guide
 
