@@ -255,6 +255,8 @@ Langfuse installs **separately** from EdgeQuake (separate namespace + Postgres â
 
 ---
 
+The API image is **distroless** (no shell). `kubectl exec` cannot open `/bin/sh`. Use `kubectl logs`, HTTP probes (`/live`, `/ready`), or a debug sidecar. Helm `preStop` runs `edgequake pre-stop`, not `sleep`.
+
 ## Troubleshooting
 
 ### API CrashLoopBackOff: mock LLM forbidden

@@ -8,6 +8,9 @@
 # (chromium/7961). No external libpdfium or legacy PDFIUM_DYNAMIC_LIB_PATH.
 # Runtime: atomic extract + size integrity under PDFIUM_AUTO_CACHE_DIR.
 # Hardened deploys may set PDFIUM_LIB_PATH to a pre-placed read-only library.
+#
+# Runtime is distroless (no curl/wget/shell) so Trivy HIGH from those packages
+# cannot return. HEALTHCHECK uses `edgequake healthcheck` (GET /live).
 
 # ============================================
 # Stage 1: Build
@@ -62,49 +65,44 @@ RUN if [ "$ENABLE_OTEL" = "false" ]; then \
     fi
 
 # ============================================
-# Stage 2: Runtime
+# Stage 2: Shared libs pdfium needs that distroless/cc does not ship
 # ============================================
-# See builder-stage comment above for why --platform is omitted.
-FROM debian:bookworm-slim AS runtime
+# debian-slim previously provided zlib for free. Distroless cc has glibc +
+# libstdc++ only. Copy .so files into /opt/edgequake-libs (not /lib) so we
+# never overlay glibc. LD_LIBRARY_PATH is set in the runtime stage.
+FROM debian:bookworm-slim AS libs
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends zlib1g \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /runtime-libs \
+    && cp -a /lib/*/libz.so.1* /runtime-libs/
+
+# ============================================
+# Stage 3: Runtime (no shell, no curl, no apt)
+# ============================================
+FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 
 WORKDIR /app
 
-# Install runtime dependencies (no pdfium dylib needed — embedded in binary)
-# Also create the pdfium-auto cache directory that is writable by the non-root
-# edgequake user at runtime (fix #100: "Permission denied" when pdfium-auto
-# tries to extract its embedded library on first use).
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd -r -s /bin/false edgequake \
-    && mkdir -p /tmp/edgequake-pdfium-cache \
-    && chmod 1777 /tmp/edgequake-pdfium-cache
-
 # pdfium-auto extract cache (SPEC-095: atomic publish + lock + size check).
 # Prefer PDFIUM_LIB_PATH=/path/to/libpdfium.so for hardened read-only mounts.
+# /tmp is world-writable on distroless; prime_pdfium mkdir's the cache dir.
 ENV PDFIUM_AUTO_CACHE_DIR=/tmp/edgequake-pdfium-cache
+ENV LD_LIBRARY_PATH=/opt/edgequake-libs
 
-# Copy binary from builder
-COPY --from=builder /app/target/release/edgequake /usr/local/bin/
+COPY --from=libs /runtime-libs /opt/edgequake-libs
+COPY --from=builder /app/target/release/edgequake /usr/local/bin/edgequake
 # Copy models.toml so the runtime binary finds up-to-date models at ./models.toml
 # (CWD=/app, see WORKDIR above). Without this, the binary falls back to the compiled-in
 # defaults which lack the v0.9.8 models (gpt-5.4, claude-sonnet-4-6, gemma4).
 COPY --from=builder /app/models.toml /app/models.toml
 
-# Set ownership
-RUN chown edgequake:edgequake /usr/local/bin/edgequake /app/models.toml
+USER nonroot
 
-# Switch to non-root user
-USER edgequake
-
-# Expose API port
 EXPOSE 8080
 
-# Health check
+# Exec form: distroless has no shell. Probes GET /live (not deep /health).
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD ["/usr/local/bin/edgequake", "healthcheck"]
 
-# Run the server
-ENTRYPOINT ["edgequake"]
+ENTRYPOINT ["/usr/local/bin/edgequake"]

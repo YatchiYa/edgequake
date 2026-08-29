@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **API image distroless (Trivy HIGH)** — Runtime is `gcr.io/distroless/cc-debian12:nonroot` (no `curl`/`wget`/`sh`). HEALTHCHECK is `edgequake healthcheck` (GET `/live`). Helm preStop is `edgequake pre-stop`. TLS crates use rustls only so the binary does not link libssl. Residual `CVE-2026-14456` is ignored (OpenSSL QUIC server, 3.5+; image is 3.0.x). Release CD scans the API image at HIGH/CRITICAL.
+
 ### Fixed
 - **SPEC-141 — list completeness (pagination audit)** — Catalogs exhaust
   pages; documents get a wired pager (not a fetch-all); conversation list honors

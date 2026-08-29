@@ -49,9 +49,9 @@ spec:
             preStop:
               exec:
                 command:
-                  - sh
-                  - -c
-                  - sleep {{ .Values.api.preStopSleepSeconds }}
+                  - /usr/local/bin/edgequake
+                  - pre-stop
+                  - {{ .Values.api.preStopSleepSeconds | quote }}
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
           livenessProbe:

@@ -44,6 +44,7 @@ api:
       memory: 512Mi
     limits:
       memory: 2Gi
+  # Distroless API image has no shell; preStop runs `edgequake pre-stop <seconds>`.
   preStopSleepSeconds: 15
   env:
     EDGEQUAKE_HOST: "0.0.0.0"

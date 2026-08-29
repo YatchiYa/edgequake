@@ -556,6 +556,23 @@ Supported PostgreSQL images: **16, 17, 18** (`ghcr.io/raphaelmansuy/edgequake-po
 
 ---
 
+## Container image
+
+The GHCR API image (`ghcr.io/raphaelmansuy/edgequake`) is **distroless** (`gcr.io/distroless/cc-debian12:nonroot`). It has no shell and no `curl`/`wget`.
+
+| Probe | How |
+| ----- | --- |
+| Docker / Compose HEALTHCHECK | `edgequake healthcheck` (GET `/live` on `127.0.0.1:${EDGEQUAKE_PORT:-8080}`) |
+| Kubernetes liveness | HTTP GET `/live` |
+| Kubernetes readiness | HTTP GET `/ready` |
+| Kubernetes preStop | `edgequake pre-stop <seconds>` (no `sh`) |
+
+Do **not** `docker exec … /bin/sh` into the API container — there is no shell. Debug with pod logs, a sidecar, or the distroless `:debug-nonroot` variant if you rebuild with that base. Host-side `curl http://localhost:8080/live` is fine.
+
+Trivy HIGH/CRITICAL on the API image is a release gate. The only documented ignore is `CVE-2026-14456` (OpenSSL QUIC server, 3.5+ only; the image ships OpenSSL 3.0.x).
+
+---
+
 ## Production Hardening Checklist
 
 ### Pre-Deployment
@@ -573,6 +590,7 @@ Supported PostgreSQL images: **16, 17, 18** (`ghcr.io/raphaelmansuy/edgequake-po
 
 ### Runtime
 
+- [ ] Container probes use `/live` (liveness) and `/ready` (readiness), not deep `/health`
 - [ ] Health checks monitored
 - [ ] Error rates alerting configured
 - [ ] Rate limit violations tracked

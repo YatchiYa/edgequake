@@ -96,6 +96,18 @@ jobs:
           cache-from: type=gha,scope=amd64
           cache-to:   type=gha,scope=amd64,mode=max
 
+      - name: Trivy HIGH/CRITICAL (API image)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository }}:${{ needs.meta.outputs.version }}-amd64
+          format: table
+          exit-code: "1"
+          ignore-unfixed: false
+          severity: HIGH,CRITICAL
+          trivyignores: .trivyignore
+          version: v0.74.0
+
   # ── Build arm64 — native ARM64 runner (no QEMU) ───────────────────────────────
   build-arm64:
     needs: meta
@@ -121,6 +133,18 @@ jobs:
           tags: ghcr.io/${{ github.repository }}:${{ needs.meta.outputs.version }}-arm64
           cache-from: type=gha,scope=arm64
           cache-to:   type=gha,scope=arm64,mode=max
+
+      - name: Trivy HIGH/CRITICAL (API image arm64)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository }}:${{ needs.meta.outputs.version }}-arm64
+          format: table
+          exit-code: "1"
+          ignore-unfixed: false
+          severity: HIGH,CRITICAL
+          trivyignores: .trivyignore
+          version: v0.74.0
 
   # ── Merge API into a single multi-arch manifest ───────────────────────────────
   merge:

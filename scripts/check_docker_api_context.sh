@@ -46,6 +46,17 @@ DOCKERFILE="$EQ/docker/Dockerfile"
 grep -q 'COPY.*benches/ benches/' "$DOCKERFILE" || fail "Dockerfile missing: COPY benches/ (with or without edgequake/ prefix)"
 grep -q 'COPY.*examples/ examples/' "$DOCKERFILE" || fail "Dockerfile missing: COPY examples/ (with or without edgequake/ prefix)"
 
+# Runtime must stay distroless: no curl/wget healthcheck client (Trivy HIGH).
+if grep -E 'apt-get install.*\b(curl|wget)\b' "$DOCKERFILE" >/dev/null; then
+  fail "Dockerfile must not apt-get install curl or wget (use edgequake healthcheck)"
+fi
+if grep -E 'HEALTHCHECK.*\b(curl|wget)\b' "$DOCKERFILE" >/dev/null; then
+  fail "Dockerfile HEALTHCHECK must not use curl or wget (use edgequake healthcheck)"
+fi
+grep -q 'edgequake", "healthcheck"' "$DOCKERFILE" \
+  || grep -q "edgequake', 'healthcheck'" "$DOCKERFILE" \
+  || fail "Dockerfile HEALTHCHECK must invoke edgequake healthcheck"
+
 # Parse-only check (no compile) — same failure mode as the Docker builder stage.
 (cd "$EQ" && cargo metadata --format-version 1 --no-deps >/dev/null)
 

@@ -562,9 +562,11 @@ EdgeQuake provides health endpoints for monitoring:
 
 ### Docker Healthcheck
 
+The API image is distroless (no `curl`/`wget`/`sh`). The binary probes `GET /live`:
+
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD ["/usr/local/bin/edgequake", "healthcheck"]
 ```
 
 ### Kubernetes Probes
