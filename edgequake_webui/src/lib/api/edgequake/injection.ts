@@ -3,6 +3,8 @@
  */
 
 import { api } from "../client";
+import { fetchAllPages } from "../fetch-all-pages";
+import { buildQueryString, withQuery } from "../query-params";
 
 export interface PutInjectionRequest {
   name: string;
@@ -30,6 +32,9 @@ export interface InjectionSummary {
 export interface ListInjectionsResponse {
   items: InjectionSummary[];
   total: number;
+  has_more?: boolean;
+  limit?: number;
+  offset?: number;
 }
 
 export interface InjectionDetailResponse {
@@ -68,9 +73,28 @@ export async function putInjection(
 export async function listInjections(
   workspaceId: string,
 ): Promise<ListInjectionsResponse> {
-  return api.get<ListInjectionsResponse>(
-    `/workspaces/${workspaceId}/injections`,
-  );
+  const items = await fetchAllPages(async (offset, limit) => {
+    const response = await api.get<ListInjectionsResponse>(
+      withQuery(
+        `/workspaces/${workspaceId}/injections`,
+        buildQueryString({ limit, offset }),
+      ),
+    );
+    return {
+      items: response.items ?? [],
+      total:
+        typeof response.total === "number"
+          ? response.total
+          : (response.items?.length ?? 0),
+    };
+  });
+  return {
+    items,
+    total: items.length,
+    has_more: false,
+    offset: 0,
+    limit: items.length,
+  };
 }
 
 export async function getInjection(

@@ -15,6 +15,36 @@ import type {
 } from "../types/workspaces.js";
 import { Resource } from "./base.js";
 
+const LIST_PAGE_LIMIT = 100;
+const LIST_PAGE_MAX = 50;
+
+type PagedBody<T> = { items?: T[]; total?: number };
+
+/**
+ * SPEC-141 — Exhaust offset/limit catalog pages. A raw array is treated as
+ * a complete legacy payload (no further requests).
+ */
+async function exhaustPagedList<T>(
+  fetchPage: (offset: number, limit: number) => Promise<PagedBody<T> | T[]>,
+): Promise<T[]> {
+  const all: T[] = [];
+  let offset = 0;
+  for (let i = 0; i < LIST_PAGE_MAX; i += 1) {
+    const raw = await fetchPage(offset, LIST_PAGE_LIMIT);
+    if (Array.isArray(raw)) {
+      return i === 0 ? raw : [...all, ...raw];
+    }
+    const items = raw.items ?? [];
+    all.push(...items);
+    const total = typeof raw.total === "number" ? raw.total : all.length;
+    if (items.length === 0 || all.length >= total || items.length < LIST_PAGE_LIMIT) {
+      break;
+    }
+    offset += items.length;
+  }
+  return all;
+}
+
 export class TenantsResource extends Resource {
   /** Create a new tenant. */
   async create(request: CreateTenantRequest): Promise<TenantInfo> {
@@ -23,12 +53,12 @@ export class TenantsResource extends Resource {
 
   /** List all tenants. */
   async list(): Promise<TenantInfo[]> {
-    // WHY: API returns paginated { items: [...], total, offset, limit }
-    const raw = await this._get<{ items?: TenantInfo[] } | TenantInfo[]>(
-      "/api/v1/tenants",
+    return exhaustPagedList((offset, limit) =>
+      this._get<PagedBody<TenantInfo> | TenantInfo[]>("/api/v1/tenants", {
+        limit,
+        offset,
+      }),
     );
-    if (Array.isArray(raw)) return raw;
-    return (raw as { items?: TenantInfo[] }).items ?? [];
   }
 
   /** Get a tenant by ID. */
@@ -59,12 +89,12 @@ export class TenantsResource extends Resource {
 
   /** List workspaces within a tenant. */
   async listWorkspaces(tenantId: string): Promise<WorkspaceInfo[]> {
-    // WHY: API returns paginated { items: [...], total, offset, limit }
-    const raw = await this._get<{ items?: WorkspaceInfo[] } | WorkspaceInfo[]>(
-      `/api/v1/tenants/${tenantId}/workspaces`,
+    return exhaustPagedList((offset, limit) =>
+      this._get<PagedBody<WorkspaceInfo> | WorkspaceInfo[]>(
+        `/api/v1/tenants/${tenantId}/workspaces`,
+        { limit, offset },
+      ),
     );
-    if (Array.isArray(raw)) return raw;
-    return (raw as { items?: WorkspaceInfo[] }).items ?? [];
   }
 
   /** Get workspace by slug within a tenant. */

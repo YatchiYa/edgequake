@@ -172,6 +172,7 @@ const ConversationItem = memo(function ConversationItem({
 
   return (
     <div
+      data-testid={`conversation-item-${conversation.title}`}
       className={cn(
         "group relative flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-all duration-150",
         isActive && !isSelectionMode
@@ -794,6 +795,7 @@ export function ConversationHistoryPanelV2({ className }: ConversationHistoryPan
         ref={parentRef}
         className="flex-1 overflow-auto"
         style={{ contain: "strict" }}
+        data-testid="conversation-history-scroll"
       >
         {isLoading ? (
           <div className="p-2 space-y-1">

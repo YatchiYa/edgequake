@@ -73,6 +73,9 @@ pub trait WorkspaceService: Send + Sync {
     /// List all tenants (admin only).
     async fn list_tenants(&self, limit: usize, offset: usize) -> Result<Vec<Tenant>>;
 
+    /// Total tenant count (SPEC-140: list JSON `total`, never page length).
+    async fn count_tenants(&self) -> Result<usize>;
+
     // ============ Workspace Operations ============
 
     /// Create a new workspace within a tenant.
@@ -102,8 +105,22 @@ pub trait WorkspaceService: Send + Sync {
     /// Delete a workspace and all its data.
     async fn delete_workspace(&self, workspace_id: Uuid) -> Result<()>;
 
-    /// List all workspaces for a tenant.
+    /// List all workspaces for a tenant (`ORDER BY created_at DESC`).
     async fn list_workspaces(&self, tenant_id: Uuid) -> Result<Vec<Workspace>>;
+
+    /// Page of workspaces for a tenant (`ORDER BY created_at DESC`).
+    ///
+    /// SPEC-140: HTTP list uses this plus [`Self::count_workspaces`] so `total`
+    /// is the table count, not `items.len()`.
+    async fn list_workspaces_page(
+        &self,
+        tenant_id: Uuid,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<Workspace>>;
+
+    /// Total workspaces for a tenant (SPEC-140 honest `total`).
+    async fn count_workspaces(&self, tenant_id: Uuid) -> Result<usize>;
 
     /// Get workspace statistics.
     async fn get_workspace_stats(&self, workspace_id: Uuid) -> Result<WorkspaceStats>;

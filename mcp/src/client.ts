@@ -6,6 +6,7 @@
  */
 import { EdgeQuake } from "edgequake-sdk";
 import { resolveConfig, type McpConfig } from "./config.js";
+import { listAllTenants, listAllWorkspaces } from "./exhaust-list.js";
 
 let _client: EdgeQuake | null = null;
 let _config: McpConfig | null = null;
@@ -19,16 +20,13 @@ export async function getClient(): Promise<EdgeQuake> {
   if (!_initialized) {
     _config = resolveConfig();
 
-    // Create a bootstrap client to discover tenant/workspace if needed
-    const bootstrap = new EdgeQuake({
-      baseUrl: _config.baseUrl,
-      apiKey: _config.apiKey,
-    });
-
     // Auto-discover tenant
     if (!_config.defaultTenant) {
       try {
-        const tenants = await bootstrap.tenants.list();
+        const tenants = await listAllTenants<{ id: string }>(
+          _config.baseUrl,
+          _config.apiKey,
+        );
         if (tenants.length > 0) {
           _config.defaultTenant = tenants[0].id;
 
@@ -50,8 +48,10 @@ export async function getClient(): Promise<EdgeQuake> {
     // Auto-discover workspace
     if (!_config.defaultWorkspace && _config.defaultTenant) {
       try {
-        const workspaces = await bootstrap.tenants.listWorkspaces(
+        const workspaces = await listAllWorkspaces<{ id: string }>(
+          _config.baseUrl,
           _config.defaultTenant,
+          _config.apiKey,
         );
         if (workspaces.length > 0) {
           _config.defaultWorkspace = workspaces[0].id;
@@ -88,4 +88,11 @@ export function getConfig(): McpConfig {
     _config = resolveConfig();
   }
   return _config;
+}
+
+/** Test-only: drop the singleton so a new tenant env can be discovered. */
+export function resetClientForTests(): void {
+  _client = null;
+  _config = null;
+  _initialized = false;
 }

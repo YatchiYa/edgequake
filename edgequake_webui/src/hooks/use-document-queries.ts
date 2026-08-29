@@ -26,6 +26,8 @@ export interface UseDocumentQueriesOptions {
   currentPage: number;
   pageSize: number;
   statusFilter: string;
+  /** SPEC-141: server-side title/file-name filter (`document_pattern`). */
+  documentPattern?: string;
 }
 
 export interface UseDocumentQueriesReturn {
@@ -108,6 +110,7 @@ export function useDocumentQueries({
   currentPage,
   pageSize,
   statusFilter,
+  documentPattern,
 }: UseDocumentQueriesOptions): UseDocumentQueriesReturn {
   const queryClient = useQueryClient();
   const { connected: wsConnected } = useWebSocket();
@@ -119,6 +122,7 @@ export function useDocumentQueries({
     currentPage,
     pageSize,
     statusFilter,
+    documentPattern ?? "",
   ] as const;
 
   // OODA-42 COMPLETE: WebSocket-based real-time updates with transition-aware fallback
@@ -134,6 +138,7 @@ export function useDocumentQueries({
         page: currentPage,
         page_size: pageSize,
         status: statusFilter === "all" ? undefined : statusFilter,
+        document_pattern: documentPattern,
       });
       // SPEC-120: WS-advanced converting must survive a stale queued poll.
       const previous = queryClient.getQueryData<DocumentsResult>([

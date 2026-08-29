@@ -23,6 +23,7 @@ import {
   getWorkspaces,
 } from "@/lib/api/edgequake";
 import { useTenantStore } from "@/stores/use-tenant-store";
+import { extrasInSameTenant, mergeEntitiesById } from "@/lib/tenant/merge-entities-by-id";
 import type { Workspace } from "@/types";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
@@ -111,9 +112,17 @@ export function useWorkspaceSlugResolver(
   // Step 5: Update workspace list in store when fetched
   useEffect(() => {
     if (workspacesData && workspacesData.length > 0) {
-      setWorkspaces(workspacesData);
+      setWorkspaces(
+        mergeEntitiesById(
+          workspacesData,
+          extrasInSameTenant(
+            useTenantStore.getState().workspaces,
+            selectedTenantId,
+          ),
+        ),
+      );
     }
-  }, [workspacesData, setWorkspaces]);
+  }, [workspacesData, setWorkspaces, selectedTenantId]);
 
   // Step 6: Set workspace context when resolved
   useEffect(() => {

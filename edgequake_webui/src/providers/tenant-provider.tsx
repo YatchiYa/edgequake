@@ -13,6 +13,10 @@
 
 import { getTenants, getWorkspaces } from '@/lib/api/edgequake';
 import { getRuntimeConfig } from '@/lib/runtime-config';
+import {
+  extrasInSameTenant,
+  mergeEntitiesById,
+} from '@/lib/tenant/merge-entities-by-id';
 import { useAuthStore, useAuthStoreHydrated } from '@/stores/use-auth-store';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useQuery } from '@tanstack/react-query';
@@ -88,14 +92,21 @@ export function TenantProvider({ children }: TenantProviderProps) {
   // Auto-select workspace when data is available
   useEffect(() => {
     if (workspacesData) {
-      setWorkspaces(workspacesData);
-      
+      const merged = mergeEntitiesById(
+        workspacesData,
+        extrasInSameTenant(
+          useTenantStore.getState().workspaces,
+          selectedTenantId,
+        ),
+      );
+      setWorkspaces(merged);
+
       // Auto-select first workspace if none selected
-      if (!selectedWorkspaceId && workspacesData.length > 0) {
-        selectWorkspace(workspacesData[0].id);
+      if (!selectedWorkspaceId && merged.length > 0) {
+        selectWorkspace(merged[0].id);
       }
     }
-  }, [workspacesData, setWorkspaces, selectedWorkspaceId, selectWorkspace]);
+  }, [workspacesData, setWorkspaces, selectedWorkspaceId, selectWorkspace, selectedTenantId]);
 
   return <>{children}</>;
 }

@@ -4,6 +4,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getClient, getConfig } from "../client.js";
+import { listAllTenants, listAllWorkspaces } from "../exhaust-list.js";
 import { formatError } from "../errors.js";
 
 export function registerWorkspaceTools(server: McpServer): void {
@@ -14,13 +15,14 @@ export function registerWorkspaceTools(server: McpServer): void {
     {},
     async () => {
       try {
-        const client = await getClient();
+        await getClient();
         const config = getConfig();
-        const tenantId = config.defaultTenant;
-
+        let tenantId = config.defaultTenant;
         if (!tenantId) {
-          // Try listing tenants to find one
-          const tenants = await client.tenants.list();
+          const tenants = await listAllTenants<{ id: string }>(
+            config.baseUrl,
+            config.apiKey,
+          );
           if (tenants.length === 0) {
             return {
               content: [
@@ -32,29 +34,17 @@ export function registerWorkspaceTools(server: McpServer): void {
               isError: true,
             };
           }
-          const workspaces = await client.tenants.listWorkspaces(tenants[0].id);
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  workspaces.map((w) => ({
-                    id: w.id,
-                    name: w.name,
-                    slug: w.slug,
-                    description: w.description,
-                    llm_provider: w.llm_provider,
-                    llm_model: w.llm_model,
-                  })),
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          tenantId = tenants[0].id;
         }
 
-        const workspaces = await client.tenants.listWorkspaces(tenantId);
+        const workspaces = await listAllWorkspaces<{
+          id: string;
+          name: string;
+          slug: string;
+          description?: string;
+          llm_provider?: string;
+          llm_model?: string;
+        }>(config.baseUrl, tenantId, config.apiKey);
         return {
           content: [
             {
@@ -106,7 +96,10 @@ export function registerWorkspaceTools(server: McpServer): void {
         // Resolve tenant
         let tenantId = config.defaultTenant;
         if (!tenantId) {
-          const tenants = await client.tenants.list();
+          const tenants = await listAllTenants<{ id: string }>(
+            config.baseUrl,
+            config.apiKey,
+          );
           if (tenants.length === 0) {
             return {
               content: [

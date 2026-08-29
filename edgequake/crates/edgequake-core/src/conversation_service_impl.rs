@@ -46,8 +46,7 @@ use crate::{
     types::{
         Conversation, ConversationFilter, ConversationSortField, CreateConversationRequest,
         CreateMessageRequest, Folder, ImportError, ImportResult, Message, MessageRole,
-        PaginatedConversations, PaginatedMessages, PaginationMeta, UpdateConversationRequest,
-        UpdateMessageRequest,
+        PaginatedConversations, PaginatedMessages, UpdateConversationRequest, UpdateMessageRequest,
     },
 };
 #[cfg(feature = "postgres")]
@@ -224,7 +223,7 @@ impl ConversationService for ConversationServiceImpl {
         filter: ConversationFilter,
         sort: ConversationSortField,
         sort_desc: bool,
-        _cursor: Option<String>,
+        cursor: Option<String>,
         limit: usize,
     ) -> Result<PaginatedConversations> {
         let sort_field = match sort {
@@ -232,6 +231,8 @@ impl ConversationService for ConversationServiceImpl {
             ConversationSortField::CreatedAt => "created_at",
             ConversationSortField::Title => "title",
         };
+
+        let offset = crate::conversation_service::offset_from_cursor(cursor.as_deref());
 
         let (rows, total) = self
             .storage
@@ -246,22 +247,22 @@ impl ConversationService for ConversationServiceImpl {
                 sort_field,
                 sort_desc,
                 limit as i64,
-                0, // TODO: implement cursor-based pagination
+                offset as i64,
             )
             .await
             .map_err(Self::map_error)?;
 
         let items: Vec<Conversation> = rows.into_iter().map(Self::row_to_conversation).collect();
-        let has_more = (total as usize) > items.len();
+        let taken = items.len();
 
         Ok(PaginatedConversations {
             items,
-            pagination: PaginationMeta {
-                next_cursor: None,
-                prev_cursor: None,
-                total: Some(total as usize),
-                has_more,
-            },
+            pagination: crate::conversation_service::pagination_meta(
+                offset,
+                limit,
+                taken,
+                total as usize,
+            ),
         })
     }
 
@@ -352,26 +353,27 @@ impl ConversationService for ConversationServiceImpl {
     async fn list_messages(
         &self,
         conversation_id: Uuid,
-        _cursor: Option<String>,
+        cursor: Option<String>,
         limit: usize,
     ) -> Result<PaginatedMessages> {
+        let offset = crate::conversation_service::offset_from_cursor(cursor.as_deref());
         let (rows, total) = self
             .storage
-            .list_messages(conversation_id, limit as i64, 0)
+            .list_messages(conversation_id, limit as i64, offset as i64)
             .await
             .map_err(Self::map_error)?;
 
         let items: Vec<Message> = rows.into_iter().map(Self::row_to_message).collect();
-        let has_more = (total as usize) > items.len();
+        let taken = items.len();
 
         Ok(PaginatedMessages {
             items,
-            pagination: PaginationMeta {
-                next_cursor: None,
-                prev_cursor: None,
-                total: Some(total as usize),
-                has_more,
-            },
+            pagination: crate::conversation_service::pagination_meta(
+                offset,
+                limit,
+                taken,
+                total as usize,
+            ),
         })
     }
 

@@ -22,6 +22,7 @@ import {
   getWorkspaces,
 } from "@/lib/api/edgequake";
 import { getRuntimeConfig } from "@/lib/runtime-config";
+import { extrasInSameTenant, mergeEntitiesById } from "@/lib/tenant/merge-entities-by-id";
 import { useAuthStore, useAuthStoreHydrated } from "@/stores/use-auth-store";
 import { useTenantStore } from "@/stores/use-tenant-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -90,10 +91,17 @@ export function useTenantContext() {
   // Update store when workspaces are fetched
   useEffect(() => {
     if (workspacesQuery.data) {
-      setWorkspaces(workspacesQuery.data);
+      const merged = mergeEntitiesById(
+        workspacesQuery.data,
+        extrasInSameTenant(
+          useTenantStore.getState().workspaces,
+          selectedTenantId,
+        ),
+      );
+      setWorkspaces(merged);
       // Auto-select first workspace if none selected
-      if (!selectedWorkspaceId && workspacesQuery.data.length > 0) {
-        selectWorkspace(workspacesQuery.data[0].id);
+      if (!selectedWorkspaceId && merged.length > 0) {
+        selectWorkspace(merged[0].id);
       }
     }
   }, [
@@ -101,6 +109,7 @@ export function useTenantContext() {
     setWorkspaces,
     selectedWorkspaceId,
     selectWorkspace,
+    selectedTenantId,
   ]);
 
   // Create tenant mutation

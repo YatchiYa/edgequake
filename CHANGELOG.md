@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **SPEC-141 — list completeness (pagination audit)** — Catalogs exhaust
+  pages; documents get a wired pager (not a fetch-all); conversation list honors
+  `cursor` / `next_cursor`; MCP/SDK tenant and workspace lists follow `total`.
+  Spec: [`specs/141-list-completeness/`](specs/141-list-completeness/).
+- **SPEC-140 — newly created workspaces missing in the UI (#388)** — List
+  handlers reported `total = items.len()` after a silent default `limit=20`,
+  so the WebUI selector never discovered remaining pages. `total` is now
+  `COUNT(*)`; workspace list uses SQL `LIMIT/OFFSET`; the selector exhausts
+  pages. Spec: [`specs/140-new-created-workspace-issue/`](specs/140-new-created-workspace-issue/).
+
 ## [0.26.3] — 2026-08-28
 
 Patch: SPEC-139 mid-cutover engine stall (iw2 Postgres 21000, W3 false-terminal

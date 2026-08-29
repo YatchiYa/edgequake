@@ -9,6 +9,10 @@ import {
   applyCreatedTenantContext,
   applyCreatedWorkspaceContext,
 } from '@/lib/onboarding/apply-created-workspace-context';
+import {
+  extrasInSameTenant,
+  mergeEntitiesById,
+} from '@/lib/tenant/merge-entities-by-id';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Building2, FolderKanban, Loader2, Plus } from 'lucide-react';
@@ -96,13 +100,11 @@ export function TenantGuard({ children }: TenantGuardProps) {
 
     // Merge server list with any optimistic entries (just-created workspace) so we
     // do not drop a selection that is not yet in the refetch payload.
-    const storeWorkspaces = useTenantStore.getState().workspaces;
-    const byId = new Map<string, (typeof workspacesData)[number]>();
-    for (const w of workspacesData) byId.set(w.id, w);
-    for (const w of storeWorkspaces) {
-      if (!byId.has(w.id)) byId.set(w.id, w);
-    }
-    const merged = Array.from(byId.values());
+    const storeWorkspaces = extrasInSameTenant(
+      useTenantStore.getState().workspaces,
+      selectedTenantId,
+    );
+    const merged = mergeEntitiesById(workspacesData, storeWorkspaces);
     setWorkspaces(merged);
 
     const workspaceExists =
@@ -122,6 +124,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
     selectedWorkspaceId,
     selectWorkspace,
     isFetchingWorkspaces,
+    selectedTenantId,
   ]);
 
   if (tenantsError || (isLoading && loadingTimedOut && !isSettingUpContext)) {

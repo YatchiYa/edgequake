@@ -211,7 +211,17 @@ impl WorkspaceService for InMemoryWorkspaceService {
 
     async fn list_tenants(&self, limit: usize, offset: usize) -> Result<Vec<Tenant>> {
         let tenants = self.tenants.read().await;
-        Ok(tenants.values().skip(offset).take(limit).cloned().collect())
+        let mut rows: Vec<Tenant> = tenants.values().cloned().collect();
+        rows.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then(b.tenant_id.cmp(&a.tenant_id))
+        });
+        Ok(rows.into_iter().skip(offset).take(limit).collect())
+    }
+
+    async fn count_tenants(&self) -> Result<usize> {
+        Ok(self.tenants.read().await.len())
     }
 
     async fn create_workspace(
@@ -746,18 +756,48 @@ impl WorkspaceService for InMemoryWorkspaceService {
     }
 
     async fn list_workspaces(&self, tenant_id: Uuid) -> Result<Vec<Workspace>> {
+        self.list_workspaces_page(tenant_id, usize::MAX, 0).await
+    }
+
+    async fn list_workspaces_page(
+        &self,
+        tenant_id: Uuid,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<Workspace>> {
         let tenants = self.tenants.read().await;
-        let tenant = tenants.get(&tenant_id);
+        let tenant = tenants.get(&tenant_id).cloned();
+        let workspaces = self.workspaces.read().await;
+        let mut rows: Vec<Workspace> = workspaces
+            .values()
+            .filter(|ws| ws.tenant_id == tenant_id)
+            .cloned()
+            .collect();
+        rows.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then(b.workspace_id.cmp(&a.workspace_id))
+        });
+        Ok(rows
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|mut ws| {
+                crate::workspace_model_update::resolve_inherited_model_fields(
+                    &mut ws,
+                    tenant.as_ref(),
+                );
+                ws
+            })
+            .collect())
+    }
+
+    async fn count_workspaces(&self, tenant_id: Uuid) -> Result<usize> {
         let workspaces = self.workspaces.read().await;
         Ok(workspaces
             .values()
             .filter(|ws| ws.tenant_id == tenant_id)
-            .cloned()
-            .map(|mut ws| {
-                crate::workspace_model_update::resolve_inherited_model_fields(&mut ws, tenant);
-                ws
-            })
-            .collect())
+            .count())
     }
 
     async fn get_workspace_stats(&self, workspace_id: Uuid) -> Result<WorkspaceStats> {

@@ -354,7 +354,11 @@ export default function KnowledgePage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {data.items.map((item) => (
-            <Link key={item.injection_id} href={`/knowledge/${item.injection_id}`}>
+            <Link
+              key={item.injection_id}
+              href={`/knowledge/${item.injection_id}`}
+              data-testid={`knowledge-injection-${item.name}`}
+            >
               <Card className="cursor-pointer hover:border-primary/50 transition-colors">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">

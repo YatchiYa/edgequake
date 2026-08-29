@@ -236,7 +236,7 @@ pub struct WorkspaceResponse {
 pub struct TenantListResponse {
     /// Items in this page.
     pub items: Vec<TenantResponse>,
-    /// Total count.
+    /// Total tenants (not page length). SPEC-140.
     pub total: usize,
     /// Current offset.
     pub offset: usize,
@@ -249,7 +249,7 @@ pub struct TenantListResponse {
 pub struct WorkspaceListResponse {
     /// Items in this page.
     pub items: Vec<WorkspaceResponse>,
-    /// Total count.
+    /// Total matching workspaces for the tenant (not page length). SPEC-140.
     pub total: usize,
     /// Current offset.
     pub offset: usize,

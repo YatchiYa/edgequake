@@ -244,6 +244,12 @@ pub async fn list_tenants(
     crate::read_path::run_with_read_path_guard(&state.read_path_db, || async move {
         let limit = params.limit.min(100);
 
+        // SPEC-140: `total` is COUNT(*), never page length (LAW-140-2).
+        let total = state
+            .workspace_service
+            .count_tenants()
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
         let tenants = state
             .workspace_service
             .list_tenants(limit, params.offset)
@@ -277,8 +283,6 @@ pub async fn list_tenants(
                 updated_at: t.updated_at.to_rfc3339(),
             })
             .collect();
-
-        let total = items.len();
 
         Ok(Json(TenantListResponse {
             items,

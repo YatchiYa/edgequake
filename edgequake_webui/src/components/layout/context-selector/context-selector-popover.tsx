@@ -24,6 +24,8 @@ export interface ContextSelectorPopoverProps {
   selectedTenantName?: string | null;
   selectedWorkspaceName?: string | null;
   isLoadingWorkspaces?: boolean;
+  /** Remount cmdk when the popover opens so leftover search cannot hide rows. */
+  searchResetKey?: string | number;
   onTenantSelect: (tenantId: string) => void;
   onWorkspaceSelect: (workspaceId: string) => void;
   onCreateTenant: () => void;
@@ -41,6 +43,7 @@ export function ContextSelectorPopover({
   selectedWorkspaceId,
   selectedTenantName,
   isLoadingWorkspaces,
+  searchResetKey = 0,
   onTenantSelect,
   onWorkspaceSelect,
   onCreateTenant,
@@ -64,13 +67,14 @@ export function ContextSelectorPopover({
     : null;
 
   return (
-    <Command>
+    <Command key={searchResetKey}>
       <CommandInput
         placeholder={t(
           'context.searchPlaceholder',
           'Search organizations and workspaces...',
         )}
         className="h-9"
+        data-testid="context-selector-search"
       />
       <CommandList className="max-h-[min(24rem,70vh)]">
         <CommandEmpty>{t('context.noMatches', 'No matches')}</CommandEmpty>
@@ -79,13 +83,15 @@ export function ContextSelectorPopover({
           <CommandGroup
             heading={t('context.stepOrganization', '1 · Organization')}
           >
-            {tenants.map((tenant) => {
+                {tenants.map((tenant) => {
               const selected = tenant.id === selectedTenantId;
               return (
                 <CommandItem
                   key={tenant.id}
-                  value={`org:${tenant.name}`}
+                  value={tenant.id}
+                  keywords={[tenant.name, tenant.slug ?? '']}
                   title={tenant.name}
+                  data-testid={`tenant-option-${tenant.slug ?? tenant.id}`}
                   onSelect={() => onTenantSelect(tenant.id)}
                   className={cn(selected && 'bg-accent')}
                 >
@@ -116,10 +122,13 @@ export function ContextSelectorPopover({
               <CommandGroup
                 heading={
                   tenantHint
-                    ? t('context.stepWorkspaceIn', '2 · Workspace · {{tenant}}', {
+                    ? t('context.stepWorkspaceInCount', '2 · Workspace · {{tenant}} ({{count}})', {
                         tenant: tenantHint,
+                        count: workspaces.length,
                       })
-                    : t('context.stepWorkspace', '2 · Workspace')
+                    : t('context.stepWorkspaceCount', '2 · Workspace ({{count}})', {
+                        count: workspaces.length,
+                      })
                 }
               >
                 {workspaces.length === 0 && !isLoadingWorkspaces ? (
@@ -134,11 +143,14 @@ export function ContextSelectorPopover({
                 ) : null}
                 {workspaces.map((workspace) => {
                   const selected = workspace.id === selectedWorkspaceId;
+                  const optionId = workspace.slug || workspace.id;
                   return (
                     <CommandItem
                       key={workspace.id}
-                      value={`ws:${workspace.name} ${workspace.slug ?? ''}`}
+                      value={workspace.id}
+                      keywords={[workspace.name, workspace.slug ?? '']}
                       title={workspace.name}
+                      data-testid={`workspace-option-${optionId}`}
                       onSelect={() => onWorkspaceSelect(workspace.id)}
                       className={cn(selected && 'bg-accent')}
                     >

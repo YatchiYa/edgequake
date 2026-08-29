@@ -3,6 +3,8 @@
  */
 
 import { api } from "../client";
+import { fetchAllPages } from "../fetch-all-pages";
+import { buildQueryString, withQuery } from "../query-params";
 
 import type {
   CreateWorkspaceRequest,
@@ -28,6 +30,25 @@ interface WorkspaceListResponse {
   limit: number;
 }
 
+type IdFields = { id?: string; workspace_id?: string };
+
+function unwrapListPage<T>(
+  response: { items?: T[]; total?: number } | T[],
+): { items: T[]; total: number } {
+  if (Array.isArray(response)) {
+    return { items: response, total: response.length };
+  }
+  const items = response.items || [];
+  const total =
+    typeof response.total === "number" ? response.total : items.length;
+  return { items, total };
+}
+
+function withStableId<T extends IdFields>(row: T): T & { id: string } {
+  const id = row.id || row.workspace_id || "";
+  return { ...row, id };
+}
+
 /** Workspace statistics response from backend. */
 export interface WorkspaceStats {
   workspace_id: string;
@@ -44,12 +65,16 @@ export interface WorkspaceStats {
 }
 
 export async function getTenants(): Promise<Tenant[]> {
-  const response = await api.get<TenantListResponse | Tenant[]>("/tenants");
-  // Handle both paginated response and legacy array format
-  if (Array.isArray(response)) {
-    return response;
-  }
-  return response.items || [];
+  return fetchAllPages(async (offset, limit) => {
+    const response = await api.get<TenantListResponse | Tenant[]>(
+      withQuery("/tenants", buildQueryString({ limit, offset })),
+    );
+    const page = unwrapListPage(response);
+    return {
+      items: page.items.map((row) => withStableId(row)),
+      total: page.total,
+    };
+  });
 }
 
 export async function getTenant(tenantId: string): Promise<Tenant> {
@@ -106,14 +131,19 @@ export async function createTenant(data: CreateTenantRequest): Promise<Tenant> {
 }
 
 export async function getWorkspaces(tenantId: string): Promise<Workspace[]> {
-  const response = await api.get<WorkspaceListResponse | Workspace[]>(
-    `/tenants/${tenantId}/workspaces`,
-  );
-  // Handle both paginated response and legacy array format
-  if (Array.isArray(response)) {
-    return response;
-  }
-  return response.items || [];
+  return fetchAllPages(async (offset, limit) => {
+    const response = await api.get<WorkspaceListResponse | Workspace[]>(
+      withQuery(
+        `/tenants/${tenantId}/workspaces`,
+        buildQueryString({ limit, offset }),
+      ),
+    );
+    const page = unwrapListPage(response);
+    return {
+      items: page.items.map((row) => withStableId(row)),
+      total: page.total,
+    };
+  });
 }
 
 /**
