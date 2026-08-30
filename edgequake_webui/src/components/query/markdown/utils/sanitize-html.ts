@@ -190,6 +190,8 @@ const STRICT_CONFIG: PurifyConfig = {
     "data-language",
     "data-line",
     "data-source",
+    // SPEC-143: page anchors from <!-- edgequake-page:N -->
+    "data-eq-page",
 
     // Datetime
     "datetime",

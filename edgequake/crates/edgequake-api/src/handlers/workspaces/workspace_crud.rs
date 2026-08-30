@@ -216,9 +216,15 @@ pub async fn list_workspaces(
 
         tracing::debug!(tenant_id = %tenant_id, "Listing workspaces");
 
+        // SPEC-140: `total` is COUNT(*), never page length (LAW-140-2).
+        let total = state
+            .workspace_service
+            .count_workspaces(tenant_id)
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
         let workspaces = state
             .workspace_service
-            .list_workspaces(tenant_id)
+            .list_workspaces_page(tenant_id, limit, params.offset)
             .await
             .map_err(|e| ApiError::Internal(e.to_string()))?;
 
@@ -230,8 +236,6 @@ pub async fn list_workspaces(
             .flatten();
         let mut items: Vec<WorkspaceResponse> = workspaces
             .into_iter()
-            .skip(params.offset)
-            .take(limit)
             .map(|ws| workspace_to_response_with_tenant(&ws, tenant.as_ref()))
             .collect();
 
@@ -250,8 +254,6 @@ pub async fn list_workspaces(
                 item.stats = stat;
             }
         }
-
-        let total = items.len();
 
         Ok(Json(WorkspaceListResponse {
             items,

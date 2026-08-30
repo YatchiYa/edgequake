@@ -562,15 +562,28 @@ impl WorkspaceServiceImpl {
     }
 
     pub(super) async fn pg_list_workspaces(&self, tenant_id: Uuid) -> Result<Vec<Workspace>> {
+        self.pg_list_workspaces_page(tenant_id, i64::MAX as usize, 0)
+            .await
+    }
+
+    pub(super) async fn pg_list_workspaces_page(
+        &self,
+        tenant_id: Uuid,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<Workspace>> {
         let rows: Vec<WorkspaceRow> = sqlx::query_as(
             r#"
             SELECT workspace_id, tenant_id, name, slug, description, is_active, metadata, created_at, updated_at
             FROM workspaces
             WHERE tenant_id = $1
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, workspace_id DESC
+            LIMIT $2 OFFSET $3
             "#,
         )
         .bind(tenant_id)
+        .bind(limit as i64)
+        .bind(offset as i64)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("Failed to list workspaces: {}", e)))?;
@@ -587,6 +600,15 @@ impl WorkspaceServiceImpl {
                 workspace
             })
             .collect())
+    }
+
+    pub(super) async fn pg_count_workspaces(&self, tenant_id: Uuid) -> Result<usize> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspaces WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("Failed to count workspaces: {}", e)))?;
+        Ok(count as usize)
     }
 
     pub(super) async fn pg_get_workspace_stats(

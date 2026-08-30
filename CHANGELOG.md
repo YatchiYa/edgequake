@@ -4,6 +4,73 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.26.4] — 2026-08-30
+
+Patch: SPEC-144 Next.js **16.3.3** Active LTS (August 2026 Critical RCEs),
+proxy SSOT, webpack Docker parity; SPEC-140/141 list completeness; SPEC-122
+bulk-ingest honesty; WebUI health poll off by default; distroless API runtime.
+**No new migration.** Schema train remains **149**. Upgrade:
+[`docs/operations/upgrade-to-0.26.4.md`](docs/operations/upgrade-to-0.26.4.md).
+
+**Deps (crates.io):** unchanged from 0.26.3 (`edgequake-llm` **0.10.8**, `edgequake-pdf2md` **0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0`).
+
+**WebUI:** `next` / `eslint-config-next` **16.3.3** (was 16.2.11). Instant
+Navigations flags remain **off** (React postpone blocker on webpack prerender).
+
+**SPEC-001 Acc:** attested from existing [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **PDF geometry not re-scored**.
+
+### Changed
+- **SPEC-144 — Next.js 16.3.3 Active LTS** — Pin `next` + `eslint-config-next` to
+  **16.3.3** (August 2026 security release: [GHSA-p293-qw3h-jr36](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36),
+  [GHSA-2xp9-vwfh-vxw4](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4)).
+  Unify auth + swagger into single `src/proxy.ts` (delete root `middleware.ts`).
+  Dockerfile uses `next build --webpack` (parity with safe-build). Instant
+  Navigations prepared but flags off. Spec: [`specs/144-update-nextjs/`](specs/144-update-nextjs/).
+- **WebUI health poll off by default** — Header / banner / SystemStatus probe `/live`+`/health` once on load instead of every 10s. Restore the loop with `EDGEQUAKE_HEALTH_POLL_MS=10000` (runtime, not baked). Playwright still never polls.
+- **API image distroless (Trivy HIGH)** — Runtime is `gcr.io/distroless/cc-debian12:nonroot` (no `curl`/`wget`/`sh`). HEALTHCHECK is `edgequake healthcheck` (GET `/live`). Helm preStop is `edgequake pre-stop`. TLS crates use rustls only so the binary does not link libssl. Residual `CVE-2026-14456` is ignored (OpenSSL QUIC server, 3.5+; image is 3.0.x). Release CD scans the API image at HIGH/CRITICAL.
+- **SPEC-122 bulk ingest verification** — `make measure-bulk-ingest`; HEAD Docker-like re-measure artifact; docs admit≠ready drift fixed. Closes #361/#365 as capacity (not throughput claim). Phase B concurrency still gated.
+
+### Fixed
+- **SPEC-141 — list completeness (pagination audit)** — Catalogs exhaust
+  pages; documents get a wired pager (not a fetch-all); conversation list honors
+  `cursor` / `next_cursor`; MCP/SDK tenant and workspace lists follow `total`.
+  Spec: [`specs/141-list-completeness/`](specs/141-list-completeness/).
+- **SPEC-140 — newly created workspaces missing in the UI (#388)** — List
+  handlers reported `total = items.len()` after a silent default `limit=20`,
+  so the WebUI selector never discovered remaining pages. `total` is now
+  `COUNT(*)`; workspace list uses SQL `LIMIT/OFFSET`; the selector exhausts
+  pages. Spec: [`specs/140-new-created-workspace-issue/`](specs/140-new-created-workspace-issue/).
+
+## [0.26.3] — 2026-08-28
+
+Patch: SPEC-139 mid-cutover engine stall (iw2 Postgres 21000, W3 false-terminal
+verify, KV remainder after 119-before-122); Langfuse 3.22/3.225 isolated OTLP
+stacks. **No new migration.** Schema train remains **149**. Upgrade:
+[`docs/operations/upgrade-to-0.26.3.md`](docs/operations/upgrade-to-0.26.3.md).
+
+**Deps (crates.io):** unchanged from 0.26.2 (`edgequake-llm` **0.10.8**, `edgequake-pdf2md` **0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0`).
+
+**SPEC-001 Acc:** attested from existing [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **PDF geometry not re-scored**.
+
+### Fixed
+- **SPEC-139 — mid-cutover engine stall** — Field `0.26.1` cannot finish SPEC-091
+  copy: `iw2` crashes on within-batch duplicate `ON CONFLICT` keys (SQLSTATE
+  **21000**); W3 verify used `max(COUNT(*) FROM chunk_embeddings)` then marked
+  the job terminal-`failed` with no reclaim; lineage/multimodal/hash/shell KV
+  plateaued because sqlx **119** ran before **122** and the engine had no
+  remainder job. Engine now last-write-wins-dedupes arbiter keys, sums per-table
+  coverage (UUID-shaped `-chunk-` ids ≡ 126), reclaims `verify_failed` jobs,
+  continues after one job `Err`, and registers `w2-dedup-remainder` /
+  `wc-shell-remainder` / `w5-artifact-remainder` (copy-complete verify so
+  orphans stay advisor-RED, not a fail-loop). DROP SQL **125 / 126 / 131**
+  unchanged. Proof: `make spec139-migrate-engine-proof`. Spec:
+  [`specs/139-issue-migration/`](specs/139-issue-migration/).
+
+### Added
+- **SPEC-124 — Langfuse 3.22 / 3.225 isolated OTLP stacks** — Compose + Make targets for Langfuse **3.22.0** (first OTLP route, UI `:3330`) and **3.225.5** (OTLP persist, UI `:3340`), plus Cloud e2e and `make spec124-langfuse-matrix`. Proof: `make spec124-langfuse-3.22-e2e` / `spec124-langfuse-3.225-e2e`.
+
 ## [0.26.2] — 2026-08-27
 
 Patch: Langfuse 3.1.x ingestion fallback (SPEC-124), Kubernetes Helm/kind (SPEC-138),

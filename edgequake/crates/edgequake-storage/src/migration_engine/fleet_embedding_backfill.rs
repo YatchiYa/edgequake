@@ -2,7 +2,9 @@
 //! entity/relationship/report embeddings (migration 130).
 //!
 //! Generalizes the W3 chunk backfill machinery: fleet-wide table enumeration,
-//! keyset cursor `(family, table, last_id)`, idempotent `ON CONFLICT DO NOTHING`.
+//! keyset cursor `(family, table, last_id)`, idempotent UNNEST +
+//! `ON CONFLICT DO UPDATE` with **within-batch arbiter dedupe** (SPEC-139 /
+//! LAW-139-1: Postgres 21000 if the same conflict key is proposed twice).
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -75,6 +77,55 @@ fn parse_workspace_uuid(meta: &Value) -> Option<Uuid> {
     meta.get("workspace_id")
         .and_then(|v| v.as_str())
         .and_then(|s| Uuid::parse_str(s).ok())
+}
+
+/// One proposed typed-embedding write; arbiter key lives outside so
+/// [`super::conflict_dedupe::dedupe_last_write_wins`] can collapse it.
+struct FleetWrite {
+    workspace_id: Uuid,
+    legacy_id: String,
+    vector: String,
+    dim: i32,
+}
+
+struct UnnestedBatch<K> {
+    keys: Vec<K>,
+    workspace_ids: Vec<Uuid>,
+    vectors: Vec<String>,
+    dims: Vec<i32>,
+    legacy_ids: Vec<String>,
+}
+
+fn collapse_writes<K: Eq + std::hash::Hash + Clone>(
+    rows: Vec<(K, FleetWrite)>,
+) -> UnnestedBatch<K> {
+    let kept = super::conflict_dedupe::dedupe_last_write_wins(rows);
+    let mut out = UnnestedBatch {
+        keys: Vec::with_capacity(kept.len()),
+        workspace_ids: Vec::with_capacity(kept.len()),
+        vectors: Vec::with_capacity(kept.len()),
+        dims: Vec::with_capacity(kept.len()),
+        legacy_ids: Vec::with_capacity(kept.len()),
+    };
+    for (key, row) in kept {
+        out.keys.push(key);
+        out.workspace_ids.push(row.workspace_id);
+        out.vectors.push(row.vector);
+        out.dims.push(row.dim);
+        out.legacy_ids.push(row.legacy_id);
+    }
+    out
+}
+
+fn vector_literal(embedding: &[f32]) -> String {
+    format!(
+        "[{}]",
+        embedding
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    )
 }
 
 fn workspace_from_row(row: &sqlx::postgres::PgRow, meta: &Value) -> Option<Uuid> {
@@ -514,11 +565,7 @@ impl FleetEmbeddingBackfillJob {
         tx: &mut Transaction<'_, Postgres>,
         rows: &[sqlx::postgres::PgRow],
     ) -> Result<(i64, i64), StorageError> {
-        let mut entity_ids: Vec<Uuid> = Vec::new();
-        let mut workspace_ids: Vec<Uuid> = Vec::new();
-        let mut legacy_ids: Vec<String> = Vec::new();
-        let mut vectors: Vec<String> = Vec::new();
-        let mut dims: Vec<i32> = Vec::new();
+        let mut prepared: Vec<(Uuid, FleetWrite)> = Vec::new();
         let mut dimensions = 0i32;
         let mut failed = 0i64;
         let mut index_cache: std::collections::HashMap<Uuid, EntityNameIndex> =
@@ -562,20 +609,18 @@ impl FleetEmbeddingBackfillJob {
                     }
                 },
             };
-            entity_ids.push(eid);
-            workspace_ids.push(ws);
-            legacy_ids.push(id);
-            vectors.push(format!(
-                "[{}]",
-                embedding
-                    .iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<_>>()
-                    .join(",")
+            prepared.push((
+                eid,
+                FleetWrite {
+                    workspace_id: ws,
+                    legacy_id: id,
+                    vector: vector_literal(&embedding),
+                    dim: embedding.len() as i32,
+                },
             ));
-            dims.push(embedding.len() as i32);
         }
-        if entity_ids.is_empty() {
+        let batch = collapse_writes(prepared);
+        if batch.keys.is_empty() {
             return Ok((0, failed));
         }
         let model_id = self.upsert_model(tx, dimensions).await?;
@@ -589,18 +634,21 @@ impl FleetEmbeddingBackfillJob {
                SET legacy_vector_id = COALESCE(entity_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)",
         )
         .bind(model_id)
-        .bind(&entity_ids)
-        .bind(&workspace_ids)
-        .bind(&vectors)
-        .bind(&dims)
-        .bind(&legacy_ids)
+        .bind(&batch.keys)
+        .bind(&batch.workspace_ids)
+        .bind(&batch.vectors)
+        .bind(&batch.dims)
+        .bind(&batch.legacy_ids)
         .execute(&mut **tx)
         .await;
         match written_res {
             Ok(r) => Ok((r.rows_affected() as i64, failed)),
-            Err(sqlx::Error::Database(db)) if db.code().as_deref() == Some("23505") => {
-                // Unique legacy_vector_id / model conflict → durable miss for this batch.
-                Ok((0, failed + entity_ids.len() as i64))
+            Err(sqlx::Error::Database(db))
+                if db.code().as_deref() == Some("23505")
+                    || db.code().as_deref() == Some("21000") =>
+            {
+                // Unique legacy_vector_id (23505) or residual cardinality (21000).
+                Ok((0, failed + batch.keys.len() as i64))
             }
             Err(e) => Err(StorageError::Database(format!(
                 "iw2 entity insert failed: {e}"
@@ -613,11 +661,7 @@ impl FleetEmbeddingBackfillJob {
         tx: &mut Transaction<'_, Postgres>,
         rows: &[sqlx::postgres::PgRow],
     ) -> Result<(i64, i64), StorageError> {
-        let mut rel_ids: Vec<Uuid> = Vec::new();
-        let mut workspace_ids: Vec<Uuid> = Vec::new();
-        let mut legacy_ids: Vec<String> = Vec::new();
-        let mut vectors: Vec<String> = Vec::new();
-        let mut dims: Vec<i32> = Vec::new();
+        let mut prepared: Vec<(Uuid, FleetWrite)> = Vec::new();
         let mut dimensions = 0i32;
         let mut failed = 0i64;
         let mut index_cache: std::collections::HashMap<Uuid, EntityNameIndex> =
@@ -667,24 +711,22 @@ impl FleetEmbeddingBackfillJob {
                     }
                 }
             };
-            rel_ids.push(rid);
-            workspace_ids.push(ws);
-            legacy_ids.push(id);
-            vectors.push(format!(
-                "[{}]",
-                embedding
-                    .iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<_>>()
-                    .join(",")
+            prepared.push((
+                rid,
+                FleetWrite {
+                    workspace_id: ws,
+                    legacy_id: id,
+                    vector: vector_literal(&embedding),
+                    dim: embedding.len() as i32,
+                },
             ));
-            dims.push(embedding.len() as i32);
         }
-        if rel_ids.is_empty() {
+        let batch = collapse_writes(prepared);
+        if batch.keys.is_empty() {
             return Ok((0, failed));
         }
         let model_id = self.upsert_model(tx, dimensions).await?;
-        let written = sqlx::query(
+        let written_res = sqlx::query(
             "INSERT INTO relationship_embeddings \
              (model_id, relationship_id, workspace_id, embedding, dimensions, legacy_vector_id) \
              SELECT $1, r, w, v::halfvec, d, lid \
@@ -694,16 +736,25 @@ impl FleetEmbeddingBackfillJob {
                SET legacy_vector_id = COALESCE(relationship_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)",
         )
         .bind(model_id)
-        .bind(&rel_ids)
-        .bind(&workspace_ids)
-        .bind(&vectors)
-        .bind(&dims)
-        .bind(&legacy_ids)
+        .bind(&batch.keys)
+        .bind(&batch.workspace_ids)
+        .bind(&batch.vectors)
+        .bind(&batch.dims)
+        .bind(&batch.legacy_ids)
         .execute(&mut **tx)
-        .await
-        .map_err(|e| StorageError::Database(format!("iw2 relationship insert failed: {e}")))?
-        .rows_affected() as i64;
-        Ok((written, failed))
+        .await;
+        match written_res {
+            Ok(r) => Ok((r.rows_affected() as i64, failed)),
+            Err(sqlx::Error::Database(db))
+                if db.code().as_deref() == Some("23505")
+                    || db.code().as_deref() == Some("21000") =>
+            {
+                Ok((0, failed + batch.keys.len() as i64))
+            }
+            Err(e) => Err(StorageError::Database(format!(
+                "iw2 relationship insert failed: {e}"
+            ))),
+        }
     }
 
     async fn write_report_batch(
@@ -711,11 +762,7 @@ impl FleetEmbeddingBackfillJob {
         tx: &mut Transaction<'_, Postgres>,
         rows: &[sqlx::postgres::PgRow],
     ) -> Result<(i64, i64), StorageError> {
-        let mut report_ids: Vec<String> = Vec::new();
-        let mut workspace_ids: Vec<Uuid> = Vec::new();
-        let mut legacy_ids: Vec<String> = Vec::new();
-        let mut vectors: Vec<String> = Vec::new();
-        let mut dims: Vec<i32> = Vec::new();
+        let mut prepared: Vec<(String, FleetWrite)> = Vec::new();
         let mut dimensions = 0i32;
         let mut failed = 0i64;
 
@@ -740,24 +787,22 @@ impl FleetEmbeddingBackfillJob {
                 continue;
             };
             dimensions = embedding.len() as i32;
-            report_ids.push(id.clone());
-            legacy_ids.push(id);
-            workspace_ids.push(ws);
-            vectors.push(format!(
-                "[{}]",
-                embedding
-                    .iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<_>>()
-                    .join(",")
+            prepared.push((
+                id.clone(),
+                FleetWrite {
+                    workspace_id: ws,
+                    legacy_id: id,
+                    vector: vector_literal(&embedding),
+                    dim: embedding.len() as i32,
+                },
             ));
-            dims.push(embedding.len() as i32);
         }
-        if report_ids.is_empty() {
+        let batch = collapse_writes(prepared);
+        if batch.keys.is_empty() {
             return Ok((0, failed));
         }
         let model_id = self.upsert_model(tx, dimensions).await?;
-        let written = sqlx::query(
+        let written_res = sqlx::query(
             "INSERT INTO report_embeddings \
              (model_id, report_id, workspace_id, embedding, dimensions, legacy_vector_id) \
              SELECT $1, r, w, v::halfvec, d, lid \
@@ -767,16 +812,25 @@ impl FleetEmbeddingBackfillJob {
                SET legacy_vector_id = COALESCE(report_embeddings.legacy_vector_id, EXCLUDED.legacy_vector_id)",
         )
         .bind(model_id)
-        .bind(&report_ids)
-        .bind(&workspace_ids)
-        .bind(&vectors)
-        .bind(&dims)
-        .bind(&legacy_ids)
+        .bind(&batch.keys)
+        .bind(&batch.workspace_ids)
+        .bind(&batch.vectors)
+        .bind(&batch.dims)
+        .bind(&batch.legacy_ids)
         .execute(&mut **tx)
-        .await
-        .map_err(|e| StorageError::Database(format!("iw2 report insert failed: {e}")))?
-        .rows_affected() as i64;
-        Ok((written, failed))
+        .await;
+        match written_res {
+            Ok(r) => Ok((r.rows_affected() as i64, failed)),
+            Err(sqlx::Error::Database(db))
+                if db.code().as_deref() == Some("23505")
+                    || db.code().as_deref() == Some("21000") =>
+            {
+                Ok((0, failed + batch.keys.len() as i64))
+            }
+            Err(e) => Err(StorageError::Database(format!(
+                "iw2 report insert failed: {e}"
+            ))),
+        }
     }
 }
 

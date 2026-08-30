@@ -25,25 +25,25 @@ function portResponds(port: number): boolean {
   }
 }
 
-/** Prefer make dev on :3000 for integration; UI-only gate always uses :3001 webServer. */
+/** Prefer make dev on :3000 for integration; UI-only gate uses :3010 webServer (SPEC-144). */
 function resolveFrontendUrl(): { baseURL: string; startWebServer: boolean } {
   if (customBaseUrl) {
     return { baseURL: customBaseUrl, startWebServer: false };
   }
-  // UI-only gate: isolated Next dev server (no auth, no collision with make dev on :3000).
+  // UI-only gate: isolated Next dev server (avoids :3000 foreign apps / :3001 collisions).
   if (process.env.PLAYWRIGHT_SKIP_STACK_CHECK === "1") {
-    if (portResponds(3001)) {
-      return { baseURL: "http://localhost:3001", startWebServer: false };
+    if (portResponds(3010)) {
+      return { baseURL: "http://localhost:3010", startWebServer: false };
     }
-    return { baseURL: "http://localhost:3001", startWebServer: true };
+    return { baseURL: "http://localhost:3010", startWebServer: true };
   }
   if (portResponds(3000)) {
     return { baseURL: "http://localhost:3000", startWebServer: false };
   }
-  if (portResponds(3001)) {
-    return { baseURL: "http://localhost:3001", startWebServer: false };
+  if (portResponds(3010)) {
+    return { baseURL: "http://localhost:3010", startWebServer: false };
   }
-  return { baseURL: "http://localhost:3001", startWebServer: true };
+  return { baseURL: "http://localhost:3010", startWebServer: true };
 }
 
 const { baseURL, startWebServer } = resolveFrontendUrl();
@@ -98,12 +98,13 @@ export default defineConfig({
   ...(startWebServer
     ? {
         webServer: {
-          command: "bun run dev -- --port 3001",
-          url: "http://localhost:3001",
+          command: "bun run dev -- --port 3010",
+          url: "http://localhost:3010",
           reuseExistingServer: !process.env.CI,
           timeout: 120 * 1000,
           env: {
             ...process.env,
+            PORT: "3010",
             EDGEQUAKE_API_URL:
               process.env.EQ_BACKEND_URL ??
               process.env.E2E_BACKEND_URL ??

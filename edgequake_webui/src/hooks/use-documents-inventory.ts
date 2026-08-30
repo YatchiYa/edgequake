@@ -1,5 +1,6 @@
 /**
  * SPEC-099 — inventory controller: queries + filter VM + overflow honesty.
+ * SPEC-141 — wire currentPage + page size into the API pager.
  */
 "use client";
 
@@ -12,7 +13,7 @@ import {
 } from "@/lib/documents/inventory-view-model";
 import type { SortDirection, SortField } from "@/lib/documents/document-sort";
 import type { DocStatus } from "@/hooks/use-document-preferences";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export interface UseDocumentsInventoryOptions {
   tenantId: string | null;
@@ -25,34 +26,56 @@ export interface UseDocumentsInventoryOptions {
 }
 
 export function useDocumentsInventory(options: UseDocumentsInventoryOptions) {
-  const pageSize = options.pageSize ?? VIRTUAL_PAGE_SIZE;
+  const [pageSize, setPageSize] = useState(
+    options.pageSize ?? VIRTUAL_PAGE_SIZE,
+  );
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    options.tenantId,
+    options.workspaceId,
+    options.searchQuery,
+    options.statusFilter,
+    pageSize,
+  ]);
+
+  const documentPattern = options.searchQuery.trim() || undefined;
   const queries = useDocumentQueries({
     tenantId: options.tenantId,
     workspaceId: options.workspaceId,
-    currentPage: 1,
+    currentPage,
     pageSize,
     statusFilter: options.statusFilter,
+    documentPattern,
   });
 
   const filtering = useDocumentFiltering({
     documents: queries.data?.items || [],
-    searchQuery: options.searchQuery,
+    // SPEC-141: title search is server-side (`document_pattern`). Do not
+    // re-filter the current page in memory or docs 101+ stay invisible.
+    searchQuery: documentPattern ? "" : options.searchQuery,
     statusFilter: options.statusFilter,
     sortField: options.sortField,
     sortDirection: options.sortDirection,
     pageSize,
-    // Prefer client domain counts for filter honesty when search is active;
-    // otherwise use server counts when present.
     serverStatusCounts: options.searchQuery.trim()
       ? undefined
       : queries.data?.status_counts,
   });
 
+  const apiTotal =
+    typeof queries.data?.total === "number" ? queries.data.total : null;
+  const totalPages =
+    typeof queries.data?.total_pages === "number" && queries.data.total_pages > 0
+      ? queries.data.total_pages
+      : Math.max(
+          1,
+          Math.ceil((apiTotal ?? filtering.documents.length) / pageSize),
+        );
+
   const inventory: InventoryViewModel = useMemo(() => {
-    const apiTotal =
-      typeof (queries.data as { total?: number } | undefined)?.total === "number"
-        ? (queries.data as { total: number }).total
-        : null;
     return buildInventoryViewModel({
       fetchedItems: queries.data?.items || [],
       filteredRows: filtering.documents,
@@ -67,15 +90,20 @@ export function useDocumentsInventory(options: UseDocumentsInventoryOptions) {
     filtering.documents,
     pageSize,
     options.searchQuery,
+    apiTotal,
   ]);
 
   return {
     ...queries,
     documents: filtering.documents,
-    totalCount: filtering.totalCount,
+    totalCount: apiTotal ?? filtering.totalCount,
+    totalPages,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
     statusCounts: inventory.statusCounts,
     allDocuments: filtering.allDocuments,
     inventory,
-    pageSize,
   };
 }

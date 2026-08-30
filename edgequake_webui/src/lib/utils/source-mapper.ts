@@ -22,13 +22,16 @@ function mapChunkSources(sources: SourceReference[]): QueryContext["chunks"] {
     .filter((s) => s.source_type === "chunk")
     .map((s) => ({
       content: s.snippet || "",
-      document_id: extractDocumentId(s.id),
+      // SPEC-142: prefer API document_id; fall back to legacy `{uuid}-chunk-N` parse.
+      document_id: s.document_id || extractDocumentId(s.id),
       score: s.score,
       file_path: s.file_path,
       chunk_id: s.id,
       start_line: s.start_line,
       end_line: s.end_line,
       chunk_index: s.chunk_index,
+      // Align passage numbers with prompt `[N]` / API reference_id (SPEC-142).
+      reference_id: s.reference_id,
       // SPEC-033: propagate PDF page attribution so citations can group by page
       // and render deeplink badges ("p.N ↗") to the exact PDF page.
       page_start: s.page_start,

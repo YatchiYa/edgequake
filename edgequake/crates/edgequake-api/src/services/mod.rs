@@ -114,6 +114,7 @@ pub mod tenant_guard;
 pub mod tenant_isolation;
 pub mod text_insert_content;
 pub mod v1_rpc_migration;
+pub mod verified_citations;
 pub mod vision_content;
 pub mod vision_stall_watchdog;
 pub mod vlm_limits;
@@ -330,6 +331,7 @@ pub use text_insert_content::{
     load_staging_and_final_metadata, load_staging_first_metadata, patch_document_metadata,
     resolve_document_metadata_key, resolve_text_insert_content, StagingFinalMeta,
 };
+pub use verified_citations::{apply_verified_citations, catalog_from_sources, verified_answer};
 pub use vision_content::{
     describe_image, describe_image_as_markdown, image_analysis_to_markdown,
     image_analysis_to_markdown_with_asset, parse_image_analysis_json, ImageAnalysisResult,

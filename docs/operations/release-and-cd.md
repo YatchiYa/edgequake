@@ -4,9 +4,9 @@ title: "Release & CD Cycle"
 
 # Release & CD Cycle
 
-> **Product: v0.26.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.26.4** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 >
-> Upgrade: [upgrade-to-0.26.2.md](upgrade-to-0.26.2.md) (Langfuse 3.1 fallback, SPEC-138 K8s, no new mig). Prior: [upgrade-to-0.26.1.md](upgrade-to-0.26.1.md) (SPEC-137 CLI honesty).
+> Upgrade: [upgrade-to-0.26.4.md](upgrade-to-0.26.4.md) (SPEC-144 Next 16.3.3, lists, distroless). Prior: [upgrade-to-0.26.3.md](upgrade-to-0.26.3.md) (SPEC-139 mid-cutover engine).
 >
 > **SPEC-001 Acc (this cut):** attested existing [`publish/latest`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **PDF geometry not re-scored**.
 >

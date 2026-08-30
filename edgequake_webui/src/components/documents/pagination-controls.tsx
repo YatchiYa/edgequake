@@ -101,6 +101,7 @@ export function PaginationControls({
           onClick={handleNextPage}
           disabled={currentPage >= totalPages}
           aria-label={t('documents.pagination.nextPage', 'Next page')}
+          data-testid="documents-next-page"
         >
           <ChevronRight className="h-3.5 w-3.5" />
         </Button>

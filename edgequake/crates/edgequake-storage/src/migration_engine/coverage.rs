@@ -16,6 +16,11 @@ use crate::embedding_family::{
 use crate::entity_id::normalize_entity_name;
 use crate::error::StorageError;
 
+/// Legacy chunk vector id shape used by migration 126 / `count_uncovered_chunk_rows`
+/// / W3 verify `expected`+`actual` (LAW-139-3). Do not use a looser `LIKE '%-chunk-%'`.
+pub const LEGACY_CHUNK_VECTOR_ID_RE: &str =
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-chunk-[0-9]+$";
+
 /// Workspace-scoped entity name → id index (raw + normalized keys).
 #[derive(Debug, Default, Clone)]
 pub struct EntityNameIndex {
@@ -208,17 +213,17 @@ where
 /// Uncovered legacy chunk rows — mirrors migration 126 guard predicate.
 pub async fn count_uncovered_chunk_rows(pool: &PgPool) -> Result<i64, StorageError> {
     let tables = list_vector_tables(pool).await?;
-    let uuid_re = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
     let mut total = 0i64;
     for t in tables {
         let sql = format!(
             "SELECT count(*) FROM public.{t} v \
-             WHERE v.id ~ '{uuid_re}-chunk-[0-9]+$' \
+             WHERE v.id ~ '{re}' \
                AND NOT EXISTS ( \
                     SELECT 1 FROM public.chunks c \
                     JOIN public.chunk_embeddings ce ON ce.chunk_id = c.id \
                     WHERE c.document_id = left(v.id, 36)::uuid \
-                      AND c.chunk_index = substring(v.id from 44)::int)"
+                      AND c.chunk_index = substring(v.id from 44)::int)",
+            re = LEGACY_CHUNK_VECTOR_ID_RE
         );
         let n: i64 = match sqlx::query_scalar(&sql).fetch_one(pool).await {
             Ok(n) => n,

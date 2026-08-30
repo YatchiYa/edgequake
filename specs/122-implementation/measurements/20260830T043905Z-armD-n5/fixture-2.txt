@@ -1,0 +1,8 @@
+SPEC-122 ARM=D N=5 INDEX=2 TS=20260830T043905Z
+UNIQUE=8761a487-ee0f-4d8b-8eee-4a40618921f4
+# CNC Manufacturing Glossary
+
+**CNC**: Computer Numerical Control - automated machine tools controlled by computer programs
+**G-code**: The programming language used to instruct CNC machines
+**Spindle speed**: The rotational speed of the cutting tool in RPM
+**Feed rate**: The speed at which the workpiece advances relative to the cutting tool

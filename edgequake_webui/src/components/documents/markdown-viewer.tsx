@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { rewriteMarkdownMmAssetUrls } from '@/lib/api/edgequake/documents';
 import { downloadFile, sanitizeFilename } from '@/lib/export-conversation';
 import { cn } from '@/lib/utils';
+import { injectPageAnchors } from '@/lib/utils/page-markers';
 import { Check, Copy, Download, FileText } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -63,10 +64,11 @@ export function MarkdownViewer({
 }: MarkdownViewerProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
-  const displayContent = useMemo(
-    () => (content ? rewriteMarkdownMmAssetUrls(content, documentId) : content),
-    [content, documentId],
-  );
+  const displayContent = useMemo(() => {
+    if (!content) return content;
+    // SPEC-143: inject page anchors after asset rewrite (same SSOT as ContentRenderer).
+    return injectPageAnchors(rewriteMarkdownMmAssetUrls(content, documentId));
+  }, [content, documentId]);
 
   const handleCopy = useCallback(async () => {
     if (!content) return;

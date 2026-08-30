@@ -23,6 +23,9 @@
 | A17 | Query pipeline meta + ingest parse/vision/chunk stages | I8 + `make spec124-proof` |
 | A18 | Local Langfuse v4 Docker (optional) + smoke/E2E | `make langfuse-up` / `make dev-langfuse` / `make spec124-langfuse-e2e` |
 | A19 | Langfuse 3.1.1 ingestion fallback (envelope types + persist) | `make spec124-langfuse-3.1-e2e` — pins `health.version` 3.1.x, OTLP 404, rejects `retriever-create`, mapped batch lands |
+| A20 | Langfuse 3.22.0 OTLP route (first OTLP tag; not 3.2.x) | `make spec124-langfuse-3.22-e2e` — pins `health.version` 3.22.x, OTLP not 404, auto-probe=`Otlp`. Persist is **not** this tag (first-release parser). |
+| A20b | Langfuse 3.225.5 OTLP persist (current 3.x) | `make spec124-langfuse-3.225-e2e` — pins `health.version` 3.225.x, live `SpanExporter` round-trip |
+| A21 | Current Langfuse Cloud OTLP persist | `make spec124-langfuse-cloud-e2e` — live Cloud `health.version`, known Cloud host, persist unique marker |
 
 ## Partner acceptance script
 
@@ -37,6 +40,9 @@
 9. `make spec124-proof` passes without Langfuse credentials
 10. Optional local Docker: `make spec124-langfuse-e2e` (or `make dev-bg-langfuse` then the same target). No `.env` edit required.
 11. Optional 3.1.1 proof: `make spec124-langfuse-3.1-e2e` (isolated compose on :3320). Must fail if health is not 3.1.x.
+12. Optional 3.22.0 OTLP route proof: `make spec124-langfuse-3.22-e2e` (isolated compose on :3330). Must fail if health is not 3.22.x or OTLP 404s.
+13. Optional 3.225.5 OTLP persist: `make spec124-langfuse-3.225-e2e` (isolated compose on :3340).
+14. Optional current Cloud OTLP proof: `make spec124-langfuse-cloud-e2e` (keys in `.env`). Matrix: `make spec124-langfuse-matrix`.
 
 ## Honest gaps allowed in v1
 

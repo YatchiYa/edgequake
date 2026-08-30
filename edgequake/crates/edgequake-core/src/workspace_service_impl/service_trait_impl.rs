@@ -44,6 +44,10 @@ impl WorkspaceService for WorkspaceServiceImpl {
         self.pg_list_tenants(limit, offset).await
     }
 
+    async fn count_tenants(&self) -> Result<usize> {
+        self.pg_count_tenants().await
+    }
+
     async fn insert_workspace(&self, workspace: Workspace) -> Result<Workspace> {
         self.pg_insert_workspace(workspace).await
     }
@@ -58,6 +62,19 @@ impl WorkspaceService for WorkspaceServiceImpl {
 
     async fn list_workspaces(&self, tenant_id: Uuid) -> Result<Vec<Workspace>> {
         self.pg_list_workspaces(tenant_id).await
+    }
+
+    async fn list_workspaces_page(
+        &self,
+        tenant_id: Uuid,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<Workspace>> {
+        self.pg_list_workspaces_page(tenant_id, limit, offset).await
+    }
+
+    async fn count_workspaces(&self, tenant_id: Uuid) -> Result<usize> {
+        self.pg_count_workspaces(tenant_id).await
     }
 
     async fn get_workspace_stats(&self, workspace_id: Uuid) -> Result<WorkspaceStats> {

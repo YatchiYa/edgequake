@@ -156,7 +156,7 @@ impl WorkspaceServiceImpl {
             r#"
             SELECT tenant_id, name, slug, is_active, metadata, created_at, updated_at
             FROM tenants
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, tenant_id DESC
             LIMIT $1 OFFSET $2
             "#,
         )
@@ -167,5 +167,13 @@ impl WorkspaceServiceImpl {
         .map_err(|e| Error::internal(format!("Failed to list tenants: {}", e)))?;
 
         Ok(rows.into_iter().map(|r| r.into_tenant()).collect())
+    }
+
+    pub(super) async fn pg_count_tenants(&self) -> Result<usize> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tenants")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("Failed to count tenants: {}", e)))?;
+        Ok(count as usize)
     }
 }

@@ -1,0 +1,29 @@
+=== LAW-C3 advisor ≡ SQL (125/126) + 131 abort (fail-closed) ===
+6
+   Compiling edgequake-storage v0.26.3 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.29s
+     Running tests/e2e_spec091_console.rs (target/debug/deps/e2e_spec091_console-76ad77d5c746e84b)
+
+running 1 test
+test contract_spec091_advisor_matches_125_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.36s
+
+   Compiling edgequake-storage v0.26.3 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.36s
+     Running tests/e2e_spec091_vector_retire.rs (target/debug/deps/e2e_spec091_vector_retire-6a43661e14292c04)
+
+running 1 test
+test contract_spec091_advisor_matches_126_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.36s
+
+   Compiling edgequake-storage v0.26.3 (/Users/raphaelmansuy/Github/03-working/edgequake/edgequake/crates/edgequake-storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.42s
+     Running tests/e2e_spec111_provenance_parity.rs (target/debug/deps/e2e_spec111_provenance_parity-bc34df4868b8fd46)
+
+running 1 test
+test e2e_spec111_17_abort_without_provenance ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.26s
+

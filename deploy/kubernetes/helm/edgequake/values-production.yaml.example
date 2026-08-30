@@ -1,7 +1,7 @@
 # Production example — copy and customize. External Langfuse Cloud or self-hosted URL.
 
 global:
-  edgequakeVersion: "0.26.2"
+  edgequakeVersion: "0.26.3"
 
 api:
   replicaCount: 2

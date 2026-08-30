@@ -11,6 +11,8 @@ export interface ContextTriggerChipProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   tenantName?: string | null;
   workspaceName?: string | null;
+  /** SPEC-140: chip is current-only; count documents the inventory. */
+  workspaceCount?: number;
   isLoading?: boolean;
   open?: boolean;
   className?: string;
@@ -22,7 +24,7 @@ export interface ContextTriggerChipProps
  */
 export const ContextTriggerChip = forwardRef<HTMLButtonElement, ContextTriggerChipProps>(
   function ContextTriggerChip(
-    { tenantName, workspaceName, isLoading, open, className, ...rest },
+    { tenantName, workspaceName, workspaceCount, isLoading, open, className, ...rest },
     ref,
   ) {
     const { t } = useTranslation();
@@ -42,6 +44,9 @@ export const ContextTriggerChip = forwardRef<HTMLButtonElement, ContextTriggerCh
         ref={ref}
         type="button"
         data-testid="workspace-selector"
+        data-workspace-count={
+          typeof workspaceCount === 'number' ? String(workspaceCount) : undefined
+        }
         variant="ghost"
         size="sm"
         role="combobox"

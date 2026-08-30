@@ -272,7 +272,7 @@ function PassageRow({
       <button
         className="w-full text-left p-2.5 rounded-lg bg-muted/30 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 border border-transparent hover:border-yellow-200 dark:hover:border-yellow-800 transition-all duration-150 group/chunk focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
         title="Click to open and highlight this passage in the document viewer"
-        aria-label={`Open passage ${(chunk.chunk_index ?? chunkIdx) + 1}: ${stripMarkdownSyntax(chunk.content).slice(0, 80)}${chunk.content.length > 80 ? '...' : ''}`}
+        aria-label={`Open passage ${chunk.reference_id ?? (chunk.chunk_index ?? chunkIdx) + 1}: ${stripMarkdownSyntax(chunk.content).slice(0, 80)}${chunk.content.length > 80 ? '...' : ''}`}
         onClick={() =>
           onDocumentClick?.(
             docId,
@@ -287,9 +287,9 @@ function PassageRow({
       >
         {/* Row 1: passage index + content + score */}
         <div className="flex items-start gap-2">
-          {/* Passage number — muted mono badge for clear hierarchy */}
+          {/* Passage number — muted mono badge for clear hierarchy (SPEC-142: prefer reference_id) */}
           <span className="flex-shrink-0 mt-0.5 w-5 h-5 rounded bg-muted/60 text-muted-foreground text-[9px] font-mono flex items-center justify-center select-none" aria-hidden="true">
-            {(chunk.chunk_index ?? chunkIdx) + 1}
+            {chunk.reference_id ?? (chunk.chunk_index ?? chunkIdx) + 1}
           </span>
 
           <p

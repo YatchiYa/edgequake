@@ -4162,6 +4162,8 @@ export interface components {
             /** @enum {string} */
             type: "thinking";
         } | {
+            /** @description SPEC-142: verified markdown answer (replace streamed tokens). */
+            answer?: string | null;
             /** Format: uuid */
             assistant_message_id: string;
             /** Format: int64 */
@@ -10768,6 +10770,8 @@ export interface components {
             /** @enum {string} */
             type: "thinking";
         } | {
+            /** @description Verified answer with `[p.N](href "Doc")` page chips (SPEC-142). */
+            answer?: string | null;
             llm_model?: string | null;
             llm_provider?: string | null;
             stats: components["schemas"]["QueryStreamStats"];
@@ -12276,7 +12280,7 @@ export interface components {
              * Format: int32
              * @description PDF page number (1-indexed) where this chunk starts.
              *     Present only when the source is a PDF with page-aware chunking (SPEC-032).
-             *     The UI uses this to deep-link to `#page=N` in the document viewer.
+             *     The UI deep-links with `?page=N` (SPEC-033 / SPEC-142; not `#page=N`).
              */
             page_start?: number | null;
             /** @description Reference ID for citation (1, 2, 3, ...). */
@@ -12790,7 +12794,7 @@ export interface components {
             limit: number;
             /** @description Current offset. */
             offset: number;
-            /** @description Total count. */
+            /** @description Total tenants (not page length). SPEC-140. */
             total: number;
         };
         /**
@@ -13579,7 +13583,7 @@ export interface components {
             limit: number;
             /** @description Current offset. */
             offset: number;
-            /** @description Total count. */
+            /** @description Total matching workspaces for the tenant (not page length). SPEC-140. */
             total: number;
         };
         /**

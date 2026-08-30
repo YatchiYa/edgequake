@@ -379,6 +379,7 @@ pub async fn stream_query(
                     let mut sources = build_sources(&context, stream_content_granularity);
                     resolve_chunk_file_paths(state_clone.storage.kv_storage.as_ref(), &mut sources)
                         .await;
+                    let sources_for_verify = sources.clone();
 
                     // SPEC-006 FR-001: Emit context event BEFORE tokens
                     let mapping_opts = crate::services::context_bundle_mapper::MappingOptions {
@@ -496,7 +497,12 @@ pub async fn stream_query(
                     let generation_time_ms = gen_start.elapsed().as_millis() as u64;
                     let tokens_used = accumulator.estimated_tokens();
                     let full_answer = accumulator.content().to_string();
-                    record_query_root_io(&stream_query_text, &full_answer);
+                    // SPEC-142: verified links from retrieval catalog (not LLM prose).
+                    let verified = crate::services::verified_citations::verified_answer(
+                        &full_answer,
+                        &sources_for_verify,
+                    );
+                    record_query_root_io(&stream_query_text, &verified);
                     let total_time_ms = retrieval_time_ms + generation_time_ms;
                     let tokens_per_second = if generation_time_ms > 0 {
                         Some(tokens_used as f32 / (generation_time_ms as f32 / 1000.0))
@@ -533,6 +539,7 @@ pub async fn stream_query(
                             ),
                             llm_provider: used_provider,
                             llm_model: used_model,
+                            answer: Some(verified),
                         })
                         .await;
                 }

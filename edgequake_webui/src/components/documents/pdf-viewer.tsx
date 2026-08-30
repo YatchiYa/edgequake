@@ -1,25 +1,21 @@
 /**
  * @module PDFViewer
- * @description Reusable PDF viewer component using react-pdf.
- * Displays PDF documents with pagination, zoom, and scroll controls.
+ * @description Reusable PDF viewer using react-pdf.
+ * SPEC-143: continuous multi-page scroll stack + onPageChange for Markdown sync.
  *
  * @implements SPEC-002 - Document Viewer with PDF display
+ * @implements SPEC-033 - Controlled currentPage / deeplink
+ * @implements SPEC-143 - Continuous stack, wheel page nav, onPageChange
  * @implements FEAT0711 - PDF rendering with react-pdf
  * @implements FEAT0712 - Page navigation controls
  * @implements FEAT0713 - Zoom controls
- *
- * @enforces BR0711 - Smooth scrolling within container
- * @enforces BR0712 - Responsive width handling
- *
- * @see {@link docs/features.md} FEAT0711-0713
  */
 'use client';
 
 import {
-  getDocumentPageLayout,
-  listDocumentPages,
-} from '@/lib/api/edgequake/documents';
-import { useQuery } from '@tanstack/react-query';
+  PdfPageOverlay,
+  type OverlayChips,
+} from '@/components/documents/pdf-page-overlay';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -27,78 +23,72 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  getDocumentPageLayout,
+  listDocumentPages,
+} from '@/lib/api/edgequake/documents';
 import { cn } from '@/lib/utils';
+import { useQuery } from '@tanstack/react-query';
 import {
-  PdfPageOverlay,
-  type OverlayChips,
-} from '@/components/documents/pdf-page-overlay';
-import {
-    ChevronLeft,
-    ChevronRight,
-    Loader2,
-    Maximize2,
-    Minimize2,
-    XCircle,
-    ZoomIn,
-    ZoomOut,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  XCircle,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import type { DocumentProps } from 'react-pdf';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-// PDF file source type - matches react-pdf File type
-// Can be: URL string, object with url, object with data (ArrayBuffer/TypedArray)
-type PDFFileSource = string | { url: string } | { data: ArrayBuffer | Uint8Array } | null;
+type PDFFileSource =
+  | string
+  | { url: string }
+  | { data: ArrayBuffer | Uint8Array }
+  | null;
 
-// Dynamic import to avoid SSR issues with react-pdf
-const Document = dynamic(() => import('react-pdf').then(mod => mod.Document), {
+const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), {
   ssr: false,
   loading: () => <PDFLoadingSkeleton />,
 });
 
-const Page = dynamic(() => import('react-pdf').then(mod => mod.Page), {
+const Page = dynamic(() => import('react-pdf').then((mod) => mod.Page), {
   ssr: false,
 });
 
-// Configure PDF.js worker from the same origin (no CDN). File is copied to
-// `public/pdf.worker.min.mjs` from pdfjs-dist so Playwright and air-gapped
-// deploys do not depend on unpkg.
 if (typeof window !== 'undefined') {
   import('react-pdf').then(({ pdfjs }) => {
     pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
   });
 }
 
+/** Windowed render kicks in above this page count (SPEC-143). */
+const WINDOW_THRESHOLD = 20;
+const WINDOW_RADIUS = 2;
+
 interface PDFViewerProps {
-  /** PDF source - URL string, URL object, or data object with ArrayBuffer/Uint8Array */
   file: PDFFileSource;
-  /** Optional class name for container */
   className?: string;
-  /** Initial page number (1-indexed). One-shot seed used on first mount. */
   initialPage?: number;
   /**
    * Controlled current page (1-indexed).
-   * When provided and changes, the viewer navigates to this page.
-   * Takes precedence over `initialPage` for runtime navigation.
-   * SPEC-033: Required for chunk-click-to-page navigation from the hierarchy tree.
+   * External navigation (deeplink, markdown sync, chunk click).
    */
   currentPage?: number;
-  /** Initial zoom scale (1.0 = 100%) */
+  /** SPEC-143: emitted when the active page changes via scroll / toolbar / keyboard. */
+  onPageChange?: (page: number) => void;
   initialScale?: number;
-  /** Whether to show toolbar */
   showToolbar?: boolean;
-  /** Fixed width for the PDF (auto if not provided) */
   width?: number;
-  /** Fixed height for container (enables scrolling) */
   height?: number;
-  /** Called when PDF loads successfully */
   onLoadSuccess?: (numPages: number) => void;
-  /** Called when PDF load fails */
   onLoadError?: (error: Error) => void;
-  /** Document id for SPEC-128 layout overlay (lazy GET …/pages/{n}/layout). */
+  /** Document id for SPEC-128 layout overlay. */
   documentId?: string;
 }
 
@@ -113,16 +103,22 @@ function PDFLoadingSkeleton() {
 
 function PDFErrorState({ error, onRetry }: { error: string; onRetry?: () => void }) {
   const { t } = useTranslation();
-  
-  // WHY: Detect specific error types to show actionable messages instead of raw errors.
-  // react-pdf throws "ResponseException: Unexpected server response (404)" when PDF is not found.
   const is404 = error.includes('404') || error.includes('not found');
-  const isNetworkError = error.includes('NetworkError') || error.includes('Failed to fetch') || error.includes('network');
-  
+  const isNetworkError =
+    error.includes('NetworkError') ||
+    error.includes('Failed to fetch') ||
+    error.includes('network');
+
   const displayMessage = is404
-    ? t('documents.viewer.pdfNotFound', 'PDF file is not available. The file may have been removed or processing may not be complete.')
+    ? t(
+        'documents.viewer.pdfNotFound',
+        'PDF file is not available. The file may have been removed or processing may not be complete.',
+      )
     : isNetworkError
-      ? t('documents.viewer.pdfNetworkError', 'Unable to connect to the server. Please check your connection and try again.')
+      ? t(
+          'documents.viewer.pdfNetworkError',
+          'Unable to connect to the server. Please check your connection and try again.',
+        )
       : error;
 
   return (
@@ -132,7 +128,7 @@ function PDFErrorState({ error, onRetry }: { error: string; onRetry?: () => void
       </div>
       <div className="space-y-1">
         <p className="text-sm font-medium text-muted-foreground">
-          {is404 
+          {is404
             ? t('documents.viewer.pdfUnavailable', 'PDF Unavailable')
             : t('documents.viewer.loadError', 'Failed to Load PDF')}
         </p>
@@ -148,9 +144,7 @@ function PDFErrorState({ error, onRetry }: { error: string; onRetry?: () => void
 }
 
 function layoutToggleDisabled(
-  summary:
-    | { layout_status: string; region_count?: number | null }
-    | undefined,
+  summary: { layout_status: string; region_count?: number | null } | undefined,
   pagesLoaded: boolean,
   pagesError: boolean,
 ): boolean {
@@ -165,36 +159,25 @@ function layoutToggleDisabled(
 }
 
 function layoutToggleHint(
-  summary:
-    | { layout_status: string; region_count?: number | null }
-    | undefined,
+  summary: { layout_status: string; region_count?: number | null } | undefined,
   disabled: boolean,
   t: (key: string, fallback: string) => string,
 ): string {
-  const status = summary?.layout_status;
   if (!disabled) {
-    return t('documents.viewer.layout.toggleHint', 'Layout overlay (O)');
+    return t('documents.viewer.layout.toggleHint', 'Toggle layout regions (O)');
   }
-  if (status === 'failed') {
-    return t('documents.viewer.layout.failed', 'Layout failed');
+  if (!summary) {
+    return t('documents.viewer.layout.unavailable', 'Layout data unavailable');
   }
-  if (status === 'skipped') {
-    return t('documents.viewer.layout.skipped', 'Layout skipped');
-  }
-  return t('documents.viewer.layout.pending', 'Layout not ready');
+  return t('documents.viewer.layout.disabled', 'Layout overlay unavailable for this page');
 }
 
-/**
- * PDFViewer component for displaying PDF documents.
- *
- * Uses react-pdf (based on Mozilla pdf.js) for high-quality PDF rendering.
- * Supports pagination, zoom controls, and responsive width.
- */
 export function PDFViewer({
   file,
   className,
   initialPage = 1,
   currentPage,
+  onPageChange,
   initialScale = 1.0,
   showToolbar = true,
   width,
@@ -204,15 +187,15 @@ export function PDFViewer({
   documentId,
 }: PDFViewerProps) {
   const { t } = useTranslation();
-  const [numPages, setNumPages] = useState<number>(0);
-  const [pageNumber, setPageNumber] = useState<number>(initialPage);
-  const [scale, setScale] = useState<number>(initialScale);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [numPages, setNumPages] = useState(0);
+  const [pageNumber, setPageNumber] = useState(initialPage);
+  const [scale, setScale] = useState(initialScale);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isFullWidth, setIsFullWidth] = useState<boolean>(false);
+  const [isFullWidth, setIsFullWidth] = useState(false);
   const [overlayOn, setOverlayOn] = useState(false);
   const [pageBox, setPageBox] = useState<{ width: number; height: number } | null>(null);
-  const pageWrapRef = useRef<HTMLDivElement>(null);
+  const [basePageHeight, setBasePageHeight] = useState(800);
   const [chips, setChips] = useState<OverlayChips>({
     figures: true,
     charts: true,
@@ -221,6 +204,11 @@ export function PDFViewer({
     columns: false,
     noise: false,
   });
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sheetRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const lastEmittedRef = useRef<number | null>(null);
+  const programmaticScrollRef = useRef(false);
 
   const pagesQuery = useQuery({
     queryKey: ['document-pages', documentId],
@@ -241,64 +229,124 @@ export function PDFViewer({
     enabled: Boolean(documentId) && overlayOn && pageNumber > 0 && !overlayDisabled,
   });
 
-  const remeasurePageBox = useCallback(() => {
-    const el = pageWrapRef.current?.querySelector('.react-pdf__Page') as HTMLElement | null;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) {
-      setPageBox({ width: r.width, height: r.height });
-    }
-  }, []);
+  const emitPage = useCallback(
+    (page: number) => {
+      const clamped =
+        numPages > 0 ? Math.max(1, Math.min(numPages, page)) : Math.max(1, page);
+      setPageNumber(clamped);
+      if (lastEmittedRef.current === clamped) return;
+      lastEmittedRef.current = clamped;
+      onPageChange?.(clamped);
+    },
+    [numPages, onPageChange],
+  );
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'o' || e.key === 'O') {
-        if ((e.target as HTMLElement | null)?.closest?.('input,textarea,[contenteditable]')) {
-          return;
-        }
-        if (overlayDisabled) return;
-        setOverlayOn((v) => !v);
+  const scrollToPage = useCallback(
+    (page: number, behavior: ScrollBehavior = 'smooth') => {
+      const clamped =
+        numPages > 0 ? Math.max(1, Math.min(numPages, page)) : Math.max(1, page);
+      const el = sheetRefs.current.get(clamped);
+      if (!el) {
+        setPageNumber(clamped);
+        return;
       }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [overlayDisabled]);
+      programmaticScrollRef.current = true;
+      el.scrollIntoView({ behavior, block: 'start' });
+      setPageNumber(clamped);
+      window.setTimeout(() => {
+        programmaticScrollRef.current = false;
+      }, 500);
+    },
+    [numPages],
+  );
 
-  useEffect(() => {
-    window.addEventListener('resize', remeasurePageBox);
-    return () => window.removeEventListener('resize', remeasurePageBox);
-  }, [remeasurePageBox]);
-
-  useEffect(() => {
-    setPageBox(null);
-  }, [pageNumber, scale]);
-
-  // SPEC-033: Sync pageNumber with the controlled `currentPage` prop.
-  // WHY: `initialPage` is a one-shot seed; `currentPage` drives the viewer
-  // after mount so external events (chunk clicks, citation deeplinks) can
-  // navigate the PDF without a full re-mount.
-  // numPages is included so we clamp correctly once the PDF has loaded.
-  // The effect intentionally excludes `pageNumber` from deps to prevent a
-  // feedback loop where the internal state change re-triggers the effect.
+  // External controlled page (deeplink / markdown sync)
   useEffect(() => {
     if (currentPage === undefined) return;
     const clamped =
       numPages > 0
         ? Math.max(1, Math.min(numPages, currentPage))
         : Math.max(1, currentPage);
-    setPageNumber(clamped);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, numPages]);
-  // WHY: Pre-check the URL before mounting <Document> so that PDF.js never
-  // attempts to fetch a 404 URL. Without this guard, react-pdf's internal worker
-  // logs "ResponseException: Unexpected server response (404)" to the console even
-  // though we handle the error in onLoadError. The HEAD request is cheap (no body
-  // download) and prevents the noisy console warning entirely.
+    if (clamped === lastEmittedRef.current && clamped === pageNumber) return;
+    lastEmittedRef.current = clamped;
+    scrollToPage(clamped, 'smooth');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- avoid loop on pageNumber
+  }, [currentPage, numPages, scrollToPage]);
+
+  // IntersectionObserver for active page from continuous stack
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || numPages < 1) return;
+
+    const pickActivePage = () => {
+      if (programmaticScrollRef.current) return;
+      const rootTop = root.getBoundingClientRect().top;
+      let best = 1;
+      let bestDist = Number.POSITIVE_INFINITY;
+      sheetRefs.current.forEach((el, p) => {
+        const top = el.getBoundingClientRect().top;
+        const dist = Math.abs(top - rootTop - 8);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = p;
+        }
+      });
+      if (best >= 1) emitPage(best);
+    };
+
+    const io = new IntersectionObserver(() => pickActivePage(), {
+      root,
+      threshold: [0, 0.1, 0.25, 0.5, 1],
+    });
+
+    sheetRefs.current.forEach((el) => io.observe(el));
+    root.addEventListener('scroll', pickActivePage, { passive: true });
+    return () => {
+      io.disconnect();
+      root.removeEventListener('scroll', pickActivePage);
+    };
+  }, [numPages, emitPage, scale]);
+
+  // Keyboard: PageUp/Down, Arrows (when not in input)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.closest?.('input,textarea,[contenteditable]')) {
+        return;
+      }
+      if (e.key === 'o' || e.key === 'O') {
+        if (overlayDisabled) return;
+        setOverlayOn((v) => !v);
+        return;
+      }
+      const root = scrollRef.current;
+      if (!root) return;
+      // Only when PDF pane contains focus or is hovered / default document focus
+      const pdfFocused =
+        root.contains(document.activeElement) ||
+        root.matches(':hover') ||
+        document.activeElement === document.body;
+      if (!pdfFocused) return;
+
+      if (e.key === 'PageDown' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = Math.min(numPages, pageNumber + 1);
+        scrollToPage(next);
+        emitPage(next);
+      } else if (e.key === 'PageUp' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = Math.max(1, pageNumber - 1);
+        scrollToPage(prev);
+        emitPage(prev);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [overlayDisabled, numPages, pageNumber, scrollToPage, emitPage]);
+
   const [urlOk, setUrlOk] = useState<boolean | null>(null);
   const [probeError, setProbeError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Only pre-check simple URL strings; data/object sources skip the check.
     const url = typeof file === 'string' ? file : (file as { url?: string } | null)?.url;
     let cancelled = false;
     Promise.resolve().then(async () => {
@@ -309,65 +357,69 @@ export function PDFViewer({
         }
         return;
       }
-
       if (!cancelled) {
         setUrlOk(null);
         setProbeError(null);
       }
-
       try {
         const res = await fetch(url, { method: 'HEAD' });
-        if (cancelled) {
-          return;
-        }
-
+        if (cancelled) return;
         setUrlOk(res.ok);
         if (!res.ok) {
           setProbeError(`ResponseException: Unexpected server response (${res.status})`);
           setIsLoading(false);
         }
       } catch {
-        if (!cancelled) {
-          // Network error: let react-pdf surface the real error
-          setUrlOk(true);
-        }
+        if (!cancelled) setUrlOk(true);
       }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [file]);
 
-  const handleLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
-    setNumPages(numPages);
-    setIsLoading(false);
-    setError(null);
-    onLoadSuccess?.(numPages);
-  }, [onLoadSuccess]);
+  const handleLoadSuccess = useCallback(
+    ({ numPages: n }: { numPages: number }) => {
+      setNumPages(n);
+      setIsLoading(false);
+      setError(null);
+      onLoadSuccess?.(n);
+    },
+    [onLoadSuccess],
+  );
 
-  const handleLoadError = useCallback((err: Error) => {
-    setError(err.message || 'Failed to load PDF');
-    setIsLoading(false);
-    onLoadError?.(err);
-  }, [onLoadError]);
+  const handleLoadError = useCallback(
+    (err: Error) => {
+      setError(err.message || 'Failed to load PDF');
+      setIsLoading(false);
+      onLoadError?.(err);
+    },
+    [onLoadError],
+  );
 
   const goToPreviousPage = useCallback(() => {
-    setPageNumber(prev => Math.max(1, prev - 1));
-  }, []);
+    const prev = Math.max(1, pageNumber - 1);
+    scrollToPage(prev);
+    emitPage(prev);
+  }, [pageNumber, scrollToPage, emitPage]);
 
   const goToNextPage = useCallback(() => {
-    setPageNumber(prev => Math.min(numPages, prev + 1));
+    const next = Math.min(numPages, pageNumber + 1);
+    scrollToPage(next);
+    emitPage(next);
+  }, [numPages, pageNumber, scrollToPage, emitPage]);
+
+  const zoomIn = useCallback(() => setScale((prev) => Math.min(3.0, prev + 0.25)), []);
+  const zoomOut = useCallback(() => setScale((prev) => Math.max(0.5, prev - 0.25)), []);
+  const toggleFullWidth = useCallback(() => setIsFullWidth((prev) => !prev), []);
+
+  const useWindowing = numPages > WINDOW_THRESHOLD;
+  const pageList = useMemo(() => {
+    if (numPages < 1) return [];
+    return Array.from({ length: numPages }, (_, i) => i + 1);
   }, [numPages]);
 
-  const zoomIn = useCallback(() => {
-    setScale(prev => Math.min(3.0, prev + 0.25));
-  }, []);
-
-  const zoomOut = useCallback(() => {
-    setScale(prev => Math.max(0.5, prev - 0.25));
-  }, []);
-
-  const toggleFullWidth = useCallback(() => {
-    setIsFullWidth(prev => !prev);
-  }, []);
+  const placeholderHeight = Math.max(200, Math.round(basePageHeight * scale));
 
   if (!file) {
     return (
@@ -378,7 +430,6 @@ export function PDFViewer({
   }
 
   const displayError = error ?? probeError;
-
   if (displayError) {
     return (
       <PDFErrorState
@@ -392,8 +443,6 @@ export function PDFViewer({
     );
   }
 
-  // WHY: Show loading skeleton while the HEAD pre-check is in flight or urlOk is false
-  // to avoid mounting <Document> prematurely which would trigger PDF.js console warnings.
   if (urlOk === null) {
     return (
       <div className={cn('flex flex-col h-full min-h-0', className)}>
@@ -405,11 +454,13 @@ export function PDFViewer({
   const documentFile: DocumentProps['file'] = file;
 
   return (
-    <div data-testid="pdf-viewer" className={cn('flex flex-col h-full min-h-0', className)}>
-      {/* Toolbar */}
+    <div
+      data-testid="pdf-viewer"
+      className={cn('flex flex-col h-full min-h-0', className)}
+      tabIndex={0}
+    >
       {showToolbar && (
         <div className="flex items-center justify-between gap-2 p-2 border-b bg-muted/30">
-          {/* Page Navigation */}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -418,6 +469,7 @@ export function PDFViewer({
               onClick={goToPreviousPage}
               disabled={pageNumber <= 1 || isLoading}
               title={t('documents.viewer.previousPage', 'Previous page')}
+              data-testid="pdf-prev-page"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -435,12 +487,12 @@ export function PDFViewer({
               onClick={goToNextPage}
               disabled={pageNumber >= numPages || isLoading}
               title={t('documents.viewer.nextPage', 'Next page')}
+              data-testid="pdf-next-page"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
 
-          {/* Zoom Controls */}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -470,9 +522,17 @@ export function PDFViewer({
               size="icon"
               className="h-8 w-8"
               onClick={toggleFullWidth}
-              title={isFullWidth ? t('documents.viewer.fitWidth', 'Fit width') : t('documents.viewer.fullWidth', 'Full width')}
+              title={
+                isFullWidth
+                  ? t('documents.viewer.fitWidth', 'Fit width')
+                  : t('documents.viewer.fullWidth', 'Full width')
+              }
             >
-              {isFullWidth ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {isFullWidth ? (
+                <Minimize2 className="h-4 w-4" />
+              ) : (
+                <Maximize2 className="h-4 w-4" />
+              )}
             </Button>
             {documentId ? (
               <Tooltip>
@@ -527,64 +587,94 @@ export function PDFViewer({
         </div>
       ) : null}
 
-      {/* PDF Content - mousewheel scrollable
-         WHY: flex-1 + min-h-0 lets the scroll area shrink to fit the parent.
-         An explicit height is only set when the height prop is provided;
-         otherwise flex handles it so the PDF page is fully scrollable. */}
       <div
+        ref={scrollRef}
         className={cn(
           'flex-1 min-h-0 overflow-y-auto overflow-x-hidden',
-          'scroll-smooth bg-muted/10'
+          'scroll-smooth bg-muted/10',
         )}
-        style={{ 
+        style={{
           ...(height ? { height: `${height}px` } : {}),
-          WebkitOverflowScrolling: 'touch'
+          WebkitOverflowScrolling: 'touch',
         }}
+        data-testid="pdf-scroll-container"
       >
-        <div className="flex justify-center py-4">
+        <div className="flex flex-col items-center gap-4 py-4">
           <Document
             file={documentFile}
             onLoadSuccess={handleLoadSuccess}
             onLoadError={handleLoadError}
             loading={<PDFLoadingSkeleton />}
-            className="pdf-document"
+            className="pdf-document w-full flex flex-col items-center gap-4"
           >
-            <div
-              ref={pageWrapRef}
-              className="relative shadow-md"
-              style={
-                pageBox
-                  ? { width: pageBox.width, height: pageBox.height }
-                  : undefined
-              }
-            >
-            <Page
-              pageNumber={pageNumber}
-              scale={scale}
-              width={isFullWidth ? undefined : width}
-              className="shadow-md"
-              renderTextLayer={true}
-              renderAnnotationLayer={true}
-              onRenderSuccess={(page) => {
-                setPageBox({ width: page.width, height: page.height });
-              }}
-              loading={
-                <div className="flex items-center justify-center p-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            {pageList.map((n) => {
+              const inWindow =
+                !useWindowing || Math.abs(n - pageNumber) <= WINDOW_RADIUS;
+              return (
+                <div
+                  key={n}
+                  ref={(el) => {
+                    if (el) sheetRefs.current.set(n, el);
+                    else sheetRefs.current.delete(n);
+                  }}
+                  data-testid="pdf-page-sheet"
+                  data-page={n}
+                  className="relative shadow-md bg-background"
+                  style={
+                    !inWindow
+                      ? { width: pageBox?.width ?? width ?? 600, height: placeholderHeight }
+                      : pageBox && n === pageNumber
+                        ? { width: pageBox.width, minHeight: pageBox.height }
+                        : undefined
+                  }
+                >
+                  {inWindow ? (
+                    <Page
+                      pageNumber={n}
+                      scale={scale}
+                      width={isFullWidth ? undefined : width}
+                      className="shadow-md"
+                      renderTextLayer={n === pageNumber}
+                      renderAnnotationLayer={n === pageNumber}
+                      onRenderSuccess={(page) => {
+                        if (n === pageNumber || !pageBox) {
+                          setPageBox({ width: page.width, height: page.height });
+                        }
+                        if (scale > 0) {
+                          setBasePageHeight(page.height / scale);
+                        }
+                      }}
+                      loading={
+                        <div className="flex items-center justify-center p-8">
+                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                      }
+                    />
+                  ) : (
+                    <div
+                      className="flex items-center justify-center text-xs text-muted-foreground"
+                      style={{ height: placeholderHeight }}
+                    >
+                      {t('documents.viewer.pagePlaceholder', 'Page {{n}}', { n })}
+                    </div>
+                  )}
+                  {inWindow &&
+                  n === pageNumber &&
+                  overlayOn &&
+                  pageBox &&
+                  !overlayDisabled ? (
+                    <PdfPageOverlay
+                      regions={layoutQuery.data?.regions ?? []}
+                      chips={chips}
+                      empty={
+                        layoutQuery.data?.layout_status === 'extracted' &&
+                        (layoutQuery.data.regions?.length ?? 0) === 0
+                      }
+                    />
+                  ) : null}
                 </div>
-              }
-            />
-            {overlayOn && pageBox && !overlayDisabled ? (
-              <PdfPageOverlay
-                regions={layoutQuery.data?.regions ?? []}
-                chips={chips}
-                empty={
-                  layoutQuery.data?.layout_status === 'extracted' &&
-                  (layoutQuery.data.regions?.length ?? 0) === 0
-                }
-              />
-            ) : null}
-            </div>
+              );
+            })}
           </Document>
         </div>
       </div>

@@ -1,0 +1,6 @@
+SPEC-122 ARM=D N=5 INDEX=4 TS=20260830T043905Z
+UNIQUE=f6f6c277-71a1-4274-b8bb-d5d018cf700f
+RAG: Retrieval-Augmented Generation - a technique for enhancing LLM responses with external knowledge
+LLM: Large Language Model - a neural network trained on vast amounts of text data
+KG: Knowledge Graph - a structured representation of real-world entities and their relationships
+NLP: Natural Language Processing - a branch of AI dealing with text understanding

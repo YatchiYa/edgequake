@@ -54,6 +54,7 @@
 pub mod bootstrap;
 pub mod cache;
 pub mod chunk_hydration;
+pub mod citation_verify;
 pub mod community_global;
 pub mod context;
 pub mod context_filter;
@@ -96,6 +97,10 @@ pub mod truncation;
 pub mod types;
 pub mod vector_filter;
 
+pub use citation_verify::{
+    build_document_page_url, rewrite_verified_citations, short_document_label, CitationCatalog,
+    CitationEntry, CitationSourceRow, RewriteReport,
+};
 pub use context::{
     QueryContext, RetrievedChunk, RetrievedContext, RetrievedEntity, RetrievedRelationship,
 };
@@ -120,7 +125,10 @@ pub use fusion::{
     reciprocal_rank_fusion, MixFusionMode, RRF_K,
 };
 pub use graph_ppr::{parse_graph_walk_mode, GraphWalkMode, PprConfig};
-pub use grounding::{allows_honest_refusal, grounding_instructions, is_entailment_first};
+pub use grounding::{
+    allows_honest_refusal, grounding_instructions, is_entailment_first, is_gold_answer_extension,
+    strip_gold_citation_artifacts,
+};
 pub use keywords::{
     CachedKeywordExtractor, ExtractedKeywords, InMemoryKeywordCache, KeywordCache,
     KeywordExtractor, Keywords, LLMKeywordExtractor, MockKeywordExtractor, QueryIntent,

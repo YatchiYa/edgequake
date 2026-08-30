@@ -23,6 +23,8 @@ curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-m
 
 That's it. Three versioned images (API, Web UI, PostgreSQL) are pulled from GitHub Container Registry and started.
 
+The API image is distroless (no shell). Compose healthchecks run `edgequake healthcheck` (`GET /live`). Use `docker compose logs` rather than `docker exec sh`.
+
 **Then open:** http://localhost:3000
 
 > **Auth note:** Product default is auth **on**. Quickstart compose sets `EDGEQUAKE_DEV_MODE=true` (open API, no login) for frictionless demos — **do not use in production**. For production, set `EDGEQUAKE_DEV_MODE=false`, `EDGEQUAKE_AUTH_ENABLED=true`, and `EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD`.

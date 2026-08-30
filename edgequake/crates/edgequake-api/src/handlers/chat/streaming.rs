@@ -233,6 +233,10 @@ pub async fn chat_completion_stream(
         // Track message context for saving after streaming completes
         #[allow(unused_assignments)]
         let mut saved_message_context: Option<MessageContext> = None;
+        // SPEC-142: keep sources for verified answer rewrite at Done / persist.
+        // Initial empty is overwritten when Sources arrive; may stay empty if stream ends early.
+        #[allow(unused_assignments)]
+        let mut sources_for_verify: Vec<crate::handlers::query_types::SourceReference> = Vec::new();
 
         // Build query request
         // OODA-231: Use workspace's tenant_id for graph queries, not header tenant_id.
@@ -487,6 +491,7 @@ pub async fn chat_completion_stream(
 
                 // Save message context for later persistence
                 saved_message_context = Some(build_message_context_from_engine(&context, &sources));
+                sources_for_verify = sources.clone();
 
                 let retrieval_elapsed_ms = retrieval_start.elapsed().as_millis() as u64;
 
@@ -604,9 +609,14 @@ pub async fn chat_completion_stream(
         let duration_ms = accumulator.duration_ms();
         let tokens_used = accumulator.estimated_tokens();
         let full_content = accumulator.content().to_string();
+        // SPEC-142: persist + Done carry verified document+page links.
+        let verified = crate::services::verified_citations::verified_answer(
+            &full_content,
+            &sources_for_verify,
+        );
 
         // SPEC-124: root observation I/O after stream completes.
-        edgequake_observability::record_query_root_io(&message_content, &full_content);
+        edgequake_observability::record_query_root_io(&message_content, &verified);
 
         // SPEC-040 #259: conversation may be deleted while the LLM stream runs.
         if !super::conversation_guard::conversation_exists(&state_clone, conversation_id)
@@ -628,7 +638,7 @@ pub async fn chat_completion_stream(
             .create_message(
                 conversation_id,
                 CreateMessageRequest {
-                    content: full_content.clone(),
+                    content: verified.clone(),
                     role: MessageRole::Assistant,
                     parent_id: Some(user_message_id),
                     stream: true,
@@ -683,6 +693,7 @@ pub async fn chat_completion_stream(
                         // SPEC-032: Provider lineage tracking
                         llm_provider: used_provider.clone(),
                         llm_model: used_model.clone(),
+                        answer: Some(verified),
                     })
                     .await;
 

@@ -68,9 +68,11 @@ Auth: obtain JWT if `DEV_AUTH` requires it; harness uses env `EDGEQUAKE_TOKEN` /
 
 ## Measurement results
 
-Artifacts: [`measurements/20260811-summary.json`](measurements/20260811-summary.json), per-arm dirs under `measurements/`.
+Artifacts: [`measurements/20260811-summary.json`](measurements/20260811-summary.json)
+(v0.24.3), [`measurements/20260830-summary.json`](measurements/20260830-summary.json)
+(v0.26.3 HEAD re-measure).
 
-### Platform
+### Platform (2026-08-11)
 
 | Field | Value |
 |-------|-------|
@@ -80,7 +82,7 @@ Artifacts: [`measurements/20260811-summary.json`](measurements/20260811-summary.
 | Arm A provider | Ollama (`gemma4` / `embeddinggemma`) |
 | Arm B provider | Mistral (`mistral-small-latest` / `mistral-embed`) |
 
-### Arm C (Ollama, N=1)
+### Arm C (Ollama, N=1) — 2026-08-11
 
 | Metric | Value |
 |--------|-------|
@@ -90,7 +92,7 @@ Artifacts: [`measurements/20260811-summary.json`](measurements/20260811-summary.
 | docs/min | 4.212 |
 | tenant | 1 |
 
-### Arm A (Ollama)
+### Arm A (Ollama) — 2026-08-11
 
 | N | t_admit_s | t_first_s | t_all_s | docs/min | max_proc* | park_waiters | tenant |
 |---|-----------|-----------|---------|----------|-----------|--------------|--------|
@@ -99,11 +101,20 @@ Artifacts: [`measurements/20260811-summary.json`](measurements/20260811-summary.
 \*Harness polls every 2s — often misses fleeting `processing` display. Completion counts advanced **1→2→3→4→5** (serial).  
 †`max_tasks_per_tenant=1` confirmed via queue-metrics.
 
-### Arm B (Mistral)
+### Arm B (Mistral) — 2026-08-11
 
 | N | t_admit_s | t_first_s | t_all_s | docs/min | park_waiters | tenant | workers |
 |---|-----------|-----------|---------|----------|--------------|--------|---------|
 | 5 | 0.184 | 8.364 | 45.016 | 6.664 | 0 | 6 | 4 |
+
+### HEAD re-measure (2026-08-30, v0.26.3, Docker-like + Mistral)
+
+| Arm | N | admit_s | t_first_s | t_all_s | docs/min | tenant | note |
+|-----|---|---------|-----------|---------|----------|--------|------|
+| C | 1 | 0.099 | 12.276 | 12.276 | 4.888 | 6 | baseline |
+| D | 5 | 0.186 | 14.522 | 51.275 | 5.851 | 6 | t_all < 5×ArmC → overlap |
+
+**Regression floor:** ≥4.0 docs/min on N=5 small text at tenant=6; `admit_s ≪ t_all`.
 
 ### PDF sample (H2/H3, Mistral)
 
@@ -124,11 +135,16 @@ Artifacts: [`measurements/20260811-summary.json`](measurements/20260811-summary.
 | H2 | **PARTIAL** | 1-page convert ≈11.5 s vision tax; scales with pages; text bulk still serial without PDF |
 | H3 | **REJECT** | 5 chunks / 3 KB md — no inflation on this fixture |
 | H4 | **REJECT** | `store_contention.level=normal`; LLM-bound path |
-| H5 | **REJECT** | admit_s ≪ t_all on all arms (0.16–0.18 s vs 45–59 s) |
+| H5 | **REJECT** | admit_s ≪ t_all on all arms (0.10–0.19 s vs 12–59 s); confirmed on HEAD 0.26.3 |
 
 ## Harness
 
-See [scripts/measure-bulk-ingest.sh](scripts/measure-bulk-ingest.sh).
+```bash
+make measure-bulk-ingest ARM=C N=1
+make measure-bulk-ingest ARM=D N=5
+```
+
+See [scripts/measure-bulk-ingest.py](scripts/measure-bulk-ingest.py).
 
 ## Cross-refs
 

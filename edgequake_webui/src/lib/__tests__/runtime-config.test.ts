@@ -2,12 +2,19 @@
  * SPEC-020 / FIX-DEV-PROXY — runtime config dev vs prod API URL resolution.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { getRuntimeApiBaseUrl, getRuntimeConfig } from "../runtime-config";
+import {
+  getRuntimeApiBaseUrl,
+  getRuntimeConfig,
+  parseHealthPollIntervalMs,
+} from "../runtime-config";
 
 const ORIGINAL_ENV = { ...process.env };
 
 afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
+  if (typeof window !== "undefined") {
+    delete window.__EDGEQUAKE_RUNTIME_CONFIG__;
+  }
 });
 
 describe("runtime-config", () => {
@@ -33,5 +40,40 @@ describe("runtime-config", () => {
     delete process.env.NEXT_PUBLIC_API_URL;
     expect(getRuntimeConfig().apiUrl).toBe("http://api.example.com");
     expect(getRuntimeApiBaseUrl()).toBe("http://api.example.com/api/v1");
+  });
+
+  it("disables health poll by default", () => {
+    delete process.env.EDGEQUAKE_HEALTH_POLL_MS;
+    expect(getRuntimeConfig().healthPollIntervalMs).toBe(false);
+  });
+
+  it("enables health poll when EDGEQUAKE_HEALTH_POLL_MS is a positive integer", () => {
+    process.env.EDGEQUAKE_HEALTH_POLL_MS = "10000";
+    expect(getRuntimeConfig().healthPollIntervalMs).toBe(10_000);
+  });
+
+  it("treats 0 / false / off as health poll disabled", () => {
+    process.env.EDGEQUAKE_HEALTH_POLL_MS = "0";
+    expect(getRuntimeConfig().healthPollIntervalMs).toBe(false);
+    process.env.EDGEQUAKE_HEALTH_POLL_MS = "false";
+    expect(getRuntimeConfig().healthPollIntervalMs).toBe(false);
+    process.env.EDGEQUAKE_HEALTH_POLL_MS = "off";
+    expect(getRuntimeConfig().healthPollIntervalMs).toBe(false);
+  });
+});
+
+describe("parseHealthPollIntervalMs", () => {
+  it("returns false for unset, 0, false, and off", () => {
+    expect(parseHealthPollIntervalMs(undefined)).toBe(false);
+    expect(parseHealthPollIntervalMs(0)).toBe(false);
+    expect(parseHealthPollIntervalMs(false)).toBe(false);
+    expect(parseHealthPollIntervalMs("off")).toBe(false);
+    expect(parseHealthPollIntervalMs("false")).toBe(false);
+  });
+
+  it("returns a floor integer for a positive interval", () => {
+    expect(parseHealthPollIntervalMs(10000)).toBe(10_000);
+    expect(parseHealthPollIntervalMs("10000")).toBe(10_000);
+    expect(parseHealthPollIntervalMs("1500.9")).toBe(1500);
   });
 });

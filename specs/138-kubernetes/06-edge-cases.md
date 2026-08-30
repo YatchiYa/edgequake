@@ -10,7 +10,7 @@
 | EC4 | Init keys mismatch | Fixed keys in stack values; bootstrap Secret | E2E-138-07/08 |
 | EC5 | Browser can't reach API | Ingress + external `EDGEQUAKE_API_URL` in prod | E2E-138-06 |
 | EC6 | Postgres PVC pending | Document StorageClass; kind default | E2E-138-04 |
-| EC7 | Trace flush on SIGTERM | `preStop` sleep 15s + ObservabilityGuard | E2E-138-14 |
+| EC7 | Trace flush on SIGTERM | `preStop` `edgequake pre-stop` 15s + ObservabilityGuard | E2E-138-14 |
 | EC8 | Shared Postgres | Separate namespaces (LAW-138-3) | Lens DB |
 | EC9 | kind OOM | `values-kind.yaml` low resources; RAM warning | README |
 | EC10 | Multi-replica API | `EDGEQUAKE_TASK_DELIVERY=bridged` | Ops lens |

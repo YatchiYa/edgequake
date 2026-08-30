@@ -332,6 +332,8 @@ pub async fn chat_completion(
     // 4. Build sources and resolve document names for chunk sources
     let mut sources = build_sources(&result.context, request.content_granularity);
     resolve_chunk_file_paths(state.storage.kv_storage.as_ref(), &mut sources).await;
+    // SPEC-142: persist verified links (document name + page), not raw [N].
+    let verified = crate::services::verified_citations::verified_answer(&result.answer, &sources);
     let context = build_message_context_from_engine(&result.context, &sources);
 
     if !super::conversation_guard::conversation_exists(&state, conversation_id).await? {
@@ -347,7 +349,7 @@ pub async fn chat_completion(
         .create_message(
             conversation_id,
             CreateMessageRequest {
-                content: result.answer.clone(),
+                content: verified.clone(),
                 role: MessageRole::Assistant,
                 parent_id: Some(user_message.message_id),
                 stream: false,
@@ -436,7 +438,7 @@ pub async fn chat_completion(
         conversation_id,
         user_message_id: user_message.message_id,
         assistant_message_id: assistant_message.message_id,
-        content: result.answer,
+        content: verified,
         mode: result.mode.to_string(),
         sources,
         stats: crate::services::query_stats_mapper::from_engine_stats(

@@ -28,8 +28,10 @@
 //! - `in_memory`: In-memory implementation for testing
 
 mod in_memory;
+mod pagination;
 
 pub use in_memory::InMemoryConversationService;
+pub(crate) use pagination::{offset_from_cursor, pagination_meta};
 
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -243,6 +245,66 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.items.len(), 5);
+        assert_eq!(result.pagination.total, Some(5));
+        assert!(!result.pagination.has_more);
+    }
+
+    #[tokio::test]
+    async fn test_list_conversations_honors_offset_cursor() {
+        let service = InMemoryConversationService::new();
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+
+        for i in 0..25 {
+            service
+                .create_conversation(
+                    tenant_id,
+                    user_id,
+                    None,
+                    CreateConversationRequest {
+                        title: Some(format!("Chat {i:02}")),
+                        mode: None,
+                        folder_id: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        let page1 = service
+            .list_conversations(
+                tenant_id,
+                user_id,
+                ConversationFilter::default(),
+                ConversationSortField::Title,
+                false,
+                None,
+                20,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(page1.items.len(), 20);
+        assert_eq!(page1.pagination.total, Some(25));
+        assert!(page1.pagination.has_more);
+        let cursor = page1.pagination.next_cursor.clone().expect("next_cursor");
+
+        let page2 = service
+            .list_conversations(
+                tenant_id,
+                user_id,
+                ConversationFilter::default(),
+                ConversationSortField::Title,
+                false,
+                Some(cursor),
+                20,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(page2.items.len(), 5);
+        assert!(!page2.pagination.has_more);
+        assert!(page2.pagination.next_cursor.is_none());
     }
 
     #[tokio::test]

@@ -142,6 +142,13 @@ make kill-app && make backend-bg   # or: make dev
 # Langfuse 3.1.x (how-to: docs/operations/langfuse-3.1.md):
 #   make langfuse-3.1-up          # isolated 3.1.1 UI :3320
 #   make spec124-langfuse-3.1-e2e # unfakable ingestion-fallback proof
+# Langfuse ≥ 3.22 OTLP (OTLP starts at 3.22.0, not 3.2):
+#   make langfuse-3.22-up            # isolated 3.22.0 UI :3330 (route+probe)
+#   make spec124-langfuse-3.22-e2e
+#   make langfuse-3.225-up           # isolated 3.225.5 UI :3340 (OTLP persist)
+#   make spec124-langfuse-3.225-e2e
+#   make spec124-langfuse-cloud-e2e  # current Cloud (keys in .env)
+#   make spec124-langfuse-matrix     # 3.1.1 + 3.22.0 + 3.225.5 + Cloud
 # Cost $0.00 on recent models is Langfuse's catalogue, not EdgeQuake (LAW-124-12).
 #   make langfuse-sync-prices          # POST /api/public/models
 #   make langfuse-sync-prices FORCE=1  # PUT existing rows

@@ -8,6 +8,8 @@
 - [x] #361 and #365 updated with SPEC-122 link + measurement summary
 - [x] Issues remain open until partner ack **or** Phase A shipped and SLO documented
 - [x] No claim of “fixed bulk speed” without Phase B gate evidence
+- [x] HEAD 0.26.3 re-measure + Playwright `spec122-admit-honesty` green (2026-08-30)
+- [x] `#361` / `#365` closed as capacity / not-a-correctness-defect (2026-08-30)
 
 ## Technical checklist
 
@@ -32,8 +34,12 @@
 Close #361/#365 only when:
 
 1. Phase A complete (honest UX/docs + measurements), **and**
-2. Either partner accepts capacity explanation **or** Phase B meets an agreed docs/min SLO, **and**
+2. Either partner accepts capacity explanation **or** Phase B meets an agreed docs/min SLO **or** maintainer documents capacity closure with fresh HEAD measure + honesty e2e (partner silence / no agreed SLO), **and**
 3. Acceptance language below is true in product.
+
+**Satisfied 2026-08-30:** Phase A + HEAD re-measure
+([`measurements/20260830-summary.json`](measurements/20260830-summary.json)) +
+Playwright honesty green; closed as capacity (Phase B remains gated).
 
 ## Acceptance language
 

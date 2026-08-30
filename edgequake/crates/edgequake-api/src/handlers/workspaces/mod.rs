@@ -22,10 +22,11 @@
 //! | Method | Path | Handler | Description |
 //! |--------|------|---------|-------------|
 //! | POST | `/api/v1/tenants` | [`create_tenant`] | Create new tenant |
-//! | GET | `/api/v1/tenants` | [`list_tenants`] | List all tenants |
-//! | POST | `/api/v1/workspaces` | [`create_workspace`] | Create workspace |
-//! | GET | `/api/v1/workspaces` | [`list_workspaces`] | List workspaces |
-//! | DELETE | `/api/v1/workspaces/:id` | [`delete_workspace`] | Delete workspace |
+//! | GET | `/api/v1/tenants` | [`list_tenants`] | List tenants (`total` = COUNT, SPEC-140) |
+//! | POST | `/api/v1/tenants/{tenant_id}/workspaces` | [`create_workspace`] | Create workspace |
+//! | GET | `/api/v1/tenants/{tenant_id}/workspaces` | [`list_workspaces`] | List workspaces for tenant |
+//! | GET | `/api/v1/workspaces/{workspace_id}` | [`get_workspace`] | Get one workspace |
+//! | DELETE | `/api/v1/workspaces/{workspace_id}` | [`delete_workspace`] | Delete workspace |
 //!
 //! # WHY: Hierarchical Multi-Tenancy
 //!

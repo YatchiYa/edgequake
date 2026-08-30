@@ -850,6 +850,29 @@ describe("TenantsResource", () => {
     expect(list).toHaveLength(1);
   });
 
+  it("listWorkspaces exhausts pages until accumulated >= total", async () => {
+    const all = Array.from({ length: 101 }, (_, i) => ({ id: `w${i}` }));
+    const paged = createMockTransport();
+    const orig = paged.request.bind(paged);
+    paged.request = async <T>(options: {
+      method: string;
+      path: string;
+      query?: Record<string, string>;
+    }): Promise<T> => {
+      await orig(options);
+      const offset = Number(options.query?.offset ?? 0);
+      const limit = Number(options.query?.limit ?? 100);
+      return {
+        items: all.slice(offset, offset + limit),
+        total: all.length,
+      } as T;
+    };
+    const resource = new TenantsResource(paged as unknown as HttpTransport);
+    const list = await resource.listWorkspaces("t1");
+    expect(list).toHaveLength(101);
+    expect(paged.requests.length).toBe(2);
+  });
+
   it("getWorkspaceBySlug → GET .../by-slug/:slug", async () => {
     await tenants.getWorkspaceBySlug("t1", "main");
     expect(mock.lastRequest?.path).toBe(

@@ -1804,7 +1804,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1832,7 +1832,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-api"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -1887,7 +1887,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-audit"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1903,7 +1903,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-auth"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "argon2",
  "async-trait",
@@ -1921,7 +1921,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-core"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1985,7 +1985,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-observability"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "http 1.4.2",
  "metrics",
@@ -2005,7 +2005,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-pdf"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2053,7 +2053,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-pipeline"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2078,7 +2078,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-query"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2103,7 +2103,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-rate-limiter"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "anyhow",
  "axum",
@@ -2123,7 +2123,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-storage"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2144,7 +2144,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-tasks"
-version = "0.26.2"
+version = "0.26.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5667,7 +5667,6 @@ dependencies = [
  "indexmap 2.14.0",
  "log",
  "memchr",
- "native-tls",
  "once_cell",
  "percent-encoding",
  "rustls",

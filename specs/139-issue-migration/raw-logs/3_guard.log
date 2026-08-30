@@ -1,0 +1,98 @@
+
+> quantalogic@1.73.0 edgequake:migrate:guard /home/steven/quantalogic/quantalogic-platform
+> docker run --rm --network host --add-host host.docker.internal:host-gateway -e DATABASE_URL=postgresql://operator:***@localhost:5432/edgequake-prod ghcr.io/raphaelmansuy/edgequake:0.26.1 migrate guard
+
+[2m2026-08-26T15:06:21.004352Z[0m [32m INFO[0m [2medgequake_observability::subscriber[0m[2m:[0m Observability initialized [3mlog_format[0m[2m=[0mPlain [3motel_enabled[0m[2m=[0mfalse [3motel_endpoint[0m[2m=[0mNone [3mlangfuse_enabled[0m[2m=[0mfalse [3mlangfuse_base_url[0m[2m=[0mhttps://cloud.langfuse.com [3mservice_name[0m[2m=[0medgequake-api [3mlog_span_events[0m[2m=[0mfalse
+EdgeQuake migrate guard v0.26.1
+database: postgresql://operator:***@localhost:5432/edgequake-prod
+
+ GUARD (read-only readiness probe)
+  kv_store: present
+  durable residue: 21489 row(s) outside typed SSOT  <-- BLOCKS the drop
+    breakdown: chunk_text=18904, doc_shells=4, lineage=1232, multimodal=58, doc_hash=1246, staging_hash=41, wsdoc=4
+  drop-readiness: RED (see residue / family modes above)
+  vector-chunk drop-readiness (126): RED — backend=typed_embeddings, uncovered_chunk=41114, verify_chunk=fail/pending
+  vector-fleet drop-readiness (131): RED — backend=typed_embeddings, uncovered_fleet=521076, uncovered_chunk=41114, verify_fleet=fail/pending, stalls=0
+    NEXT: run iw2-fleet-embedding-backfill and/or iw2-fleet-provenance-stamp until uncovered_fleet=0 (legacy_vector_id provenance; see specs/111-issues/09-ops-runbook.md).
+
+> quantalogic@1.73.0 edgequake:migrate:guard /home/steven/quantalogic/quantalogic-platform
+> docker run --rm --network host --add-host host.docker.internal:host-gateway -e DATABASE_URL=postgresql://operator:***@localhost:5432/edgequake-prod ghcr.io/raphaelmansuy/edgequake:0.26.1 migrate guard
+
+[2m2026-08-26T15:08:08.620647Z[0m [32m INFO[0m [2medgequake_observability::subscriber[0m[2m:[0m Observability initialized [3mlog_format[0m[2m=[0mPlain [3motel_enabled[0m[2m=[0mfalse [3motel_endpoint[0m[2m=[0mNone [3mlangfuse_enabled[0m[2m=[0mfalse [3mlangfuse_base_url[0m[2m=[0mhttps://cloud.langfuse.com [3mservice_name[0m[2m=[0medgequake-api [3mlog_span_events[0m[2m=[0mfalse
+EdgeQuake migrate guard v0.26.1
+database: postgresql://operator:***@localhost:5432/edgequake-prod
+
+ GUARD (read-only readiness probe)
+  kv_store: present
+  durable residue: 21489 row(s) outside typed SSOT  <-- BLOCKS the drop
+    breakdown: chunk_text=18904, doc_shells=4, lineage=1232, multimodal=58, doc_hash=1246, staging_hash=41, wsdoc=4
+  drop-readiness: RED (see residue / family modes above)
+  vector-chunk drop-readiness (126): RED — backend=typed_embeddings, uncovered_chunk=41114, verify_chunk=fail/pending
+  vector-fleet drop-readiness (131): RED — backend=typed_embeddings, uncovered_fleet=521076, uncovered_chunk=41114, verify_fleet=fail/pending, stalls=0
+    NEXT: run iw2-fleet-embedding-backfill and/or iw2-fleet-provenance-stamp until uncovered_fleet=0 (legacy_vector_id provenance; see specs/111-issues/09-ops-runbook.md).
+
+> quantalogic@1.73.0 edgequake:migrate:guard /home/steven/quantalogic/quantalogic-platform
+> docker run --rm --network host --add-host host.docker.internal:host-gateway -e DATABASE_URL=postgresql://operator:***@localhost:5432/edgequake-prod ghcr.io/raphaelmansuy/edgequake:0.26.1 migrate guard
+
+[2m2026-08-26T15:13:00.054315Z[0m [32m INFO[0m [2medgequake_observability::subscriber[0m[2m:[0m Observability initialized [3mlog_format[0m[2m=[0mPlain [3motel_enabled[0m[2m=[0mfalse [3motel_endpoint[0m[2m=[0mNone [3mlangfuse_enabled[0m[2m=[0mfalse [3mlangfuse_base_url[0m[2m=[0mhttps://cloud.langfuse.com [3mservice_name[0m[2m=[0medgequake-api [3mlog_span_events[0m[2m=[0mfalse
+EdgeQuake migrate guard v0.26.1
+database: postgresql://operator:***@localhost:5432/edgequake-prod
+
+ GUARD (read-only readiness probe)
+  kv_store: present
+  durable residue: 21489 row(s) outside typed SSOT  <-- BLOCKS the drop
+    breakdown: chunk_text=18904, doc_shells=4, lineage=1232, multimodal=58, doc_hash=1246, staging_hash=41, wsdoc=4
+  drop-readiness: RED (see residue / family modes above)
+  vector-chunk drop-readiness (126): RED — backend=typed_embeddings, uncovered_chunk=41114, verify_chunk=fail/pending
+  vector-fleet drop-readiness (131): RED — backend=typed_embeddings, uncovered_fleet=521076, uncovered_chunk=41114, verify_fleet=fail/pending, stalls=0
+    NEXT: run iw2-fleet-embedding-backfill and/or iw2-fleet-provenance-stamp until uncovered_fleet=0 (legacy_vector_id provenance; see specs/111-issues/09-ops-runbook.md).
+
+> quantalogic@1.73.0 edgequake:migrate:guard /home/steven/quantalogic/quantalogic-platform
+> docker run --rm --network host --add-host host.docker.internal:host-gateway -e DATABASE_URL=postgresql://operator:***@localhost:5432/edgequake-prod ghcr.io/raphaelmansuy/edgequake:0.26.1 migrate guard
+
+[2m2026-08-26T15:14:44.401757Z[0m [32m INFO[0m [2medgequake_observability::subscriber[0m[2m:[0m Observability initialized [3mlog_format[0m[2m=[0mPlain [3motel_enabled[0m[2m=[0mfalse [3motel_endpoint[0m[2m=[0mNone [3mlangfuse_enabled[0m[2m=[0mfalse [3mlangfuse_base_url[0m[2m=[0mhttps://cloud.langfuse.com [3mservice_name[0m[2m=[0medgequake-api [3mlog_span_events[0m[2m=[0mfalse
+[2m2026-08-26T15:14:46.443057Z[0m [33m WARN[0m [2msqlx::query[0m[2m:[0m slow statement: execution time exceeded alert threshold [3msummary[0m[2m=[0m"SELECT count(*) FILTER (WHERE …" [3mdb.statement[0m[2m=[0m"\n\n\nSELECT\n  count(*) FILTER (WHERE (k.key ~ '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})-chunk-[0-9]+$'\n     AND COALESCE(k.value->>'content', '') <> ''\n     AND NOT EXISTS (SELECT 1 FROM public.chunks c\n                     WHERE c.document_id = left(k.key, 36)::uuid\n                       AND c.chunk_index = substring(k.key from 44)::int))) AS chunk_text,\n  count(*) FILTER (WHERE ((k.key LIKE '%-metadata' OR k.key LIKE '%-content')\n     AND NOT EXISTS (SELECT 1 FROM public.documents d\n                     WHERE d.id = NULLIF(substring(k.key from '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'), '')::uuid))) AS doc_shells,\n  count(*) FILTER (WHERE (k.key LIKE '%-lineage'\n     AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a\n                     WHERE a.kind = 'lineage'\n                       AND a.document_id = NULLIF(substring(k.key from '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'), '')::uuid))) AS lineage,\n  count(*) FILTER (WHERE ((k.key LIKE '%-multimodal-manifest'\n     AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a\n                     WHERE a.kind = 'multimodal-manifest'\n                       AND a.document_id = NULLIF(substring(k.key from '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'), '')::uuid))\n     OR (k.key LIKE '%-multimodal-chunks'\n     AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a\n                     WHERE a.kind = 'multimodal-chunks'\n                       AND a.document_id = NULLIF(substring(k.key from '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'), '')::uuid)))) AS multimodal,\n  -- LAW-KVH5: purge-aware — only keys that would survive migration 125 verified purge.\n  count(*) FILTER (WHERE (k.key LIKE 'doc:hash:%'\n     AND NOT (split_part(k.key, ':', 3) ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND EXISTS (SELECT 1 FROM public.ingestion_dedup d\n                          WHERE d.workspace_id = split_part(k.key, ':', 3)::uuid\n                            AND d.content_hash = split_part(k.key, ':', 4)\n                            AND d.pipeline_version = 'v1')))) AS doc_hash,\n  count(*) FILTER (WHERE (k.key LIKE 'staging:hash:%'\n     AND NOT (split_part(k.key, ':', 3) ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND EXISTS (SELECT 1 FROM public.ingestion_dedup d\n                          WHERE d.workspace_id = split_part(k.key, ':', 3)::uuid\n                            AND d.content_hash = split_part(k.key, ':', 4)\n                            AND d.pipeline_version = 'staging')))) AS staging_hash,\n  count(*) FILTER (WHERE (k.key LIKE 'wsdoc:%'\n     AND NOT (split_part(k.key, ':', 2) ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND split_part(k.key, ':', 3) ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND EXISTS (SELECT 1 FROM public.documents d\n                          WHERE d.id = split_part(k.key, ':', 3)::uuid\n                            AND d.workspace_id = split_part(k.key, ':', 2)::uuid)))) AS wsdoc,\n  count(*) FILTER (WHERE (k.key LIKE 'injection::%'\n     AND NOT (k.key LIKE '%-metadata'\n              AND split_part(k.key, ':', 3) ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND replace(split_part(k.key, ':', 5), '-metadata', '') ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND EXISTS (SELECT 1 FROM public.documents d\n                          WHERE d.id = replace(split_part(k.key, ':', 5), '-metadata', '')::uuid\n                            AND d.metadata->>'source_type' = 'injection')))) AS injection\nFROM public.\"eq_eq_default_kv\" k\n\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m1.997183078s [3melapsed_secs[0m[2m=[0m1.997183078 [3mslow_threshold[0m[2m=[0m1s
+EdgeQuake migrate guard v0.26.1
+database: postgresql://operator:***@localhost:5432/edgequake-prod
+
+ GUARD (read-only readiness probe)
+  kv_store: present
+  durable residue: 14369 row(s) outside typed SSOT  <-- BLOCKS the drop
+    breakdown: chunk_text=11784, doc_shells=4, lineage=1232, multimodal=58, doc_hash=1246, staging_hash=41, wsdoc=4
+  drop-readiness: RED (see residue / family modes above)
+  vector-chunk drop-readiness (126): RED — backend=typed_embeddings, uncovered_chunk=41114, verify_chunk=fail/pending
+  vector-fleet drop-readiness (131): RED — backend=typed_embeddings, uncovered_fleet=521076, uncovered_chunk=41114, verify_fleet=fail/pending, stalls=0
+    NEXT: run iw2-fleet-embedding-backfill and/or iw2-fleet-provenance-stamp until uncovered_fleet=0 (legacy_vector_id provenance; see specs/111-issues/09-ops-runbook.md).
+
+> quantalogic@1.73.0 edgequake:migrate:guard /home/steven/quantalogic/quantalogic-platform
+> docker run --rm --network host --add-host host.docker.internal:host-gateway -e DATABASE_URL=postgresql://operator:***@localhost:5432/edgequake-prod ghcr.io/raphaelmansuy/edgequake:0.26.1 migrate guard
+
+[2m2026-08-26T15:17:36.740372Z[0m [32m INFO[0m [2medgequake_observability::subscriber[0m[2m:[0m Observability initialized [3mlog_format[0m[2m=[0mPlain [3motel_enabled[0m[2m=[0mfalse [3motel_endpoint[0m[2m=[0mNone [3mlangfuse_enabled[0m[2m=[0mfalse [3mlangfuse_base_url[0m[2m=[0mhttps://cloud.langfuse.com [3mservice_name[0m[2m=[0medgequake-api [3mlog_span_events[0m[2m=[0mfalse
+[2m2026-08-26T15:17:37.892851Z[0m [33m WARN[0m [2msqlx::query[0m[2m:[0m slow statement: execution time exceeded alert threshold [3msummary[0m[2m=[0m"SELECT count(*) FILTER (WHERE …" [3mdb.statement[0m[2m=[0m"\n\n\nSELECT\n  count(*) FILTER (WHERE (k.key ~ '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})-chunk-[0-9]+$'\n     AND COALESCE(k.value->>'content', '') <> ''\n     AND NOT EXISTS (SELECT 1 FROM public.chunks c\n                     WHERE c.document_id = left(k.key, 36)::uuid\n                       AND c.chunk_index = substring(k.key from 44)::int))) AS chunk_text,\n  count(*) FILTER (WHERE ((k.key LIKE '%-metadata' OR k.key LIKE '%-content')\n     AND NOT EXISTS (SELECT 1 FROM public.documents d\n                     WHERE d.id = NULLIF(substring(k.key from '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'), '')::uuid))) AS doc_shells,\n  count(*) FILTER (WHERE (k.key LIKE '%-lineage'\n     AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a\n                     WHERE a.kind = 'lineage'\n                       AND a.document_id = NULLIF(substring(k.key from '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'), '')::uuid))) AS lineage,\n  count(*) FILTER (WHERE ((k.key LIKE '%-multimodal-manifest'\n     AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a\n                     WHERE a.kind = 'multimodal-manifest'\n                       AND a.document_id = NULLIF(substring(k.key from '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'), '')::uuid))\n     OR (k.key LIKE '%-multimodal-chunks'\n     AND NOT EXISTS (SELECT 1 FROM public.document_artifacts a\n                     WHERE a.kind = 'multimodal-chunks'\n                       AND a.document_id = NULLIF(substring(k.key from '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'), '')::uuid)))) AS multimodal,\n  -- LAW-KVH5: purge-aware — only keys that would survive migration 125 verified purge.\n  count(*) FILTER (WHERE (k.key LIKE 'doc:hash:%'\n     AND NOT (split_part(k.key, ':', 3) ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND EXISTS (SELECT 1 FROM public.ingestion_dedup d\n                          WHERE d.workspace_id = split_part(k.key, ':', 3)::uuid\n                            AND d.content_hash = split_part(k.key, ':', 4)\n                            AND d.pipeline_version = 'v1')))) AS doc_hash,\n  count(*) FILTER (WHERE (k.key LIKE 'staging:hash:%'\n     AND NOT (split_part(k.key, ':', 3) ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND EXISTS (SELECT 1 FROM public.ingestion_dedup d\n                          WHERE d.workspace_id = split_part(k.key, ':', 3)::uuid\n                            AND d.content_hash = split_part(k.key, ':', 4)\n                            AND d.pipeline_version = 'staging')))) AS staging_hash,\n  count(*) FILTER (WHERE (k.key LIKE 'wsdoc:%'\n     AND NOT (split_part(k.key, ':', 2) ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND split_part(k.key, ':', 3) ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND EXISTS (SELECT 1 FROM public.documents d\n                          WHERE d.id = split_part(k.key, ':', 3)::uuid\n                            AND d.workspace_id = split_part(k.key, ':', 2)::uuid)))) AS wsdoc,\n  count(*) FILTER (WHERE (k.key LIKE 'injection::%'\n     AND NOT (k.key LIKE '%-metadata'\n              AND split_part(k.key, ':', 3) ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND replace(split_part(k.key, ':', 5), '-metadata', '') ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'\n              AND EXISTS (SELECT 1 FROM public.documents d\n                          WHERE d.id = replace(split_part(k.key, ':', 5), '-metadata', '')::uuid\n                            AND d.metadata->>'source_type' = 'injection')))) AS injection\nFROM public.\"eq_eq_default_kv\" k\n\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m1.125700626s [3melapsed_secs[0m[2m=[0m1.125700626 [3mslow_threshold[0m[2m=[0m1s
+EdgeQuake migrate guard v0.26.1
+database: postgresql://operator:***@localhost:5432/edgequake-prod
+
+ GUARD (read-only readiness probe)
+  kv_store: present
+  durable residue: 2596 row(s) outside typed SSOT  <-- BLOCKS the drop
+    breakdown: chunk_text=11, doc_shells=4, lineage=1232, multimodal=58, doc_hash=1246, staging_hash=41, wsdoc=4
+  drop-readiness: RED (see residue / family modes above)
+  vector-chunk drop-readiness (126): RED — backend=typed_embeddings, uncovered_chunk=21177, verify_chunk=fail/pending
+  vector-fleet drop-readiness (131): RED — backend=typed_embeddings, uncovered_fleet=521076, uncovered_chunk=21177, verify_fleet=fail/pending, stalls=0
+    NEXT: run iw2-fleet-embedding-backfill and/or iw2-fleet-provenance-stamp until uncovered_fleet=0 (legacy_vector_id provenance; see specs/111-issues/09-ops-runbook.md).
+
+> quantalogic@1.73.0 edgequake:migrate:guard /home/steven/quantalogic/quantalogic-platform
+> docker run --rm --network host --add-host host.docker.internal:host-gateway -e DATABASE_URL=postgresql://operator:***@localhost:5432/edgequake-prod ghcr.io/raphaelmansuy/edgequake:0.26.1 migrate guard
+
+[2m2026-08-26T15:18:17.876865Z[0m [32m INFO[0m [2medgequake_observability::subscriber[0m[2m:[0m Observability initialized [3mlog_format[0m[2m=[0mPlain [3motel_enabled[0m[2m=[0mfalse [3motel_endpoint[0m[2m=[0mNone [3mlangfuse_enabled[0m[2m=[0mfalse [3mlangfuse_base_url[0m[2m=[0mhttps://cloud.langfuse.com [3mservice_name[0m[2m=[0medgequake-api [3mlog_span_events[0m[2m=[0mfalse
+EdgeQuake migrate guard v0.26.1
+database: postgresql://operator:***@localhost:5432/edgequake-prod
+
+ GUARD (read-only readiness probe)
+  kv_store: present
+  durable residue: 2596 row(s) outside typed SSOT  <-- BLOCKS the drop
+    breakdown: chunk_text=11, doc_shells=4, lineage=1232, multimodal=58, doc_hash=1246, staging_hash=41, wsdoc=4
+  drop-readiness: RED (see residue / family modes above)
+  vector-chunk drop-readiness (126): RED — backend=typed_embeddings, uncovered_chunk=21177, verify_chunk=fail/pending
+  vector-fleet drop-readiness (131): RED — backend=typed_embeddings, uncovered_fleet=521076, uncovered_chunk=21177, verify_fleet=fail/pending, stalls=0
+    NEXT: run iw2-fleet-embedding-backfill and/or iw2-fleet-provenance-stamp until uncovered_fleet=0 (legacy_vector_id provenance; see specs/111-issues/09-ops-runbook.md).

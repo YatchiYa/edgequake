@@ -206,7 +206,8 @@ pub async fn kv_durable_residue(
                 Ok(ResidueReport::default())
             } else {
                 Err(StorageError::Database(format!(
-                    "advisor kv_durable_residue failed (typed SSOT missing?): {msg}"
+                    "advisor kv_durable_residue failed: typed SSOT missing ({msg}). \
+                     Run `edgequake migrate` first (SAFE SCHEMA), then retry guard."
                 )))
             }
         }

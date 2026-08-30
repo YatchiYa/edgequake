@@ -31,7 +31,8 @@ const DESCRIPTOR_DEF: &str = concat!(
 /// Count chunk rows in one legacy table (42P01-safe → 0).
 async fn count_table_chunks(pool: &PgPool, table: &str) -> Result<i64, StorageError> {
     match sqlx::query_scalar::<_, i64>(&format!(
-        "SELECT COUNT(*) FROM public.{table} WHERE id LIKE '%-chunk-%'"
+        "SELECT COUNT(*) FROM public.{table} WHERE id ~ '{re}'",
+        re = super::coverage::LEGACY_CHUNK_VECTOR_ID_RE
     ))
     .fetch_one(pool)
     .await
@@ -337,7 +338,7 @@ impl BackfillJob for ChunkEmbeddingBackfillJob {
             let r = super::verify::verify_chunk_embedding_backfill(pool, table, &self.model_name)
                 .await?;
             agg.expected += r.expected;
-            agg.actual = agg.actual.max(r.actual);
+            agg.actual += r.actual;
             agg.sampled += r.sampled;
             agg.mismatches += r.mismatches;
         }

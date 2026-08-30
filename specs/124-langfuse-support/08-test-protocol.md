@@ -24,6 +24,10 @@
 | **Local Docker** | Isolated Langfuse v4 Compose (`langfuse:4`) | `make langfuse-up` / `make dev-langfuse` — **not** started by `make dev` |
 | **Local Docker smoke** | Health + `GET /api/public/projects` (headless keys) | `make langfuse-smoke` |
 | **Local Docker E2E** | Settings DTO + Playwright vs `http://localhost:3310` | `make spec124-langfuse-e2e` — **not** in default CI |
+| **Local 3.1.1 E2E** | Ingestion fallback vs `:3320` | `make spec124-langfuse-3.1-e2e` |
+| **Local 3.22.0 E2E** | OTLP route+probe vs `:3330` | `make spec124-langfuse-3.22-e2e` |
+| **Local 3.225.5 E2E** | OTLP persist vs `:3340` (current 3.x) | `make spec124-langfuse-3.225-e2e` |
+| **Cloud E2E** | OTLP persist vs current Cloud | `make spec124-langfuse-cloud-e2e` (keys required) |
 
 `spec124-proof` stays CI-safe (no Docker). Local Docker is a laptop/operator gate.
 
@@ -61,6 +65,9 @@ Open-link `href` must start with the configured `ui_url` (local or Cloud), never
 19. `record_ingest_parse_meta` writes parser/pass/pages on ingest span
 20. 3.1.1 envelopes are only `trace-create` / `span-create` / `generation-create` (LAW-124-23)
 21. Live Langfuse 3.1.1: OTLP 404, `retriever-create` rejected, mapped batch persists (`make spec124-langfuse-3.1-e2e`)
+22. Live Langfuse 3.22.0: OTLP not 404, `health.version` 3.22.x, auto-probe=`Otlp` (`make spec124-langfuse-3.22-e2e`)
+23. Live Langfuse 3.225.5: persist unique marker via OTLP (`make spec124-langfuse-3.225-e2e`)
+24. Live current Langfuse Cloud: known Cloud host, `health.version` ≥ 3.22, persist unique marker (`make spec124-langfuse-cloud-e2e`)
 
 ## Playwright sketch
 

@@ -255,6 +255,8 @@ Langfuse installs **separately** from EdgeQuake (separate namespace + Postgres â
 
 ---
 
+The API image is **distroless** (no shell). `kubectl exec` cannot open `/bin/sh`. Use `kubectl logs`, HTTP probes (`/live`, `/ready`), or a debug sidecar. Helm `preStop` runs `edgequake pre-stop`, not `sleep`.
+
 ## Troubleshooting
 
 ### API CrashLoopBackOff: mock LLM forbidden
@@ -276,7 +278,7 @@ BOOT_GATE_REFUSAL: STOP â€” database schema is behind this binary
 
 ```bash
 kubectl run edgequake-migrate --rm -i --restart=Never -n edgequake \
-  --image=ghcr.io/raphaelmansuy/edgequake:0.26.2 \
+  --image=ghcr.io/raphaelmansuy/edgequake:0.26.4 \
   --env="DATABASE_URL=postgres://edgequake:edgequake_secret@edgequake-postgres:5432/edgequake" \
   --env="EDGEQUAKE_ALLOW_MOCK_PROVIDER=1" \
   --command -- edgequake migrate

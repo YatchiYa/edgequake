@@ -204,6 +204,8 @@ export function useQueryStreaming({
                 prev
                   ? {
                       ...prev,
+                      // SPEC-142: replace streamed tokens with verified links.
+                      content: chunk.answer ?? prev.content,
                       tokensUsed: chunk.tokens_used,
                       durationMs: chunk.duration_ms,
                       llmProvider:

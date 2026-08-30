@@ -1,0 +1,22 @@
+{
+  "arm": "C",
+  "n": 1,
+  "base_url": "http://127.0.0.1:8090",
+  "workspace_id": "00000000-0000-0000-0000-000000000003",
+  "stamp": "20260830T043853Z",
+  "admit_s": 0.099,
+  "t_first_complete_s": 12.276,
+  "t_all_complete_s": 12.276,
+  "docs_per_min": 4.888,
+  "max_concurrent_processing_observed": 0,
+  "final_statuses": {
+    "01a050f6-9829-773a-ad08-c4933aad590e": "completed"
+  },
+  "document_ids": [
+    "01a050f6-9829-773a-ad08-c4933aad590e"
+  ],
+  "pre_max_tasks_per_tenant": 6,
+  "final_park_waiters": 0,
+  "llm_provider": "mistral",
+  "run_dir": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/122-implementation/measurements/20260830T043853Z-armC-n1"
+}

@@ -95,6 +95,7 @@ pub struct ParseBackendsResponse {
 /// Either a sync parse result or a 202 async acceptance.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)] // Completed carries full ParseResponse; Accepted is small
 pub enum ParseOutcome {
     Completed(ParseResponse),
     Accepted(ParseAsyncAccepted),

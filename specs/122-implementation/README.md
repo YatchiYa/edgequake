@@ -61,7 +61,9 @@
 | I2 | Phase B concurrency (gated) | Deferred (modest Arm B gain; no unbounded raise) |
 | I3 | Phase C PDF cost (gated) | Deferred (H2 partial only) |
 | G1 | GitHub #361/#365 update | Done |
-| A1 | Acceptance | Open (partner ack / SLO) |
+| R3 | HEAD 0.26.3 re-measure (Docker-like Mistral) | Done (N=5 → 51.3 s, 5.85 docs/min, tenant=6) |
+| V1 | `make measure-bulk-ingest` + regression floor | Done |
+| A1 | Acceptance | Closed as capacity (2026-08-30); Phase B still gated |
 
 ## Related
 
@@ -80,4 +82,4 @@
 - Unbounded parallel extract/embed/vision
 - Rewriting PDF vision “for quality” alone (see [12-pdf-quality-hypothesis.md](12-pdf-quality-hypothesis.md))
 - Office/DOCX ingest (SPEC-121)
-- Closing #361/#365 without measured SLO + partner-facing honesty
+- Claiming “bulk speed fixed” without Phase B gate evidence (issues closed as capacity)

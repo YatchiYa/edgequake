@@ -60,8 +60,9 @@ RUN test -f openapi/schema.d.ts \
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_APP_VERSION=${NEXT_PUBLIC_APP_VERSION}
 
-# Build application directly with next build (bypass safe-build.sh for Docker)
-RUN npx next build
+# SPEC-144 / SPEC-085: align with safe-build.sh — Turbopack + standalone has
+# hit proxy/middleware NFT ENOENT on 16.2.x; keep --webpack until NFT proven.
+RUN npx next build --webpack
 
 # ============================================
 # Stage 3: Runtime

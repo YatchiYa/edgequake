@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiClient } from '@/lib/api/client';
+import { getTenants } from '@/lib/api/edgequake/workspaces';
 import { useAuthStore } from '@/stores/use-auth-store';
 import type { Tenant } from '@/types';
 import { Shield } from 'lucide-react';
@@ -52,10 +53,10 @@ export function AdminQuotaSection() {
       setIsLoading(true);
       try {
         const [tenantsData, defaultsData] = await Promise.all([
-          apiClient<{ items?: TenantQuotaRow[] }>("/tenants?limit=100"),
+          getTenants(),
           apiClient<{ default_max_workspaces: number }>("/admin/config/defaults"),
         ]);
-        setTenants(tenantsData.items ?? []);
+        setTenants(tenantsData);
         setServerDefault(defaultsData.default_max_workspaces);
         setNewDefault(String(defaultsData.default_max_workspaces));
       } catch (e) {
@@ -174,6 +175,12 @@ export function AdminQuotaSection() {
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               Tenant Quotas
+              <span
+                className="ml-1 font-normal normal-case tracking-normal"
+                data-testid="admin-quota-tenant-count"
+              >
+                ({tenants.length})
+              </span>
             </label>
             {tenants.length === 0 ? (
               <p className="text-xs text-muted-foreground">No tenants found.</p>
@@ -182,6 +189,7 @@ export function AdminQuotaSection() {
                 {tenants.map((tenant) => (
                   <div
                     key={tenant.id}
+                    data-testid={`admin-quota-tenant-${tenant.name}`}
                     className="flex items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-muted/50"
                   >
                     <div className="flex items-center gap-2 min-w-0">

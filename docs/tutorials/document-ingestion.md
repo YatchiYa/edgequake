@@ -694,6 +694,8 @@ curl -X POST "http://localhost:8080/api/v1/documents/pdf/batch" \
 ```
 
 Both batch endpoints return per-file results with processed/duplicate/failed counters.
+Batch APIs **admit** files (often serially in the request loop) then process via the
+worker pool — they do **not** make documents searchable at HTTP 202 (SPEC-122).
 
 ---
 
@@ -819,14 +821,21 @@ curl "http://localhost:8080/api/v1/workspaces/$WORKSPACE_ID/metrics"
 
 ### Slow Processing
 
-**Problem**: Documents taking too long.
+**Problem**: Documents taking too long (SPEC-122).
+
+HTTP 202 / “upload finished” is **not** searchable — Insert (and PDF convert)
+dominate wall clock. Throughput is
+`min(workers, MAX_TASKS_PER_TENANT, provider budget, vision, extract, embed)`,
+not how many files you selected.
 
 **Solutions**:
 
-1. Increase worker threads: `WORKER_THREADS=8`
-2. Use faster LLM model (gpt-4.1-nano)
-3. Reduce gleaning iterations
-4. Batch documents instead of sequential
+1. Raise ingest lanes only with provider headroom: `WORKER_THREADS=8`,
+   `MAX_TASKS_PER_TENANT=6` (Docker defaults); local Ollama stays near-serial
+   unless `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1` **and** `OLLAMA_NUM_PARALLEL`
+2. Use a faster cloud LLM when rate limits allow
+3. Reduce gleaning iterations / chunk count for large docs
+4. Measure before tuning: `make measure-bulk-ingest ARM=D N=5` (admit ≪ t_all)
 
 ---
 

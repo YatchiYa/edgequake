@@ -75,13 +75,30 @@ pub fn content_headings_enabled() -> bool {
     )
 }
 
-/// Build the metadata suffix for a chunk header (`page=N`, `modality=…`).
+/// Build the metadata suffix for a chunk header (`page=N`, `doc=…`, `modality=…`).
 ///
 /// Empty when no grounding metadata is present.
 pub fn format_chunk_meta(chunk: &RetrievedChunk) -> String {
     let mut parts: Vec<String> = Vec::new();
     if let Some(page) = chunk.page_start {
         parts.push(format!("page={page}"));
+    }
+    // SPEC-142: always emit human title when known (disambiguation hint; LLM must not copy).
+    if let Some(name) = chunk
+        .document_name
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        let safe = name.replace('"', "'");
+        parts.push(format!("doc=\"{safe}\""));
+    } else if content_headings_enabled() {
+        if let Some(doc) = chunk.document_id.as_ref() {
+            let trimmed = doc.trim();
+            if !trimmed.is_empty() {
+                parts.push(format!("doc={trimmed}"));
+            }
+        }
     }
     if let Some(modality) = chunk.modality.as_ref() {
         let trimmed = modality.trim();
@@ -90,12 +107,6 @@ pub fn format_chunk_meta(chunk: &RetrievedChunk) -> String {
         }
     }
     if content_headings_enabled() {
-        if let Some(doc) = chunk.document_id.as_ref() {
-            let trimmed = doc.trim();
-            if !trimmed.is_empty() {
-                parts.push(format!("doc={trimmed}"));
-            }
-        }
         if let Some(idx) = chunk.chunk_index {
             parts.push(format!("heading=chunk-{idx}"));
         }
@@ -164,8 +175,9 @@ pub fn format_relationship_line(rel: &RetrievedRelationship) -> String {
 }
 
 fn chunk_legend() -> &'static str {
-    "Each chunk header may include `page=N` (1-indexed PDF page) and `modality=` \
-(chart|figure|table|equation). Prefer evidence from matching pages/modalities when answering.\n\n"
+    "Each chunk header may include `page=N` (1-indexed PDF page), `doc=\"Title\"` \
+(document name — do not copy into the answer; cite [N] only), and `modality=` \
+(chart/figure/table/equation when set). Prefer evidence from matching pages/modalities when answering.\n\n"
 }
 
 fn format_chunks_section(chunks: &[RetrievedChunk], start_ref: usize) -> String {

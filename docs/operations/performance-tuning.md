@@ -2,7 +2,7 @@
 title: 'Performance Tuning Guide'
 ---
 
-> **Product: v0.26.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.26.4** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Performance Tuning Guide
 
@@ -159,7 +159,16 @@ Override both phases with `TASK_PROCESSING_TIMEOUT_SECS` (legacy single knob). F
 
 WebUI multi-select uses up to **3 concurrent HTTP admits** (not one multiplexed pipeline job). Text/image batch uses `POST /documents/upload/batch` (serial loop, cap 20). **PDFs** must use `POST /documents/pdf` (WebUI) or `POST /documents/pdf/batch` (API/SDK) — `/upload/batch` rejects PDFs (SPEC-123 / SPEC-132).
 
-**Before raising concurrency:** measure with `GET /api/v1/pipeline/queue-metrics` and the SPEC-122 harness (`specs/122-implementation/scripts/measure-bulk-ingest.py`). Local Ollama stays near-serial unless you also raise `OLLAMA_NUM_PARALLEL` / VRAM headroom and set `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`.
+**Before raising concurrency:** measure with `GET /api/v1/pipeline/queue-metrics` and
+`make measure-bulk-ingest ARM=D N=5` (wraps
+`specs/122-implementation/scripts/measure-bulk-ingest.py`). Local Ollama stays
+near-serial unless you also raise `OLLAMA_NUM_PARALLEL` / VRAM headroom and set
+`EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`.
+
+**Regression floor (HEAD 0.26.3, Docker-like tenant=6, Mistral, N=5 small text):**
+≥ **4.0 docs/min** and `admit_s ≪ t_all` — see
+[`specs/122-implementation/measurements/20260830-summary.json`](../../specs/122-implementation/measurements/20260830-summary.json).
+This is a floor to detect regressions, not a partner marketing SLO.
 
 ```bash
 # Multi-PDF admit (API) — processing still capacity-governed (SPEC-122)

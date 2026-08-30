@@ -94,6 +94,7 @@ import { DocumentHeader } from './document-header';
 import { DocumentPreviewRightPanel } from './document-preview-right-panel';
 import { DocumentsActionsProvider } from './documents-actions-context';
 import { DocumentTableSection } from './document-table-section';
+import { PaginationControls } from './pagination-controls';
 import { DocumentToolbarSection } from './document-toolbar-section';
 import { DuplicateUploadDialog } from './duplicate-upload-dialog';
 import { FeedbackZoneLiveRegion } from './feedback-zone-live-region';
@@ -177,9 +178,7 @@ export function DocumentManager() {
     });
   }, [selectedWorkspace?.id]);
 
-  // VS-03: No pagination state — virtual scrolling handles windowing client-side.
-  // We fetch all documents at once (up to VIRTUAL_PAGE_SIZE) and let the
-  // virtualizer render only visible rows. This eliminates pagination UI entirely.
+  // SPEC-141: inventory owns API page + page-size; virtualizer still windows the page.
 
   // OODA-17: Filter/sort preferences with localStorage persistence
   const {
@@ -344,6 +343,11 @@ export function DocumentManager() {
     queryClient,
     documents,
     totalCount,
+    totalPages,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
     statusCounts,
     inventory,
   } = useDocumentsInventory({
@@ -1039,6 +1043,21 @@ export function DocumentManager() {
         sortDirection={sortDirection}
         onSort={handleColumnSort}
       />
+      {totalCount > 0 && (
+        <div
+          className="shrink-0 border-t bg-background px-4"
+          data-testid="documents-pagination"
+        >
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalItems={totalCount}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+          />
+        </div>
+      )}
       </div>
 
       {/* OADA-27: Right panel extracted to DocumentPreviewRightPanel */}

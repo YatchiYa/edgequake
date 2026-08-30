@@ -398,13 +398,10 @@ pub async fn build_legacy_query_sources(
 ) -> Vec<SourceReference> {
     let reranker_configured = state.query.engine_impl.has_reranker();
     let reranked = enable_rerank && reranker_configured;
-    let mut sources = build_sources_from_context(
-        &result.context,
-        include_references,
-        rerank_top_k,
-        reranked,
-        granularity,
-    );
+    // SPEC-142: always stamp reference_id so verified rewrite / UI chips work.
+    let _ = include_references;
+    let mut sources =
+        build_sources_from_context(&result.context, true, rerank_top_k, reranked, granularity);
     crate::handlers::query::resolve_chunk_file_paths(
         state.storage.kv_storage.as_ref(),
         &mut sources,
@@ -489,9 +486,11 @@ pub fn build_legacy_query_response(
     rerank_top_k: Option<usize>,
 ) -> LegacyQueryResponse {
     let subgraph = build_query_response_subgraph(&result, include_subgraph, rerank_top_k, reranked);
+    // SPEC-142: attach verified document+page links in the answer body.
+    let answer = crate::services::verified_citations::verified_answer(&result.answer, &sources);
 
     LegacyQueryResponse {
-        answer: result.answer,
+        answer,
         mode: result.mode.to_string(),
         sources,
         subgraph,

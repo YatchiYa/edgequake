@@ -2,6 +2,7 @@
 //!
 //! This is the main entry point for the EdgeQuake server.
 
+mod container_ops;
 mod migrate_advisor_cli;
 mod migrate_console;
 
@@ -1043,6 +1044,14 @@ fn flag_value(rest: &[String], flag: &str) -> Option<String> {
 }
 
 fn main() -> Result<()> {
+    // Distroless HEALTHCHECK / Helm preStop: no curl, no shell, no Tokio runtime.
+    let mut argv = std::env::args().skip(1);
+    match argv.next().as_deref() {
+        Some("healthcheck") => return container_ops::run_healthcheck(),
+        Some("pre-stop") => return container_ops::run_pre_stop(argv.next()),
+        _ => {}
+    }
+
     // WHY 8 MiB: Hybrid/Mix join three large retrieval futures. Debug builds still
     // need headroom even after Box::pin (SPEC-047 stack overflow). Override via
     // TOKIO_WORKER_STACK_SIZE (bytes).

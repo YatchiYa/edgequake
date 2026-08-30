@@ -2,7 +2,7 @@
 # Use values-kind.yaml for local kind / E2E proof.
 
 global:
-  edgequakeVersion: "0.26.2"
+  edgequakeVersion: "0.26.4"
 
 namespace:
   create: true
@@ -44,6 +44,7 @@ api:
       memory: 512Mi
     limits:
       memory: 2Gi
+  # Distroless API image has no shell; preStop runs `edgequake pre-stop <seconds>`.
   preStopSleepSeconds: 15
   env:
     EDGEQUAKE_HOST: "0.0.0.0"

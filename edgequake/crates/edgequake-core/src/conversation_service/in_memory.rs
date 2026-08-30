@@ -10,8 +10,8 @@ use crate::error::Result;
 use crate::types::{
     Conversation, ConversationFilter, ConversationMode, ConversationSortField,
     CreateConversationRequest, CreateMessageRequest, Folder, ImportError, ImportResult, Message,
-    MessageRole, PaginatedConversations, PaginatedMessages, PaginationMeta,
-    UpdateConversationRequest, UpdateMessageRequest,
+    MessageRole, PaginatedConversations, PaginatedMessages, UpdateConversationRequest,
+    UpdateMessageRequest,
 };
 
 use super::ConversationService;
@@ -136,7 +136,7 @@ impl ConversationService for InMemoryConversationService {
         filter: ConversationFilter,
         sort: ConversationSortField,
         sort_desc: bool,
-        _cursor: Option<String>,
+        cursor: Option<String>,
         limit: usize,
     ) -> Result<PaginatedConversations> {
         let convs = self.conversations.read().unwrap();
@@ -195,17 +195,14 @@ impl ConversationService for InMemoryConversationService {
             items.reverse();
         }
 
-        let has_more = items.len() > limit;
-        items.truncate(limit);
+        let total = items.len();
+        let offset = super::offset_from_cursor(cursor.as_deref());
+        let page: Vec<_> = items.into_iter().skip(offset).take(limit).collect();
+        let taken = page.len();
 
         Ok(PaginatedConversations {
-            items,
-            pagination: PaginationMeta {
-                next_cursor: None,
-                prev_cursor: None,
-                total: None,
-                has_more,
-            },
+            items: page,
+            pagination: super::pagination_meta(offset, limit, taken, total),
         })
     }
 
@@ -328,7 +325,7 @@ impl ConversationService for InMemoryConversationService {
     async fn list_messages(
         &self,
         conversation_id: Uuid,
-        _cursor: Option<String>,
+        cursor: Option<String>,
         limit: usize,
     ) -> Result<PaginatedMessages> {
         let msgs = self.messages.read().unwrap();
@@ -340,17 +337,14 @@ impl ConversationService for InMemoryConversationService {
 
         items.sort_by_key(|item| item.created_at);
 
-        let has_more = items.len() > limit;
-        items.truncate(limit);
+        let total = items.len();
+        let offset = super::offset_from_cursor(cursor.as_deref());
+        let page: Vec<_> = items.into_iter().skip(offset).take(limit).collect();
+        let taken = page.len();
 
         Ok(PaginatedMessages {
-            items,
-            pagination: PaginationMeta {
-                next_cursor: None,
-                prev_cursor: None,
-                total: None,
-                has_more,
-            },
+            items: page,
+            pagination: super::pagination_meta(offset, limit, taken, total),
         })
     }
 

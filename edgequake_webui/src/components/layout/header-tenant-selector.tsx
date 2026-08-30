@@ -17,6 +17,10 @@ import {
   applyCreatedWorkspaceContext,
   buildCreatedContextSearchParams,
 } from '@/lib/onboarding/apply-created-workspace-context';
+import {
+  extrasInSameTenant,
+  mergeEntitiesById,
+} from '@/lib/tenant/merge-entities-by-id';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
@@ -117,13 +121,11 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
 
     // Merge server list with optimistic create entries so a just-created workspace
     // is not wiped when refetch returns a slightly stale list.
-    const storeWorkspaces = useTenantStore.getState().workspaces;
-    const byId = new Map<string, (typeof workspacesData)[number]>();
-    for (const w of workspacesData) byId.set(w.id, w);
-    for (const w of storeWorkspaces) {
-      if (!byId.has(w.id)) byId.set(w.id, w);
-    }
-    const merged = Array.from(byId.values());
+    const storeWorkspaces = extrasInSameTenant(
+      useTenantStore.getState().workspaces,
+      selectedTenantId,
+    );
+    const merged = mergeEntitiesById(workspacesData, storeWorkspaces);
     setWorkspaces(merged);
 
     const exists =
@@ -154,6 +156,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
     isInitialized,
     isFetchingWorkspaces,
     t,
+    selectedTenantId,
   ]);
 
   const handleTenantSelect = useCallback(
@@ -218,6 +221,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             className={className}
             tenantName={selectedTenant?.name}
             workspaceName={selectedWorkspace?.name}
+            workspaceCount={workspaces.length}
             isLoading={isLoading}
             open={selectorOpen}
           />
@@ -232,6 +236,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             selectedTenantName={selectedTenant?.name}
             selectedWorkspaceName={selectedWorkspace?.name}
             isLoadingWorkspaces={isLoadingWorkspaces}
+            searchResetKey={selectorOpen ? 'open' : 'closed'}
             onTenantSelect={handleTenantSelect}
             onWorkspaceSelect={handleWorkspaceSelect}
             onCreateTenant={() => {

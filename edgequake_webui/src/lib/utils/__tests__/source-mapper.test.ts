@@ -45,10 +45,17 @@ describe("mapSourcesToContext", () => {
     expect(result.chunks).toHaveLength(2);
     expect(result.chunks[0]).toEqual({
       content: "This is some sample content from the document.",
-      document_id: "f0291a69-8b63-46d5-b44b-24095b3a8283",
+      // SPEC-142: prefer API document_id when present
+      document_id: "doc-123",
       score: 0.95,
       file_path: "/uploads/test.md",
       chunk_id: "f0291a69-8b63-46d5-b44b-24095b3a8283-chunk-0",
+      start_line: undefined,
+      end_line: undefined,
+      chunk_index: undefined,
+      reference_id: undefined,
+      page_start: undefined,
+      page_end: undefined,
     });
     expect(result.chunks[1]).toEqual({
       content: "Another chunk of content.",
@@ -56,7 +63,35 @@ describe("mapSourcesToContext", () => {
       score: 0.85,
       file_path: undefined,
       chunk_id: "bc6a87d5-6b38-4a3d-9948-b74477e2247c-chunk-1",
+      start_line: undefined,
+      end_line: undefined,
+      chunk_index: undefined,
+      reference_id: undefined,
+      page_start: undefined,
+      page_end: undefined,
     });
+  });
+
+  it("SPEC-142: prefers document_id over UUID chunk id parse", () => {
+    const sources: SourceReference[] = [
+      {
+        source_type: "chunk",
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        score: 0.9,
+        snippet: "uuid chunk",
+        document_id: "ffffffff-1111-2222-3333-444444444444",
+        reference_id: 1,
+        page_start: 4,
+        page_end: 4,
+        file_path: "Fixture.pdf",
+      },
+    ];
+    const result = mapSourcesToContext(sources);
+    expect(result.chunks[0].document_id).toBe(
+      "ffffffff-1111-2222-3333-444444444444",
+    );
+    expect(result.chunks[0].reference_id).toBe(1);
+    expect(result.chunks[0].page_start).toBe(4);
   });
 
   it("should map entity sources with source tracking", () => {

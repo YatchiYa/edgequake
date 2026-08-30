@@ -2,7 +2,7 @@
 title: "Configuration Reference"
 ---
 
-> **Product: v0.26.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.26.4** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Configuration Reference
 
@@ -458,6 +458,7 @@ Relational data-layer cutover (typed SSOT) and the LightRAG-parity response cach
 | Variable                         | Type   | Default | Description                                                                                                                             |
 | -------------------------------- | ------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `NEXT_PUBLIC_DISABLE_DEMO_LOGIN` | String | `false` | Set to `true` to hide the demo "skip login" button in production (closes [#139](https://github.com/raphaelmansuy/edgequake/issues/139)) |
+| `EDGEQUAKE_HEALTH_POLL_MS`       | Number | unset   | WebUI periodic `/live`+`/health` poll (ms). Unset/`0`/`false`/`off` = one probe on load. `10000` restores the former 10s loop. Runtime-injected (not baked `NEXT_PUBLIC_*`). Playwright always disables the loop. |
 
 > **Production tip:** Keep `EDGEQUAKE_AUTH_ENABLED=true`, unset `EDGEQUAKE_DEV_MODE`, configure `EDGEQUAKE_MASTER_API_KEY` or `EDGEQUAKE_API_KEYS`, and set `NEXT_PUBLIC_DISABLE_DEMO_LOGIN=true` in your frontend build.
 

@@ -7,10 +7,34 @@
 
 import { cn } from '@/lib/utils';
 import type { Token, Tokens } from 'marked';
-import { memo } from 'react';
+import { useRouter } from 'next/navigation';
+import { memo, type MouseEvent } from 'react';
 import { AuthenticatedMarkdownImage } from './AuthenticatedMarkdownImage';
 import { MathTokenRenderer } from './MathTokenRenderer';
+import { tryHtmlCodespan } from './utils/codespan-html';
 import { sanitizeHtml } from './utils/sanitize-html';
+
+/** SPEC-142: same-origin document deeplinks use client navigation (not target=_blank). */
+function isDocumentDeeplink(href: string | undefined): boolean {
+  if (!href) return false;
+  try {
+    if (href.startsWith('/documents/')) return true;
+    const url = new URL(href, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+    return url.pathname.startsWith('/documents/');
+  } catch {
+    return href.startsWith('/documents/');
+  }
+}
+
+function documentPathFromHref(href: string): string {
+  try {
+    if (href.startsWith('/')) return href;
+    const url = new URL(href, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return href;
+  }
+}
 
 /**
  * Merge split HTML tag tokens back into whole elements.
@@ -92,6 +116,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
   done = true,
   onSourceClick,
 }: MarkdownInlineTokensProps) {
+  const router = useRouter();
   // Merge split HTML tag tokens (e.g. <sup>, <sub>) before rendering
   const normalizedTokens = mergeInlineHtmlTokens(tokens);
 
@@ -169,6 +194,17 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
 
           case 'codespan': {
             const codeToken = token as Tokens.Codespan;
+            const htmlCodespan = tryHtmlCodespan(codeToken.text);
+            if (htmlCodespan) {
+              return (
+                <span
+                  key={tokenId}
+                  data-testid="md-html-codespan"
+                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm text-foreground"
+                  dangerouslySetInnerHTML={{ __html: htmlCodespan }}
+                />
+              );
+            }
             return (
               <code
                 key={tokenId}
@@ -181,6 +217,42 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
 
           case 'link': {
             const linkToken = token as Tokens.Link;
+            const href = linkToken.href;
+            if (isDocumentDeeplink(href)) {
+              const path = documentPathFromHref(href);
+              const pageMatch = /[?&]page=(\d+)/.exec(path);
+              const pageLabel = pageMatch ? `page ${pageMatch[1]}` : null;
+              const docTitle = linkToken.title?.trim() || null;
+              const ariaLabel = docTitle
+                ? pageLabel
+                  ? `Open ${docTitle}, ${pageLabel}`
+                  : `Open ${docTitle}`
+                : pageLabel
+                  ? `Open cited document, ${pageLabel}`
+                  : 'Open cited document';
+              const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
+                e.preventDefault();
+                router.push(path);
+              };
+              return (
+                <a
+                  key={tokenId}
+                  href={path}
+                  title={docTitle ?? undefined}
+                  onClick={onClick}
+                  data-testid="verified-citation-link"
+                  aria-label={ariaLabel}
+                  className="mx-0.5 inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary no-underline hover:bg-primary/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 align-baseline"
+                >
+                  <MarkdownInlineTokens
+                    id={tokenId}
+                    tokens={linkToken.tokens || []}
+                    done={done}
+                    onSourceClick={onSourceClick}
+                  />
+                </a>
+              );
+            }
             return (
               <a
                 key={tokenId}

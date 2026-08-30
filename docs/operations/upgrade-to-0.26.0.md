@@ -67,10 +67,10 @@ Unknown apply flags fail closed (e.g. `--confirm-drp`). Do **not** set
 SQL abort on uncovered rows is fail-closed safety (Wave D / W4 / IW2). Do not
 skip guards. Detail: [`specs/137-issue-migration-25-to-26/09-ops-runbook.md`](../../specs/137-issue-migration-25-to-26/09-ops-runbook.md).
 
-Compose / quickstart pin (prefer **0.26.2** for leftover 091 CLI):
+Compose / quickstart pin (prefer **0.26.4** for leftover 091 CLI):
 
 ```bash
-EDGEQUAKE_VERSION=0.26.2 docker compose -f docker-compose.quickstart.yml up -d
+EDGEQUAKE_VERSION=0.26.4 docker compose -f docker-compose.quickstart.yml up -d
 ```
 
 ## Operator notes

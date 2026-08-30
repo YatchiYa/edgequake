@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { ResizablePanel } from '@/components/ui/resizable-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { usePageSyncController } from '@/hooks/use-page-sync-controller';
 import { shouldUsePdfReprocessPanel } from '@/hooks/use-reprocess-tracking';
 import {
     cancelTask,
@@ -32,6 +33,7 @@ import {
   resolveReprocessPanelTrackId,
 } from '@/lib/documents/progress-admit';
 import { getEffectiveErrorMessage } from '@/lib/utils/document-status';
+import { hasPageMarkers } from '@/lib/utils/page-markers';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -189,6 +191,40 @@ export default function DocumentViewPage() {
 
   const [resolvedPdfPage, setResolvedPdfPage] = useState<number | undefined>();
   const activePdfPage = pageFromUrl ?? resolvedPdfPage;
+
+  // SPEC-143: shared PDF ↔ Markdown page sync controller
+  const pageSync = usePageSyncController({
+    initialPage: activePdfPage ?? 1,
+    initialSyncEnabled: true,
+  });
+
+  // Inbound deeplink / chunk resolution → controller
+  useEffect(() => {
+    if (activePdfPage != null && activePdfPage >= 1) {
+      pageSync.setPageFromExternal(activePdfPage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to URL/chunk page
+  }, [activePdfPage]);
+
+  // Debounced URL write when user navigates via PDF or Markdown (not external)
+  useEffect(() => {
+    if (pageSync.driver !== 'pdf' && pageSync.driver !== 'md') return;
+    const page = pageSync.activePage;
+    if (page < 1) return;
+    const handle = window.setTimeout(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      const current = params.get('page');
+      if (current === String(page)) return;
+      params.set('page', String(page));
+      const newSearch = params.toString();
+      router.replace(
+        `/documents/${documentId}${newSearch ? `?${newSearch}` : ''}`,
+        { scroll: false },
+      );
+    }, 200);
+    return () => window.clearTimeout(handle);
+  }, [pageSync.activePage, pageSync.driver, searchParams, router, documentId]);
+
   // OODA-chunk-select: Local chunk selection state for sidebar → content highlighting.
   // State is always kept in sync with the URL (`?chunk=<id>`) so any selection
   // is addressable, shareable, and survives page refresh.
@@ -390,6 +426,8 @@ export default function DocumentViewPage() {
     isPdfDocument &&
     !isPdfContentLoading &&
     !documentWithContent?.content?.trim();
+
+  const syncAvailable = hasPageMarkers(documentWithContent?.content);
 
   // Derived status values (safe to compute even if document is null)
   const status = (document?.status || 'completed') as DocumentStatus;
@@ -615,12 +653,16 @@ export default function DocumentViewPage() {
                 className="h-full"
                 leftTitle="PDF Document"
                 rightTitle="Extracted Markdown"
+                syncEnabled={pageSync.syncEnabled}
+                onSyncToggle={pageSync.toggleSync}
+                syncAvailable={syncAvailable}
                 leftPanel={
                   // OODA-48: Use pdfIdForViewer which is guaranteed to exist when isPdfDocument is true
                   <PDFViewer
                     file={getPdfDownloadUrl(pdfIdForViewer!)}
-                    initialPage={activePdfPage ?? 1}
-                    currentPage={activePdfPage}
+                    initialPage={pageSync.activePage}
+                    currentPage={pageSync.activePage}
+                    onPageChange={pageSync.setPageFromPdf}
                     documentId={documentId}
                   />
                 }
@@ -639,11 +681,15 @@ export default function DocumentViewPage() {
                       }}
                     />
                   ) : (
-                    <ContentRenderer 
-                      document={documentWithContent} 
+                    <ContentRenderer
+                      document={documentWithContent}
                       highlightText={highlightText}
                       startLine={activeStartLine}
                       endLine={activeEndLine}
+                      activePage={pageSync.activePage}
+                      syncEnabled={pageSync.syncEnabled}
+                      onPageFromMd={pageSync.setPageFromMd}
+                      syncDriver={pageSync.driver}
                     />
                   )
                 }
@@ -747,8 +793,9 @@ export default function DocumentViewPage() {
               <TabsContent value="pdf" className="flex-1 overflow-hidden m-0 mt-0">
                 <PDFViewer
                   file={getPdfDownloadUrl(pdfIdForViewer)}
-                  initialPage={activePdfPage ?? 1}
-                  currentPage={activePdfPage}
+                  initialPage={pageSync.activePage}
+                  currentPage={pageSync.activePage}
+                  onPageChange={pageSync.setPageFromPdf}
                   documentId={documentId}
                 />
               </TabsContent>
@@ -768,11 +815,15 @@ export default function DocumentViewPage() {
                   }}
                 />
               ) : (
-                <ContentRenderer 
-                  document={documentWithContent} 
+                <ContentRenderer
+                  document={documentWithContent}
                   highlightText={highlightText}
                   startLine={activeStartLine}
                   endLine={activeEndLine}
+                  activePage={pageSync.activePage}
+                  syncEnabled={pageSync.syncEnabled}
+                  onPageFromMd={pageSync.setPageFromMd}
+                  syncDriver={pageSync.driver}
                 />
               )}
             </TabsContent>

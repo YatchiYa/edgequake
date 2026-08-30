@@ -1,65 +1,51 @@
 /**
  * @module SideBySideViewer
  * @description Split-panel layout for viewing PDF and Markdown side-by-side.
- * Provides resizable panels with smooth dragging experience.
  *
  * @implements SPEC-002 - Document Viewer with side-by-side display
+ * @implements SPEC-143 - Real FEAT0733 page sync toggle
  * @implements FEAT0731 - Split-panel layout with resizable divider
  * @implements FEAT0732 - View mode toggle (PDF only, Markdown only, side-by-side)
  * @implements FEAT0733 - Panel synchronization controls
- *
- * @enforces BR0731 - Responsive layout for different screen sizes
- * @enforces BR0732 - Smooth resize without content jumping
- *
- * @see {@link docs/features.md} FEAT0731-0733
  */
 'use client';
 
 import { Button } from '@/components/ui/button';
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
-    Columns2,
-    PanelLeftClose,
-    PanelRightClose
+  Columns2,
+  Link2,
+  Link2Off,
+  PanelLeftClose,
+  PanelRightClose,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 type ViewMode = 'side-by-side' | 'pdf-only' | 'markdown-only';
 
 interface SideBySideViewerProps {
-  /** Left panel content (typically PDF) */
   leftPanel: React.ReactNode;
-  /** Right panel content (typically Markdown) */
   rightPanel: React.ReactNode;
-  /** Optional class name for container */
   className?: string;
-  /** Fixed height for the viewer */
   height?: number;
-  /** Initial view mode */
   initialMode?: ViewMode;
-  /** Left panel title */
   leftTitle?: string;
-  /** Right panel title */
   rightTitle?: string;
-  /** Called when view mode changes */
   onModeChange?: (mode: ViewMode) => void;
+  /** SPEC-143: page sync enabled. */
+  syncEnabled?: boolean;
+  /** SPEC-143: toggle page sync. */
+  onSyncToggle?: () => void;
+  /** SPEC-143: disable sync when document has no page markers. */
+  syncAvailable?: boolean;
 }
 
-/**
- * SideBySideViewer component for displaying two panels side-by-side.
- *
- * Features:
- * - Resizable divider between panels
- * - View mode toggle (PDF only, Markdown only, side-by-side)
- * - Smooth resize with mouse/touch/keyboard support
- * - Responsive layout that adapts to screen size
- */
 export function SideBySideViewer({
   leftPanel,
   rightPanel,
@@ -67,40 +53,49 @@ export function SideBySideViewer({
   height,
   initialMode = 'side-by-side',
   onModeChange,
+  syncEnabled = true,
+  onSyncToggle,
+  syncAvailable = true,
 }: SideBySideViewerProps) {
   const [mode, setMode] = useState<ViewMode>(initialMode);
-  const [leftWidth, setLeftWidth] = useState(50); // Percentage
+  const [leftWidth, setLeftWidth] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const startX = useRef(0);
   const startWidth = useRef(50);
 
-  const handleModeChange = useCallback((newMode: ViewMode) => {
-    setMode(newMode);
-    onModeChange?.(newMode);
-  }, [onModeChange]);
+  const handleModeChange = useCallback(
+    (newMode: ViewMode) => {
+      setMode(newMode);
+      onModeChange?.(newMode);
+    },
+    [onModeChange],
+  );
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-    startX.current = e.clientX;
-    startWidth.current = leftWidth;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, [leftWidth]);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      setIsDragging(true);
+      startX.current = e.clientX;
+      startWidth.current = leftWidth;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    },
+    [leftWidth],
+  );
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging || !containerRef.current) return;
-    
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const containerWidth = containerRect.width;
-    const deltaX = e.clientX - startX.current;
-    const deltaPercent = (deltaX / containerWidth) * 100;
-    
-    // Clamp between 25% and 75%
-    const newWidth = Math.min(75, Math.max(25, startWidth.current + deltaPercent));
-    setLeftWidth(newWidth);
-  }, [isDragging]);
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isDragging || !containerRef.current) return;
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const containerWidth = containerRect.width;
+      const deltaX = e.clientX - startX.current;
+      const deltaPercent = (deltaX / containerWidth) * 100;
+      const newWidth = Math.min(75, Math.max(25, startWidth.current + deltaPercent));
+      setLeftWidth(newWidth);
+    },
+    [isDragging],
+  );
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
@@ -109,24 +104,53 @@ export function SideBySideViewer({
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !isDragging) {
-      return;
-    }
-
+    if (typeof window === 'undefined' || !isDragging) return;
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [handleMouseMove, handleMouseUp, isDragging]);
 
+  const showSync = mode === 'side-by-side' && onSyncToggle != null;
+  const syncDisabled = !syncAvailable;
+
   return (
     <div data-testid="side-by-side-viewer" className={cn('flex flex-col min-h-0', className)}>
-      {/* Minimal View Mode Toggle */}
       <div className="flex items-center justify-end gap-1 px-2 py-1 border-b bg-muted/20">
         <TooltipProvider>
+          {showSync ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex mr-1">
+                  <Button
+                    variant={syncEnabled ? 'secondary' : 'ghost'}
+                    size="icon"
+                    className="h-6 w-6"
+                    data-testid="pdf-md-sync-toggle"
+                    data-sync={syncEnabled && !syncDisabled ? 'on' : 'off'}
+                    aria-pressed={syncEnabled && !syncDisabled}
+                    disabled={syncDisabled}
+                    onClick={() => onSyncToggle?.()}
+                  >
+                    {syncEnabled && !syncDisabled ? (
+                      <Link2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <Link2Off className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {syncDisabled
+                  ? 'No page markers in this document'
+                  : syncEnabled
+                    ? 'Synchronize PDF and Markdown pages'
+                    : 'Independent scrolling'}
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
           <div className="flex items-center gap-0.5 bg-background rounded p-0.5">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -141,7 +165,7 @@ export function SideBySideViewer({
               </TooltipTrigger>
               <TooltipContent>PDF Only</TooltipContent>
             </Tooltip>
-            
+
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -155,7 +179,7 @@ export function SideBySideViewer({
               </TooltipTrigger>
               <TooltipContent>Split View</TooltipContent>
             </Tooltip>
-            
+
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -173,34 +197,29 @@ export function SideBySideViewer({
         </TooltipProvider>
       </div>
 
-      {/* Content Panels */}
       <div
         ref={containerRef}
         className="flex flex-1 min-h-0"
         style={height ? { height: `${height}px` } : undefined}
       >
-        {/* Left Panel (PDF) */}
         {(mode === 'pdf-only' || mode === 'side-by-side') && (
           <div
             className={cn(
               'flex flex-col border-r overflow-hidden',
-              mode === 'pdf-only' ? 'w-full' : ''
+              mode === 'pdf-only' ? 'w-full' : '',
             )}
             style={mode === 'side-by-side' ? { width: `${leftWidth}%` } : undefined}
           >
-            <div className="flex-1 overflow-hidden">
-              {leftPanel}
-            </div>
+            <div className="flex-1 overflow-hidden">{leftPanel}</div>
           </div>
         )}
 
-        {/* Resize Handle */}
         {mode === 'side-by-side' && (
           <div
             className={cn(
               'w-1 bg-border hover:bg-primary/30 cursor-col-resize transition-colors',
               'flex items-center justify-center',
-              isDragging && 'bg-primary/50'
+              isDragging && 'bg-primary/50',
             )}
             onMouseDown={handleMouseDown}
           >
@@ -208,20 +227,14 @@ export function SideBySideViewer({
           </div>
         )}
 
-        {/* Right Panel (Markdown) */}
         {(mode === 'markdown-only' || mode === 'side-by-side') && (
           <div
             className={cn(
               'flex flex-col overflow-hidden',
-              mode === 'markdown-only' ? 'w-full' : 'flex-1'
+              mode === 'markdown-only' ? 'w-full' : 'flex-1',
             )}
           >
-            {/* WHY: py-0 outer container; inner ContentRenderer provides p-8 padding.
-                 pt-0 here avoids double top padding since ContentRenderer has p-8 already.
-                 pb-8 ensures content doesn't stick to the bottom edge on scroll. */}
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-              {rightPanel}
-            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">{rightPanel}</div>
           </div>
         )}
       </div>

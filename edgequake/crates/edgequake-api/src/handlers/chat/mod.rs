@@ -253,6 +253,7 @@ mod tests {
             duration_ms: 500,
             llm_provider: None,
             llm_model: None,
+            answer: None,
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("\"type\":\"done\""));

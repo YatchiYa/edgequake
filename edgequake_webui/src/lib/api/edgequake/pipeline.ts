@@ -3,6 +3,7 @@
  */
 
 import { api } from "../client";
+import { fetchAllPagesByIndex } from "../fetch-all-pages";
 import { buildQueryString, withQuery } from "../query-params";
 
 import type {
@@ -72,9 +73,18 @@ export async function getPipelineStatus(
 }
 
 export async function cancelPipeline(): Promise<void> {
-  // Cancel all processing tasks
-  const result = await getTasksList({ status: "processing" });
-  for (const task of result.tasks) {
+  const tasks = await fetchAllPagesByIndex(async (page, pageSize) => {
+    const result = await getTasksList({
+      status: "processing",
+      page,
+      page_size: pageSize,
+    });
+    return {
+      items: result.tasks ?? [],
+      total: result.pagination?.total ?? result.tasks?.length ?? 0,
+    };
+  });
+  for (const task of tasks) {
     await cancelTask(task.track_id);
   }
 }
