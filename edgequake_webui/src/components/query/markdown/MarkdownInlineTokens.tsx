@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 import { memo, type MouseEvent } from 'react';
 import { AuthenticatedMarkdownImage } from './AuthenticatedMarkdownImage';
 import { MathTokenRenderer } from './MathTokenRenderer';
+import { tryHtmlCodespan } from './utils/codespan-html';
 import { sanitizeHtml } from './utils/sanitize-html';
 
 /** SPEC-142: same-origin document deeplinks use client navigation (not target=_blank). */
@@ -193,6 +194,17 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
 
           case 'codespan': {
             const codeToken = token as Tokens.Codespan;
+            const htmlCodespan = tryHtmlCodespan(codeToken.text);
+            if (htmlCodespan) {
+              return (
+                <span
+                  key={tokenId}
+                  data-testid="md-html-codespan"
+                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm text-foreground"
+                  dangerouslySetInnerHTML={{ __html: htmlCodespan }}
+                />
+              );
+            }
             return (
               <code
                 key={tokenId}

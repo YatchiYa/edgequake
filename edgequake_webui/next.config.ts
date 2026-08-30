@@ -23,6 +23,17 @@ const nextConfig: NextConfig = {
   // reverse proxy AND exclude text/event-stream there.
   compress: false,
 
+  // SPEC-144 Phase C (Instant Navigations) — FLAGS OFF until React exposes
+  // postpone APIs needed by Cache Components on this pin.
+  // Observed on next@16.3.3 + react@19.2.3 (webpack): prerender fails with
+  // "React.unstable_postpone is not defined" on /_not-found.
+  // Free 16.3 wins (memory/SSR/prefetch inlining) still apply via the bump.
+  // Shells + `export const instant` markers remain so re-enable is mechanical:
+  //   cacheComponents: true,
+  //   partialPrefetching: true,
+  //   experimental.instantInsights.validationLevel: "manual-warning",
+  // See specs/144-update-nextjs/11-honest-assessment.md.
+
   // Limit experimental workers to prevent CPU overload
   experimental: {
     // Reduce worker count to prevent memory/CPU exhaustion
@@ -36,9 +47,9 @@ const nextConfig: NextConfig = {
     proxyClientMaxBodySize: DEFAULT_MAX_UPLOAD_BYTES,
   },
 
-  // TypeScript configuration
+  // TypeScript configuration — app sources only (tests/e2e excluded in tsconfig.json).
+  // SPEC-144: keep ignoreBuildErrors false so Next 16.3 typecheck stays a real gate.
   typescript: {
-    // Don't fail build on TS errors (we use tsc separately)
     ignoreBuildErrors: false,
   },
 
@@ -47,6 +58,10 @@ const nextConfig: NextConfig = {
 
   // Output configuration
   output: "standalone",
+
+  // SPEC-144: Next 16.3 writes versioned AGENTS.md/CLAUDE.md on `next dev`.
+  // Keep repo docs intentional — disable auto-generation.
+  agentRules: false,
 
   // Dev proxy: utoipa serves /swagger-ui/ (with slash); Next default strips trailing
   // slashes (308) → infinite redirect loop with backend (303). Disable for proxied paths.
@@ -59,7 +74,7 @@ const nextConfig: NextConfig = {
     },
   },
 
-  // Dev proxy: browser uses relative /api/v1 (same origin as :3001 UI).
+  // Dev proxy: browser uses relative /api/v1 (same origin as :3010 UI).
   // Avoids NEXT_PUBLIC_API_URL port drift when backend auto-selects :8081.
   async rewrites() {
     if (process.env.NODE_ENV !== "development") {

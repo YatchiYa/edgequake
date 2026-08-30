@@ -17,4 +17,8 @@ Bracket block:
 \\[
 \\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}
 \\]
+
+## HTML-in-codespan (PDF extraction artifact)
+
+Reward \`r<sub>i</sub>(W)\` and cost \`c<sub>i</sub>(W)\` with reference \`y<sub>i</sub><sup>*</sup>\`.
 `.trim();

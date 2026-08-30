@@ -31,5 +31,14 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "**/*.old-backup", "**/*.backup", "**/.backup/**"]
+  "exclude": [
+    "node_modules",
+    "**/*.old-backup",
+    "**/*.backup",
+    "**/.backup/**",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "e2e/**"
+  ]
 }
