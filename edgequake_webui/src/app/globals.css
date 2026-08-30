@@ -132,6 +132,18 @@
   }
 }
 
+/* SPEC-143: page anchors from <!-- edgequake-page:N --> (must be observable). */
+.eq-page-anchor {
+  display: block;
+  height: 1px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none;
+  scroll-margin-top: 0.75rem;
+}
+
 /* ============================================
  * GLOBAL MICRO-INTERACTIONS (MI-03, MI-07)
  * ============================================ */

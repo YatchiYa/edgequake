@@ -19,12 +19,15 @@ import {
     VirtualizedMarkdownContent,
 } from '@/components/query/markdown/VirtualizedMarkdownContent';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useMarkdownPageObserver } from '@/hooks/use-markdown-page-observer';
+import type { PageSyncDriver } from '@/hooks/use-page-sync-controller';
 import { rewriteMarkdownMmAssetUrls } from '@/lib/api/edgequake/documents';
 import {
     findHighlightIndex,
     resolveMarkdownHighlightRange,
     type HighlightLineRange,
 } from '@/lib/utils/markdown-highlight';
+import { injectPageAnchors } from '@/lib/utils/page-markers';
 import type { Document } from '@/types';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { CodeRenderer } from './code-renderer';
@@ -36,25 +39,48 @@ interface ContentRendererProps {
   highlightText?: string;
   startLine?: number;
   endLine?: number;
+  /** SPEC-143: active page from sync controller. */
+  activePage?: number;
+  /** SPEC-143: when true, observe MD anchors and follow PDF-driven scrolls. */
+  syncEnabled?: boolean;
+  /** SPEC-143: report page when user scrolls markdown. */
+  onPageFromMd?: (page: number) => void;
+  /** SPEC-143: skip MD auto-scroll when markdown is the driver. */
+  syncDriver?: PageSyncDriver;
 }
 
-export function ContentRenderer({ document, highlightText, startLine, endLine }: ContentRendererProps) {
+export function ContentRenderer({
+  document,
+  highlightText,
+  startLine,
+  endLine,
+  activePage,
+  syncEnabled = false,
+  onPageFromMd,
+  syncDriver = 'none',
+}: ContentRendererProps) {
   const contentRef = useRef<HTMLDivElement>(null);
-  
+
   const renderer = useMemo(() => {
     return getRendererForDocument(document, highlightText, startLine, endLine);
   }, [document, highlightText, startLine, endLine]);
 
+  useMarkdownPageObserver({
+    containerRef: contentRef,
+    enabled: Boolean(syncEnabled && onPageFromMd),
+    onPage: (page) => onPageFromMd?.(page),
+    scrollToPage: activePage ?? null,
+    skipScroll: syncDriver === 'md',
+  });
+
   // Scroll to and highlight the text when highlightText or line numbers change
   useEffect(() => {
     if ((!highlightText && startLine === undefined) || !contentRef.current) return;
-    
-    // Give time for content to render
+
     const timer = setTimeout(() => {
       const container = contentRef.current;
       if (!container) return;
-      
-      // Priority 1: Scroll to highlighted block (token-level highlighting)
+
       if (startLine !== undefined) {
         const highlightedBlock = container.querySelector('[data-highlighted="true"]');
         if (highlightedBlock) {
@@ -62,22 +88,32 @@ export function ContentRenderer({ document, highlightText, startLine, endLine }:
           return;
         }
       }
-      
-      // Priority 2: Find highlighted text element (line-number or match fallback)
-      const highlightedElements = container.querySelectorAll('mark.highlight-citation, mark.highlight-match');
+
+      const highlightedElements = container.querySelectorAll(
+        'mark.highlight-citation, mark.highlight-match',
+      );
       if (highlightedElements.length > 0) {
-        highlightedElements[0].scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'center' 
+        highlightedElements[0].scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
         });
       }
     }, 100);
-    
+
     return () => clearTimeout(timer);
   }, [highlightText, startLine, endLine]);
 
   return (
-    <div ref={contentRef} className="px-4 pt-4 pb-16 max-w-4xl">
+    <div ref={contentRef} className="relative px-4 pt-4 pb-16 max-w-4xl">
+      {syncEnabled && activePage != null && activePage >= 1 ? (
+        <div
+          className="sticky top-0 z-10 mb-2 -mx-1 px-2 py-0.5 text-xs text-muted-foreground bg-background/90 backdrop-blur-sm"
+          data-testid="md-page-indicator"
+          data-page={activePage}
+        >
+          Page {activePage}
+        </div>
+      ) : null}
       <Suspense fallback={<ContentSkeleton />}>
         {renderer}
       </Suspense>
@@ -90,9 +126,9 @@ function getRendererForDocument(doc: Document, highlightText?: string, startLine
   const fileName = doc.file_name?.toLowerCase() || '';
   // MV-28: rewrite `![…](assets/…)` to document-scoped API URLs so figures render
   // in the detail view (ContentRenderer path — same SSOT as MarkdownViewer).
-  const content = rewriteMarkdownMmAssetUrls(
-    doc.content || doc.content_summary || '',
-    doc.id,
+  // SPEC-143: inject page anchors after asset rewrite so MD↔PDF sync can observe them.
+  const content = injectPageAnchors(
+    rewriteMarkdownMmAssetUrls(doc.content || doc.content_summary || '', doc.id),
   );
 
   if (!content.trim()) {

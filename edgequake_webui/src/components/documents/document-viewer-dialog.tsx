@@ -24,6 +24,8 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { getPdfContent, getPdfDownloadUrl } from '@/lib/api/edgequake';
+import { hasPageMarkers } from '@/lib/utils/page-markers';
+import { usePageSyncController } from '@/hooks/use-page-sync-controller';
 import type { Document } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -66,6 +68,7 @@ export function DocumentViewerDialog({
   onOpenChange,
 }: DocumentViewerDialogProps) {
   const { t } = useTranslation();
+  const pageSync = usePageSyncController({ initialPage: 1, initialSyncEnabled: true });
 
   // Fetch PDF content metadata (includes markdown)
   const { data: pdfContent, isLoading: isLoadingContent, error } = useQuery({
@@ -180,12 +183,17 @@ export function DocumentViewerDialog({
               {/* If PDF with markdown, show side-by-side */}
               {isPdf && hasMarkdown && pdfUrl && (
                 <SideBySideViewer
+                  syncEnabled={pageSync.syncEnabled}
+                  onSyncToggle={pageSync.toggleSync}
+                  syncAvailable={hasPageMarkers(pdfContent.markdown_content)}
                   leftPanel={
                     <PDFViewer
                       file={pdfUrl}
                       showToolbar={true}
                       className="h-full"
                       documentId={pdfContent.document_id ?? pdfId ?? undefined}
+                      currentPage={pageSync.activePage}
+                      onPageChange={pageSync.setPageFromPdf}
                     />
                   }
                   rightPanel={
