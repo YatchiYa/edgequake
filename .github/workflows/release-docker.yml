@@ -96,6 +96,11 @@ jobs:
           cache-from: type=gha,scope=amd64
           cache-to:   type=gha,scope=amd64,mode=max
 
+      # push:true does not load into the local docker daemon; Trivy needs a local image
+      # (remote fallback can request the wrong platform and fail on arch-specific tags).
+      - name: Pull amd64 API image for Trivy
+        run: docker pull "ghcr.io/${{ github.repository }}:${{ needs.meta.outputs.version }}-amd64"
+
       - name: Trivy HIGH/CRITICAL (API image)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -133,6 +138,9 @@ jobs:
           tags: ghcr.io/${{ github.repository }}:${{ needs.meta.outputs.version }}-arm64
           cache-from: type=gha,scope=arm64
           cache-to:   type=gha,scope=arm64,mode=max
+
+      - name: Pull arm64 API image for Trivy
+        run: docker pull "ghcr.io/${{ github.repository }}:${{ needs.meta.outputs.version }}-arm64"
 
       - name: Trivy HIGH/CRITICAL (API image arm64)
         uses: aquasecurity/trivy-action@v0.36.0
