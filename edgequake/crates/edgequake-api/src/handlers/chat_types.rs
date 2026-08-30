@@ -221,6 +221,9 @@ pub enum ChatStreamEvent {
         /// @implements SPEC-032: Model lineage in streaming responses
         #[serde(skip_serializing_if = "Option::is_none")]
         llm_model: Option<String>,
+        /// SPEC-142: verified markdown answer (replace streamed tokens).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        answer: Option<String>,
     },
 
     /// Conversation title was auto-generated from first message.
@@ -305,6 +308,7 @@ mod tests {
             duration_ms: 1200,
             llm_provider: Some("ollama".to_string()),
             llm_model: Some("gemma4:latest".to_string()),
+            answer: None,
         };
         let json = serde_json::to_value(&event).unwrap();
         assert_eq!(json["type"], "done");
@@ -322,6 +326,7 @@ mod tests {
             duration_ms: 500,
             llm_provider: None,
             llm_model: None,
+            answer: None,
         };
         let json = serde_json::to_value(&event).unwrap();
         assert_eq!(json["type"], "done");

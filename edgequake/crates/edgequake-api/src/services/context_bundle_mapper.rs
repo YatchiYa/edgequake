@@ -439,6 +439,7 @@ mod tests {
             content: "x".repeat(500),
             score: 0.9,
             document_id: Some("doc1".into()),
+            document_name: None,
             token_count: 100,
             start_line: None,
             end_line: None,

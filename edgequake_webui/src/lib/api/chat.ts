@@ -207,6 +207,8 @@ export type ChatStreamEvent =
       llm_provider?: string;
       /** LLM model used (lineage tracking). @implements SPEC-032 */
       llm_model?: string;
+      /** SPEC-142: verified answer with document+page links. */
+      answer?: string;
     }
   | {
       /** Auto-generated conversation title. @implements FEAT0505 */
@@ -359,6 +361,8 @@ export function reduceStreamingEvent(
       return {
         ...currentState,
         status: "done",
+        // SPEC-142: prefer verified answer when present.
+        content: event.answer ?? currentState.content,
         assistantMessageId: event.assistant_message_id,
         tokensUsed: event.tokens_used,
         durationMs: event.duration_ms,

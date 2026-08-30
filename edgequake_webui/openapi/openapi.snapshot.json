@@ -9125,8 +9125,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_embeddings"
+        "x-edgequake-v2-job-type": "rebuild_embeddings",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -9199,8 +9199,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -9273,8 +9273,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_all",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_all"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -9797,8 +9797,8 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     }
   },
@@ -11046,6 +11046,13 @@
               "type"
             ],
             "properties": {
+              "answer": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SPEC-142: verified markdown answer (replace streamed tokens)."
+              },
               "assistant_message_id": {
                 "type": "string",
                 "format": "uuid"
@@ -23959,12 +23966,19 @@
           },
           {
             "type": "object",
-            "description": "Stream complete — includes full statistics.",
+            "description": "Stream complete — includes full statistics.\n\nSPEC-142: `answer` is the verified markdown (page chips + title tooltips)\nwhen sources were available; clients should replace streamed tokens with it.",
             "required": [
               "stats",
               "type"
             ],
             "properties": {
+              "answer": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Verified answer with `[p.N](href \"Doc\")` page chips (SPEC-142)."
+              },
               "llm_model": {
                 "type": [
                   "string",
@@ -26865,7 +26879,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "PDF page number (1-indexed) where this chunk starts.\nPresent only when the source is a PDF with page-aware chunking (SPEC-032).\nThe UI uses this to deep-link to `#page=N` in the document viewer.",
+            "description": "PDF page number (1-indexed) where this chunk starts.\nPresent only when the source is a PDF with page-aware chunking (SPEC-032).\nThe UI deep-links with `?page=N` (SPEC-033 / SPEC-142; not `#page=N`).",
             "minimum": 0
           },
           "reference_id": {
@@ -27797,7 +27811,7 @@
           },
           "total": {
             "type": "integer",
-            "description": "Total count.",
+            "description": "Total tenants (not page length). SPEC-140.",
             "minimum": 0
           }
         },
@@ -29403,7 +29417,7 @@
           },
           "total": {
             "type": "integer",
-            "description": "Total count.",
+            "description": "Total matching workspaces for the tenant (not page length). SPEC-140.",
             "minimum": 0
           }
         },

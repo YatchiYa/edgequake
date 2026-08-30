@@ -356,12 +356,18 @@ pub enum QueryStreamEvent {
     Thinking { content: String },
 
     /// Stream complete — includes full statistics.
+    ///
+    /// SPEC-142: `answer` is the verified markdown (page chips + title tooltips)
+    /// when sources were available; clients should replace streamed tokens with it.
     Done {
         stats: QueryStreamStats,
         #[serde(skip_serializing_if = "Option::is_none")]
         llm_provider: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         llm_model: Option<String>,
+        /// Verified answer with `[p.N](href "Doc")` page chips (SPEC-142).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        answer: Option<String>,
     },
 
     /// Error occurred during streaming.
@@ -614,7 +620,7 @@ pub struct SourceReference {
 
     /// PDF page number (1-indexed) where this chunk starts.
     /// Present only when the source is a PDF with page-aware chunking (SPEC-032).
-    /// The UI uses this to deep-link to `#page=N` in the document viewer.
+    /// The UI deep-links with `?page=N` (SPEC-033 / SPEC-142; not `#page=N`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_start: Option<u32>,
 

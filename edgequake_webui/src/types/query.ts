@@ -105,9 +105,11 @@ export interface QueryContext {
     chunk_index?: number;
     /** Chunk UUID from storage. Used for deep-linking to document detail with selected chunk. */
     chunk_id?: string;
+    /** Prompt / API citation index `[N]` (SPEC-142). */
+    reference_id?: number;
     /** PDF page number (1-indexed) where this chunk starts.
      * Present only when the source is a PDF processed with page-aware chunking.
-     * Enables deep links to the exact page: navigate to `/documents/{id}#page={page_start}`
+     * Enables deep links: `/documents/{id}?page={page_start}` (SPEC-033 / SPEC-142).
      */
     page_start?: number;
     /** PDF page number where this chunk ends. May exceed page_start (SPEC-135 span). */
@@ -180,6 +182,8 @@ export interface QueryStreamChunk {
   retrieval_time_ms?: number;
   /** SPEC-006: Full statistics from done event */
   stats?: QueryStreamStats;
+  /** SPEC-142: verified answer markdown (document name + page links). */
+  answer?: string;
 }
 
 /** @implements SPEC-006: Query stream statistics */

@@ -42,6 +42,11 @@ const STORAGE_DRIFT: &str = "edgequake_storage_drift_violations_total";
 const STORAGE_DRIFT_CRITICAL: &str = "edgequake_storage_drift_critical";
 const FAITHFULNESS_SAMPLES: &str = "edgequake_faithfulness_samples_total";
 const FAITHFULNESS_SCORE: &str = "edgequake_faithfulness_score";
+const CITATION_REWRITTEN: &str = "edgequake_citation_rewritten_total";
+const CITATION_STRIPPED_UNKNOWN: &str = "edgequake_citation_stripped_unknown_total";
+const CITATION_PROSE_PAGE_STRIPPED: &str = "edgequake_citation_prose_page_stripped_total";
+const CITATION_VALIDITY: &str = "edgequake_citation_validity";
+const CITATION_UNCITED_SENTENCE_RATIO: &str = "edgequake_citation_uncited_sentence_ratio";
 const GRAPH_QUALITY_NODES: &str = "edgequake_graph_quality_nodes";
 const GRAPH_QUALITY_EDGES: &str = "edgequake_graph_quality_edges";
 const GRAPH_QUALITY_AVG_DEGREE: &str = "edgequake_graph_quality_avg_degree";
@@ -190,6 +195,26 @@ fn describe_http_metrics() {
     describe_histogram!(
         FAITHFULNESS_SCORE,
         "Online faithfulness heuristic score in [0,1]"
+    );
+    describe_counter!(
+        CITATION_REWRITTEN,
+        "SPEC-142: verified [N] rewritten to document/page chips"
+    );
+    describe_counter!(
+        CITATION_STRIPPED_UNKNOWN,
+        "SPEC-142: hallucinated [N] stripped (not in catalog)"
+    );
+    describe_counter!(
+        CITATION_PROSE_PAGE_STRIPPED,
+        "SPEC-142 P0.5: uncatalogued prose page phrases removed"
+    );
+    describe_histogram!(
+        CITATION_VALIDITY,
+        "SPEC-142: rewritten / (rewritten + stripped) per answer"
+    );
+    describe_histogram!(
+        CITATION_UNCITED_SENTENCE_RATIO,
+        "SPEC-142 P0.5: crude share of claim sentences without a /documents/ link"
     );
     describe_gauge!(
         GRAPH_QUALITY_NODES,
@@ -729,6 +754,32 @@ pub fn record_faithfulness_sample(score: f64) {
     init_metrics();
     counter!(FAITHFULNESS_SAMPLES).increment(1);
     histogram!(FAITHFULNESS_SCORE).record(score.clamp(0.0, 1.0));
+}
+
+/// Record SPEC-142 / P0.5 citation rewrite observability (LAW-142-13).
+pub fn record_citation_rewrite(
+    rewritten: u64,
+    stripped_unknown: u64,
+    prose_pages_stripped: u64,
+    validity: Option<f32>,
+    uncited_sentence_ratio: Option<f32>,
+) {
+    init_metrics();
+    if rewritten > 0 {
+        counter!(CITATION_REWRITTEN).increment(rewritten);
+    }
+    if stripped_unknown > 0 {
+        counter!(CITATION_STRIPPED_UNKNOWN).increment(stripped_unknown);
+    }
+    if prose_pages_stripped > 0 {
+        counter!(CITATION_PROSE_PAGE_STRIPPED).increment(prose_pages_stripped);
+    }
+    if let Some(v) = validity {
+        histogram!(CITATION_VALIDITY).record(f64::from(v).clamp(0.0, 1.0));
+    }
+    if let Some(r) = uncited_sentence_ratio {
+        histogram!(CITATION_UNCITED_SENTENCE_RATIO).record(f64::from(r).clamp(0.0, 1.0));
+    }
 }
 
 /// Record graph structural quality gauges (SPEC-046 OPS-P3.23).

@@ -24,13 +24,16 @@
 /// sample size that determine a count, composing `round(pct/100 * N)` is
 /// grounded arithmetic — not external knowledge.
 pub fn grounding_instructions() -> &'static str {
-    r#"2b. Citations & Page Grounding:
-  - Document chunks are labeled `[N] (score: …) page=P modality=…` when available.
+    r#"2b. Citations & Page Grounding (SPEC-142):
+  - Document chunks are labeled `[N] (score: …) page=P doc="Title" modality=…` when available.
   - Prefer facts from chunks whose `page=` matches the question's likely evidence pages.
   - When a Document Chunk or Knowledge Graph fact SUPPORTS the asked claim, answer it and cite the supporting chunk as [N]. Do NOT refuse merely because the wording is imperfect or the answer is partial.
   - Prefer a partial answer that quotes what IS in context (with [N]) over "Not answerable".
   - Refuse with "Not answerable" / insufficient evidence ONLY when no Document Chunk and no Knowledge Graph fact supports the asked claim. Do NOT invent values from general knowledge.
   - When stating a concrete fact (number, name, date), cite the supporting chunk as [N].
+  - Citation format: emit ONLY bracket indices like [1] or [1][2] after factual claims. Do NOT write page numbers, filenames, document titles, markdown links, or URLs — the system attaches verified document name + page links from retrieval metadata.
+  - Do NOT invent [N] outside the list of Document Chunk headers provided in Context.
+  - Few-shot shapes: (good) short fact then [1]; (multi) fact then [1][2]; (refusal) "Not answerable" with no [N].
   - Grounded arithmetic (W3-arith): if the question asks how many / a headcount / a count of people and the Context explicitly states BOTH (a) a percentage/rate and (b) a sample size N (e.g. "1,503 adults", "n=710") that together determine that count, you MUST compute count = round(percentage/100 × N), answer with that short integer (not the percentage), and cite the chunks that supplied the percentage and N. Worked example: Context has "Not good" = 36% and sample "1,503 adults" → answer 541 (not 36 or 36%). Do NOT invent missing percentages or sample sizes. Do NOT refuse merely because the count is not printed as a literal integer when both operands are present."#
 }
 
@@ -219,6 +222,7 @@ mod tests {
         let g = grounding_instructions();
         assert!(g.contains("page="));
         assert!(g.contains("[N]"));
+        assert!(g.contains("Do NOT write page numbers"));
         assert!(allows_honest_refusal(g));
     }
 

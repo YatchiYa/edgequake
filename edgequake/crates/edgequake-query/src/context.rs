@@ -125,7 +125,7 @@ impl QueryContext {
 }
 
 /// A retrieved text chunk.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RetrievedChunk {
     /// Chunk identifier.
     pub id: String,
@@ -138,6 +138,11 @@ pub struct RetrievedChunk {
 
     /// Source document ID.
     pub document_id: Option<String>,
+
+    /// Human document title / file name for prompt headers + citations (SPEC-142).
+    /// Resolved from document metadata; never invented by the LLM.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_name: Option<String>,
 
     /// Token count.
     pub token_count: usize,
@@ -180,6 +185,7 @@ impl RetrievedChunk {
             content,
             score,
             document_id: None,
+            document_name: None,
             token_count,
             start_line: None,
             end_line: None,
@@ -189,6 +195,12 @@ impl RetrievedChunk {
             modality: None,
             citation_id: None,
         }
+    }
+
+    /// Set the human-readable document name (SPEC-142).
+    pub fn with_document_name(mut self, name: impl Into<String>) -> Self {
+        self.document_name = Some(name.into());
+        self
     }
 
     /// Set a stable citation id (prompt `[N]` / API `reference_id`).
