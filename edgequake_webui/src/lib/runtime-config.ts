@@ -2,6 +2,11 @@ export interface EdgeQuakeRuntimeConfig {
   apiUrl: string;
   authEnabled: boolean;
   disableDemoLogin: boolean;
+  /**
+   * Periodic `/live`+`/health` poll interval. `false` (default) = one probe on
+   * mount. Set `EDGEQUAKE_HEALTH_POLL_MS` (e.g. `10000`) to restore looping.
+   */
+  healthPollIntervalMs: number | false;
 }
 
 declare global {
@@ -17,6 +22,37 @@ function parseBoolean(value: string | boolean | undefined | null): boolean {
 
   const normalized = value?.toString().trim().toLowerCase();
   return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
+/** unset / 0 / false / off → no periodic poll; a positive integer is the interval in ms. */
+export function parseHealthPollIntervalMs(value: unknown): number | false {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value <= 0) {
+      return false;
+    }
+    return Math.floor(value);
+  }
+  if (value === false || value === null || value === undefined) {
+    return false;
+  }
+  if (typeof value === "boolean") {
+    return false;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  if (
+    normalized === "" ||
+    normalized === "0" ||
+    normalized === "false" ||
+    normalized === "off" ||
+    normalized === "no"
+  ) {
+    return false;
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return false;
+  }
+  return Math.floor(parsed);
 }
 
 function resolveClientApiUrl(
@@ -57,6 +93,11 @@ export function getRuntimeConfig(): EdgeQuakeRuntimeConfig {
     authEnabled: parseBoolean(browserConfig?.authEnabled ?? process.env.NEXT_PUBLIC_AUTH_ENABLED),
     disableDemoLogin: parseBoolean(
       browserConfig?.disableDemoLogin ?? process.env.NEXT_PUBLIC_DISABLE_DEMO_LOGIN
+    ),
+    healthPollIntervalMs: parseHealthPollIntervalMs(
+      browserConfig?.healthPollIntervalMs !== undefined
+        ? browserConfig.healthPollIntervalMs
+        : process.env.EDGEQUAKE_HEALTH_POLL_MS
     ),
   };
 }

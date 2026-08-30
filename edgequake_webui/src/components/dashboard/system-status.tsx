@@ -7,7 +7,7 @@
  * @see UC1107 - User views API connection status
  * @see UC1108 - User monitors system health
  *
- * @enforces BR1030 - Auto-refresh health checks every 30 seconds
+ * @enforces BR1030 - Auto-refresh health checks when EDGEQUAKE_HEALTH_POLL_MS is set (30s floor for details)
  * @enforces BR1031 - Graceful error handling for disconnected state
  */
 'use client';
@@ -17,7 +17,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getBackendReadinessSnapshot } from '@/lib/api/client';
 import { checkHealth } from '@/lib/api/edgequake';
-import { getAutomationAwareRefetchInterval } from '@/lib/runtime/browser-detection';
+import {
+  getBackendReadyRefetchInterval,
+  getHealthDetailsRefetchInterval,
+} from '@/lib/runtime/health-poll';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle, Circle, Server, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -29,7 +32,7 @@ export function SystemStatus() {
   const { data: readiness, isLoading: isReadinessLoading } = useQuery({
     queryKey: ['backend-ready'],
     queryFn: () => getBackendReadinessSnapshot(),
-    refetchInterval: getAutomationAwareRefetchInterval(10_000),
+    refetchInterval: getBackendReadyRefetchInterval(),
     staleTime: 5_000,
     retry: 1,
   });
@@ -41,7 +44,7 @@ export function SystemStatus() {
   const { data: health, isLoading: isHealthLoading } = useQuery({
     queryKey: ['health'],
     queryFn: checkHealth,
-    refetchInterval: getAutomationAwareRefetchInterval(30_000),
+    refetchInterval: getHealthDetailsRefetchInterval(),
     retry: 1,
     enabled: isReachable,
   });
