@@ -1,0 +1,7 @@
+{"t": 0.10530400276184082, "id": "01a050f6-9829-773a-ad08-c4933aad590e", "status": "pending", "display_status": "uploading", "chunks_count": null, "chunk_count": 0, "error": null}
+{"t": 2.1636247634887695, "id": "01a050f6-9829-773a-ad08-c4933aad590e", "status": "extracting", "display_status": "extracting", "chunks_count": null, "chunk_count": 0, "error": null}
+{"t": 4.183981895446777, "id": "01a050f6-9829-773a-ad08-c4933aad590e", "status": "extracting", "display_status": "extracting", "chunks_count": null, "chunk_count": 0, "error": null}
+{"t": 6.204586982727051, "id": "01a050f6-9829-773a-ad08-c4933aad590e", "status": "extracting", "display_status": "extracting", "chunks_count": null, "chunk_count": 0, "error": null}
+{"t": 8.22442102432251, "id": "01a050f6-9829-773a-ad08-c4933aad590e", "status": "extracting", "display_status": "embedding", "chunks_count": null, "chunk_count": 0, "error": null}
+{"t": 10.24379301071167, "id": "01a050f6-9829-773a-ad08-c4933aad590e", "status": "indexing", "display_status": "storing", "chunks_count": null, "chunk_count": 1, "error": null}
+{"t": 12.275710821151733, "id": "01a050f6-9829-773a-ad08-c4933aad590e", "status": "completed", "display_status": "completed", "chunks_count": null, "chunk_count": 1, "error": null}

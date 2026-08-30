@@ -162,7 +162,8 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         spec93-migration-assessment-pg17 spec93-migration-assessment-pg18 \
         check-deps status \
         test-quality test-invariants test-timing test-count test-flaky \
-        test-e2e-critical test-e2e-full test-e2e-lint test-stability-report \
+	test-e2e-critical test-e2e-full test-e2e-lint test-stability-report \
+        measure-bulk-ingest \
         sdk-e2e sdk-e2e-with-stack sdk-csharp-test-unit
 
 # ============================================================================
@@ -2788,6 +2789,20 @@ test-e2e-full: dev-bg test-e2e-lint ## Run full E2E suite (requires make dev-bg 
 	@cd $(FRONTEND_DIR) && EQ_BACKEND_URL="$(BACKEND_URL)" E2E_BACKEND_URL="$(BACKEND_URL)" \
 		SPEC013_BACKEND_URL="$(BACKEND_URL)" E2E_LIVE_STACK=1 PLAYWRIGHT_BASE_URL="$(FRONTEND_URL)" \
 		pnpm exec playwright test --project=chromium --reporter=line
+
+# SPEC-122: bulk ingest measurement harness (LAW-122-5). Does not raise concurrency.
+# Usage: make measure-bulk-ingest ARM=D N=5
+# Optional: BASE_URL WORKSPACE_ID TIMEOUT_S EDGEQUAKE_TOKEN
+measure-bulk-ingest: ## SPEC-122 measure bulk ingest (admit vs t_all; docs/min)
+	@curl -sf "$(BACKEND_URL)/health" >/dev/null || { \
+		echo "$(RED)✗ Backend not healthy at $(BACKEND_URL). Start with make backend-bg / make dev-bg.$(RESET)"; exit 1; \
+	}
+	@echo "$(BLUE)SPEC-122 measure ARM=$${ARM:-C} N=$${N:-1} → $(BACKEND_URL)$(RESET)"
+	@BASE_URL="$(BACKEND_URL)" \
+		WORKSPACE_ID="$${WORKSPACE_ID:-00000000-0000-0000-0000-000000000003}" \
+		ARM="$${ARM:-C}" N="$${N:-1}" TIMEOUT_S="$${TIMEOUT_S:-1800}" \
+		EDGEQUAKE_TOKEN="$${EDGEQUAKE_TOKEN:-}" \
+		python3 $(ROOT_DIR)/specs/122-implementation/scripts/measure-bulk-ingest.py
 
 spec043-e2e: dev-bg ## SPEC-043 model picker + attribution E2E with screenshots
 	@echo "$(BLUE)SPEC-043 E2E → frontend $(FRONTEND_URL) backend $(BACKEND_URL)$(RESET)"

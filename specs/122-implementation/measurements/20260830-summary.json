@@ -1,0 +1,46 @@
+{
+  "date": "2026-08-30",
+  "host": "local-darwin",
+  "edgequake": "0.26.3",
+  "profile": {
+    "note": "Docker-like concurrency with Mistral (partner Docker path)",
+    "WORKER_THREADS": 8,
+    "MAX_TASKS_PER_TENANT": 6,
+    "EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS": 4,
+    "EDGEQUAKE_EMBED_MAX_ASYNC": 4,
+    "provider": "mistral",
+    "auth": "DEV_AUTH_ENABLED=false"
+  },
+  "arm_c_mistral": {
+    "n": 1,
+    "admit_s": 0.099,
+    "t_all_s": 12.276,
+    "docs_per_min": 4.888,
+    "tenant": 6,
+    "provider": "mistral",
+    "run_dir": "20260830T043853Z-armC-n1"
+  },
+  "arm_d_docker_mistral": {
+    "n": 5,
+    "admit_s": 0.186,
+    "t_first_s": 14.522,
+    "t_all_s": 51.275,
+    "docs_per_min": 5.851,
+    "tenant": 6,
+    "provider": "mistral",
+    "workers_configured": 8,
+    "run_dir": "20260830T043905Z-armD-n5"
+  },
+  "regression_floor": {
+    "description": "Docker-default-like N=5 small text at tenant=6 — floor to detect regressions, not partner marketing SLO",
+    "docs_per_min_min": 4.0,
+    "admit_s_max": 2.0,
+    "require_admit_much_less_than_t_all": true
+  },
+  "hypotheses": {
+    "H1": "N/A on this cut (Ollama tenant=1 arm not re-run; prior ACCEPT on 20260811 stands)",
+    "H5": "REJECT — admit_s ≪ t_all (0.10–0.19 s vs 12–51 s)",
+    "overlap": "ACCEPT under tenant=6 — t_all 51.3s < 5×ArmC 61.4s (some completion overlap)"
+  },
+  "verdict": "Capacity/expectation unchanged on HEAD 0.26.3; not a correctness defect. Safe to close #361/#365 as not-a-bug with honesty UX + operator knobs."
+}

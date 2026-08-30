@@ -1,0 +1,7 @@
+SPEC-122 ARM=D N=5 INDEX=3 TS=20260830T043905Z
+UNIQUE=8c6c39ea-f341-44a8-8f92-8d66bdb49615
+# Test Document
+
+Alice works at Acme Corp. Bob is CEO of TechStart. They met at AI conference in San Francisco.
+
+Carol joined the team in 2023. The project was completed on time.
