@@ -94,3 +94,16 @@ Expected close: **#390–#407**.
 ## 8. Cross-refs
 
 Wave 0 · [PKG-sharp](PKG-sharp.md) · Register `next`
+
+---
+
+## 9. August 2026 floor (superseding pin)
+
+The July audit above closed the **16.2.11** floor. Product cut **v0.26.4**
+(SPEC-144) raises the WebUI pin to **`next@16.3.3`** / `eslint-config-next@16.3.3`
+for the [August 2026 security release](https://github.com/vercel/next.js/releases/tag/v16.3.3)
+([GHSA-p293-qw3h-jr36](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36),
+[GHSA-2xp9-vwfh-vxw4](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4)).
+
+**Current product pin:** `16.3.3` (see [`specs/144-update-nextjs/`](../../144-update-nextjs/)).
+Do not rewrite the July as-is table above — it remains the historical audit record.

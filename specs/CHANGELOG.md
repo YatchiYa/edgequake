@@ -6,6 +6,12 @@ All notable changes to the EdgeQuake specs directory are tracked here. See the r
 
 ### Added
 
+- **SPEC-144 / Next.js 16.3.3 Active LTS (2026-08-30):** Pin `next` +
+  `eslint-config-next` to **16.3.3** (August Critical RCEs); unify auth +
+  swagger into `src/proxy.ts`; Docker `next build --webpack`; Instant
+  Navigations prepared but flags off. Pack: `specs/144-update-nextjs/`.
+  Product cut: **v0.26.4**.
+
 - **SPEC-129 / touch_document_status CHECK (#381) (2026-08-16):** Dual-write
   SSOT gap — slim-checkpoint resume writes KV `re_embedding` while
   `touch_document_status` bypassed `normalize_documents_column_status`,

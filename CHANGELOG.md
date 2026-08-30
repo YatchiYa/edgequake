@@ -4,10 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.26.4] — 2026-08-30
+
+Patch: SPEC-144 Next.js **16.3.3** Active LTS (August 2026 Critical RCEs),
+proxy SSOT, webpack Docker parity; SPEC-140/141 list completeness; SPEC-122
+bulk-ingest honesty; WebUI health poll off by default; distroless API runtime.
+**No new migration.** Schema train remains **149**. Upgrade:
+[`docs/operations/upgrade-to-0.26.4.md`](docs/operations/upgrade-to-0.26.4.md).
+
+**Deps (crates.io):** unchanged from 0.26.3 (`edgequake-llm` **0.10.8**, `edgequake-pdf2md` **0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0`).
+
+**WebUI:** `next` / `eslint-config-next` **16.3.3** (was 16.2.11). Instant
+Navigations flags remain **off** (React postpone blocker on webpack prerender).
+
+**SPEC-001 Acc:** attested from existing [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **PDF geometry not re-scored**.
+
 ### Changed
+- **SPEC-144 — Next.js 16.3.3 Active LTS** — Pin `next` + `eslint-config-next` to
+  **16.3.3** (August 2026 security release: [GHSA-p293-qw3h-jr36](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36),
+  [GHSA-2xp9-vwfh-vxw4](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4)).
+  Unify auth + swagger into single `src/proxy.ts` (delete root `middleware.ts`).
+  Dockerfile uses `next build --webpack` (parity with safe-build). Instant
+  Navigations prepared but flags off. Spec: [`specs/144-update-nextjs/`](specs/144-update-nextjs/).
 - **WebUI health poll off by default** — Header / banner / SystemStatus probe `/live`+`/health` once on load instead of every 10s. Restore the loop with `EDGEQUAKE_HEALTH_POLL_MS=10000` (runtime, not baked). Playwright still never polls.
 - **API image distroless (Trivy HIGH)** — Runtime is `gcr.io/distroless/cc-debian12:nonroot` (no `curl`/`wget`/`sh`). HEALTHCHECK is `edgequake healthcheck` (GET `/live`). Helm preStop is `edgequake pre-stop`. TLS crates use rustls only so the binary does not link libssl. Residual `CVE-2026-14456` is ignored (OpenSSL QUIC server, 3.5+; image is 3.0.x). Release CD scans the API image at HIGH/CRITICAL.
-- **SPEC-122 bulk ingest verification** — `make measure-bulk-ingest`; HEAD 0.26.3 Docker-like re-measure artifact; docs admit≠ready drift fixed. Closes #361/#365 as capacity (not throughput claim). Phase B concurrency still gated.
+- **SPEC-122 bulk ingest verification** — `make measure-bulk-ingest`; HEAD Docker-like re-measure artifact; docs admit≠ready drift fixed. Closes #361/#365 as capacity (not throughput claim). Phase B concurrency still gated.
 
 ### Fixed
 - **SPEC-141 — list completeness (pagination audit)** — Catalogs exhaust

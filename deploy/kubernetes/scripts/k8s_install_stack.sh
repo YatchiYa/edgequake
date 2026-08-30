@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 # shellcheck source=/dev/null
 source "$(dirname "$0")/k8s_context.sh"
 HELM_DIR="${ROOT}/deploy/kubernetes/helm"
-EDGEQUAKE_VERSION="${EDGEQUAKE_VERSION:-0.26.3}"
+EDGEQUAKE_VERSION="${EDGEQUAKE_VERSION:-0.26.4}"
 LANGFUSE_CHART_VERSION="${LANGFUSE_CHART_VERSION:-2.0.0}"
 
 echo "→ Helm repo add langfuse..."

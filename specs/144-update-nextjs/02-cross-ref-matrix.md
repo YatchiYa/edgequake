@@ -5,7 +5,7 @@
 | Claim | Authority |
 |-------|-----------|
 | Security floor ≥16.2.11 | SPEC-085 PKG-next; July 2026 GHSAs |
-| Target 16.3.3 | [nextjs.org/blog/next-16-3](https://nextjs.org/blog/next-16-3); npm `next@16.3.3` |
+| Target 16.3.3 | [nextjs.org/blog/next-16-3](https://nextjs.org/blog/next-16-3); npm `next@16.3.3`; also ships August 2026 Critical GHSAs ([GHSA-p293-qw3h-jr36](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36), [GHSA-2xp9-vwfh-vxw4](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4)) |
 | middleware → proxy | [Upgrade guide v16](https://nextjs.org/docs/app/guides/upgrading/version-16) |
 | Auth cookie guard | SPEC-083 X-27; `edgequake_access_token` |
 | Swagger trailing slash | `src/proxy.ts` + `skipTrailingSlashRedirect` |

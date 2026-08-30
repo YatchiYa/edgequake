@@ -1,12 +1,12 @@
 ---
 title: "EdgeQuake — Documentation technique de déploiement"
-version: "0.26.3"
+version: "0.26.4"
 audience: "Architectes, ingénieurs infrastructure, RSSI"
 ---
 
 # EdgeQuake — Documentation technique de déploiement
 
-> **Produit** : EdgeQuake v0.26.3 · **Schéma base** : migrations 001 → **149**
+> **Produit** : EdgeQuake v0.26.4 · **Schéma base** : migrations 001 → **149**
 > **Documents liés** : [Intégration IT](02-integration-it.md) · [Deep dive architecture & algorithme](03-deep-dive-architecture-algorithme.md)
 
 ---
@@ -128,8 +128,8 @@ dédié aux requêtes, l'autre dimensionné pour l'ingestion).
 
 | Service    | Image                                      | Tag de référence                                            | Architectures                |
 | ---------- | ------------------------------------------ | ----------------------------------------------------------- | ---------------------------- |
-| API        | `ghcr.io/raphaelmansuy/edgequake`          | `0.26.3`                                                    | `linux/amd64`, `linux/arm64` |
-| Web UI     | `ghcr.io/raphaelmansuy/edgequake-frontend` | `0.26.3`                                                    | `linux/amd64`, `linux/arm64` |
+| API        | `ghcr.io/raphaelmansuy/edgequake`          | `0.26.4`                                                    | `linux/amd64`, `linux/arm64` |
+| Web UI     | `ghcr.io/raphaelmansuy/edgequake-frontend` | `0.26.4`                                                    | `linux/amd64`, `linux/arm64` |
 | PostgreSQL | `ghcr.io/raphaelmansuy/edgequake-postgres` | `0.21.0-pg18` (défaut PG18)<br>`0.21.0-pg17`, `0.21.0-pg16` | `linux/amd64`, `linux/arm64` |
 
 > En environnement fermé, ces trois images doivent être **répliquées dans le registre
@@ -722,7 +722,7 @@ dépassements sont comptés (`edgequake_rate_limit_exceeded_total`) et audités
 
 ```bash
 # 1. Réplication des images vers le registre interne
-for img in edgequake:0.26.3 edgequake-frontend:0.26.3 edgequake-postgres:0.21.0-pg18; do
+for img in edgequake:0.26.4 edgequake-frontend:0.26.4 edgequake-postgres:0.21.0-pg18; do
   docker pull  ghcr.io/raphaelmansuy/$img
   docker tag   ghcr.io/raphaelmansuy/$img registry.intra.{client}/edgequake/$img
   docker push  registry.intra.{client}/edgequake/$img
@@ -749,11 +749,11 @@ psql "$DATABASE_URL" -c "SELECT extname, extversion FROM pg_extension
 ```bash
 # Simulation : liste les migrations en attente, signale les suppressions irréversibles
 docker run --rm -e DATABASE_URL="$DATABASE_URL" \
-  registry.intra.{client}/edgequake/edgequake:0.26.3 migrate dry-run
+  registry.intra.{client}/edgequake/edgequake:0.26.4 migrate dry-run
 
 # Application
 docker run --rm -e DATABASE_URL="$DATABASE_URL" \
-  registry.intra.{client}/edgequake/edgequake:0.26.3 migrate
+  registry.intra.{client}/edgequake/edgequake:0.26.4 migrate
 ```
 
 Sur une installation neuve, une seule exécution de `migrate` suffit.
@@ -791,7 +791,7 @@ Sous Kubernetes, câbler `/live` en _liveness_ et `/ready` en _readiness_ — vo
 
 | #   | Vérification                             | Commande                                                             | Attendu                                              |
 | --- | ---------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------- |
-| R1  | Version déployée                         | `curl -s http://API/version`                                         | `0.26.3`                                             |
+| R1  | Version déployée                         | `curl -s http://API/version`                                         | `0.26.4`                                             |
 | R2  | Vivacité                                 | `curl -s http://API/live`                                            | 200                                                  |
 | R3  | Aptitude au trafic                       | `curl -sf http://API/ready`                                          | **200** (503 = migration, stockage ou file en cause) |
 | R4  | Santé détaillée                          | `curl -s http://API/health \| jq .status`                            | `healthy` (non `degraded`)                           |

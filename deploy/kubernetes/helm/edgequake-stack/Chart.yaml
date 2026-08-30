@@ -3,7 +3,7 @@ name: edgequake-stack
 description: EdgeQuake full stack wrapper (Langfuse installed separately in langfuse namespace)
 type: application
 version: 0.1.0
-appVersion: "0.26.3"
+appVersion: "0.26.4"
 dependencies:
   - name: edgequake
     version: "0.1.0"
