@@ -39,7 +39,12 @@ opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "testing"], opti
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "reqwest-rustls", "trace"], optional = true }
 tracing-opentelemetry = { version = "0.33", optional = true }
 # SPEC-124b: native Langfuse ingestion transport (Langfuse 3.1 exposes no OTLP endpoint).
-reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"], optional = true }
+# TLS: `rustls-tls-native-roots` reads the OS trust store (and honours
+# SSL_CERT_FILE). Plain `rustls-tls` would bundle Mozilla roots only, which
+# rejects corporate/internal CAs — the OTLP path uses the system store via
+# `reqwest/default-tls`, so the two transports must agree or self-hosted
+# Langfuse behind an internal certificate works on one and fails on the other.
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls-native-roots"], optional = true }
 # rustls 0.23 requires an explicit process-default CryptoProvider for HTTPS (reqwest OTLP).
 rustls = { version = "0.23", optional = true, default-features = false, features = ["std", "tls12", "aws-lc-rs"] }
 

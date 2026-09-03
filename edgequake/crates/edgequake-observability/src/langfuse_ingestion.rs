@@ -361,7 +361,18 @@ impl SpanExporter for LangfuseIngestionExporter {
             .header("Content-Type", "application/json")
             .json(&json!({ "batch": events }))
             .send()
-            .map_err(|e| OTelSdkError::InternalFailure(format!("langfuse ingestion send: {e}")))?;
+            .map_err(|e| {
+                // WARN, not DEBUG: a failing export is otherwise invisible at the
+                // default RUST_LOG=info, and the most common causes here are
+                // silent ones — an internal CA the trust store rejects, or an
+                // ingress dropping the request.
+                tracing::warn!(
+                    endpoint = %self.endpoint,
+                    error = %e,
+                    "Langfuse ingestion export failed (traces lost for this batch)"
+                );
+                OTelSdkError::InternalFailure(format!("langfuse ingestion send: {e}"))
+            })?;
 
         // 207 Multi-Status is the nominal success code for this API.
         let code = resp.status().as_u16();
@@ -369,9 +380,15 @@ impl SpanExporter for LangfuseIngestionExporter {
             Ok(())
         } else {
             let body = resp.text().unwrap_or_default();
+            let snippet: String = body.chars().take(300).collect();
+            tracing::warn!(
+                endpoint = %self.endpoint,
+                status = code,
+                body = %snippet,
+                "Langfuse ingestion rejected the batch (traces lost)"
+            );
             Err(OTelSdkError::InternalFailure(format!(
-                "langfuse ingestion HTTP {code}: {}",
-                body.chars().take(300).collect::<String>()
+                "langfuse ingestion HTTP {code}: {snippet}"
             )))
         }
     }
