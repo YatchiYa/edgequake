@@ -9,7 +9,7 @@ audience: "Data scientists, exploitation, architectes"
 > **Produit** : EdgeQuake v0.26.5 (+ correctifs livrés avec ce dossier, §7)
 > **Documents liés** : [Guide de construction d'une ontologie](05-ontologie-guide-construction.md) · [Algorithme d'extraction](06-algorithme-extraction-ontologie.md) · [Intégration IT](02-integration-it.md)
 
-Ce document répond à deux questions posées lors de la revue :
+Ce document répond à deux questions posées lors de la revue:
 
 1. **La maintenance du graphe est-elle entièrement automatique ?** — Oui pour tout ce
    qui découle du cycle de vie des documents (§1). Trois opérations restent
@@ -62,23 +62,23 @@ flowchart LR
     end
 ```
 
-| Événement | Ce qu'EdgeQuake fait seul | Source |
-|---|---|---|
-| **Ingestion** | Résolution d'identité (`ws::NOM`), vote majoritaire du type, fusion des descriptions, poids de relation `max`, dédoublonnage intra-lot | doc 06 §7 |
-| **Suppression d'un document** | Tâche `Deletion` (HTTP 202) ; cascade sur les entités, relations et vecteurs dont ce document est la seule source ; les entités **partagées** avec d'autres documents sont conservées, leur provenance et leur description sont réécrites sans les fragments du document supprimé | `services/document_deletion.rs`, `services/knowledge_rebuild.rs` |
-| **Aperçu avant suppression** | `GET /api/v1/documents/{id}/deletion-impact` — lecture seule : `chunks_to_delete`, `entities_to_remove`, `entities_to_update`, `relationships_to_remove` | mesuré : `{"entities_to_remove":17,"entities_to_update":0,"relationships_to_remove":13,"preview_only":true}` |
-| **Échec d'extraction d'un chunk** | Enregistré dans `failed_chunks` avec cause et compteur ; listable et rejouable (§3.4) | `handlers/documents/recovery/chunks.rs` |
-| **Document bloqué** | Détection au-delà d'un seuil (`stuck_threshold_minutes`, 10 par défaut) ; nettoyage des données de graphe partielles puis remise en file ; `POST /api/v1/documents/recover-stuck` | `handlers/documents/recovery/stuck.rs` |
-| **Redémarrage de l'API** | Réconciliation des tâches en attente / à mi-chemin (`pending_doc_task_reconcile`), drain des effets journalisés (outbox), compensation des écritures partielles | `services/pending_doc_task_reconcile.rs`, doc 03 §3.9 |
-| **Réordonnancement, communautés** | Détection de communautés (Louvain) optionnelle, non déclenchée automatiquement | doc 03 §3.10 |
+| Événement                         | Ce qu'EdgeQuake fait seul                                                                                                                                                                                                                                                         | Source                                                                                                       |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Ingestion**                     | Résolution d'identité (`ws::NOM`), vote majoritaire du type, fusion des descriptions, poids de relation `max`, dédoublonnage intra-lot                                                                                                                                            | doc 06 §7                                                                                                    |
+| **Suppression d'un document**     | Tâche `Deletion` (HTTP 202) ; cascade sur les entités, relations et vecteurs dont ce document est la seule source ; les entités **partagées** avec d'autres documents sont conservées, leur provenance et leur description sont réécrites sans les fragments du document supprimé | `services/document_deletion.rs`, `services/knowledge_rebuild.rs`                                             |
+| **Aperçu avant suppression**      | `GET /api/v1/documents/{id}/deletion-impact` — lecture seule : `chunks_to_delete`, `entities_to_remove`, `entities_to_update`, `relationships_to_remove`                                                                                                                          | mesuré : `{"entities_to_remove":17,"entities_to_update":0,"relationships_to_remove":13,"preview_only":true}` |
+| **Échec d'extraction d'un chunk** | Enregistré dans `failed_chunks` avec cause et compteur ; listable et rejouable (§3.4)                                                                                                                                                                                             | `handlers/documents/recovery/chunks.rs`                                                                      |
+| **Document bloqué**               | Détection au-delà d'un seuil (`stuck_threshold_minutes`, 10 par défaut) ; nettoyage des données de graphe partielles puis remise en file ; `POST /api/v1/documents/recover-stuck`                                                                                                 | `handlers/documents/recovery/stuck.rs`                                                                       |
+| **Redémarrage de l'API**          | Réconciliation des tâches en attente / à mi-chemin (`pending_doc_task_reconcile`), drain des effets journalisés (outbox), compensation des écritures partielles                                                                                                                   | `services/pending_doc_task_reconcile.rs`, doc 03 §3.9                                                        |
+| **Réordonnancement, communautés** | Détection de communautés (Louvain) optionnelle, non déclenchée automatiquement                                                                                                                                                                                                    | doc 03 §3.10                                                                                                 |
 
 **Ce qui n'est pas automatique, et pourquoi :**
 
-| Opération | État | Raison |
-|---|---|---|
-| Rapprochement approximatif des noms (`MOTEUR_CFM56` ≈ `MOTEUR_CFM56-5B`) | Désactivé par défaut (`EDGEQUAKE_ENTITY_FUZZY=1`, seuil 0,88) | Un faux rapprochement fusionne deux entités réelles ; la décision est laissée au métier (fusion manuelle, §2) |
-| Réconciliation des nœuds hérités non normalisés | `POST /api/v1/admin/entities/reconcile`, en deux temps (plan puis exécution avec jeton) | Opération destructive, réservée à l'administration |
-| Réapplication d'une ontologie ou d'un modèle modifié | Reconstruction explicite (§3.1) | Coût LLM proportionnel au corpus ; jamais déclenché à l'insu de l'exploitant |
+| Opération                                                                | État                                                                                    | Raison                                                                                                        |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Rapprochement approximatif des noms (`MOTEUR_CFM56` ≈ `MOTEUR_CFM56-5B`) | Désactivé par défaut (`EDGEQUAKE_ENTITY_FUZZY=1`, seuil 0,88)                           | Un faux rapprochement fusionne deux entités réelles ; la décision est laissée au métier (fusion manuelle, §2) |
+| Réconciliation des nœuds hérités non normalisés                          | `POST /api/v1/admin/entities/reconcile`, en deux temps (plan puis exécution avec jeton) | Opération destructive, réservée à l'administration                                                            |
+| Réapplication d'une ontologie ou d'un modèle modifié                     | Reconstruction explicite (§3.1)                                                         | Coût LLM proportionnel au corpus ; jamais déclenché à l'insu de l'exploitant                                  |
 
 ---
 
@@ -86,28 +86,28 @@ flowchart LR
 
 Le graphe est **un réseau posé au-dessus des chunks** : corriger un nœud ou une arête
 ne modifie ni le texte source ni les vecteurs de chunks. C'est l'outil adapté aux
-erreurs de *classification* et de *liaison*, pas aux erreurs de *parsing* (§4).
+erreurs de _classification_ et de _liaison_, pas aux erreurs de _parsing_ (§4).
 
 ### 2.1 Matrice des capacités (vérifiée)
 
-| Opération | Interface web | API | Vérifié |
-|---|---|---|---|
-| **Modifier** le type ou la description d'une entité | Oui — sélectionner le nœud, panneau de détails → bouton **Edit** (`node-details.tsx` → `entity-edit-dialog`) | `PUT /api/v1/graph/entities/{nom}` | ✔ `OTHER` → `INSPECTION`, HTTP 200 ; vérifié depuis le navigateur : `PUT …::MARC_DUBOIS`, description relue par l'API |
-| **Supprimer** une entité (et ses arêtes) | Oui — clic droit → *Delete Entity*, ou panneau de détails → **Delete** ; confirmation dans les deux cas (correctif §7.5) | `DELETE /api/v1/graph/entities/{nom}?confirm=true` | ✔ HTTP 200 ; sans `confirm` → HTTP 400 ; vérifié depuis le navigateur : `DELETE …::MARC_DUBOIS?confirm=true` puis `GET` → 404 |
-| **Fusionner** deux entités | Oui — panneau de détails → bouton **Merge** (ouvre le dialogue d'édition avec choix de la cible) | `POST /api/v1/graph/entities/merge` | ✔ arêtes réécrites, source supprimée |
-| **Créer** une entité | **Non** | `POST /api/v1/graph/entities` | ✔ nœud `is_manual: true`, identifiant `ws::NOM` |
-| **Modifier** une relation (mots-clés, poids, description) | Oui — panneau de détails du nœud, liste des relations → clic sur la relation (`relationship-edit-dialog`) | `PUT /api/v1/graph/relationships/{id}` | ✔ HTTP 200 |
-| **Supprimer** une relation | **Non** (fonction cliente présente, non câblée dans l'interface) | `DELETE /api/v1/graph/relationships/{id}` | ✔ HTTP 200 |
-| **Créer** une relation | **Non** | `POST /api/v1/graph/relationships` | ✔ `AIRBUS_A320_F-GKXA —INSPECTED_BY→ MARC_DUBOIS` |
+| Opération                                                 | Interface web                                                                                                            | API                                                | Vérifié                                                                                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Modifier** le type ou la description d'une entité       | Oui — sélectionner le nœud, panneau de détails → bouton **Edit** (`node-details.tsx` → `entity-edit-dialog`)             | `PUT /api/v1/graph/entities/{nom}`                 | ✔ `OTHER` → `INSPECTION`, HTTP 200 ; vérifié depuis le navigateur : `PUT …::MARC_DUBOIS`, description relue par l'API         |
+| **Supprimer** une entité (et ses arêtes)                  | Oui — clic droit → _Delete Entity_, ou panneau de détails → **Delete** ; confirmation dans les deux cas (correctif §7.5) | `DELETE /api/v1/graph/entities/{nom}?confirm=true` | ✔ HTTP 200 ; sans `confirm` → HTTP 400 ; vérifié depuis le navigateur : `DELETE …::MARC_DUBOIS?confirm=true` puis `GET` → 404 |
+| **Fusionner** deux entités                                | Oui — panneau de détails → bouton **Merge** (ouvre le dialogue d'édition avec choix de la cible)                         | `POST /api/v1/graph/entities/merge`                | ✔ arêtes réécrites, source supprimée                                                                                          |
+| **Créer** une entité                                      | **Non**                                                                                                                  | `POST /api/v1/graph/entities`                      | ✔ nœud `is_manual: true`, identifiant `ws::NOM`                                                                               |
+| **Modifier** une relation (mots-clés, poids, description) | Oui — panneau de détails du nœud, liste des relations → clic sur la relation (`relationship-edit-dialog`)                | `PUT /api/v1/graph/relationships/{id}`             | ✔ HTTP 200                                                                                                                    |
+| **Supprimer** une relation                                | **Non** (fonction cliente présente, non câblée dans l'interface)                                                         | `DELETE /api/v1/graph/relationships/{id}`          | ✔ HTTP 200                                                                                                                    |
+| **Créer** une relation                                    | **Non**                                                                                                                  | `POST /api/v1/graph/relationships`                 | ✔ `AIRBUS_A320_F-GKXA —INSPECTED_BY→ MARC_DUBOIS`                                                                             |
 
-La règle énoncée en réunion — *« tout ce qui se fait dans l'interface existe dans
-l'API »* — est exacte ; la réciproque ne l'est pas : la **création** d'entités et de
+La règle énoncée en réunion — _« tout ce qui se fait dans l'interface existe dans
+l'API »_ — est exacte ; la réciproque ne l'est pas : la **création** d'entités et de
 relations, et la **suppression** de relations, sont API uniquement.
 
 > Les lignes marquées ✔ ont été exécutées **après** application des correctifs du §7.
 > En v0.26.5 telle que livrée, `GET`/`PUT`/`DELETE /graph/entities/{nom}` et
 > `POST /graph/relationships` répondent **404** pour tout nœud extrait par le pipeline,
-> et le bouton *Delete* de l'interface n'envoie pas la confirmation exigée par l'API.
+> et le bouton _Delete_ de l'interface n'envoie pas la confirmation exigée par l'API.
 
 ### 2.2 Détails utiles
 
@@ -176,13 +176,13 @@ flowchart TD
 
 ### 3.1 Workspace — changer de modèle
 
-| Objectif | Endpoint | Corps | Comportement vérifié |
-|---|---|---|---|
-| Ré-extraire tout le graphe avec un autre LLM (ou après modification de l'ontologie) | `POST /api/v1/workspaces/{id}/rebuild-knowledge-graph` | `{"llm_model": "…", "llm_provider": "…", "force": true}` | Sans changement de modèle **et** sans `force` : HTTP 400 *« LLM configuration unchanged. Use 'force: true' »*. C'est une protection contre un rebuild accidentel |
-| Ré-encoder avec un autre modèle d'embedding | `POST /api/v1/workspaces/{id}/rebuild-embeddings` | `{"embedding_model": "…", "embedding_provider": "…", "embedding_dimension": N, "force": bool}` | Obligatoire après tout changement de modèle d'embedding (dimension liée au workspace) |
-| Retraiter tous les documents (ou seulement les échoués) | `POST /api/v1/workspaces/{id}/reprocess-documents` | — | Équivalent v2 : `POST /api/v2/workspaces/{id}/jobs` avec `job_type: reprocess_all` / `reprocess_failed` |
+| Objectif                                                                            | Endpoint                                               | Corps                                                                                          | Comportement vérifié                                                                                                                                             |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ré-extraire tout le graphe avec un autre LLM (ou après modification de l'ontologie) | `POST /api/v1/workspaces/{id}/rebuild-knowledge-graph` | `{"llm_model": "…", "llm_provider": "…", "force": true}`                                       | Sans changement de modèle **et** sans `force` : HTTP 400 _« LLM configuration unchanged. Use 'force: true' »_. C'est une protection contre un rebuild accidentel |
+| Ré-encoder avec un autre modèle d'embedding                                         | `POST /api/v1/workspaces/{id}/rebuild-embeddings`      | `{"embedding_model": "…", "embedding_provider": "…", "embedding_dimension": N, "force": bool}` | Obligatoire après tout changement de modèle d'embedding (dimension liée au workspace)                                                                            |
+| Retraiter tous les documents (ou seulement les échoués)                             | `POST /api/v1/workspaces/{id}/reprocess-documents`     | —                                                                                              | Équivalent v2 : `POST /api/v2/workspaces/{id}/jobs` avec `job_type: reprocess_all` / `reprocess_failed`                                                          |
 
-C'est exactement la demande *« on pourrait dire : on ré-indexe avec tel modèle »* :
+C'est exactement la demande _« on pourrait dire : on ré-indexe avec tel modèle »_ :
 deux phases indépendantes, deux endpoints, chacun acceptant le modèle cible.
 
 ### 3.2 Document — remplacement propre
@@ -193,11 +193,11 @@ deux phases indépendantes, deux endpoints, chacun acceptant le modèle cible.
 { "document_id": "01a0af45-…", "force": true, "mode": "entities" }
 ```
 
-| Champ | Valeurs | Effet |
-|---|---|---|
-| `mode` | `entities` (défaut) | Réutilise le markdown en cache ; **retire** toutes les entités, relations et vecteurs issus de ce document ; ré-extrait |
-| | `full` | Reconvertit d'abord le PDF depuis les octets stockés (dépense des jetons vision) — à utiliser quand la conversion elle-même est en cause (tableau mal lu, page manquante) |
-| `force` | `true` pour un document déjà `completed` | Sans `force`, seuls les documents en échec sont repris |
+| Champ   | Valeurs                                  | Effet                                                                                                                                                                     |
+| ------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mode`  | `entities` (défaut)                      | Réutilise le markdown en cache ; **retire** toutes les entités, relations et vecteurs issus de ce document ; ré-extrait                                                   |
+|         | `full`                                   | Reconvertit d'abord le PDF depuis les octets stockés (dépense des jetons vision) — à utiliser quand la conversion elle-même est en cause (tableau mal lu, page manquante) |
+| `force` | `true` pour un document déjà `completed` | Sans `force`, seuls les documents en échec sont repris                                                                                                                    |
 
 Réponse mesurée : `{"requeued":1,"skipped":0,"document_ids":[…],"task_id":"insert-…"}`,
 puis statut `processing` → `completed` en une vingtaine de secondes sur le document de
@@ -221,11 +221,11 @@ contient que ce que la nouvelle extraction a produit (conséquences en §6).
 { "chunk_indices": [3, 4], "force": true }
 ```
 
-| Champ | Effet |
-|---|---|
-| `chunk_indices` vide | Rejoue uniquement les chunks enregistrés en échec (`GET /documents/{id}/failed-chunks`) |
+| Champ                           | Effet                                                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `chunk_indices` vide            | Rejoue uniquement les chunks enregistrés en échec (`GET /documents/{id}/failed-chunks`)                             |
 | `chunk_indices` + `force: true` | Rejoue les chunks désignés **même s'ils avaient réussi** — c'est le mode « je ré-extrais là où il y a un problème » |
-| `max_retries` | Plafond de tentatives par chunk (défaut **3**) — au-delà, le chunk passe en `abandoned` sauf `force` |
+| `max_retries`                   | Plafond de tentatives par chunk (défaut **3**) — au-delà, le chunk passe en `abandoned` sauf `force`                |
 
 Comportement : le texte du chunk est relu depuis le stockage, ré-extrait avec le
 pipeline **du workspace** (ontologie, langue, budget — voir correctif §7.3), puis
@@ -287,11 +287,11 @@ sequenceDiagram
     API-->>DS: 202 · cascade
 ```
 
-| Étape | Endpoint | Remarque |
-|---|---|---|
-| Récupérer le markdown | `GET /api/v1/documents/{id}/download/markdown` | Le markdown converti, pas le PDF d'origine (`…/download/original` pour celui-ci) |
-| Réingérer | `POST /api/v1/documents` `{"content": "…", "title": "…", "metadata": {…}}` | Le nouveau document passe par le pipeline complet du workspace (ontologie, gleaning) ; conserver `title` et `metadata` pour la traçabilité |
-| Supprimer l'ancien | `DELETE /api/v1/documents/{id}` | Vérifier `deletion-impact` avant : les entités **partagées** avec d'autres documents sont conservées et leurs descriptions réécrites, les entités propres disparaissent |
+| Étape                 | Endpoint                                                                   | Remarque                                                                                                                                                                |
+| --------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Récupérer le markdown | `GET /api/v1/documents/{id}/download/markdown`                             | Le markdown converti, pas le PDF d'origine (`…/download/original` pour celui-ci)                                                                                        |
+| Réingérer             | `POST /api/v1/documents` `{"content": "…", "title": "…", "metadata": {…}}` | Le nouveau document passe par le pipeline complet du workspace (ontologie, gleaning) ; conserver `title` et `metadata` pour la traçabilité                              |
+| Supprimer l'ancien    | `DELETE /api/v1/documents/{id}`                                            | Vérifier `deletion-impact` avant : les entités **partagées** avec d'autres documents sont conservées et leurs descriptions réécrites, les entités propres disparaissent |
 
 Alternative quand la conversion PDF est en cause et qu'un meilleur modèle de vision
 est disponible : `reprocess` avec `mode: full` après avoir changé
@@ -336,15 +336,15 @@ Le point le plus important pour un data scientist qui corrige à la main :
 **que deviennent ses corrections quand quelqu'un relance une extraction ?** Mesuré sur
 le workspace de test :
 
-| Correction manuelle | après `retry-chunks` (chunk) | après `reprocess` (document) | après `rebuild-knowledge-graph` |
-|---|---|---|---|
-| Type d'entité modifié (`PUT`) | **Conservé** (vote manuel de poids 100 — correctif §7.4) | **Perdu** (le nœud est retiré puis recréé) | **Perdu** |
-| Description modifiée (`PUT`) | Conservée, mais la nouvelle description extraite s'y **ajoute** | Perdue | Perdue |
-| Entité supprimée | **Réapparaît** si le chunk la mentionne | Réapparaît | Réapparaît |
-| Entités fusionnées | La source **réapparaît** | Réapparaît | Réapparaît |
-| Entité créée à la main (`is_manual`, sans source documentaire) | Conservée | **Conservée** (vérifié) | Conservée |
-| Relation créée à la main | Conservée | **Perdue** si l'une des extrémités est une entité du document retraité (vérifié) | Perdue |
-| Relation modifiée (`PUT`) | Conservée (fusion additive) | Perdue | Perdue |
+| Correction manuelle                                            | après `retry-chunks` (chunk)                                    | après `reprocess` (document)                                                     | après `rebuild-knowledge-graph` |
+| -------------------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------- |
+| Type d'entité modifié (`PUT`)                                  | **Conservé** (vote manuel de poids 100 — correctif §7.4)        | **Perdu** (le nœud est retiré puis recréé)                                       | **Perdu**                       |
+| Description modifiée (`PUT`)                                   | Conservée, mais la nouvelle description extraite s'y **ajoute** | Perdue                                                                           | Perdue                          |
+| Entité supprimée                                               | **Réapparaît** si le chunk la mentionne                         | Réapparaît                                                                       | Réapparaît                      |
+| Entités fusionnées                                             | La source **réapparaît**                                        | Réapparaît                                                                       | Réapparaît                      |
+| Entité créée à la main (`is_manual`, sans source documentaire) | Conservée                                                       | **Conservée** (vérifié)                                                          | Conservée                       |
+| Relation créée à la main                                       | Conservée                                                       | **Perdue** si l'une des extrémités est une entité du document retraité (vérifié) | Perdue                          |
+| Relation modifiée (`PUT`)                                      | Conservée (fusion additive)                                     | Perdue                                                                           | Perdue                          |
 
 Conséquence pratique : **les corrections manuelles se font en dernier**, après la
 dernière ré-extraction du périmètre concerné. Si des corrections doivent survivre à un
@@ -363,7 +363,7 @@ validé par l'exécution décrite.
 ### 7.1 Modification et suppression d'entités impossibles (interface et API)
 
 **Symptôme** : `GET`, `PUT` et `DELETE /api/v1/graph/entities/{nom}` répondent
-**404** pour tout nœud extrait par le pipeline — donc *Edit* et *Delete Entity* dans
+**404** pour tout nœud extrait par le pipeline — donc _Edit_ et _Delete Entity_ dans
 l'interface échouent aussi.
 
 **Cause** : les identifiants de nœuds sont préfixés par le workspace
@@ -434,16 +434,16 @@ Fichier : `handlers/entities/entity_crud.rs`.
 
 ### 7.5 Suppression depuis l'interface refusée par l'API
 
-**Symptôme** : une fois 7.1 corrigé, *Delete Entity* / *Delete* dans l'interface affiche
-« Failed to delete entity » : l'API exige `?confirm=true` (HTTP 400 *« Confirmation
-required »* sinon) et le client web n'envoyait jamais ce paramètre — alors qu'il affiche
+**Symptôme** : une fois 7.1 corrigé, _Delete Entity_ / _Delete_ dans l'interface affiche
+« Failed to delete entity » : l'API exige `?confirm=true` (HTTP 400 _« Confirmation
+required »_ sinon) et le client web n'envoyait jamais ce paramètre — alors qu'il affiche
 déjà sa propre boîte de confirmation.
 
 **Correctif** : le client web ajoute `?confirm=true` à l'appel de suppression
 (`edgequake_webui/src/lib/api/edgequake/graph.ts`, `deleteEntity`) ; la confirmation
 utilisateur reste celle de l'interface.
 
-**Validation** : navigateur Chromium piloté — sélection du nœud `MARC_DUBOIS`, *Delete*,
+**Validation** : navigateur Chromium piloté — sélection du nœud `MARC_DUBOIS`, _Delete_,
 confirmation ; appel observé `DELETE /api/v1/graph/entities/{ws}::MARC_DUBOIS?confirm=true` ;
 `GET` API → 404.
 
@@ -457,8 +457,8 @@ confirmation ; appel observé `DELETE /api/v1/graph/entities/{ws}::MARC_DUBOIS?c
 
 ## 8. Réponse à la demande « ré-extraction à la page »
 
-La demande formulée en réunion : *« l'extraction se fait à la page ; pouvoir relancer
-le chunking et la correction du graphe uniquement sur 1 page ou n pages »*.
+La demande formulée en réunion : _« l'extraction se fait à la page ; pouvoir relancer
+le chunking et la correction du graphe uniquement sur 1 page ou n pages »_.
 
 **État en v0.26.5** : il n'existe **pas** d'opération native « page ». Les
 granularités natives sont le workspace, le document et le chunk (§3). Mais la page est
@@ -485,12 +485,12 @@ curl -X POST "${H[@]}" "$API/api/v1/documents/$DOC/retry-chunks" \
 
 **Limites de cette procédure, à énoncer au client :**
 
-| Limite | Raison | Contournement |
-|---|---|---|
-| Additif, pas remplacement | `retry-chunks` fusionne sans retirer l'extraction précédente du chunk (§3.4) | Supprimer d'abord à la main les nœuds fautifs propres à ces pages (§2), ou accepter l'addition |
-| Pas de re-conversion de la page | Le texte du chunk est relu tel qu'indexé ; si la **conversion** PDF de la page est fautive, la ré-extraction reproduit l'erreur | `reprocess` `mode: full` (document entier) ou correction du markdown (§4) |
-| Un chunk peut chevaucher deux pages | Le recouvrement de 100 tokens et le remplissage au budget (SPEC-135) font qu'un chunk peut commencer page 11 et finir page 12 | Inclure les chunks limitrophes |
-| `page_start` absent pour les documents non PDF ou ingérés en texte | Le lignage de page n'existe que pour le chemin PDF page-aware | Utiliser `start_line` / `end_line` |
+| Limite                                                             | Raison                                                                                                                          | Contournement                                                                                  |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Additif, pas remplacement                                          | `retry-chunks` fusionne sans retirer l'extraction précédente du chunk (§3.4)                                                    | Supprimer d'abord à la main les nœuds fautifs propres à ces pages (§2), ou accepter l'addition |
+| Pas de re-conversion de la page                                    | Le texte du chunk est relu tel qu'indexé ; si la **conversion** PDF de la page est fautive, la ré-extraction reproduit l'erreur | `reprocess` `mode: full` (document entier) ou correction du markdown (§4)                      |
+| Un chunk peut chevaucher deux pages                                | Le recouvrement de 100 tokens et le remplissage au budget (SPEC-135) font qu'un chunk peut commencer page 11 et finir page 12   | Inclure les chunks limitrophes                                                                 |
+| `page_start` absent pour les documents non PDF ou ingérés en texte | Le lignage de page n'existe que pour le chemin PDF page-aware                                                                   | Utiliser `start_line` / `end_line`                                                             |
 
 **Ce qu'il faudrait pour une vraie opération « page »** (non livré, à chiffrer) :
 
