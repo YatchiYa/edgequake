@@ -16,10 +16,7 @@ use super::super::{CostBreakdownStats, Pipeline, ProcessingStats};
 ///
 /// SPEC-047 / 021 L-A1: also stamp `source_document_id` from the processing
 /// document id (preferred) or derive it from `{doc}-chunk-N` when missing.
-pub(in crate::pipeline) fn link_extractions_to_chunks(
-    extractions: &mut [ExtractionResult],
-    document_id: &str,
-) {
+pub fn link_extractions_to_chunks(extractions: &mut [ExtractionResult], document_id: &str) {
     for extraction in extractions.iter_mut() {
         let chunk_id = extraction.source_chunk_id.clone();
         let derived_doc = if !document_id.is_empty() {

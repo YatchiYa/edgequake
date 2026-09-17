@@ -181,15 +181,22 @@ pub async fn retry_failed_chunks(
             }));
         }
 
-        let extractor =
-            state
-                .query
-                .pipeline
-                .extractor()
-                .ok_or_else(|| ApiError::ServiceUnavailable {
-                    message: "No entity extractor configured for chunk retry".into(),
-                    retry_after_secs: 30,
-                })?;
+        // Workspace-scoped pipeline, not the global default: the retry must
+        // honour the workspace ontology (entity/relation allow-lists) and
+        // extraction language exactly like the original ingestion did —
+        // otherwise a retry re-creates English, default-typed duplicates.
+        let retry_workspace_id = metadata
+            .get("workspace_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let retry_pipeline = state.create_workspace_pipeline(&retry_workspace_id).await;
+        let extractor = retry_pipeline
+            .extractor()
+            .ok_or_else(|| ApiError::ServiceUnavailable {
+                message: "No entity extractor configured for chunk retry".into(),
+                retry_after_secs: 30,
+            })?;
 
         let max_retries = request.max_retries;
         let mut queued = Vec::new();
@@ -249,6 +256,15 @@ pub async fn retry_failed_chunks(
             match extractor.extract(&text_chunk).await {
                 Ok(extraction) => {
                     // SPEC-046 OPS-P1.21: merge extraction into graph (full parity with ingest).
+                    // Parity includes chunk/document lineage: without it the merger's
+                    // SPEC-091 RM2 citation gate rejects every relationship of the retry
+                    // ("source_chunk_ids required") while entities still land.
+                    let mut linked = vec![extraction];
+                    edgequake_pipeline::pipeline::link_extractions_to_chunks(
+                        &mut linked,
+                        &document_id,
+                    );
+                    let extraction = linked.pop().expect("one extraction pushed above");
                     let tenant_id = metadata
                         .get("tenant_id")
                         .and_then(|v| v.as_str())

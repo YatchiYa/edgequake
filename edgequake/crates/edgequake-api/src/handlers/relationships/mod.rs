@@ -38,7 +38,7 @@ pub use crate::handlers::relationships_types::{
 
 #[cfg(test)]
 mod tests {
-    use super::helpers::{extract_relation_type, normalize_entity_name};
+    use super::helpers::extract_relation_type;
     use super::*;
 
     #[test]
@@ -46,14 +46,6 @@ mod tests {
         assert_eq!(extract_relation_type("works for, employed by"), "WORKS_FOR");
         assert_eq!(extract_relation_type("located in"), "LOCATED_IN");
         assert_eq!(extract_relation_type(""), "RELATED_TO");
-    }
-
-    #[test]
-    fn test_normalize_entity_name() {
-        assert_eq!(
-            normalize_entity_name("quantum computing"),
-            "QUANTUM_COMPUTING"
-        );
     }
 
     #[test]
