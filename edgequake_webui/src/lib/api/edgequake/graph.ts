@@ -313,7 +313,9 @@ export async function updateEntity(
 }
 
 export async function deleteEntity(entityId: string): Promise<void> {
-  return api.delete<void>(`/graph/entities/${entityId}`);
+  // The API refuses an unconfirmed delete (400 "Confirmation required");
+  // the UI has already shown its own confirmation dialog before calling this.
+  return api.delete<void>(`/graph/entities/${entityId}?confirm=true`);
 }
 
 export async function mergeEntities(

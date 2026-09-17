@@ -20,10 +20,11 @@ Ce document répond à deux questions posées lors de la revue :
    de décision est en §5, et la persistance des corrections face aux retraitements en §6.
 
 Chaque capacité décrite a été **exécutée contre une instance v0.26.5** sur un workspace
-de test ; les réponses de l'API sont reproduites. Cette vérification a révélé quatre
-défauts dans les chemins de correction, tous corrigés dans le code livré avec ce
-dossier (§7). **Sans ces correctifs, la modification et la suppression d'entités depuis
-l'interface graphique ne fonctionnent pas en v0.26.5.**
+de test — par l'API, et pour l'édition et la suppression d'entités **depuis l'interface
+web réelle** (navigateur Chromium piloté par Playwright, appels observés côté API). Cette
+vérification a révélé cinq défauts dans les chemins de correction, tous corrigés dans le
+code livré avec ce dossier (§7). **Sans ces correctifs, la modification et la suppression
+d'entités depuis l'interface graphique ne fonctionnent pas en v0.26.5.**
 
 ---
 
@@ -91,8 +92,8 @@ erreurs de *classification* et de *liaison*, pas aux erreurs de *parsing* (§4).
 
 | Opération | Interface web | API | Vérifié |
 |---|---|---|---|
-| **Modifier** le type ou la description d'une entité | Oui — sélectionner le nœud, panneau de détails → bouton **Edit** (`node-details.tsx` → `entity-edit-dialog`) | `PUT /api/v1/graph/entities/{nom}` | ✔ `OTHER` → `INSPECTION`, HTTP 200 |
-| **Supprimer** une entité (et ses arêtes) | Oui — clic droit → *Delete Entity*, ou panneau de détails → **Delete** ; confirmation dans les deux cas | `DELETE /api/v1/graph/entities/{nom}?confirm=true` | ✔ HTTP 200 ; sans `confirm` → HTTP 400 |
+| **Modifier** le type ou la description d'une entité | Oui — sélectionner le nœud, panneau de détails → bouton **Edit** (`node-details.tsx` → `entity-edit-dialog`) | `PUT /api/v1/graph/entities/{nom}` | ✔ `OTHER` → `INSPECTION`, HTTP 200 ; vérifié depuis le navigateur : `PUT …::MARC_DUBOIS`, description relue par l'API |
+| **Supprimer** une entité (et ses arêtes) | Oui — clic droit → *Delete Entity*, ou panneau de détails → **Delete** ; confirmation dans les deux cas (correctif §7.5) | `DELETE /api/v1/graph/entities/{nom}?confirm=true` | ✔ HTTP 200 ; sans `confirm` → HTTP 400 ; vérifié depuis le navigateur : `DELETE …::MARC_DUBOIS?confirm=true` puis `GET` → 404 |
 | **Fusionner** deux entités | Oui — panneau de détails → bouton **Merge** (ouvre le dialogue d'édition avec choix de la cible) | `POST /api/v1/graph/entities/merge` | ✔ arêtes réécrites, source supprimée |
 | **Créer** une entité | **Non** | `POST /api/v1/graph/entities` | ✔ nœud `is_manual: true`, identifiant `ws::NOM` |
 | **Modifier** une relation (mots-clés, poids, description) | Oui — panneau de détails du nœud, liste des relations → clic sur la relation (`relationship-edit-dialog`) | `PUT /api/v1/graph/relationships/{id}` | ✔ HTTP 200 |
@@ -105,7 +106,8 @@ relations, et la **suppression** de relations, sont API uniquement.
 
 > Les lignes marquées ✔ ont été exécutées **après** application des correctifs du §7.
 > En v0.26.5 telle que livrée, `GET`/`PUT`/`DELETE /graph/entities/{nom}` et
-> `POST /graph/relationships` répondent **404** pour tout nœud extrait par le pipeline.
+> `POST /graph/relationships` répondent **404** pour tout nœud extrait par le pipeline,
+> et le bouton *Delete* de l'interface n'envoie pas la confirmation exigée par l'API.
 
 ### 2.2 Détails utiles
 
@@ -353,7 +355,7 @@ retraitement, elles doivent être **rejouables** — d'où l'intérêt de les sc
 
 ## 7. Défauts trouvés et corrigés
 
-La vérification a mis en évidence quatre défauts dans les chemins de correction de la
+La vérification a mis en évidence cinq défauts dans les chemins de correction de la
 v0.26.5. Les correctifs sont inclus dans le code livré avec ce dossier ; ils
 **nécessitent une nouvelle image** (pas de migration de schéma). Chaque correctif a été
 validé par l'exécution décrite.
@@ -430,7 +432,22 @@ Fichier : `handlers/entities/entity_crud.rs`.
 **Validation** : après retry, `entity_type: INSPECTION`,
 `entity_type_votes: {"OTHER": 0.5, "INSPECTION": 100.0}`.
 
-### 7.5 Gates
+### 7.5 Suppression depuis l'interface refusée par l'API
+
+**Symptôme** : une fois 7.1 corrigé, *Delete Entity* / *Delete* dans l'interface affiche
+« Failed to delete entity » : l'API exige `?confirm=true` (HTTP 400 *« Confirmation
+required »* sinon) et le client web n'envoyait jamais ce paramètre — alors qu'il affiche
+déjà sa propre boîte de confirmation.
+
+**Correctif** : le client web ajoute `?confirm=true` à l'appel de suppression
+(`edgequake_webui/src/lib/api/edgequake/graph.ts`, `deleteEntity`) ; la confirmation
+utilisateur reste celle de l'interface.
+
+**Validation** : navigateur Chromium piloté — sélection du nœud `MARC_DUBOIS`, *Delete*,
+confirmation ; appel observé `DELETE /api/v1/graph/entities/{ws}::MARC_DUBOIS?confirm=true` ;
+`GET` API → 404.
+
+### 7.6 Gates
 
 `cargo clippy -- -D warnings` (cible `make backend-clippy`) : sans avertissement.
 `cargo fmt --check` : conforme. Tests unitaires des modules touchés
