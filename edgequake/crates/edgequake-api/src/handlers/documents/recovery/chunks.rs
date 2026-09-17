@@ -254,17 +254,15 @@ pub async fn retry_failed_chunks(
 
             let text_chunk = text_chunk_from_kv(&document_id, idx, content);
             match extractor.extract(&text_chunk).await {
-                Ok(extraction) => {
+                Ok(mut extraction) => {
                     // SPEC-046 OPS-P1.21: merge extraction into graph (full parity with ingest).
                     // Parity includes chunk/document lineage: without it the merger's
                     // SPEC-091 RM2 citation gate rejects every relationship of the retry
                     // ("source_chunk_ids required") while entities still land.
-                    let mut linked = vec![extraction];
                     edgequake_pipeline::pipeline::link_extractions_to_chunks(
-                        &mut linked,
+                        std::slice::from_mut(&mut extraction),
                         &document_id,
                     );
-                    let extraction = linked.pop().expect("one extraction pushed above");
                     let tenant_id = metadata
                         .get("tenant_id")
                         .and_then(|v| v.as_str())
