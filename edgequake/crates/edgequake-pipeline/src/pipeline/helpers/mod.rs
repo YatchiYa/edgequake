@@ -11,4 +11,5 @@ mod lineage;
 mod stats;
 pub mod unique_embed;
 
-pub(super) use stats::{aggregate_extraction_stats, link_extractions_to_chunks};
+pub(super) use stats::aggregate_extraction_stats;
+pub use stats::link_extractions_to_chunks;

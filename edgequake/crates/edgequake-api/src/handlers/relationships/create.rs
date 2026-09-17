@@ -6,13 +6,13 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::ApiResult;
-use crate::handlers::isolation::{load_node_for_tenant_context, stamp_tenant_context_properties};
+use crate::handlers::isolation::stamp_tenant_context_properties;
 use crate::handlers::relationships_types::{CreateRelationshipRequest, CreateRelationshipResponse};
 use crate::middleware::TenantContext;
 use crate::state::StorageRuntime;
 use edgequake_storage::GraphEdge;
 
-use super::helpers::{edge_to_relationship_response, extract_relation_type, normalize_entity_name};
+use super::helpers::{edge_to_relationship_response, extract_relation_type};
 
 /// Create a new relationship.
 ///
@@ -34,13 +34,22 @@ pub async fn create_relationship(
     tenant_ctx: TenantContext,
     Json(req): Json<CreateRelationshipRequest>,
 ) -> ApiResult<Json<CreateRelationshipResponse>> {
-    let src_id = normalize_entity_name(&req.src_id);
-    let tgt_id = normalize_entity_name(&req.tgt_id);
-
-    // Verify both entities exist in this tenant/workspace
-    load_node_for_tenant_context(storage.graph_storage.as_ref(), &src_id, &tenant_ctx).await?;
-
-    load_node_for_tenant_context(storage.graph_storage.as_ref(), &tgt_id, &tenant_ctx).await?;
+    // Resolve both endpoints to their stored (workspace-scoped) node ids —
+    // accepts a bare name or the scoped id the WebUI sends.
+    let src_id = crate::handlers::entities::resolve_entity_node_exact(
+        storage.graph_storage.as_ref(),
+        &req.src_id,
+        &tenant_ctx,
+    )
+    .await?
+    .id;
+    let tgt_id = crate::handlers::entities::resolve_entity_node_exact(
+        storage.graph_storage.as_ref(),
+        &req.tgt_id,
+        &tenant_ctx,
+    )
+    .await?
+    .id;
 
     // Generate relationship ID
     let rel_id = format!("rel-{}", Uuid::new_v4());
