@@ -67,7 +67,7 @@ flowchart LR
 | **Suppression d'un document** | Tâche `Deletion` (HTTP 202) ; cascade sur les entités, relations et vecteurs dont ce document est la seule source ; les entités **partagées** avec d'autres documents sont conservées, leur provenance et leur description sont réécrites sans les fragments du document supprimé | `services/document_deletion.rs`, `services/knowledge_rebuild.rs` |
 | **Aperçu avant suppression** | `GET /api/v1/documents/{id}/deletion-impact` — lecture seule : `chunks_to_delete`, `entities_to_remove`, `entities_to_update`, `relationships_to_remove` | mesuré : `{"entities_to_remove":17,"entities_to_update":0,"relationships_to_remove":13,"preview_only":true}` |
 | **Échec d'extraction d'un chunk** | Enregistré dans `failed_chunks` avec cause et compteur ; listable et rejouable (§3.4) | `handlers/documents/recovery/chunks.rs` |
-| **Document bloqué** | Détection au-delà d'un seuil (10 min par défaut) ; `POST /api/v1/documents/recover-stuck` | `services/orphan_task_recovery.rs` |
+| **Document bloqué** | Détection au-delà d'un seuil (`stuck_threshold_minutes`, 10 par défaut) ; nettoyage des données de graphe partielles puis remise en file ; `POST /api/v1/documents/recover-stuck` | `handlers/documents/recovery/stuck.rs` |
 | **Redémarrage de l'API** | Réconciliation des tâches en attente / à mi-chemin (`pending_doc_task_reconcile`), drain des effets journalisés (outbox), compensation des écritures partielles | `services/pending_doc_task_reconcile.rs`, doc 03 §3.9 |
 | **Réordonnancement, communautés** | Détection de communautés (Louvain) optionnelle, non déclenchée automatiquement | doc 03 §3.10 |
 
@@ -91,11 +91,11 @@ erreurs de *classification* et de *liaison*, pas aux erreurs de *parsing* (§4).
 
 | Opération | Interface web | API | Vérifié |
 |---|---|---|---|
-| **Modifier** le type ou la description d'une entité | Oui — clic droit sur le nœud → *Edit* (`entity-edit-dialog`) | `PUT /api/v1/graph/entities/{nom}` | ✔ `OTHER` → `INSPECTION`, HTTP 200 |
-| **Supprimer** une entité (et ses arêtes) | Oui — clic droit → *Delete Entity*, confirmation | `DELETE /api/v1/graph/entities/{nom}?confirm=true` | ✔ HTTP 200 ; sans `confirm` → HTTP 400 |
-| **Fusionner** deux entités | Oui — dans le dialogue d'édition, choix de la cible | `POST /api/v1/graph/entities/merge` | ✔ arêtes réécrites, source supprimée |
+| **Modifier** le type ou la description d'une entité | Oui — sélectionner le nœud, panneau de détails → bouton **Edit** (`node-details.tsx` → `entity-edit-dialog`) | `PUT /api/v1/graph/entities/{nom}` | ✔ `OTHER` → `INSPECTION`, HTTP 200 |
+| **Supprimer** une entité (et ses arêtes) | Oui — clic droit → *Delete Entity*, ou panneau de détails → **Delete** ; confirmation dans les deux cas | `DELETE /api/v1/graph/entities/{nom}?confirm=true` | ✔ HTTP 200 ; sans `confirm` → HTTP 400 |
+| **Fusionner** deux entités | Oui — panneau de détails → bouton **Merge** (ouvre le dialogue d'édition avec choix de la cible) | `POST /api/v1/graph/entities/merge` | ✔ arêtes réécrites, source supprimée |
 | **Créer** une entité | **Non** | `POST /api/v1/graph/entities` | ✔ nœud `is_manual: true`, identifiant `ws::NOM` |
-| **Modifier** une relation (mots-clés, poids, description) | Oui — `relationship-edit-dialog` | `PUT /api/v1/graph/relationships/{id}` | ✔ HTTP 200 |
+| **Modifier** une relation (mots-clés, poids, description) | Oui — panneau de détails du nœud, liste des relations → clic sur la relation (`relationship-edit-dialog`) | `PUT /api/v1/graph/relationships/{id}` | ✔ HTTP 200 |
 | **Supprimer** une relation | **Non** (fonction cliente présente, non câblée dans l'interface) | `DELETE /api/v1/graph/relationships/{id}` | ✔ HTTP 200 |
 | **Créer** une relation | **Non** | `POST /api/v1/graph/relationships` | ✔ `AIRBUS_A320_F-GKXA —INSPECTED_BY→ MARC_DUBOIS` |
 
@@ -223,7 +223,7 @@ contient que ce que la nouvelle extraction a produit (conséquences en §6).
 |---|---|
 | `chunk_indices` vide | Rejoue uniquement les chunks enregistrés en échec (`GET /documents/{id}/failed-chunks`) |
 | `chunk_indices` + `force: true` | Rejoue les chunks désignés **même s'ils avaient réussi** — c'est le mode « je ré-extrais là où il y a un problème » |
-| `max_retries` | Plafond de tentatives par chunk (défaut : voir `default_max_chunk_retries`) |
+| `max_retries` | Plafond de tentatives par chunk (défaut **3**) — au-delà, le chunk passe en `abandoned` sauf `force` |
 
 Comportement : le texte du chunk est relu depuis le stockage, ré-extrait avec le
 pipeline **du workspace** (ontologie, langue, budget — voir correctif §7.3), puis
