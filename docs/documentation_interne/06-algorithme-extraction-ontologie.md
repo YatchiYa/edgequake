@@ -282,7 +282,8 @@ qui permet, en diagnostic, de mesurer à quel point le LLM « sort » de l'ontol
 
 ## 6. Gleaning — seconde passe
 
-Lorsque le gleaning est actif (`max_gleaning ≥ 1`, défaut 1), le chunk est soumis une
+Lorsque le gleaning est actif (`max_gleaning ≥ 1`, défaut 1 ; désactivé d'office pour
+les fournisseurs locaux type Ollama sauf `EDGEQUAKE_LOCAL_ENABLE_GLEANING=1`), le chunk est soumis une
 seconde fois au LLM avec la liste des entités déjà trouvées et la consigne de chercher
 les mentions implicites. Le prompt de gleaning (`json_gleaning_system_prompt_with_caps`)
 **réinjecte les mêmes sections** Entity Types / Relationship Types / Typed Edges : la
@@ -418,7 +419,7 @@ Propriétés observées sur un nœud produit par l'ingestion (v0.26.5) :
 | `source_chunk_ids`, `source_document_id`, `source_document_ids`, `source_ids`, `sources` | Provenance | §7.3 |
 | `tenant_id`, `workspace_id` | Isolation ; un nœud sans ces deux propriétés est **invisible** par l'API (mode strict) | `stamp_tenant_context_properties` |
 | `is_manual` | `true` pour une entité créée par l'API | `create_entity` |
-| `created_at`, `updated_at` | Horodatages | |
+| `created_at`, `updated_at` | Horodatages — présents sur les nœuds créés ou modifiés par l'API, absents des nœuds issus de l'extraction | `create_entity` / `update_entity` |
 
 ### 8.3 Relation (arête AGE)
 
@@ -431,9 +432,9 @@ Propriétés observées sur un nœud produit par l'ingestion (v0.26.5) :
 | `weight` | 0 à 1 ; 0,5 par défaut à l'extraction |
 | `description`, `source_id`, `created_at`, `updated_at`, `metadata` | |
 
-Les relations sont traitées comme **non orientées** par le prompt (*« Treat all
-relationships as undirected unless explicitly stated »*) ; la direction stockée est
-celle produite par le LLM.
+Le prompt JSON n'impose aucune convention de direction : la direction stockée
+(`src_id` → `tgt_id`) est celle produite par le LLM, guidée uniquement par les arêtes
+typées déclarées (`ENGINE —PART_OF→ AIRCRAFT`).
 
 ### 8.4 Supports de stockage
 
