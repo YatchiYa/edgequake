@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.26.5"
+    "version": "0.26.7"
   },
   "servers": [
     {
@@ -4239,8 +4239,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reanalyze_multimodal",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reanalyze_multimodal"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -9125,8 +9125,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_embeddings"
+        "x-edgequake-v2-job-type": "rebuild_embeddings",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -9765,8 +9765,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     },
     "/ws/progress/{track_id}": {
@@ -9797,8 +9797,8 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     }
   },
@@ -30015,8 +30015,8 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.26.5",
-      "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455)."
+      "version": "0.26.7",
+      "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455). SPEC-149: clients subscribe to owned track_ids on the global channel; events use a tagged {type,data} envelope."
     },
     "defaultContentType": "application/json",
     "servers": {
@@ -30028,19 +30028,118 @@
     },
     "channels": {
       "/ws/pipeline/progress": {
-        "description": "Global pipeline progress stream (all tracks in workspace context)",
+        "description": "Multiplexed pipeline progress. Auth via ?token= or Authorization. Clients must send subscribe for track-scoped events.",
         "bindings": {
           "ws": {
             "method": "GET",
+            "query": {
+              "type": "object",
+              "properties": {
+                "token": {
+                  "type": "string",
+                  "description": "JWT or API key when auth enabled (browsers cannot set Authorization on WebSocket)"
+                }
+              }
+            },
             "headers": {
               "type": "object",
               "properties": {
                 "Authorization": {
                   "type": "string",
-                  "description": "Bearer JWT or X-API-Key when auth enabled"
+                  "description": "Bearer JWT or X-API-Key when auth enabled (non-browser clients)"
                 }
               }
             }
+          }
+        },
+        "publish": {
+          "description": "Client commands (SPEC-149)",
+          "message": {
+            "oneOf": [
+              {
+                "name": "subscribe",
+                "payload": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "track_ids"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "subscribe"
+                    },
+                    "track_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "example": {
+                    "type": "subscribe",
+                    "track_ids": [
+                      "f6fa9cad-bbff-4892-a855-3bd7d70da044"
+                    ]
+                  }
+                }
+              },
+              {
+                "name": "unsubscribe",
+                "payload": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "track_ids"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "unsubscribe"
+                    },
+                    "track_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "name": "cancel",
+                "payload": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "track_id"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "cancel"
+                    },
+                    "track_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "ping",
+                "payload": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "ping"
+                    },
+                    "client_time": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         "subscribe": {
@@ -30050,21 +30149,39 @@
               "oneOf": [
                 {
                   "type": "object",
-                  "description": "Pipeline track progress",
+                  "description": "Tagged ProgressEvent envelope",
+                  "required": [
+                    "type",
+                    "data"
+                  ],
                   "properties": {
-                    "track_id": {
-                      "type": "string"
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "Connected",
+                        "Heartbeat",
+                        "StatusSnapshot",
+                        "StageTransition",
+                        "PdfPageProgress",
+                        "ChunkProgress",
+                        "ChunkFailure",
+                        "GraphStorageProgress",
+                        "SubscribedAck",
+                        "Message"
+                      ]
                     },
-                    "phase": {
-                      "type": "string"
-                    },
-                    "progress": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 100
-                    },
-                    "message": {
-                      "type": "string"
+                    "data": {
+                      "type": "object"
+                    }
+                  },
+                  "example": {
+                    "type": "StageTransition",
+                    "data": {
+                      "document_id": "doc-1",
+                      "task_id": "f6fa9cad-bbff-4892-a855-3bd7d70da044",
+                      "stage": "extracting",
+                      "stage_message": "Extracting entities",
+                      "stage_progress": 0.4
                     }
                   }
                 },
@@ -30072,7 +30189,7 @@
                   "type": "object",
                   "description": "BulkDeletion* events (issue #309)",
                   "properties": {
-                    "event": {
+                    "type": {
                       "type": "string",
                       "enum": [
                         "BulkDeletionStarted",
@@ -30081,36 +30198,32 @@
                         "BulkDeletionFailed"
                       ]
                     },
-                    "wipe_track_id": {
-                      "type": "string"
-                    },
-                    "workspace_id": {
-                      "type": "string"
-                    },
-                    "deleted_count": {
-                      "type": "integer"
-                    },
-                    "error_message": {
-                      "type": "string"
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "wipe_track_id": {
+                          "type": "string"
+                        },
+                        "workspace_id": {
+                          "type": "string"
+                        },
+                        "deleted_count": {
+                          "type": "integer"
+                        },
+                        "error_message": {
+                          "type": "string"
+                        }
+                      }
                     }
-                  },
-                  "required": [
-                    "wipe_track_id"
-                  ]
+                  }
                 }
-              ],
-              "example": {
-                "event": "BulkDeletionFailed",
-                "wipe_track_id": "workspace_wipe-f6fa9cad",
-                "workspace_id": "940fadab-2390-4b29-af7e-ff27fd6d7755",
-                "error_message": "workspace wipe graph clear failed"
-              }
+              ]
             }
           }
         }
       },
       "/ws/progress/{track_id}": {
-        "description": "Per-track document processing progress",
+        "description": "Per-track document processing progress (compatibility endpoint)",
         "parameters": {
           "track_id": {
             "description": "Document track UUID",
@@ -30131,10 +30244,14 @@
             "payload": {
               "type": "object",
               "example": {
-                "track_id": "f6fa9cad-bbff-4892-a855-3bd7d70da044",
-                "phase": "completed",
-                "progress": 100.0,
-                "message": "Processing complete"
+                "type": "StageTransition",
+                "data": {
+                  "task_id": "f6fa9cad-bbff-4892-a855-3bd7d70da044",
+                  "document_id": "doc-1",
+                  "stage": "completed",
+                  "stage_message": "Processing complete",
+                  "stage_progress": 1.0
+                }
               }
             }
           }
