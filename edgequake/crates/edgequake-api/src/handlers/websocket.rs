@@ -15,6 +15,7 @@ use edgequake_observability::ErrorEvent;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::json;
+use std::collections::HashSet;
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::{debug, info};
@@ -24,6 +25,8 @@ use crate::services::cancel_track_with_doc_and_pdf_chain;
 use crate::services::task_scope::get_task_for_context;
 use crate::state::AppState;
 use std::sync::Arc;
+
+use crate::handlers::websocket_types::{ClientCommand, MAX_WS_SUBSCRIPTIONS};
 
 /// Optional bearer token for WebSocket auth when `EDGEQUAKE_AUTH_ENABLED=true` (SPEC-027 IMP-006).
 #[derive(Debug, Default, Deserialize)]
@@ -46,7 +49,9 @@ async fn authorize_ws_upgrade(
 }
 
 // Re-export DTOs from websocket_types for backwards compatibility
-pub use crate::handlers::websocket_types::{ProgressBroadcaster, ProgressEvent};
+pub use crate::handlers::websocket_types::{
+    ClientCommand as WsClientCommand, ProgressBroadcaster, ProgressEvent,
+};
 
 /// Configuration for WebSocket connections.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
@@ -78,6 +83,8 @@ pub async fn ws_pipeline_progress(
 async fn handle_pipeline_socket(socket: WebSocket, state: AppState, session: WsSession) {
     let (mut sender, mut receiver) = socket.split();
     let tenant_ctx = session.to_tenant_context();
+    // SPEC-149: multiplexed authorized subscriptions (LAW-149-3/4).
+    let mut subscribed: HashSet<String> = HashSet::new();
 
     info!("WebSocket connection established for pipeline progress");
 
@@ -139,21 +146,68 @@ async fn handle_pipeline_socket(socket: WebSocket, state: AppState, session: WsS
                                     break;
                                 }
                             }
-                        } else if let Ok(cmd) = serde_json::from_str::<serde_json::Value>(&text) {
-                            if cmd.get("type").and_then(|v| v.as_str()) == Some("cancel") {
-                                if let Some(track_id) =
-                                    cmd.get("track_id").and_then(|v| v.as_str())
-                                {
+                        } else if let Ok(cmd) = serde_json::from_str::<ClientCommand>(&text) {
+                            match cmd {
+                                ClientCommand::Subscribe { track_ids } => {
+                                    let (accepted, requested) = apply_subscribe(
+                                        &state,
+                                        &tenant_ctx,
+                                        &track_ids,
+                                        &mut subscribed,
+                                    )
+                                    .await;
+                                    let ack = ProgressEvent::SubscribedAck {
+                                        accepted,
+                                        requested,
+                                    };
+                                    if let Err(e) =
+                                        send_event(&mut sender, &ack, "pipeline_progress").await
+                                    {
+                                        ws_log_error(
+                                            "send_subscribed_ack",
+                                            &e.to_string(),
+                                            json!({ "endpoint": "pipeline_progress" }),
+                                        );
+                                        break;
+                                    }
+                                }
+                                ClientCommand::Unsubscribe { track_ids } => {
+                                    for id in track_ids {
+                                        subscribed.remove(&id);
+                                    }
+                                }
+                                ClientCommand::Cancel { track_id } => {
                                     if let Err(e) = cancel_track_for_session(
                                         &state,
                                         &tenant_ctx,
-                                        track_id,
-                                    ).await {
+                                        &track_id,
+                                    )
+                                    .await
+                                    {
                                         tracing::warn!(
                                             track_id = %track_id,
                                             error = %e,
                                             "WebSocket cancel failed"
                                         );
+                                    }
+                                }
+                                ClientCommand::Ping { .. } => {
+                                    let heartbeat = ProgressEvent::Heartbeat {
+                                        timestamp: chrono::Utc::now().to_rfc3339(),
+                                    };
+                                    if let Err(e) = send_event(
+                                        &mut sender,
+                                        &heartbeat,
+                                        "pipeline_progress",
+                                    )
+                                    .await
+                                    {
+                                        ws_log_error(
+                                            "send_ping_heartbeat",
+                                            &e.to_string(),
+                                            json!({ "endpoint": "pipeline_progress" }),
+                                        );
+                                        break;
                                     }
                                 }
                             }
@@ -180,7 +234,7 @@ async fn handle_pipeline_socket(socket: WebSocket, state: AppState, session: WsS
             result = progress_rx.recv() => {
                 match result {
                     Ok(event) => {
-                        if !event_visible_to_session(&event, &session) {
+                        if !should_forward_pipeline_event(&event, &session, &subscribed) {
                             continue;
                         }
                         if let Err(e) = send_event(&mut sender, &event, "pipeline_progress").await {
@@ -290,20 +344,98 @@ async fn cancel_track_for_session(
     Ok(())
 }
 
-/// Filter broadcast events by workspace (SPEC-083 S-01).
-fn event_visible_to_session(event: &ProgressEvent, session: &WsSession) -> bool {
+/// Validate and retain owned track subscriptions (SPEC-149 LAW-149-4/5).
+///
+/// Returns `(accepted_ids, requested_count)`. Rejected ids are omitted from
+/// the response so foreign tracks cannot be probed.
+async fn apply_subscribe(
+    state: &AppState,
+    tenant_ctx: &TenantContext,
+    track_ids: &[String],
+    subscribed: &mut HashSet<String>,
+) -> (Vec<String>, usize) {
+    let requested = track_ids.len();
+    let mut accepted = Vec::new();
+    for track_id in track_ids {
+        let tid = track_id.trim();
+        if tid.is_empty() {
+            continue;
+        }
+        if subscribed.contains(tid) {
+            accepted.push(tid.to_string());
+            continue;
+        }
+        if subscribed.len() >= MAX_WS_SUBSCRIPTIONS {
+            break;
+        }
+        match get_task_for_context(state, tid, tenant_ctx).await {
+            Ok(_) => {
+                subscribed.insert(tid.to_string());
+                accepted.push(tid.to_string());
+            }
+            Err(_) => {
+                // Opaque reject — do not reveal whether the track exists.
+            }
+        }
+    }
+    (accepted, requested)
+}
+
+/// Extract the track/task id from a progress event (DRY for filter + per-track).
+pub(crate) fn event_track_id(event: &ProgressEvent) -> Option<&str> {
+    match event {
+        ProgressEvent::PdfPageProgress { task_id, .. }
+        | ProgressEvent::ChunkFailure { task_id, .. }
+        | ProgressEvent::ChunkProgress { task_id, .. }
+        | ProgressEvent::StageTransition { task_id, .. } => Some(task_id.as_str()),
+        ProgressEvent::GraphStorageProgress { track_id, .. }
+        | ProgressEvent::DeletionStarted { track_id, .. }
+        | ProgressEvent::DeletionPhase { track_id, .. }
+        | ProgressEvent::DeletionCompleted { track_id, .. }
+        | ProgressEvent::DeletionFailed { track_id, .. } => Some(track_id.as_str()),
+        ProgressEvent::BulkDeletionStarted {
+            wipe_track_id: Some(tid),
+            ..
+        }
+        | ProgressEvent::BulkDeletionItemProgress {
+            wipe_track_id: Some(tid),
+            ..
+        }
+        | ProgressEvent::BulkDeletionCompleted {
+            wipe_track_id: Some(tid),
+            ..
+        }
+        | ProgressEvent::BulkDeletionFailed {
+            wipe_track_id: tid, ..
+        } => Some(tid.as_str()),
+        _ => None,
+    }
+}
+
+/// Filter broadcast events for the multiplexed pipeline socket (SPEC-083 + SPEC-149).
+fn should_forward_pipeline_event(
+    event: &ProgressEvent,
+    session: &WsSession,
+    subscribed: &HashSet<String>,
+) -> bool {
     match event {
         ProgressEvent::Heartbeat { .. }
         | ProgressEvent::Connected { .. }
         | ProgressEvent::CancellationRequested
-        | ProgressEvent::Message { .. } => true,
+        | ProgressEvent::Message { .. }
+        | ProgressEvent::SubscribedAck { .. } => true,
         ProgressEvent::BulkDeletionStarted { workspace_id, .. }
         | ProgressEvent::BulkDeletionItemProgress { workspace_id, .. }
         | ProgressEvent::BulkDeletionCompleted { workspace_id, .. }
         | ProgressEvent::BulkDeletionFailed { workspace_id, .. } => {
+            // Prefer wipe-track subscription when present; else workspace match.
+            if let Some(tid) = event_track_id(event) {
+                if subscribed.contains(tid) {
+                    return true;
+                }
+            }
             match (session.workspace_id.as_deref(), workspace_id.as_deref()) {
                 (Some(session_ws), Some(event_ws)) => session_ws == event_ws,
-                // Fail closed: scoped session must not see unscoped bulk events.
                 (Some(_), None) => false,
                 (None, _) => true,
             }
@@ -315,7 +447,7 @@ fn event_visible_to_session(event: &ProgressEvent, session: &WsSession) -> bool 
         | ProgressEvent::BatchCompleted { .. }
         | ProgressEvent::JobFinished { .. }
         | ProgressEvent::StatusSnapshot { .. } => session.workspace_id.is_none(),
-        // Track-scoped events without workspace claim — do not fan out on global bus.
+        // Track-scoped: deliver only when subscribed (ownership checked at subscribe).
         ProgressEvent::ChunkFailure { .. }
         | ProgressEvent::ChunkProgress { .. }
         | ProgressEvent::StageTransition { .. }
@@ -324,8 +456,16 @@ fn event_visible_to_session(event: &ProgressEvent, session: &WsSession) -> bool 
         | ProgressEvent::DeletionStarted { .. }
         | ProgressEvent::DeletionPhase { .. }
         | ProgressEvent::DeletionCompleted { .. }
-        | ProgressEvent::DeletionFailed { .. } => false,
+        | ProgressEvent::DeletionFailed { .. } => event_track_id(event)
+            .map(|tid| subscribed.contains(tid))
+            .unwrap_or(false),
     }
+}
+
+/// Back-compat name used by older unit tests — unsubscribed track events stay hidden.
+#[cfg(test)]
+fn event_visible_to_session(event: &ProgressEvent, session: &WsSession) -> bool {
+    should_forward_pipeline_event(event, session, &HashSet::new())
 }
 
 #[utoipa::path(
@@ -542,33 +682,7 @@ async fn handle_filtered_progress_socket(
 
 /// Check if a ProgressEvent matches the specified track_id (SPEC-083 C-24).
 fn matches_track_id(event: &ProgressEvent, track_id: &str) -> bool {
-    match event {
-        ProgressEvent::PdfPageProgress { task_id, .. } => task_id == track_id,
-        ProgressEvent::ChunkFailure { task_id, .. } => task_id == track_id,
-        ProgressEvent::ChunkProgress { task_id, .. } => task_id == track_id,
-        ProgressEvent::StageTransition { task_id, .. } => task_id == track_id,
-        ProgressEvent::GraphStorageProgress { track_id: tid, .. } => tid == track_id,
-        ProgressEvent::DeletionStarted { track_id: tid, .. }
-        | ProgressEvent::DeletionPhase { track_id: tid, .. }
-        | ProgressEvent::DeletionCompleted { track_id: tid, .. }
-        | ProgressEvent::DeletionFailed { track_id: tid, .. } => tid == track_id,
-        ProgressEvent::BulkDeletionStarted {
-            wipe_track_id: Some(tid),
-            ..
-        }
-        | ProgressEvent::BulkDeletionItemProgress {
-            wipe_track_id: Some(tid),
-            ..
-        }
-        | ProgressEvent::BulkDeletionCompleted {
-            wipe_track_id: Some(tid),
-            ..
-        }
-        | ProgressEvent::BulkDeletionFailed {
-            wipe_track_id: tid, ..
-        } => tid == track_id,
-        _ => false,
-    }
+    event_track_id(event) == Some(track_id)
 }
 
 #[cfg(test)]
@@ -659,5 +773,53 @@ mod tests {
             },
             &session
         ));
+    }
+
+    #[test]
+    fn spec149_subscribed_track_forwards_stage_transition() {
+        let session = WsSession {
+            tenant_id: Some("t1".into()),
+            workspace_id: Some("ws-a".into()),
+            user_id: Some("u1".into()),
+        };
+        let mut subscribed = HashSet::new();
+        subscribed.insert("track-owned".into());
+        let event = ProgressEvent::StageTransition {
+            document_id: "d1".into(),
+            task_id: "track-owned".into(),
+            stage: "extracting".into(),
+            stage_message: "Extracting".into(),
+            stage_progress: Some(0.5),
+        };
+        assert!(should_forward_pipeline_event(&event, &session, &subscribed));
+        assert!(!should_forward_pipeline_event(
+            &event,
+            &session,
+            &HashSet::new()
+        ));
+        let foreign = ProgressEvent::StageTransition {
+            document_id: "d2".into(),
+            task_id: "track-other".into(),
+            stage: "extracting".into(),
+            stage_message: "Extracting".into(),
+            stage_progress: None,
+        };
+        assert!(!should_forward_pipeline_event(
+            &foreign,
+            &session,
+            &subscribed
+        ));
+    }
+
+    #[test]
+    fn spec149_client_command_subscribe_deserializes() {
+        let raw = r#"{"type":"subscribe","track_ids":["a","b"]}"#;
+        let cmd: ClientCommand = serde_json::from_str(raw).unwrap();
+        match cmd {
+            ClientCommand::Subscribe { track_ids } => {
+                assert_eq!(track_ids, vec!["a", "b"]);
+            }
+            _ => panic!("expected Subscribe"),
+        }
     }
 }

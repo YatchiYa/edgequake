@@ -3323,7 +3323,7 @@ logs: ## Show recent logs from all services
 	@echo "$(BOLD)Docker Container Status:$(RESET)"
 	@cd $(DOCKER_DIR) && docker compose ps 2>/dev/null || echo "Docker not running"
 
-.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates spec124-proof spec124-langfuse-e2e spec124-langfuse-3.1-e2e spec124-langfuse-3.22-e2e spec124-langfuse-3.225-e2e spec124-langfuse-cloud-e2e spec124-langfuse-matrix spec125-proof spec128-proof spec145-proof spec145-langfuse-e2e
+.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates spec124-proof spec124-langfuse-e2e spec124-langfuse-3.1-e2e spec124-langfuse-3.22-e2e spec124-langfuse-3.225-e2e spec124-langfuse-cloud-e2e spec124-langfuse-matrix spec125-proof spec128-proof spec145-proof spec145-langfuse-e2e spec149-proof
 
 resource-proof: ## Run SPEC-006 resource safety proof suite (mock; no Postgres required)
 	@chmod +x specifications/006-ensure-perf/e2e/run_resource_proof.sh scripts/spec006_no_get_all_api.sh scripts/spec006_budget_catalog_sync.sh scripts/spec006_source_ids_migration.sh scripts/spec006_no_unguarded_community_api.sh scripts/spec006_no_adhoc_resource_budget.sh scripts/spec006_apply_migration_038.sh edgequake/scripts/migrations/apply_038.sh
@@ -3394,6 +3394,18 @@ spec145-proof: ## SPEC-145 Complete Langfuse I/O (InMemory + io_policy + stream 
 	@chmod +x scripts/spec145_langfuse_io_e2e.sh
 	@./scripts/spec145_langfuse_io_e2e.sh
 	@echo "$(GREEN)✓ SPEC-145 proof passed$(RESET)"
+
+spec149-proof: ## SPEC-149 real-time WS subscribe + FE normalizer/lifecycle + Playwright mock
+	@echo "$(BOLD)SPEC-149 proof$(RESET)"
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-api --lib handlers::websocket
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-api --lib openapi_asyncapi
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-api --test e2e_spec149_realtime_progress
+	@cd edgequake_webui && pnpm exec vitest run \
+		src/lib/websocket/__tests__ \
+		src/lib/api/__tests__/stream-client-spec149.test.ts
+	@cd edgequake_webui && PLAYWRIGHT_SKIP_STACK_CHECK=1 pnpm exec playwright test \
+		e2e/spec149-real-time-update.spec.ts --project=chromium
+	@echo "$(GREEN)✓ SPEC-149 proof passed$(RESET)"
 
 spec145-langfuse-e2e: ## SPEC-145 live Complete I/O vs Langfuse 3.225.5 (starts stack; OTLP persist)
 	@echo "$(BOLD)SPEC-145 live Langfuse I/O$(RESET)"

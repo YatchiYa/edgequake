@@ -1,19 +1,23 @@
 /**
  * @module WebSocketProvider
- * @description WebSocket connection context for real-time progress tracking.
- * Based on WebUI Specification Document WEBUI-005 (14-webui-websocket-progress.md)
+ * @description WebSocket connection context for real-time progress tracking (SPEC-149).
  *
  * @implements FEAT0724 - Real-time ingestion progress
  * @implements FEAT0865 - WebSocket connection management
- *
- * @enforces BR0865 - Auto-reconnect on disconnect
- * @enforces BR0866 - Clean disconnect on unmount
+ * @implements SPEC-149 - Auth-gated connect, session reset, toast hygiene
  */
 'use client';
 
-import { shouldAutoConnectRealtime } from '@/lib/runtime/browser-detection';
+import { getTokens } from '@/lib/api/client-context';
+import { getRuntimeConfig } from '@/lib/runtime-config';
 import type { ProgressWebSocket } from '@/lib/websocket';
-import { disconnectWebSocket, getWebSocketClient } from '@/lib/websocket';
+import {
+  disconnectWebSocket,
+  destroyWebSocketClient,
+  getWebSocketClient,
+  reconnectRealtime,
+} from '@/lib/websocket';
+import { useAuthStore, useAuthStoreHydrated } from '@/stores/use-auth-store';
 import { useCostStore } from '@/stores/use-cost-store';
 import { useIngestionStore } from '@/stores/use-ingestion-store';
 import type { CostUpdateEvent } from '@/types/cost';
@@ -22,39 +26,34 @@ import { createContext, useCallback, useContext, useEffect, useRef, type ReactNo
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-// ============================================================================
-// Context Types
-// ============================================================================
+const TOAST_MAX_RECONNECTS = 'ws-max-reconnects';
+const TOAST_CONNECTION_LOST = 'ws-connection-lost';
 
 interface WebSocketContextValue {
-  /** Whether the WebSocket is connected */
   connected: boolean;
-  /** Whether the WebSocket is reconnecting */
   reconnecting: boolean;
-  /** Subscribe to progress updates for track IDs */
   subscribe: (trackIds: string[]) => void;
-  /** Unsubscribe from progress updates */
   unsubscribe: (trackIds: string[]) => void;
-  /** Cancel an ingestion job */
   cancel: (trackId: string) => void;
-  /** Manually connect to WebSocket */
   connect: () => void;
-  /** Manually disconnect from WebSocket */
   disconnect: () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextValue | null>(null);
 
-// ============================================================================
-// Provider Component
-// ============================================================================
-
 interface WebSocketProviderProps {
   children: ReactNode;
-  /** Whether to auto-connect on mount (default: true) */
+  /** Whether to auto-connect on mount when auth allows (default: true) */
   autoConnect?: boolean;
   /** Whether WebSocket is enabled (default: true) */
   enabled?: boolean;
+}
+
+function canConnectRealtime(): boolean {
+  const { authEnabled } = getRuntimeConfig();
+  if (!authEnabled) return true;
+  const { accessToken } = getTokens();
+  return Boolean(accessToken);
 }
 
 export function WebSocketProvider({
@@ -64,19 +63,16 @@ export function WebSocketProvider({
 }: WebSocketProviderProps) {
   const clientRef = useRef<ProgressWebSocket | null>(null);
   const { t } = useTranslation();
-  
-  // Get store actions
-  const { updateFromMessage, setWsConnected, setWsReconnecting, setWsMaxReconnectsReached } = useIngestionStore();
-  const { updateIngestionCost } = useCostStore();
-  
-  // Track connection state locally for context value
-  const connectedRef = useRef(false);
-  const reconnectingRef = useRef(false);
+  const hasHydrated = useAuthStoreHydrated();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const accessToken = useAuthStore((s) => s.accessToken);
 
-  // Handle incoming messages
+  const { updateFromMessage, setWsConnected, setWsReconnecting, setWsMaxReconnectsReached } =
+    useIngestionStore();
+  const { updateIngestionCost } = useCostStore();
+
   const handleMessage = useCallback(
     (message: WebSocketProgressMessage | CostUpdateEvent) => {
-      // Log ingestion failures and completions — not high-frequency ticks
       if (message.type === 'ingestion_failed') {
         const failedEvent = message as IngestionFailedEvent;
         console.error('[WebSocket] Ingestion failed:', {
@@ -85,87 +81,89 @@ export function WebSocketProvider({
           stage: failedEvent.stage,
           error: failedEvent.error,
         });
-        
-        // Show error toast to user
+
         toast.error(
           t('websocket.ingestionFailed', 'Document processing failed'),
           {
-            duration: 10000, // 10 seconds
-            description: t('websocket.ingestionFailedDesc', 'Stage: {{stage}}', { stage: failedEvent.stage }),
-            action: failedEvent.error.recoverable ? {
-              label: t('websocket.retry', 'Retry'),
-              onClick: () => {
-                // Track ID is available for retry logic
-                console.log('[WebSocket] Retry requested for:', failedEvent.track_id);
-              },
-            } : undefined,
-          }
+            duration: 10000,
+            description: t('websocket.ingestionFailedDesc', 'Stage: {{stage}}', {
+              stage: failedEvent.stage,
+            }),
+            action: failedEvent.error.recoverable
+              ? {
+                  label: t('websocket.retry', 'Retry'),
+                  onClick: () => {
+                    console.log('[WebSocket] Retry requested for:', failedEvent.track_id);
+                  },
+                }
+              : undefined,
+          },
         );
       }
-      
-      // Update ingestion store
+
       updateFromMessage(message);
-      
-      // Handle cost updates separately
+
       if (message.type === 'cost_update') {
         const costMessage = message as CostUpdateEvent;
         updateIngestionCost(costMessage.track_id, costMessage.cumulative_cost_usd);
       }
     },
-    [updateFromMessage, updateIngestionCost, t]
+    [updateFromMessage, updateIngestionCost, t],
   );
 
-  // Initialize WebSocket client
+  // Bind listeners once; connect only when session allows.
   useEffect(() => {
     if (!enabled) return;
 
     const client = getWebSocketClient();
     clientRef.current = client;
 
-    // Set up event listeners
     const unsubConnected = client.on('connected', () => {
-      connectedRef.current = true;
-      reconnectingRef.current = false;
       setWsConnected(true);
-      // OODA-02: Show reconnection success toast if we were disconnected
+      setWsReconnecting(false);
+      toast.dismiss(TOAST_MAX_RECONNECTS);
+      toast.dismiss(TOAST_CONNECTION_LOST);
       if (useIngestionStore.getState().wsMaxReconnectsReached) {
         setWsMaxReconnectsReached(false);
         toast.success(t('websocket.connectionRestored', 'Connection restored'), {
-          description: t('websocket.connectionRestoredDesc', 'Real-time updates are back online.'),
+          description: t(
+            'websocket.connectionRestoredDesc',
+            'Real-time updates are back online.',
+          ),
           duration: 3000,
         });
       }
     });
 
     const unsubDisconnected = client.on('disconnected', () => {
-      connectedRef.current = false;
       setWsConnected(false);
-      // OODA-02: Notify user of disconnection
       toast.warning(t('websocket.connectionLost', 'Connection lost'), {
+        id: TOAST_CONNECTION_LOST,
         description: t('websocket.connectionLostDesc', 'Attempting to reconnect...'),
         duration: 5000,
       });
     });
 
     const unsubReconnecting = client.on('reconnecting', () => {
-      reconnectingRef.current = true;
       setWsReconnecting(true);
     });
 
     const unsubMaxReconnects = client.on('max_reconnects_reached', () => {
-      reconnectingRef.current = false;
       setWsReconnecting(false);
       setWsMaxReconnectsReached(true);
       console.warn('[WebSocketProvider] Max reconnection attempts reached');
-      // OODA-02: Show persistent error toast with retry option
       toast.error(t('websocket.unableToReconnect', 'Unable to reconnect'), {
-        description: t('websocket.unableToReconnectDesc', 'Real-time updates unavailable. Click to retry.'),
+        id: TOAST_MAX_RECONNECTS,
+        description: t(
+          'websocket.unableToReconnectDesc',
+          'Real-time updates unavailable. Click to retry.',
+        ),
         duration: Infinity,
         action: {
           label: t('websocket.retry', 'Retry'),
           onClick: () => {
             setWsMaxReconnectsReached(false);
-            clientRef.current?.connect();
+            clientRef.current = reconnectRealtime();
           },
         },
       });
@@ -183,13 +181,6 @@ export function WebSocketProvider({
       handleMessage(message as WebSocketProgressMessage);
     });
 
-    // Keep automated browsers quiet during page bootstrap to avoid flaky E2E
-    // readiness checks. Real connections still start on first subscription.
-    if (autoConnect && shouldAutoConnectRealtime()) {
-      client.connect();
-    }
-
-    // Cleanup
     return () => {
       unsubConnected();
       unsubDisconnected();
@@ -199,18 +190,58 @@ export function WebSocketProvider({
       unsubPdfProgress();
       unsubStatusSnapshot();
     };
-  }, [enabled, autoConnect, handleMessage, setWsConnected, setWsReconnecting, setWsMaxReconnectsReached, t]);
+  }, [
+    enabled,
+    handleMessage,
+    setWsConnected,
+    setWsReconnecting,
+    setWsMaxReconnectsReached,
+    t,
+  ]);
 
-  // Cleanup on unmount
+  // Auth-gated connect + rebuild on token change (LAW-149-1/2).
+  const lastTokenRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!enabled || !autoConnect) return;
+    if (!hasHydrated) return;
+
+    const { authEnabled } = getRuntimeConfig();
+    if (authEnabled && (!isAuthenticated || !canConnectRealtime())) {
+      lastTokenRef.current = null;
+      disconnectWebSocket();
+      clientRef.current = getWebSocketClient();
+      setWsConnected(false);
+      return;
+    }
+
+    if (!canConnectRealtime() && authEnabled) return;
+
+    const token = getTokens().accessToken ?? null;
+    // Avoid tearing down a healthy socket when deps re-fire with the same token.
+    if (lastTokenRef.current === token && clientRef.current?.connected) {
+      return;
+    }
+    lastTokenRef.current = token;
+    clientRef.current = reconnectRealtime();
+  }, [
+    enabled,
+    autoConnect,
+    hasHydrated,
+    isAuthenticated,
+    accessToken,
+    setWsConnected,
+  ]);
+
   useEffect(() => {
     return () => {
-      disconnectWebSocket();
+      destroyWebSocketClient();
     };
   }, []);
 
-  // Context value
   const subscribe = useCallback((trackIds: string[]) => {
-    clientRef.current?.subscribe(trackIds);
+    const client = getWebSocketClient();
+    clientRef.current = client;
+    client.subscribe(trackIds);
   }, []);
 
   const unsubscribe = useCallback((trackIds: string[]) => {
@@ -222,14 +253,13 @@ export function WebSocketProvider({
   }, []);
 
   const connect = useCallback(() => {
-    clientRef.current?.connect();
+    clientRef.current = reconnectRealtime();
   }, []);
 
   const disconnect = useCallback(() => {
     clientRef.current?.disconnect();
   }, []);
 
-  // Use store state for context value (not refs during render)
   const storeConnected = useIngestionStore((s) => s.wsConnected);
   const storeReconnecting = useIngestionStore((s) => s.wsReconnecting);
 
@@ -244,19 +274,10 @@ export function WebSocketProvider({
   };
 
   return (
-    <WebSocketContext.Provider value={value}>
-      {children}
-    </WebSocketContext.Provider>
+    <WebSocketContext.Provider value={value}>{children}</WebSocketContext.Provider>
   );
 }
 
-// ============================================================================
-// Hook
-// ============================================================================
-
-/**
- * Hook to access WebSocket context.
- */
 export function useWebSocketContext(): WebSocketContextValue {
   const context = useContext(WebSocketContext);
   if (!context) {
@@ -265,10 +286,6 @@ export function useWebSocketContext(): WebSocketContextValue {
   return context;
 }
 
-/**
- * Hook to get WebSocket connection status.
- * Can be used outside of WebSocketProvider (returns defaults).
- */
 export function useWebSocketStatus(): { connected: boolean; reconnecting: boolean } {
   const { wsConnected, wsReconnecting } = useIngestionStore();
   return { connected: wsConnected, reconnecting: wsReconnecting };
