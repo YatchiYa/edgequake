@@ -42,11 +42,7 @@ pub fn apply_manual_type_override(props: &mut HashMap<String, Value>, entity_typ
     props.insert(ENTITY_TYPE_LOCKED_KEY.to_string(), Value::Bool(true));
     props.insert(
         ENTITY_TYPE_VOTES_KEY.to_string(),
-        Value::Object(
-            [(t, Value::from(1.0))]
-                .into_iter()
-                .collect(),
-        ),
+        Value::Object([(t, Value::from(1.0))].into_iter().collect()),
     );
 }
 

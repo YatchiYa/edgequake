@@ -323,10 +323,7 @@ pub async fn update_entity(
     if let Some(entity_type) = req.entity_type {
         // Human correction must survive re-extraction: lock type so merger
         // votes cannot outvote the operator (D-32 + entity_type_locked).
-        edgequake_pipeline::merger::apply_manual_type_override(
-            &mut node.properties,
-            &entity_type,
-        );
+        edgequake_pipeline::merger::apply_manual_type_override(&mut node.properties, &entity_type);
         fields_updated.push("entity_type".to_string());
     }
 

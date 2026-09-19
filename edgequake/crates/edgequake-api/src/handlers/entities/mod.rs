@@ -70,10 +70,8 @@ pub(crate) async fn resolve_entity_node_exact(
     ctx: &crate::middleware::TenantContext,
 ) -> crate::error::ApiResult<GraphNode> {
     let raw = raw.trim();
-    let candidates = edgequake_storage::EntityId::exact_lookup_candidates(
-        raw,
-        ctx.workspace_id.as_deref(),
-    );
+    let candidates =
+        edgequake_storage::EntityId::exact_lookup_candidates(raw, ctx.workspace_id.as_deref());
     for candidate in &candidates {
         if candidate.is_empty() {
             continue;
@@ -324,6 +322,9 @@ mod resolve_tests {
             .await
             .expect_err("must 404");
         let msg = err.to_string();
-        assert!(!msg.contains("tried:"), "404 must not leak candidates: {msg}");
+        assert!(
+            !msg.contains("tried:"),
+            "404 must not leak candidates: {msg}"
+        );
     }
 }

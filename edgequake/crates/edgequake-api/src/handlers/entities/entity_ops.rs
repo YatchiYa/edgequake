@@ -10,9 +10,7 @@ use axum::{
 use chrono::Utc;
 
 use crate::error::{ApiError, ApiResult};
-use crate::handlers::isolation::{
-    filter_edges_by_tenant_context, stamp_tenant_context_properties,
-};
+use crate::handlers::isolation::{filter_edges_by_tenant_context, stamp_tenant_context_properties};
 use crate::middleware::TenantContext;
 use crate::services::entity_merge::rewire_merged_entity_edges;
 use crate::services::entity_neighborhood::build_entity_neighborhood;
@@ -37,9 +35,12 @@ async fn resolve_entity_node(
         return Ok(Some(node));
     }
 
-    let candidates =
-        edgequake_storage::EntityId::exact_lookup_candidates(entity_name, ctx.workspace_id.as_deref());
-    let search_query = edgequake_storage::EntityId::bare_name_from_graph_node_id(entity_name.trim());
+    let candidates = edgequake_storage::EntityId::exact_lookup_candidates(
+        entity_name,
+        ctx.workspace_id.as_deref(),
+    );
+    let search_query =
+        edgequake_storage::EntityId::bare_name_from_graph_node_id(entity_name.trim());
     let search_results = state
         .storage
         .graph_storage
@@ -54,9 +55,7 @@ async fn resolve_entity_node(
         .unwrap_or_default();
 
     if let Some((node, _)) = search_results.iter().find(|(node, _)| {
-        candidates
-            .iter()
-            .any(|c| node.id.eq_ignore_ascii_case(c))
+        candidates.iter().any(|c| node.id.eq_ignore_ascii_case(c))
             || node.id.eq_ignore_ascii_case(entity_name.trim())
     }) {
         return Ok(Some(node.clone()));
@@ -129,9 +128,7 @@ pub async fn merge_entities(
         &tenant_ctx,
     )
     .await
-    .map_err(|_| {
-        ApiError::NotFound(format!("Source entity '{}' not found", req.source_entity))
-    })?;
+    .map_err(|_| ApiError::NotFound(format!("Source entity '{}' not found", req.source_entity)))?;
     let source_entity = source_node.id.clone();
 
     let mut target_node = resolve_entity_node_exact(
@@ -140,9 +137,7 @@ pub async fn merge_entities(
         &tenant_ctx,
     )
     .await
-    .map_err(|_| {
-        ApiError::NotFound(format!("Target entity '{}' not found", req.target_entity))
-    })?;
+    .map_err(|_| ApiError::NotFound(format!("Target entity '{}' not found", req.target_entity)))?;
     let target_entity = target_node.id.clone();
 
     let (tenant_id, workspace_id) = (
