@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   extractPdfSourceUrl,
   fetchAuthenticatedPdfBlobUrl,
+  fetchAuthenticatedPdfData,
   isApiProtectedPdfUrl,
 } from "../resolve-authenticated-pdf-source";
 
@@ -49,9 +50,7 @@ describe("resolve-authenticated-pdf-source", () => {
       ),
     ).toBe(true);
     expect(
-      isApiProtectedPdfUrl(
-        "/api/v1/documents/01a0/download/original",
-      ),
+      isApiProtectedPdfUrl("/api/v1/documents/01a0/download/original"),
     ).toBe(true);
     expect(isApiProtectedPdfUrl("https://cdn.example/file.pdf")).toBe(false);
     expect(isApiProtectedPdfUrl("blob:http://localhost/x")).toBe(false);
@@ -68,12 +67,13 @@ describe("resolve-authenticated-pdf-source", () => {
     expect(extractPdfSourceUrl(null)).toBeNull();
   });
 
-  it("fetches with Authorization and returns a blob URL", async () => {
-    const blobUrl = await fetchAuthenticatedPdfBlobUrl(
+  it("fetches with Authorization and returns PDF bytes", async () => {
+    const result = await fetchAuthenticatedPdfData(
       "https://demo.edgequake.com/api/v1/documents/pdf/ead6/download",
     );
 
-    expect(blobUrl).toBe("blob:mock-pdf-url");
+    expect(result.data[0]).toBe(0x25); // %
+    expect(result.data[1]).toBe(0x50); // P
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
     expect(url).toContain("/documents/pdf/ead6/download");
@@ -82,7 +82,6 @@ describe("resolve-authenticated-pdf-source", () => {
     expect(headers.get("Authorization")).toBe("Bearer test-token-149");
     expect(headers.get("Content-Type")).toBeNull();
     expect(headers.get("X-Workspace-ID")).toBe("ws-1");
-    expect(URL.createObjectURL).toHaveBeenCalled();
   });
 
   it("maps non-OK responses to ResponseException", async () => {
@@ -90,7 +89,16 @@ describe("resolve-authenticated-pdf-source", () => {
       new Response("nope", { status: 401 }),
     );
     await expect(
-      fetchAuthenticatedPdfBlobUrl("/api/v1/documents/pdf/x/download"),
+      fetchAuthenticatedPdfData("/api/v1/documents/pdf/x/download"),
     ).rejects.toThrow("ResponseException: Unexpected server response (401)");
+  });
+
+  it("legacy blob helper still attaches Authorization", async () => {
+    const blobUrl = await fetchAuthenticatedPdfBlobUrl(
+      "/api/v1/documents/pdf/x/download",
+    );
+    expect(blobUrl).toBe("blob:mock-pdf-url");
+    const headers = vi.mocked(fetch).mock.calls[0]![1]?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer test-token-149");
   });
 });

@@ -51,6 +51,7 @@ COPY edgequake_webui/vitest.config.mjs ./
 # Copy source directories
 COPY edgequake_webui/src ./src
 COPY edgequake_webui/public ./public
+COPY edgequake_webui/scripts ./scripts
 # Generated OpenAPI types (required by src/types/openapi-schema.ts)
 COPY edgequake_webui/openapi ./openapi
 RUN test -f openapi/schema.d.ts \
@@ -59,6 +60,10 @@ RUN test -f openapi/schema.d.ts \
 # Set Next.js public environment variables for build time
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_APP_VERSION=${NEXT_PUBLIC_APP_VERSION}
+
+# pdf.worker.min.mjs is gitignored — materialize into public/ for same-origin pdf.js
+RUN node scripts/copy-pdf-worker.mjs \
+  && test -f public/pdf.worker.min.mjs
 
 # SPEC-144 / SPEC-085: align with safe-build.sh — Turbopack + standalone has
 # hit proxy/middleware NFT ENOENT on 16.2.x; keep --webpack until NFT proven.

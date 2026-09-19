@@ -29,7 +29,7 @@ import {
 } from '@/lib/api/edgequake/documents';
 import {
   extractPdfSourceUrl,
-  fetchAuthenticatedPdfBlobUrl,
+  fetchAuthenticatedPdfData,
   isApiProtectedPdfUrl,
   type PdfFileSource,
 } from '@/lib/documents/resolve-authenticated-pdf-source';
@@ -353,10 +353,10 @@ export function PDFViewer({
   const [authRetryKey, setAuthRetryKey] = useState(0);
 
   // Auth-enabled demo: bare download URLs 401 without Bearer. Fetch with
-  // buildHeaders → blob URL (same pattern as AuthenticatedMarkdownImage).
+  // buildHeaders → in-memory bytes (same pattern as AuthenticatedMarkdownImage).
   useEffect(() => {
     let cancelled = false;
-    let objectUrl: string | null = null;
+    const ac = new AbortController();
 
     const sourceUrl = extractPdfSourceUrl(file);
     Promise.resolve().then(async () => {
@@ -376,7 +376,7 @@ export function PDFViewer({
         setIsLoading(true);
       }
 
-      // Already-local sources (blob data / non-API URLs) pass through.
+      // Already-local sources (bytes / non-API URLs) pass through.
       if (
         !sourceUrl ||
         !isApiProtectedPdfUrl(sourceUrl) ||
@@ -390,16 +390,13 @@ export function PDFViewer({
       }
 
       try {
-        objectUrl = await fetchAuthenticatedPdfBlobUrl(sourceUrl);
-        if (cancelled) {
-          URL.revokeObjectURL(objectUrl);
-          return;
-        }
-        setResolvedFile(objectUrl);
+        const dataFile = await fetchAuthenticatedPdfData(sourceUrl, ac.signal);
+        if (cancelled) return;
+        setResolvedFile(dataFile);
         setUrlOk(true);
         setProbeError(null);
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled || ac.signal.aborted) return;
         const message =
           err instanceof Error
             ? err.message
@@ -412,9 +409,7 @@ export function PDFViewer({
 
     return () => {
       cancelled = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
+      ac.abort();
     };
   }, [file, authRetryKey]);
 

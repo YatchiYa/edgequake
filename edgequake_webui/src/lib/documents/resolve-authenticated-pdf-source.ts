@@ -1,9 +1,12 @@
 /**
- * Resolve PDF sources that require API auth into blob URLs.
+ * Resolve PDF sources that require API auth into in-memory bytes.
  *
  * react-pdf / pdf.js cannot attach Authorization on a bare download URL.
  * Demo (auth_enabled) returns 401 for HEAD/GET without Bearer — same class of
  * bug as AuthenticatedMarkdownImage.
+ *
+ * We return `{ data: Uint8Array }` (not a blob: URL) so pdf.js never re-fetches
+ * and we avoid revoke races with React effect cleanup.
  */
 
 import { buildHeaders } from "@/lib/api/client";
@@ -33,13 +36,12 @@ export function extractPdfSourceUrl(file: PdfFileSource): string | null {
 }
 
 /**
- * Fetch a protected PDF URL with session headers and return an object URL.
- * Caller must revoke the URL when done.
+ * Fetch a protected PDF URL with session headers and return bytes for react-pdf.
  */
-export async function fetchAuthenticatedPdfBlobUrl(
+export async function fetchAuthenticatedPdfData(
   url: string,
   signal?: AbortSignal,
-): Promise<string> {
+): Promise<{ data: Uint8Array }> {
   const headers = buildHeaders();
   headers.delete("Content-Type");
   const res = await fetch(url, { headers, method: "GET", signal });
@@ -48,6 +50,19 @@ export async function fetchAuthenticatedPdfBlobUrl(
       `ResponseException: Unexpected server response (${res.status})`,
     );
   }
-  const blob = await res.blob();
-  return URL.createObjectURL(blob);
+  const buffer = await res.arrayBuffer();
+  return { data: new Uint8Array(buffer) };
+}
+
+/** @deprecated Prefer {@link fetchAuthenticatedPdfData} — blob URLs race with revoke. */
+export async function fetchAuthenticatedPdfBlobUrl(
+  url: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const { data } = await fetchAuthenticatedPdfData(url, signal);
+  const ab = data.buffer.slice(
+    data.byteOffset,
+    data.byteOffset + data.byteLength,
+  ) as ArrayBuffer;
+  return URL.createObjectURL(new Blob([ab], { type: "application/pdf" }));
 }

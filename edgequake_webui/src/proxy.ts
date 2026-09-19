@@ -26,7 +26,8 @@ export const config = {
   matcher: [
     /*
      * App routes + swagger slash; skip static assets (same as former middleware).
+     * Include .mjs so pdf.js worker under /public is not auth-gated.
      */
-    "/((?!_next/static|_next/image|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|css|js|map)$).*)",
+    "/((?!_next/static|_next/image|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|css|js|mjs|map|woff2?)$).*)",
   ],
 };

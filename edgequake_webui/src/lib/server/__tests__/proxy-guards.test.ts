@@ -27,6 +27,7 @@ describe("proxy-guards (SPEC-144)", () => {
   it("isPublicPath treats /login and /api as public, / as protected", () => {
     expect(isPublicPath("/login")).toBe(true);
     expect(isPublicPath("/api/v1/health")).toBe(true);
+    expect(isPublicPath("/pdf.worker.min.mjs")).toBe(true);
     expect(isPublicPath("/")).toBe(false);
     expect(isPublicPath("/documents")).toBe(false);
   });
