@@ -10,47 +10,15 @@ use super::super::{CostBreakdownStats, Pipeline, ProcessingStats};
 
 /// Link extracted entities and relationships to their source chunks + document.
 ///
-/// WHY: Without chunk linkage, Local/Global query modes cannot find
-/// related chunks during retrieval — entities would be "orphaned" nodes
-/// in the knowledge graph with no provenance trail.
-///
-/// SPEC-047 / 021 L-A1: also stamp `source_document_id` from the processing
-/// document id (preferred) or derive it from `{doc}-chunk-N` when missing.
+/// Thin batch wrapper over [`ExtractionResult::stamp_chunk_lineage`].
+/// Crate-internal only — callers outside the pipeline use
+/// [`ExtractionResult::stamp_chunk_lineage`] directly (retry path).
 pub(in crate::pipeline) fn link_extractions_to_chunks(
     extractions: &mut [ExtractionResult],
     document_id: &str,
 ) {
     for extraction in extractions.iter_mut() {
-        let chunk_id = extraction.source_chunk_id.clone();
-        let derived_doc = if !document_id.is_empty() {
-            Some(document_id.to_string())
-        } else {
-            crate::merger::lineage::document_id_from_chunk_id(&chunk_id)
-        };
-        tracing::debug!(
-            "Linking {} entities and {} relationships to chunk {}",
-            extraction.entities.len(),
-            extraction.relationships.len(),
-            chunk_id
-        );
-        for entity in &mut extraction.entities {
-            entity.add_source_chunk_id(&chunk_id);
-            if entity.source_document_id.is_none() {
-                if let Some(ref doc) = derived_doc {
-                    entity.source_document_id = Some(doc.clone());
-                }
-            }
-        }
-        for rel in &mut extraction.relationships {
-            if rel.source_chunk_id.is_none() {
-                rel.source_chunk_id = Some(chunk_id.clone());
-            }
-            if rel.source_document_id.is_none() {
-                if let Some(ref doc) = derived_doc {
-                    rel.source_document_id = Some(doc.clone());
-                }
-            }
-        }
+        extraction.stamp_chunk_lineage(document_id);
     }
 }
 

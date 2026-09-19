@@ -11,6 +11,9 @@ use serde_json::Value;
 /// Property key for accumulated type votes.
 pub const ENTITY_TYPE_VOTES_KEY: &str = "entity_type_votes";
 
+/// Property key: human set `entity_type` — merger votes must not override.
+pub const ENTITY_TYPE_LOCKED_KEY: &str = "entity_type_locked";
+
 /// Normalize a raw type for voting (uppercase, trim; empty → OTHER).
 pub fn normalize_type_label(raw: &str) -> String {
     let t = raw.trim().to_uppercase();
@@ -19,6 +22,28 @@ pub fn normalize_type_label(raw: &str) -> String {
     } else {
         t
     }
+}
+
+/// True when a human correction locked `entity_type` against LLM votes.
+pub fn is_entity_type_locked(props: &HashMap<String, Value>) -> bool {
+    props
+        .get(ENTITY_TYPE_LOCKED_KEY)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// Apply a manual type correction: set type, lock against votes, reset ballot.
+///
+/// LLM / merger [`apply_entity_type_vote`] no-ops while locked so a human
+/// correction survives re-extraction.
+pub fn apply_manual_type_override(props: &mut HashMap<String, Value>, entity_type: &str) {
+    let t = normalize_type_label(entity_type);
+    props.insert("entity_type".to_string(), Value::String(t.clone()));
+    props.insert(ENTITY_TYPE_LOCKED_KEY.to_string(), Value::Bool(true));
+    props.insert(
+        ENTITY_TYPE_VOTES_KEY.to_string(),
+        Value::Object([(t, Value::from(1.0))].into_iter().collect()),
+    );
 }
 
 /// Read vote map from node properties.
@@ -91,12 +116,17 @@ pub fn resolve_majority_type(votes: &HashMap<String, f64>, prefer: &str) -> Stri
 
 /// Apply an incoming type vote, update properties, and return whether the stored
 /// `entity_type` changed. Always logs concrete conflicts via `tracing::info!`.
+///
+/// No-ops when [`ENTITY_TYPE_LOCKED_KEY`] is true (manual human correction).
 pub fn apply_entity_type_vote(
     props: &mut HashMap<String, Value>,
     entity_name: &str,
     incoming_type: &str,
     confidence: f32,
 ) -> bool {
+    if is_entity_type_locked(props) {
+        return false;
+    }
     if incoming_type.trim().is_empty() {
         return false;
     }
@@ -212,5 +242,31 @@ mod tests {
             Some("ORGANIZATION")
         );
         assert!(props.contains_key(ENTITY_TYPE_VOTES_KEY));
+    }
+
+    #[test]
+    fn manual_lock_survives_many_llm_votes() {
+        let mut props = HashMap::new();
+        apply_manual_type_override(&mut props, "technician");
+        assert_eq!(
+            props.get("entity_type").and_then(|v| v.as_str()),
+            Some("TECHNICIAN")
+        );
+        assert!(is_entity_type_locked(&props));
+        for _ in 0..20 {
+            assert!(!apply_entity_type_vote(
+                &mut props,
+                "MARC",
+                "ORGANIZATION",
+                1.0
+            ));
+        }
+        assert_eq!(
+            props.get("entity_type").and_then(|v| v.as_str()),
+            Some("TECHNICIAN")
+        );
+        let votes = votes_from_properties(&props);
+        assert_eq!(votes.get("TECHNICIAN"), Some(&1.0));
+        assert!(!votes.contains_key("ORGANIZATION"));
     }
 }

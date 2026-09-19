@@ -302,18 +302,25 @@ export async function getEntities(
 }
 
 export async function getEntity(entityId: string): Promise<Entity> {
-  return api.get<Entity>(`/graph/entities/${entityId}`);
+  return api.get<Entity>(entityPath(entityId));
 }
 
 export async function updateEntity(
   entityId: string,
   data: Partial<Entity>,
 ): Promise<Entity> {
-  return api.put<Entity>(`/graph/entities/${entityId}`, data);
+  return api.put<Entity>(entityPath(entityId), data);
+}
+
+/** Path for a graph entity — encodes workspace-scoped ids (`{uuid}::NAME`). */
+export function entityPath(entityId: string): string {
+  return `/graph/entities/${encodeURIComponent(entityId)}`;
 }
 
 export async function deleteEntity(entityId: string): Promise<void> {
-  return api.delete<void>(`/graph/entities/${entityId}`);
+  // The API refuses an unconfirmed delete (400 "Confirmation required");
+  // the UI has already shown its own confirmation dialog before calling this.
+  return api.delete<void>(`${entityPath(entityId)}?confirm=true`);
 }
 
 export async function mergeEntities(
@@ -328,7 +335,7 @@ export async function getEntityNeighborhood(
 ): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
   const query = depth ? `?depth=${depth}` : "";
   return api.get<{ nodes: GraphNode[]; edges: GraphEdge[] }>(
-    `/graph/entities/${entityId}/neighborhood${query}`,
+    `${entityPath(entityId)}/neighborhood${query}`,
   );
 }
 

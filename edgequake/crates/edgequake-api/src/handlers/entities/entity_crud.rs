@@ -16,13 +16,14 @@ use std::collections::HashMap;
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::isolation::{
-    filter_edges_by_tenant_context, load_node_for_tenant_context, properties_match_tenant_context,
+    filter_edges_by_tenant_context, properties_match_tenant_context,
     stamp_tenant_context_properties,
 };
 use crate::middleware::TenantContext;
 use crate::state::AppState;
 
-use super::{node_to_entity_response, normalize_entity_name_for_graph};
+use super::node_to_entity_response;
+
 pub use crate::handlers::entities_types::{
     ChangesSummary, CreateEntityRequest, CreateEntityResponse, DeleteEntityQuery,
     DeleteEntityResponse, EntityStatistics, GetEntityResponse, ListEntitiesQuery,
@@ -128,13 +129,16 @@ pub async fn create_entity(
     tenant_ctx: TenantContext,
     Json(req): Json<CreateEntityRequest>,
 ) -> ApiResult<Json<CreateEntityResponse>> {
-    let entity_name = normalize_entity_name_for_graph(&req.entity_name);
-    if entity_name.is_empty() {
+    let entity_id = edgequake_storage::EntityId::new(&req.entity_name);
+    if entity_id.is_empty() {
         return Err(ApiError::BadRequest(
             "entity_name is empty or an opaque machine identifier (UUID/GUID/hash); provide a human-readable name"
                 .into(),
         ));
     }
+    // Same node id the ingestion merger writes (`{workspace}::NAME`), so a manual
+    // entity merges with — instead of duplicating — a later extracted mention.
+    let entity_name = entity_id.graph_node_id_for_workspace(tenant_ctx.workspace_id.as_deref());
 
     // Check if entity already exists in this tenant/workspace
     if let Some(existing) = state.storage.graph_storage.get_node(&entity_name).await? {
@@ -204,14 +208,13 @@ pub async fn get_entity(
     tenant_ctx: TenantContext,
     Path(entity_name): Path<String>,
 ) -> ApiResult<Json<GetEntityResponse>> {
-    let entity_name = normalize_entity_name_for_graph(&entity_name);
-
-    let node = load_node_for_tenant_context(
+    let node = super::resolve_entity_node_exact(
         state.storage.graph_storage.as_ref(),
         &entity_name,
         &tenant_ctx,
     )
     .await?;
+    let entity_name = node.id.clone();
 
     let degree = state
         .storage
@@ -300,14 +303,13 @@ pub async fn update_entity(
     Path(entity_name): Path<String>,
     Json(req): Json<UpdateEntityRequest>,
 ) -> ApiResult<Json<UpdateEntityResponse>> {
-    let entity_name = normalize_entity_name_for_graph(&entity_name);
-
-    let mut node = load_node_for_tenant_context(
+    let mut node = super::resolve_entity_node_exact(
         state.storage.graph_storage.as_ref(),
         &entity_name,
         &tenant_ctx,
     )
     .await?;
+    let entity_name = node.id.clone();
 
     let previous_description = node
         .properties
@@ -319,8 +321,9 @@ pub async fn update_entity(
 
     // Update fields
     if let Some(entity_type) = req.entity_type {
-        node.properties
-            .insert("entity_type".to_string(), entity_type.into());
+        // Human correction must survive re-extraction: lock type so merger
+        // votes cannot outvote the operator (D-32 + entity_type_locked).
+        edgequake_pipeline::merger::apply_manual_type_override(&mut node.properties, &entity_type);
         fields_updated.push("entity_type".to_string());
     }
 
@@ -391,8 +394,6 @@ pub async fn delete_entity(
     Path(entity_name): Path<String>,
     Query(params): Query<DeleteEntityQuery>,
 ) -> ApiResult<Json<DeleteEntityResponse>> {
-    let entity_name = normalize_entity_name_for_graph(&entity_name);
-
     // Check confirmation
     if !params.confirm {
         return Err(ApiError::BadRequest(
@@ -412,12 +413,13 @@ pub async fn delete_entity(
     );
 
     // Verify entity belongs to tenant before collecting edge metadata
-    let _ = load_node_for_tenant_context(
+    let node = super::resolve_entity_node_exact(
         state.storage.graph_storage.as_ref(),
         &entity_name,
         &tenant_ctx,
     )
     .await?;
+    let entity_name = node.id;
 
     let edges = filter_edges_by_tenant_context(
         state

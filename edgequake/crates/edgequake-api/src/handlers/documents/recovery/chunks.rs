@@ -181,15 +181,41 @@ pub async fn retry_failed_chunks(
             }));
         }
 
-        let extractor =
-            state
-                .query
-                .pipeline
-                .extractor()
-                .ok_or_else(|| ApiError::ServiceUnavailable {
-                    message: "No entity extractor configured for chunk retry".into(),
-                    retry_after_secs: 30,
-                })?;
+        // Workspace-scoped pipeline with Strict policy (same as ingest): never
+        // LenientGlobal — a missing workspace must 503, not silently use the
+        // global ontology/language and create duplicate English default nodes.
+        let retry_workspace_id = metadata
+            .get("workspace_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        if retry_workspace_id.trim().is_empty() {
+            return Err(ApiError::ServiceUnavailable {
+                message: "Document has no workspace_id; cannot retry with workspace pipeline"
+                    .into(),
+                retry_after_secs: 30,
+            });
+        }
+        let factory = crate::workspace_pipeline_factory::WorkspacePipelineFactory::new(
+            Arc::clone(&state.workspace_service),
+            Arc::clone(&state.query.pipeline),
+        );
+        let retry_pipeline = factory
+            .resolve(
+                &retry_workspace_id,
+                crate::workspace_pipeline_factory::PipelineFallbackPolicy::Strict,
+            )
+            .await
+            .map_err(|e| ApiError::ServiceUnavailable {
+                message: format!("Workspace pipeline unavailable for chunk retry: {e}"),
+                retry_after_secs: 30,
+            })?;
+        let extractor = retry_pipeline
+            .extractor()
+            .ok_or_else(|| ApiError::ServiceUnavailable {
+                message: "No entity extractor configured for chunk retry".into(),
+                retry_after_secs: 30,
+            })?;
 
         let max_retries = request.max_retries;
         let mut queued = Vec::new();
@@ -247,8 +273,12 @@ pub async fn retry_failed_chunks(
 
             let text_chunk = text_chunk_from_kv(&document_id, idx, content);
             match extractor.extract(&text_chunk).await {
-                Ok(extraction) => {
+                Ok(mut extraction) => {
                     // SPEC-046 OPS-P1.21: merge extraction into graph (full parity with ingest).
+                    // Parity includes chunk/document lineage: without it the merger's
+                    // SPEC-091 RM2 citation gate rejects every relationship of the retry
+                    // ("source_chunk_ids required") while entities still land.
+                    extraction.stamp_chunk_lineage(&document_id);
                     let tenant_id = metadata
                         .get("tenant_id")
                         .and_then(|v| v.as_str())

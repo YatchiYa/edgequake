@@ -57,6 +57,36 @@ pub(super) fn normalize_entity_name_for_graph(name: &str) -> String {
     entity_name_normalize::normalize_entity_name(name)
 }
 
+/// Resolve a path identifier to the stored graph node, **exact match only**.
+///
+/// Graph node ids are workspace-scoped (`{workspace_id}::NAME`). Candidates
+/// come from [`EntityId::exact_lookup_candidates`] — never normalize the whole
+/// `{uuid}::NAME` string (that uppercases the UUID and 404s WebUI ids).
+/// No search fallback — a mutation must never land on a "close enough" node.
+/// 404s are opaque (no candidate list leakage).
+pub(crate) async fn resolve_entity_node_exact(
+    graph: &dyn edgequake_storage::traits::GraphStorageReadOps,
+    raw: &str,
+    ctx: &crate::middleware::TenantContext,
+) -> crate::error::ApiResult<GraphNode> {
+    let raw = raw.trim();
+    let candidates =
+        edgequake_storage::EntityId::exact_lookup_candidates(raw, ctx.workspace_id.as_deref());
+    for candidate in &candidates {
+        if candidate.is_empty() {
+            continue;
+        }
+        if let Ok(node) =
+            crate::handlers::isolation::load_node_for_tenant_context(graph, candidate, ctx).await
+        {
+            return Ok(node);
+        }
+    }
+    Err(crate::error::ApiError::NotFound(format!(
+        "Entity '{raw}' not found"
+    )))
+}
+
 /// Convert GraphNode to EntityResponse.
 pub(super) fn node_to_entity_response(node: GraphNode, degree: usize) -> EntityResponse {
     let props = &node.properties;
@@ -214,5 +244,87 @@ mod tests {
         };
         let json = serde_json::to_string(&stats);
         assert!(json.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod resolve_tests {
+    use super::resolve_entity_node_exact;
+    use crate::middleware::TenantContext;
+    use edgequake_storage::traits::GraphStorageMutateOps;
+    use edgequake_storage::MemoryGraphStorage;
+    use std::collections::HashMap;
+
+    const WS: &str = "79d6e213-032d-402c-9325-aee3483d3185";
+    const TENANT: &str = "00000000-0000-0000-0000-000000000002";
+
+    fn ctx() -> TenantContext {
+        TenantContext {
+            tenant_id: Some(TENANT.into()),
+            workspace_id: Some(WS.into()),
+            user_id: None,
+        }
+    }
+
+    async fn graph_with_scoped_node() -> MemoryGraphStorage {
+        let graph = MemoryGraphStorage::new("test");
+        let mut props = HashMap::new();
+        props.insert("tenant_id".to_string(), TENANT.into());
+        props.insert("workspace_id".to_string(), WS.into());
+        props.insert("entity_type".to_string(), "TECHNICIAN".into());
+        graph
+            .upsert_node(&format!("{WS}::MARC_DUBOIS"), props)
+            .await
+            .expect("upsert");
+        graph
+    }
+
+    /// Regression: bare name, raw scoped id (as the WebUI sends it) and lowercase
+    /// raw name must all resolve to the workspace-scoped node; uppercasing the
+    /// whole segment (the v0.26.5 behaviour) would miss the UUID prefix.
+    #[tokio::test]
+    async fn resolves_bare_scoped_and_raw_forms_to_the_scoped_node() {
+        let graph = graph_with_scoped_node().await;
+        for form in ["MARC_DUBOIS", &format!("{WS}::MARC_DUBOIS"), "Marc Dubois"] {
+            let node = resolve_entity_node_exact(&graph, form, &ctx())
+                .await
+                .unwrap_or_else(|e| panic!("{form}: {e}"));
+            assert_eq!(node.id, format!("{WS}::MARC_DUBOIS"), "form {form}");
+        }
+    }
+
+    #[tokio::test]
+    async fn never_lands_on_a_close_match() {
+        let graph = graph_with_scoped_node().await;
+        assert!(resolve_entity_node_exact(&graph, "MARC_DUBOI", &ctx())
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn other_workspace_cannot_see_the_node() {
+        let graph = graph_with_scoped_node().await;
+        let other = TenantContext {
+            workspace_id: Some("11111111-1111-1111-1111-111111111111".into()),
+            ..ctx()
+        };
+        assert!(
+            resolve_entity_node_exact(&graph, &format!("{WS}::MARC_DUBOIS"), &other)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn not_found_is_opaque() {
+        let graph = graph_with_scoped_node().await;
+        let err = resolve_entity_node_exact(&graph, "NO_SUCH_ENTITY", &ctx())
+            .await
+            .expect_err("must 404");
+        let msg = err.to_string();
+        assert!(
+            !msg.contains("tried:"),
+            "404 must not leak candidates: {msg}"
+        );
     }
 }
