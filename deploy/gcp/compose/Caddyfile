@@ -1,0 +1,19 @@
+# Default Caddyfile: static IP / no public DNS.
+# HTTP is redirect-only (LAW-148-13). Do not send HSTS here.
+# Use a hostless :443 + file cert: Docker NAT + empty SNI on IP HTTPS
+# make `tls internal` fail (caddyserver/caddy#6344). Certs from generate-tls.sh.
+
+{
+	auto_https off
+}
+
+import snippets.caddy
+
+:80 {
+	redir https://{host}{uri} permanent
+}
+
+:443 {
+	tls /etc/caddy/certs/tls.crt /etc/caddy/certs/tls.key
+	import app
+}

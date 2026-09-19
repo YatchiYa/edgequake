@@ -1,0 +1,136 @@
+name: Deploy GCP EdgeQuake
+
+# CD only. CI and image publish stay in ci.yml and release-docker.yml.
+# Keyless WIF (default branch only) → IAP SSH → install-release.sh (LD-15).
+# Does not run terraform apply and does not use JSON keys or stored SSH keys.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published GHCR pin X.Y.Z (never latest)
+        required: true
+        default: "0.26.5"
+  workflow_run:
+    workflows: ["Release — Docker (GHCR)"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gcp-elitizon-db
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: IAP deploy
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: gcp-demo
+      url: https://demo.edgequake.com
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Resolve version pin
+        id: pin
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT: ${{ inputs.version }}
+          HEAD: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT}" = "workflow_dispatch" ]; then
+            VERSION="${INPUT}"
+          else
+            VERSION="${HEAD#v}"
+          fi
+          if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "version must be X.Y.Z (got '${VERSION}')"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Require GitHub variables
+        env:
+          WIF: ${{ vars.EDGEQUAKE_GCP_WIF_PROVIDER }}
+          SA: ${{ vars.EDGEQUAKE_GCP_DEPLOY_SA }}
+          PROJECT: ${{ vars.EDGEQUAKE_GCP_PROJECT }}
+          ZONE: ${{ vars.EDGEQUAKE_GCP_ZONE }}
+          INSTANCE: ${{ vars.EDGEQUAKE_GCP_INSTANCE }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for v in WIF SA PROJECT ZONE INSTANCE; do
+            eval "val=\${$v}"
+            if [ -z "${val}" ]; then
+              echo "Missing GitHub Actions variable ${v} (see deploy/gcp/README.md)"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - name: Require published GHCR images
+        env:
+          VERSION: ${{ steps.pin.outputs.version }}
+        run: |
+          set -euo pipefail
+          token() {
+            curl -fsSL "https://ghcr.io/token?service=ghcr.io&scope=repository:${1}:pull" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'
+          }
+          for image in edgequake edgequake-frontend edgequake-postgres; do
+            tok="$(token "raphaelmansuy/${image}")"
+            code="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ${tok}" \
+              -H "Accept: application/vnd.oci.image.index.v1+json" \
+              "https://ghcr.io/v2/raphaelmansuy/${image}/manifests/${VERSION}")"
+            if [ "${code}" != "200" ]; then
+              echo "ghcr.io/raphaelmansuy/${image}:${VERSION} is not published (HTTP ${code})"
+              exit 1
+            fi
+            echo "ok ghcr.io/raphaelmansuy/${image}:${VERSION}"
+          done
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.EDGEQUAKE_GCP_PROJECT }}
+          workload_identity_provider: ${{ vars.EDGEQUAKE_GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.EDGEQUAKE_GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Sync overlay and install release
+        env:
+          PROJECT: ${{ vars.EDGEQUAKE_GCP_PROJECT }}
+          ZONE: ${{ vars.EDGEQUAKE_GCP_ZONE }}
+          INSTANCE: ${{ vars.EDGEQUAKE_GCP_INSTANCE }}
+          VERSION: ${{ steps.pin.outputs.version }}
+        run: |
+          set -euo pipefail
+          gcloud_ssh() {
+            gcloud compute ssh "${INSTANCE}" \
+              --project="${PROJECT}" --zone="${ZONE}" \
+              --tunnel-through-iap --quiet \
+              --strict-host-key-checking=accept-new \
+              --command="$1"
+          }
+          gcloud_ssh 'mkdir -p /tmp/edgequake-overlay && rm -rf /tmp/edgequake-overlay/compose /tmp/edgequake-overlay/scripts'
+          gcloud compute scp --tunnel-through-iap --quiet \
+            --strict-host-key-checking=accept-new \
+            --project="${PROJECT}" --zone="${ZONE}" --recurse \
+            deploy/gcp/compose deploy/gcp/scripts \
+            "${INSTANCE}:/tmp/edgequake-overlay/"
+          gcloud_ssh 'chmod 0755 /tmp/edgequake-overlay/scripts/*.sh'
+          gcloud_ssh "sudo /tmp/edgequake-overlay/scripts/install-release.sh ${VERSION}"

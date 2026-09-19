@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# SPEC-148 deploy: pull images, LD-15 migrate, compose up, HTTPS + \dx gates.
+set -euo pipefail
+
+ROOT="${STACK_ROOT:-/opt/edgequake}"
+COMPOSE_DIR="${ROOT}/compose"
+ENV_FILE="${ROOT}/.env"
+LOG="${STACK_LOG:-/var/log/edgequake-deploy.log}"
+
+log() { echo "[$(date -Is)] $*" | tee -a "${LOG}"; }
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "deploy.sh must run as root (sudo)" >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "${LOG}")"
+cd "${COMPOSE_DIR}"
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+  log "missing ${ENV_FILE}; running render-env.sh"
+  # shellcheck disable=SC1091
+  source "${ROOT}/scripts/load-metadata.sh"
+  STACK_ENV_FILE="${ENV_FILE}" "${ROOT}/scripts/render-env.sh"
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "${ENV_FILE}"
+set +a
+
+if [[ -n "${EDGEQUAKE_PIN_VERSION:-}" ]]; then
+  EDGEQUAKE_VERSION="${EDGEQUAKE_PIN_VERSION}"
+  EDGEQUAKE_POSTGRES_TAG="${EDGEQUAKE_PIN_VERSION}"
+  sed -i "s/^EDGEQUAKE_VERSION=.*/EDGEQUAKE_VERSION=${EDGEQUAKE_PIN_VERSION}/" "${ENV_FILE}"
+  sed -i "s/^EDGEQUAKE_POSTGRES_TAG=.*/EDGEQUAKE_POSTGRES_TAG=${EDGEQUAKE_PIN_VERSION}/" "${ENV_FILE}"
+fi
+
+if [[ -n "${EDGEQUAKE_HOSTNAME:-}" ]]; then
+  RESOLVED="$(python3 - <<'PY' "${EDGEQUAKE_HOSTNAME}"
+import socket, sys
+host = sys.argv[1]
+try:
+    print(socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)[0][4][0])
+except OSError:
+    print("")
+PY
+)"
+  if [[ -n "${RESOLVED}" && "${RESOLVED}" == "${EDGEQUAKE_TLS_HOST}" ]]; then
+    cp -f "${COMPOSE_DIR}/Caddyfile.hostname" "${COMPOSE_DIR}/Caddyfile.runtime"
+    CADDY_MODE="le"
+    log "Caddy Let's Encrypt for ${EDGEQUAKE_HOSTNAME} (${RESOLVED})"
+  else
+    cp -f "${COMPOSE_DIR}/Caddyfile" "${COMPOSE_DIR}/Caddyfile.runtime"
+    CADDY_MODE="ip"
+    log "DNS for ${EDGEQUAKE_HOSTNAME} is '${RESOLVED:-unresolved}', expected ${EDGEQUAKE_TLS_HOST}; keeping IP certificate"
+  fi
+else
+  cp -f "${COMPOSE_DIR}/Caddyfile" "${COMPOSE_DIR}/Caddyfile.runtime"
+  CADDY_MODE="ip"
+fi
+
+log "mint IP-SAN TLS cert (empty SNI + Docker NAT; caddy#6344)"
+STACK_CERT_DIR="${COMPOSE_DIR}/certs" "${ROOT}/scripts/generate-tls.sh"
+
+export COMPOSE_PROJECT_NAME=edgequake
+COMPOSE=(docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_DIR}/docker-compose.yml")
+
+log "compose pull (EDGEQUAKE_VERSION=${EDGEQUAKE_VERSION})"
+"${COMPOSE[@]}" pull
+
+log "start postgres"
+"${COMPOSE[@]}" up -d postgres
+
+log "wait for postgres healthy"
+for i in $(seq 1 60); do
+  if "${COMPOSE[@]}" exec -T postgres pg_isready -U edgequake -d edgequake >/dev/null 2>&1; then
+    break
+  fi
+  if [[ "${i}" -eq 60 ]]; then
+    log "postgres not ready"
+    "${COMPOSE[@]}" logs postgres | tail -50 | tee -a "${LOG}"
+    exit 1
+  fi
+  sleep 2
+done
+
+log "LD-15 migrate dry-run"
+"${COMPOSE[@]}" run --rm --no-deps -T api migrate dry-run || true
+
+log "LD-15 migrate apply"
+"${COMPOSE[@]}" run --rm --no-deps -T api migrate
+
+log "compose up"
+"${COMPOSE[@]}" up -d
+
+log "wait for api healthcheck"
+for i in $(seq 1 60); do
+  if docker inspect --format='{{.State.Health.Status}}' edgequake-api 2>/dev/null | grep -q healthy; then
+    break
+  fi
+  if [[ "${i}" -eq 60 ]]; then
+    log "api not healthy"
+    "${COMPOSE[@]}" logs api | tail -80 | tee -a "${LOG}"
+    exit 1
+  fi
+  sleep 3
+done
+
+log "wait for Caddy :80"
+redir=""
+http_args=(curl -sI --max-time 5)
+https_args=(curl -sf --max-time 15)
+https_tries=20
+if [[ "${CADDY_MODE}" == "le" ]]; then
+  http_args+=(-H "Host: ${EDGEQUAKE_HOSTNAME}")
+  https_args=(curl -sf --max-time 15 --resolve "${EDGEQUAKE_HOSTNAME}:443:127.0.0.1" "https://${EDGEQUAKE_HOSTNAME}/health")
+  https_tries=40
+else
+  https_args=(curl -skf --max-time 15 https://127.0.0.1/health)
+fi
+for i in $(seq 1 30); do
+  redir="$("${http_args[@]}" http://127.0.0.1/health 2>/dev/null || true)"
+  if echo "${redir}" | grep -qiE '^HTTP/.* (301|308)\b'; then
+    break
+  fi
+  sleep 2
+done
+log "E2E-148-04 HTTP redirect"
+echo "${redir}" | tee -a "${LOG}"
+echo "${redir}" | grep -qiE '^HTTP/.* (301|308)\b' || { log "FAIL: HTTP was not 301/308"; exit 1; }
+echo "${redir}" | grep -qiE '^Location:[[:space:]]*https://' || { log "FAIL: Location is not https"; exit 1; }
+
+log "E2E-148-05 HTTPS /health"
+https_ok=0
+for i in $(seq 1 "${https_tries}"); do
+  if "${https_args[@]}" | tee -a "${LOG}"; then
+    echo | tee -a "${LOG}"
+    https_ok=1
+    break
+  fi
+  sleep 2
+done
+if [[ "${https_ok}" -ne 1 ]]; then
+  log "FAIL: HTTPS /health"
+  "${COMPOSE[@]}" logs caddy | tail -40 | tee -a "${LOG}"
+  exit 1
+fi
+
+log "E2E-148-03 extensions"
+dx="$("${COMPOSE[@]}" exec -T postgres psql -U edgequake -d edgequake -c '\dx')"
+echo "${dx}" | tee -a "${LOG}"
+echo "${dx}" | grep -qw vector || { log "FAIL: vector extension missing"; exit 1; }
+echo "${dx}" | grep -qw age || { log "FAIL: age extension missing"; exit 1; }
+
+log "DEPLOY_OK"

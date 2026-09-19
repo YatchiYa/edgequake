@@ -1,0 +1,25 @@
+{
+  "status": "healthy",
+  "version": "0.26.5",
+  "storage_mode": "postgresql",
+  "llm_provider_name": "openai",
+  "components": {
+    "kv_storage": true,
+    "vector_storage": true,
+    "graph_storage": true,
+    "graph_available": true,
+    "llm_provider": true,
+    "eq_id_schema": true
+  },
+  "schema": {
+    "latest_version": 149,
+    "postgres_capabilities": {
+      "postgres_major": 18,
+      "pgvector_version": "0.8.5",
+      "age_version": "1.8.0",
+      "uuidv7_available": true,
+      "iterative_scan_available": true,
+      "age_jsonb_agtype_cast_available": true
+    }
+  }
+}

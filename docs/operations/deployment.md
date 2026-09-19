@@ -77,6 +77,7 @@ For full documentation see: [Docker Quickstart Guide](./docker-quickstart.md)
 | `make docker-up` (build from src) | Medium     | 5–15 min   | Custom builds, self-hosted               |
 | Binary + PostgreSQL               | Low        | N/A        | Bare metal / VMs                         |
 | Kubernetes                        | High       | N/A        | Scale, HA, enterprise                    |
+| **GCP Option A** (`deploy/gcp`)   | Medium     | ~5–10 min  | Cheapest real product on GCE (AGE+pgvector) |
 
 ---
 
@@ -356,6 +357,21 @@ See [deploy/kubernetes/README.md — Troubleshooting](../../deploy/kubernetes/RE
 | Langfuse values (kind) | `deploy/kubernetes/helm/langfuse-values-kind.yaml` |
 
 Langfuse installs into namespace `langfuse`; EdgeQuake into namespace `edgequake` (separate Postgres instances).
+
+---
+
+## Option 4: GCP cheapest host (SPEC-148)
+
+Self-managed GCE + Compose because Cloud SQL / AlloyDB do **not** ship Apache AGE. VM `elitizon-db` + `edgequake-*` objects in `saas-app-001`; HTTP always redirects to HTTPS.
+
+**Operator guide:** [deploy/gcp/README.md](../../deploy/gcp/README.md)  
+**Spec pack:** [specs/148-gcloud-hosting/README.md](../../specs/148-gcloud-hosting/README.md)
+
+```bash
+make spec148-gcp-plan     # terraform plan only
+# terraform apply is gated — see deploy/gcp/README.md
+```
+
 
 ### Reference manifests
 

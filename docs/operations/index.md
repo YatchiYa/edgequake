@@ -20,7 +20,7 @@ EdgeQuake now documents and follows a few simple operational invariants:
 ## Guides
 
 - **[Docker Quickstart](/docs/operations/docker-quickstart/)** — Full stack from GHCR images (no local build).
-- **[Deployment](/docs/operations/deployment/)** — Docker, Kubernetes, and bare-metal deployment.
+- **[Deployment](/docs/operations/deployment/)** — Docker, Kubernetes, GCP Option A, and bare-metal.
 - **[Configuration](/docs/operations/configuration/)** — Environment variables and runtime settings.
 - **[Monitoring](/docs/operations/monitoring/)** — Health checks, metrics, and observability.
 - **[Langfuse 3.1.x](/docs/operations/langfuse-3.1/)** — Wire EdgeQuake to self-hosted Langfuse 3.1 (ingestion fallback).
