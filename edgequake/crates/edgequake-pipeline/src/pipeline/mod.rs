@@ -12,7 +12,6 @@ mod config;
 mod extraction;
 pub(crate) mod helpers;
 // SPEC-047 P6: unique-before-embed helpers (integration-test surface).
-pub use helpers::link_extractions_to_chunks;
 pub use helpers::unique_embed;
 pub mod admission_resolver;
 mod processing;

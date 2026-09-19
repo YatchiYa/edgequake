@@ -64,6 +64,45 @@ impl ExtractionResult {
         self.extraction_time_ms = extraction_time_ms;
         self
     }
+
+    /// Stamp chunk/document lineage on every entity and relationship.
+    ///
+    /// WHY: Without chunk linkage, Local/Global query cannot find related
+    /// chunks and the merger's SPEC-091 RM2 citation gate rejects
+    /// relationships (`source_chunk_ids required`). Shared by ingest and
+    /// chunk-retry so both paths stay in lockstep.
+    pub fn stamp_chunk_lineage(&mut self, document_id: &str) {
+        let chunk_id = self.source_chunk_id.clone();
+        let derived_doc = if !document_id.is_empty() {
+            Some(document_id.to_string())
+        } else {
+            crate::merger::lineage::document_id_from_chunk_id(&chunk_id)
+        };
+        tracing::debug!(
+            "Linking {} entities and {} relationships to chunk {}",
+            self.entities.len(),
+            self.relationships.len(),
+            chunk_id
+        );
+        for entity in &mut self.entities {
+            entity.add_source_chunk_id(&chunk_id);
+            if entity.source_document_id.is_none() {
+                if let Some(ref doc) = derived_doc {
+                    entity.source_document_id = Some(doc.clone());
+                }
+            }
+        }
+        for rel in &mut self.relationships {
+            if rel.source_chunk_id.is_none() {
+                rel.source_chunk_id = Some(chunk_id.clone());
+            }
+            if rel.source_document_id.is_none() {
+                if let Some(ref doc) = derived_doc {
+                    rel.source_document_id = Some(doc.clone());
+                }
+            }
+        }
+    }
 }
 
 /// An extracted entity.

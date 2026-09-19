@@ -11,47 +11,40 @@ use chrono::Utc;
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::isolation::{
-    filter_edges_by_tenant_context, load_node_for_tenant_context, stamp_tenant_context_properties,
+    filter_edges_by_tenant_context, stamp_tenant_context_properties,
 };
 use crate::middleware::TenantContext;
 use crate::services::entity_merge::rewire_merged_entity_edges;
 use crate::services::entity_neighborhood::build_entity_neighborhood;
 use crate::state::AppState;
 
-use super::{node_to_entity_response, normalize_entity_name_for_graph};
+use super::{node_to_entity_response, resolve_entity_node_exact};
 pub use crate::handlers::entities_types::{
     EntityExistsQuery, EntityExistsResponse, EntityNeighborhoodQuery, EntityNeighborhoodResponse,
     MergeDetails, MergeEntitiesRequest, MergeEntitiesResponse,
 };
 
+/// Read-path resolve: exact candidates first, then search with **id equality**
+/// only (never hijack the first fuzzy neighbor).
 async fn resolve_entity_node(
     state: &AppState,
     entity_name: &str,
     ctx: &TenantContext,
 ) -> ApiResult<Option<edgequake_storage::GraphNode>> {
-    let normalized_name = normalize_entity_name_for_graph(entity_name);
-
     if let Ok(node) =
-        load_node_for_tenant_context(state.storage.graph_storage.as_ref(), &normalized_name, ctx)
-            .await
+        resolve_entity_node_exact(state.storage.graph_storage.as_ref(), entity_name, ctx).await
     {
         return Ok(Some(node));
     }
 
-    if normalized_name != entity_name {
-        if let Ok(node) =
-            load_node_for_tenant_context(state.storage.graph_storage.as_ref(), entity_name, ctx)
-                .await
-        {
-            return Ok(Some(node));
-        }
-    }
-
+    let candidates =
+        edgequake_storage::EntityId::exact_lookup_candidates(entity_name, ctx.workspace_id.as_deref());
+    let search_query = edgequake_storage::EntityId::bare_name_from_graph_node_id(entity_name.trim());
     let search_results = state
         .storage
         .graph_storage
         .search_nodes(
-            entity_name,
+            search_query,
             10,
             None,
             ctx.tenant_id.as_deref(),
@@ -61,12 +54,15 @@ async fn resolve_entity_node(
         .unwrap_or_default();
 
     if let Some((node, _)) = search_results.iter().find(|(node, _)| {
-        node.id.eq_ignore_ascii_case(entity_name) || node.id.eq_ignore_ascii_case(&normalized_name)
+        candidates
+            .iter()
+            .any(|c| node.id.eq_ignore_ascii_case(c))
+            || node.id.eq_ignore_ascii_case(entity_name.trim())
     }) {
         return Ok(Some(node.clone()));
     }
 
-    Ok(search_results.into_iter().next().map(|(node, _)| node))
+    Ok(None)
 }
 
 /// Check if an entity exists.
@@ -126,18 +122,27 @@ pub async fn merge_entities(
     tenant_ctx: TenantContext,
     Json(req): Json<MergeEntitiesRequest>,
 ) -> ApiResult<Json<MergeEntitiesResponse>> {
-    let source_node = resolve_entity_node(&state, &req.source_entity, &tenant_ctx)
-        .await?
-        .ok_or_else(|| {
-            ApiError::NotFound(format!("Source entity '{}' not found", req.source_entity))
-        })?;
+    // Mutate = exact only — never fuzzy-merge onto a neighbor.
+    let source_node = resolve_entity_node_exact(
+        state.storage.graph_storage.as_ref(),
+        &req.source_entity,
+        &tenant_ctx,
+    )
+    .await
+    .map_err(|_| {
+        ApiError::NotFound(format!("Source entity '{}' not found", req.source_entity))
+    })?;
     let source_entity = source_node.id.clone();
 
-    let mut target_node = resolve_entity_node(&state, &req.target_entity, &tenant_ctx)
-        .await?
-        .ok_or_else(|| {
-            ApiError::NotFound(format!("Target entity '{}' not found", req.target_entity))
-        })?;
+    let mut target_node = resolve_entity_node_exact(
+        state.storage.graph_storage.as_ref(),
+        &req.target_entity,
+        &tenant_ctx,
+    )
+    .await
+    .map_err(|_| {
+        ApiError::NotFound(format!("Target entity '{}' not found", req.target_entity))
+    })?;
     let target_entity = target_node.id.clone();
 
     let (tenant_id, workspace_id) = (

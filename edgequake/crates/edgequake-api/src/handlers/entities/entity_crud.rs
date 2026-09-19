@@ -24,8 +24,6 @@ use crate::state::AppState;
 
 use super::node_to_entity_response;
 
-/// Vote weight for a manual `entity_type` correction (LLM votes are ≤ 1.0 each).
-const MANUAL_TYPE_VOTE_WEIGHT: f64 = 100.0;
 pub use crate::handlers::entities_types::{
     ChangesSummary, CreateEntityRequest, CreateEntityResponse, DeleteEntityQuery,
     DeleteEntityResponse, EntityStatistics, GetEntityResponse, ListEntitiesQuery,
@@ -323,17 +321,12 @@ pub async fn update_entity(
 
     // Update fields
     if let Some(entity_type) = req.entity_type {
-        // A human correction must survive later re-extraction: the merger
-        // resolves `entity_type` by majority vote over `entity_type_votes`
-        // (D-32), so a bare property change is outvoted by the accumulated LLM
-        // votes on the next ingest/retry of the same text. Reset the ballot
-        // with a dominant manual vote instead of just rewriting the label.
-        node.properties.insert(
-            edgequake_pipeline::merger::ENTITY_TYPE_VOTES_KEY.to_string(),
-            serde_json::json!({ entity_type.trim().to_uppercase(): MANUAL_TYPE_VOTE_WEIGHT }),
+        // Human correction must survive re-extraction: lock type so merger
+        // votes cannot outvote the operator (D-32 + entity_type_locked).
+        edgequake_pipeline::merger::apply_manual_type_override(
+            &mut node.properties,
+            &entity_type,
         );
-        node.properties
-            .insert("entity_type".to_string(), entity_type.into());
         fields_updated.push("entity_type".to_string());
     }
 
