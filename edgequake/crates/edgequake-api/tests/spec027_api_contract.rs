@@ -1952,8 +1952,10 @@ fn spec027_entity_name_normalize_ssot() {
     assert!(svc.contains("pub fn normalize_entity_name"));
     let entities = read_crate_src("src/handlers/entities/mod.rs");
     assert!(entities.contains("entity_name_normalize"));
-    let relationships = read_crate_src("src/handlers/relationships/helpers.rs");
-    assert!(relationships.contains("entity_name_normalize"));
+    // Relationship create resolves endpoints via EntityId exact lookup (not
+    // a local normalize helper) so workspace-scoped ids stay consistent.
+    let relationships_create = read_crate_src("src/handlers/relationships/create.rs");
+    assert!(relationships_create.contains("resolve_entity_node_exact"));
     let lineage = read_crate_src("src/handlers/lineage/normalize.rs");
     assert!(lineage.contains("entity_name_normalize"));
 }

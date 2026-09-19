@@ -45,6 +45,7 @@ pub use entity_ops::*;
 // Re-export DTOs from entities_types module
 pub use crate::handlers::entities_types::*;
 
+#[cfg(test)]
 use crate::services::entity_name_normalize;
 use edgequake_storage::GraphNode;
 
@@ -53,6 +54,10 @@ use edgequake_storage::GraphNode;
 // ============================================================================
 
 /// Normalize entity name using the API SSOT (delegates to storage canonical form).
+///
+/// Kept for unit tests and as the documented bridge to [`entity_name_normalize`].
+/// Production mutate/read resolve paths use [`EntityId::exact_lookup_candidates`].
+#[cfg(test)]
 pub(super) fn normalize_entity_name_for_graph(name: &str) -> String {
     entity_name_normalize::normalize_entity_name(name)
 }
