@@ -123,12 +123,12 @@ jobs:
             gcloud compute ssh "${INSTANCE}" \
               --project="${PROJECT}" --zone="${ZONE}" \
               --tunnel-through-iap --quiet \
-              --strict-host-key-checking=accept-new \
+              --strict-host-key-checking=no \
               --command="$1"
           }
           gcloud_ssh 'mkdir -p /tmp/edgequake-overlay && rm -rf /tmp/edgequake-overlay/compose /tmp/edgequake-overlay/scripts'
           gcloud compute scp --tunnel-through-iap --quiet \
-            --strict-host-key-checking=accept-new \
+            --strict-host-key-checking=no \
             --project="${PROJECT}" --zone="${ZONE}" --recurse \
             deploy/gcp/compose deploy/gcp/scripts \
             "${INSTANCE}:/tmp/edgequake-overlay/"
