@@ -27,6 +27,12 @@ import {
   getDocumentPageLayout,
   listDocumentPages,
 } from '@/lib/api/edgequake/documents';
+import {
+  extractPdfSourceUrl,
+  fetchAuthenticatedPdfData,
+  isApiProtectedPdfUrl,
+  type PdfFileSource,
+} from '@/lib/documents/resolve-authenticated-pdf-source';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -46,11 +52,7 @@ import { useTranslation } from 'react-i18next';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-type PDFFileSource =
-  | string
-  | { url: string }
-  | { data: ArrayBuffer | Uint8Array }
-  | null;
+type PDFFileSource = PdfFileSource;
 
 const Document = dynamic(() => import('react-pdf').then((mod) => mod.Document), {
   ssr: false,
@@ -345,38 +347,71 @@ export function PDFViewer({
 
   const [urlOk, setUrlOk] = useState<boolean | null>(null);
   const [probeError, setProbeError] = useState<string | null>(null);
+  const [resolvedFile, setResolvedFile] = useState<DocumentProps['file'] | null>(
+    null,
+  );
+  const [authRetryKey, setAuthRetryKey] = useState(0);
 
+  // Auth-enabled demo: bare download URLs 401 without Bearer. Fetch with
+  // buildHeaders → in-memory bytes (same pattern as AuthenticatedMarkdownImage).
   useEffect(() => {
-    const url = typeof file === 'string' ? file : (file as { url?: string } | null)?.url;
     let cancelled = false;
+    const ac = new AbortController();
+
+    const sourceUrl = extractPdfSourceUrl(file);
     Promise.resolve().then(async () => {
-      if (!url) {
+      if (!file) {
         if (!cancelled) {
+          setResolvedFile(null);
           setUrlOk(true);
           setProbeError(null);
         }
         return;
       }
+
       if (!cancelled) {
         setUrlOk(null);
         setProbeError(null);
+        setResolvedFile(null);
+        setIsLoading(true);
       }
-      try {
-        const res = await fetch(url, { method: 'HEAD' });
-        if (cancelled) return;
-        setUrlOk(res.ok);
-        if (!res.ok) {
-          setProbeError(`ResponseException: Unexpected server response (${res.status})`);
-          setIsLoading(false);
+
+      // Already-local sources (bytes / non-API URLs) pass through.
+      if (
+        !sourceUrl ||
+        !isApiProtectedPdfUrl(sourceUrl) ||
+        sourceUrl.startsWith('blob:')
+      ) {
+        if (!cancelled) {
+          setResolvedFile(file as DocumentProps['file']);
+          setUrlOk(true);
         }
-      } catch {
-        if (!cancelled) setUrlOk(true);
+        return;
+      }
+
+      try {
+        const dataFile = await fetchAuthenticatedPdfData(sourceUrl, ac.signal);
+        if (cancelled) return;
+        setResolvedFile(dataFile);
+        setUrlOk(true);
+        setProbeError(null);
+      } catch (err) {
+        if (cancelled || ac.signal.aborted) return;
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'ResponseException: Unexpected server response';
+        setProbeError(message);
+        setUrlOk(false);
+        setIsLoading(false);
       }
     });
+
     return () => {
       cancelled = true;
+      ac.abort();
     };
-  }, [file]);
+  }, [file, authRetryKey]);
 
   const handleLoadSuccess = useCallback(
     ({ numPages: n }: { numPages: number }) => {
@@ -438,12 +473,14 @@ export function PDFViewer({
           setError(null);
           setProbeError(null);
           setUrlOk(null);
+          setResolvedFile(null);
+          setAuthRetryKey((k) => k + 1);
         }}
       />
     );
   }
 
-  if (urlOk === null) {
+  if (urlOk === null || !resolvedFile) {
     return (
       <div className={cn('flex flex-col h-full min-h-0', className)}>
         <PDFLoadingSkeleton />
@@ -451,7 +488,7 @@ export function PDFViewer({
     );
   }
 
-  const documentFile: DocumentProps['file'] = file;
+  const documentFile: DocumentProps['file'] = resolvedFile;
 
   return (
     <div

@@ -2,9 +2,34 @@
 //!
 //! This module contains the core types used for real-time progress streaming
 //! via WebSocket connections.
+//!
+//! SPEC-149: client commands (`subscribe` / `unsubscribe`) are first-class;
+//! the tagged `{type,data}` envelope for [`ProgressEvent`] remains the wire SSOT.
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
+
+/// Maximum track ids retained per global pipeline socket (SPEC-149 EC-149-06).
+pub const MAX_WS_SUBSCRIPTIONS: usize = 256;
+
+/// Client → server commands on `/ws/pipeline/progress` (SPEC-149).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ClientCommand {
+    Subscribe {
+        track_ids: Vec<String>,
+    },
+    Unsubscribe {
+        track_ids: Vec<String>,
+    },
+    Cancel {
+        track_id: String,
+    },
+    Ping {
+        #[serde(default)]
+        client_time: Option<String>,
+    },
+}
 
 // ============================================================================
 // Deletion Phase Types (SPEC-050)
@@ -321,6 +346,12 @@ pub enum ProgressEvent {
         /// Documents purged before failure (best-effort).
         #[serde(default)]
         deleted_count: usize,
+    },
+
+    /// Subscribe acknowledgement (SPEC-149) — lists only accepted track ids.
+    SubscribedAck {
+        accepted: Vec<String>,
+        requested: usize,
     },
 }
 

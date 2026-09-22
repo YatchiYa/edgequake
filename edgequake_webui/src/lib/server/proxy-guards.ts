@@ -27,6 +27,7 @@ export function authRequired(env: EnvLike = process.env): boolean {
 
 export function isPublicPath(pathname: string): boolean {
   if (pathname === "/") return false;
+  if (pathname === "/pdf.worker.min.mjs") return true;
   return PUBLIC_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );

@@ -1,0 +1,5 @@
+HTTP/1.1 301 Moved Permanently
+Location: https://34.135.165.171/health
+Server: Caddy
+Date: Sat, 19 Sep 2026 04:38:37 GMT
+

@@ -1,28 +1,28 @@
 /**
  * @module progress-websocket
- * @description WebSocket Client for Progress Tracking
- *
- * Provides real-time progress updates for document ingestion.
- * Based on WebUI Specification Document WEBUI-005 (14-webui-websocket-progress.md)
+ * @description WebSocket client for multiplexed ingestion progress (SPEC-149).
  *
  * @implements FEAT0724 - Real-time ingestion progress
  * @implements FEAT0725 - Heartbeat keep-alive
  * @implements FEAT0726 - Subscription-based updates
- *
- * @enforces BR0721 - Heartbeat every 30s
- * @enforces BR0722 - Max 5 reconnect attempts
- * @enforces BR0723 - Clean disconnect on page unload
+ * @implements SPEC-149 - Auth-aware reconnect, desired-sub replay, CONNECTING guard
  */
 
 import type {
-    ClientCommand,
-    WebSocketProgressMessage,
+  ClientCommand,
+  WebSocketProgressMessage,
 } from "@/types/ingestion";
+import { normalizeProgressEvent } from "./progress-event-normalizer";
 
 export interface ProgressWebSocketOptions {
-  url: string;
+  /** Resolve the WS URL on every connect (LAW-149-1). */
+  urlResolver?: () => string;
+  /** @deprecated Prefer urlResolver — static URL freezes credentials. */
+  url?: string;
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
+  /** Cap exponential backoff delay (ms). */
+  maxReconnectDelayMs?: number;
   heartbeatInterval?: number;
   onConnected?: () => void;
   onDisconnected?: (event: { code: number; reason: string }) => void;
@@ -40,18 +40,13 @@ type WebSocketEventType =
   | "error"
   | "progress"
   | "status_snapshot"
-  | "pdf_progress";
+  | "pdf_progress"
+  | "graph_storage_progress";
 
 type WebSocketEventCallback = (...args: unknown[]) => void;
 
 /**
  * WebSocket client for real-time ingestion progress tracking.
- *
- * Features:
- * - Automatic reconnection with exponential backoff
- * - Heartbeat to keep connection alive
- * - Type-safe message handling
- * - Subscription management
  */
 export class ProgressWebSocket {
   private ws: WebSocket | null = null;
@@ -61,10 +56,16 @@ export class ProgressWebSocket {
   private messageQueue: ClientCommand[] = [];
   private listeners: Map<WebSocketEventType, Set<WebSocketEventCallback>> =
     new Map();
+  /** Desired track subscriptions — replayed after every reconnect (LAW-149-7). */
+  private desiredSubs = new Set<string>();
+  /** Ignores callbacks from superseded sockets (LAW-149-8). */
+  private generation = 0;
+  private intentionalClose = false;
 
   public readonly options: Required<
     Omit<
       ProgressWebSocketOptions,
+      | "url"
       | "onConnected"
       | "onDisconnected"
       | "onReconnecting"
@@ -96,86 +97,164 @@ export class ProgressWebSocket {
     return this._reconnecting;
   }
 
+  /** Snapshot of desired subscription track ids (tests / diagnostics). */
+  getDesiredSubscriptions(): string[] {
+    return [...this.desiredSubs].sort();
+  }
+
   constructor(options: ProgressWebSocketOptions) {
+    const { urlResolver: providedResolver, url, ...rest } = options;
+    const urlResolver =
+      providedResolver ??
+      (() => {
+        if (!url) {
+          throw new Error("ProgressWebSocket requires urlResolver or url");
+        }
+        return url;
+      });
+
     this.options = {
       reconnectInterval: 3000,
       maxReconnectAttempts: 10,
+      maxReconnectDelayMs: 30_000,
       heartbeatInterval: 30000,
-      ...options,
+      ...rest,
+      urlResolver,
     };
   }
 
   /**
-   * Connect to the WebSocket server.
+   * Connect to the WebSocket server (idempotent for OPEN and CONNECTING).
    */
   connect(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    if (
+      this.ws?.readyState === WebSocket.OPEN ||
+      this.ws?.readyState === WebSocket.CONNECTING
+    ) {
       return;
     }
 
+    this.intentionalClose = false;
+    const gen = ++this.generation;
+
     try {
-      this.ws = new WebSocket(this.options.url);
-      this.setupEventHandlers();
+      const url = this.options.urlResolver();
+      this.ws = new WebSocket(url);
+      this.setupEventHandlers(gen);
     } catch (error) {
       this.handleError(error as Error);
     }
   }
 
-  private setupEventHandlers(): void {
-    if (!this.ws) return;
+  /**
+   * Reset backoff and reconnect with a freshly resolved URL (Retry / token refresh).
+   */
+  reconnectFresh(): void {
+    this.stopHeartbeat();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+    this.reconnectAttempts = 0;
+    this._reconnecting = false;
+    this.intentionalClose = true;
+    if (this.ws) {
+      try {
+        this.ws.close(1000, "Client reconnect");
+      } catch {
+        /* ignore */
+      }
+      this.ws = null;
+    }
+    this._connected = false;
+    this.intentionalClose = false;
+    this.connect();
+  }
 
-    this.ws.onopen = () => {
+  private setupEventHandlers(gen: number): void {
+    if (!this.ws) return;
+    const socket = this.ws;
+
+    socket.onopen = () => {
+      if (gen !== this.generation) return;
       this._connected = true;
       this._reconnecting = false;
       this.reconnectAttempts = 0;
       this.startHeartbeat();
       this.flushMessageQueue();
+      this.replayDesiredSubscriptions();
       this.emit("connected");
       this.options.onConnected?.();
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (gen !== this.generation) return;
       try {
-        const message: WebSocketProgressMessage = JSON.parse(event.data);
+        const raw = JSON.parse(event.data as string) as unknown;
+        const message = normalizeProgressEvent(raw);
+        if (!message) {
+          console.warn(
+            "[ProgressWebSocket] Unrecognized message shape:",
+            typeof raw === "object" && raw && "type" in raw
+              ? (raw as { type?: string }).type
+              : raw,
+          );
+          return;
+        }
         this.handleMessage(message);
       } catch (error) {
         console.error("[ProgressWebSocket] Failed to parse message:", error);
       }
     };
 
-    this.ws.onclose = (event) => {
+    socket.onclose = (event) => {
+      if (gen !== this.generation) return;
       this._connected = false;
       this.stopHeartbeat();
       this.emit("disconnected", { code: event.code, reason: event.reason });
       this.options.onDisconnected?.({ code: event.code, reason: event.reason });
 
-      if (!event.wasClean) {
+      if (!this.intentionalClose && !event.wasClean) {
         this.attemptReconnect();
       }
     };
 
-    this.ws.onerror = () => {
+    socket.onerror = () => {
+      if (gen !== this.generation) return;
       this.handleError(new Error("WebSocket connection error"));
     };
+  }
+
+  private replayDesiredSubscriptions(): void {
+    if (this.desiredSubs.size === 0) return;
+    const trackIds = [...this.desiredSubs];
+    this.send({ type: "subscribe", track_ids: trackIds });
   }
 
   private handleMessage(message: WebSocketProgressMessage): void {
     switch (message.type) {
       case "heartbeat":
       case "Heartbeat":
-        // Connection is alive, no action needed
         break;
       case "Connected":
-        // Backend connection confirmation
         console.log("[ProgressWebSocket] Backend confirmed connection");
         break;
+      case "SubscribedAck":
+        break;
       case "StatusSnapshot":
-        // Full pipeline status snapshot
         this.emit("status_snapshot", message);
         this.options.onMessage?.(message);
         break;
       case "PdfPageProgress":
-        // OODA-PERF-02: PDF page-by-page progress events
+        this.emit("pdf_progress", message);
+        this.options.onMessage?.(message);
+        break;
+      case "GraphStorageProgress":
+        this.emit("graph_storage_progress", message);
+        this.emit("progress", message);
+        this.options.onMessage?.(message);
+        break;
+      case "ProgressSnapshot":
         this.emit("pdf_progress", message);
         this.options.onMessage?.(message);
         break;
@@ -186,20 +265,8 @@ export class ProgressWebSocket {
       case "ingestion_completed":
       case "ingestion_failed":
       case "ChunkProgress":
-        // SPEC-001/Objective-A: Chunk-level progress events for granular visibility
-        this.emit("progress", message);
-        this.options.onMessage?.(message);
-        break;
       case "StageTransition":
-        // SPEC-086: unified-stage enter for MD/text Insert tracks
-        this.emit("progress", message);
-        this.options.onMessage?.(message);
-        break;
       case "ChunkFailure":
-        // SPEC-003: Chunk failure events for resilient extraction visibility
-        this.emit("progress", message);
-        this.options.onMessage?.(message);
-        break;
       case "DeletionStarted":
       case "DeletionPhase":
       case "DeletionCompleted":
@@ -208,8 +275,6 @@ export class ProgressWebSocket {
       case "BulkDeletionItemProgress":
       case "BulkDeletionCompleted":
       case "BulkDeletionFailed":
-        // SPEC-050: Deletion progress events — broadcast as generic "progress"
-        // so existing listeners receive them. Specialised hooks filter by type.
         this.emit("progress", message);
         this.options.onMessage?.(message);
         break;
@@ -245,8 +310,10 @@ export class ProgressWebSocket {
     this._reconnecting = true;
     this.reconnectAttempts++;
 
-    const delay =
-      this.options.reconnectInterval * Math.pow(2, this.reconnectAttempts - 1);
+    const rawDelay =
+      this.options.reconnectInterval *
+      Math.pow(2, this.reconnectAttempts - 1);
+    const delay = Math.min(rawDelay, this.options.maxReconnectDelayMs);
 
     this.emit("reconnecting", this.reconnectAttempts);
     this.options.onReconnecting?.(this.reconnectAttempts);
@@ -257,8 +324,6 @@ export class ProgressWebSocket {
   }
 
   private handleError(error: Error): void {
-    // Only log to console in development, and use warn instead of error for connection issues
-    // This is expected when backend is not running
     if (process.env.NODE_ENV === "development") {
       console.warn(
         "[ProgressWebSocket] Connection unavailable - backend may not be running",
@@ -277,52 +342,54 @@ export class ProgressWebSocket {
     }
   }
 
-  /**
-   * Send a command to the server.
-   */
   send(command: ClientCommand): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(command));
     } else {
-      // Queue for later
       this.messageQueue.push(command);
     }
   }
 
   /**
    * Subscribe to ingestion progress updates for specific track IDs.
+   * Updates the durable desired set and connects if needed.
    */
   subscribe(trackIds: string[]): void {
-    if (this.ws?.readyState !== WebSocket.OPEN) {
+    for (const id of trackIds) {
+      if (id) this.desiredSubs.add(id);
+    }
+    if (
+      this.ws?.readyState !== WebSocket.OPEN &&
+      this.ws?.readyState !== WebSocket.CONNECTING
+    ) {
       this.connect();
     }
-
     this.send({ type: "subscribe", track_ids: trackIds });
   }
 
-  /**
-   * Unsubscribe from ingestion progress updates.
-   */
   unsubscribe(trackIds: string[]): void {
+    for (const id of trackIds) {
+      this.desiredSubs.delete(id);
+    }
     this.send({ type: "unsubscribe", track_ids: trackIds });
   }
 
-  /**
-   * Request cancellation of an ingestion job.
-   */
+  clearDesiredSubscriptions(): void {
+    this.desiredSubs.clear();
+  }
+
   cancel(trackId: string): void {
     this.send({ type: "cancel", track_id: trackId });
   }
 
-  /**
-   * Disconnect from the WebSocket server.
-   */
   disconnect(): void {
+    this.intentionalClose = true;
     this.stopHeartbeat();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
     }
+    this.generation++;
     if (this.ws) {
       this.ws.close(1000, "Client disconnect");
       this.ws = null;
@@ -333,24 +400,16 @@ export class ProgressWebSocket {
     this.messageQueue = [];
   }
 
-  /**
-   * Add an event listener.
-   */
   on(event: WebSocketEventType, callback: WebSocketEventCallback): () => void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
     this.listeners.get(event)!.add(callback);
-
-    // Return unsubscribe function
     return () => {
       this.listeners.get(event)?.delete(callback);
     };
   }
 
-  /**
-   * Remove an event listener.
-   */
   off(event: WebSocketEventType, callback: WebSocketEventCallback): void {
     this.listeners.get(event)?.delete(callback);
   }

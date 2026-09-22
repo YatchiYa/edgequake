@@ -55,7 +55,10 @@ pub use entity_resolution::{
     resolve_after_exact_miss, ErDecision, DEFAULT_EMBED_ER_THRESHOLD, ENTITY_EMBED_ER_ENV,
     ER_LLM_ENV,
 };
-pub use entity_type_vote::{apply_entity_type_vote, resolve_majority_type, ENTITY_TYPE_VOTES_KEY};
+pub use entity_type_vote::{
+    apply_entity_type_vote, apply_manual_type_override, resolve_majority_type,
+    ENTITY_TYPE_LOCKED_KEY, ENTITY_TYPE_VOTES_KEY,
+};
 pub use lineage::{
     document_id_from_chunk_id, document_ids_from_chunk_ids, insert_chunk_lineage_properties,
     insert_document_lineage_properties, merge_and_insert_document_lineage, merge_document_ids,

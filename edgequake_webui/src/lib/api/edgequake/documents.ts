@@ -220,17 +220,16 @@ export async function getPdfProgress(
 }
 
 /**
- * Create an EventSource for SSE-based progress streaming.
- * Preferred over polling for large documents (100+ pages).
- *
- * @implements FEAT-PDF-PROGRESS: SSE real-time page progress
- * @param trackId The upload tracking ID
- * @returns EventSource instance (caller is responsible for closing)
+ * Authenticated SSE stream for PDF page progress (SPEC-149).
+ * @see document-core.streamPdfProgress
  */
-export function createPdfProgressEventSource(trackId: string): EventSource {
-  const baseUrl = getRuntimeServerBaseUrl();
-  const url = `${baseUrl}/api/v1/documents/pdf/progress/stream/${trackId}`;
-  return new EventSource(url);
+export { streamPdfProgress } from "./document-core";
+
+/** @deprecated Use streamPdfProgress — EventSource cannot authenticate. */
+export function createPdfProgressEventSource(_trackId: string): EventSource {
+  throw new Error(
+    "createPdfProgressEventSource is removed (SPEC-149). Use streamPdfProgress with AbortSignal.",
+  );
 }
 
 /**

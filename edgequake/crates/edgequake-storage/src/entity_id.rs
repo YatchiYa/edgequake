@@ -118,6 +118,41 @@ impl EntityId {
         }
     }
 
+    /// Exact graph-node lookup candidates for a path/query identifier.
+    ///
+    /// Order: **raw trimmed** → **workspace-scoped canonical** → **legacy bare**.
+    /// Deduplicated. Never normalizes the whole `{uuid}::NAME` string (that
+    /// uppercases the UUID prefix and was the original WebUI 404).
+    ///
+    /// Scope is stripped with [`bare_name_from_graph_node_id`] (UUID-shaped
+    /// prefix only) before [`EntityId::new`] so bare and scoped forms share
+    /// one identity.
+    pub fn exact_lookup_candidates(raw: &str, workspace_id: Option<&str>) -> Vec<String> {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return Vec::new();
+        }
+
+        let bare = Self::bare_name_from_graph_node_id(raw);
+        let entity = Self::new(bare);
+
+        let mut candidates = Vec::with_capacity(3);
+        candidates.push(raw.to_string());
+
+        if !entity.is_empty() {
+            let scoped = entity.graph_node_id_for_workspace(workspace_id);
+            if !candidates.iter().any(|c| c == &scoped) {
+                candidates.push(scoped);
+            }
+            let legacy = entity.as_graph_node_id().to_string();
+            if !candidates.iter().any(|c| c == &legacy) {
+                candidates.push(legacy);
+            }
+        }
+
+        candidates
+    }
+
     /// The prefixed vector storage id (`entity:NAME`), used as the entity
     /// vector id.
     pub fn as_vector_id(&self) -> String {
@@ -555,6 +590,53 @@ mod tests {
         assert_eq!(
             EntityId::bare_name_from_graph_node_id("ALPHA::BETA"),
             "ALPHA::BETA"
+        );
+    }
+
+    #[test]
+    fn exact_lookup_candidates_bare_name() {
+        let ws = "e0270f5f-0b6c-4e90-882f-5f9b0eac8cff";
+        let c = EntityId::exact_lookup_candidates("Marc Dubois", Some(ws));
+        assert_eq!(
+            c,
+            vec![
+                "Marc Dubois".to_string(),
+                format!("{ws}::MARC_DUBOIS"),
+                "MARC_DUBOIS".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn exact_lookup_candidates_scoped_id() {
+        let ws = "e0270f5f-0b6c-4e90-882f-5f9b0eac8cff";
+        let scoped = format!("{ws}::MARC_DUBOIS");
+        let c = EntityId::exact_lookup_candidates(&scoped, Some(ws));
+        assert_eq!(c, vec![scoped.clone(), "MARC_DUBOIS".to_string()]);
+        // Never double-scope.
+        assert!(!c.iter().any(|id| id.matches("::").count() > 1));
+    }
+
+    #[test]
+    fn exact_lookup_candidates_uppercased_uuid_path() {
+        let ws = "e0270f5f-0b6c-4e90-882f-5f9b0eac8cff";
+        let upper_scoped = format!("{}::MARC_DUBOIS", ws.to_ascii_uppercase());
+        let c = EntityId::exact_lookup_candidates(&upper_scoped, Some(ws));
+        assert_eq!(c[0], upper_scoped);
+        assert_eq!(c[1], format!("{ws}::MARC_DUBOIS"));
+        assert_eq!(c[2], "MARC_DUBOIS");
+        assert!(!c.iter().any(|id| {
+            let parts: Vec<_> = id.split("::").collect();
+            parts.len() > 2
+        }));
+    }
+
+    #[test]
+    fn exact_lookup_candidates_no_workspace_is_bare_only() {
+        let c = EntityId::exact_lookup_candidates("Marc Dubois", None);
+        assert_eq!(
+            c,
+            vec!["Marc Dubois".to_string(), "MARC_DUBOIS".to_string()]
         );
     }
 

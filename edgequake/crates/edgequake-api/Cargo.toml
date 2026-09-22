@@ -99,3 +99,6 @@ serial_test = "3.2"
 urlencoding = "2.1"
 wiremock = "0.6"
 jsonwebtoken = { workspace = true }
+# SPEC-149: real WebSocket client for frame-level e2e proofs
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect"] }
+futures-util = "0.3"

@@ -1,4 +1,3 @@
-import { getRuntimeServerBaseUrl } from "@/lib/runtime-config";
 import {
   postMultipart,
   type MultipartUploadProgress,
@@ -17,6 +16,7 @@ import type {
 } from "@/types";
 import { api, DOCUMENTS_API_TIMEOUT_MS } from "../client";
 import { buildQueryString, withQuery } from "../query-params";
+import { streamClientFrames } from "../stream-client";
 
 export interface DocumentsListResult extends PaginatedResponse<Document> {
   status_counts: DocumentStatusCounts;
@@ -159,9 +159,28 @@ export async function getPdfProgress(
   return api.get<PdfProgressResponse>(`/documents/pdf/progress/${trackId}`);
 }
 
-export function createPdfProgressEventSource(trackId: string): EventSource {
-  return new EventSource(
-    `${getRuntimeServerBaseUrl()}/api/v1/documents/pdf/progress/stream/${trackId}`,
+/**
+ * Authenticated SSE stream for PDF page progress (SPEC-149 LAW-149-10).
+ * Replaces credential-less `EventSource`.
+ */
+export async function* streamPdfProgress(
+  trackId: string,
+  options: { signal?: AbortSignal } = {},
+): AsyncGenerator<
+  { event: string; data: PdfProgressResponse },
+  void,
+  unknown
+> {
+  yield* streamClientFrames<PdfProgressResponse>(
+    `/documents/pdf/progress/stream/${trackId}`,
+    { signal: options.signal },
+  );
+}
+
+/** @deprecated Use {@link streamPdfProgress} — EventSource cannot send auth. */
+export function createPdfProgressEventSource(_trackId: string): EventSource {
+  throw new Error(
+    "createPdfProgressEventSource is removed (SPEC-149). Use streamPdfProgress with AbortSignal.",
   );
 }
 

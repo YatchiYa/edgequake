@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (gitignored).
+project_id         = "saas-app-001"
+region             = "us-central1"
+zone               = "us-central1-a"
+name_prefix        = "edgequake"     # bucket/secrets/WIF/SAs/IP; VPC is edgequake-host-vpc
+instance_name      = "elitizon-db"
+machine_type       = "e2-medium"
+edgequake_version  = "0.26.5"
+hostname           = "demo.edgequake.com"
+caddy_acme_email   = "raphael.mansuy@elitizon.com"
+github_repository  = "raphaelmansuy/edgequake"
+operator_members   = ["user:raphael.mansuy@elitizon.com"]

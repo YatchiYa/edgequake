@@ -1,0 +1,35 @@
+(app) {
+	# LAW-148-13: reverse-proxy only on the HTTPS site that imports this snippet.
+	# Do not gzip: Next.js + SSE (text/event-stream) must not be buffered.
+
+	handle /api* {
+		reverse_proxy api:8080
+	}
+	handle /health {
+		reverse_proxy api:8080
+	}
+	handle /live {
+		reverse_proxy api:8080
+	}
+	handle /ready {
+		reverse_proxy api:8080
+	}
+	handle /metrics {
+		reverse_proxy api:8080
+	}
+	handle /version {
+		reverse_proxy api:8080
+	}
+	handle /swagger-ui* {
+		reverse_proxy api:8080
+	}
+	handle /api-docs* {
+		reverse_proxy api:8080
+	}
+	handle /ws* {
+		reverse_proxy api:8080
+	}
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

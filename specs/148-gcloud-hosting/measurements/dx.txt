@@ -1,0 +1,7 @@
+# From elitizon-db startup serial (2026-09-19T04:37:20Z). No secrets.
+ Name      | Version | Schema
+ age       | 1.8.0   | ag_catalog
+ pg_trgm   | 1.6     | ag_catalog
+ plpgsql   | 1.0     | pg_catalog
+ uuid-ossp | 1.1     | public
+ vector    | 0.8.5   | public

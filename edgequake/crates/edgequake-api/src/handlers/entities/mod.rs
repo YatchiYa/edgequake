@@ -59,29 +59,19 @@ pub(super) fn normalize_entity_name_for_graph(name: &str) -> String {
 
 /// Resolve a path identifier to the stored graph node, **exact match only**.
 ///
-/// Graph node ids are workspace-scoped (`{workspace_id}::NAME`). Normalizing
-/// the whole path segment uppercases the UUID prefix, so a scoped id from the
-/// WebUI (`node.id`) never matched and a bare name never gained its prefix:
-/// GET/PUT/DELETE `/graph/entities/{name}` returned 404 for every node.
-///
-/// Candidates, in order: normalized bare name (legacy unscoped nodes), the raw
-/// segment as sent (scoped id from the UI), `{workspace}::{normalized}` (bare
-/// name under the current workspace). No search fallback — a mutation must
-/// never land on a "close enough" node.
+/// Graph node ids are workspace-scoped (`{workspace_id}::NAME`). Candidates
+/// come from [`EntityId::exact_lookup_candidates`] — never normalize the whole
+/// `{uuid}::NAME` string (that uppercases the UUID and 404s WebUI ids).
+/// No search fallback — a mutation must never land on a "close enough" node.
+/// 404s are opaque (no candidate list leakage).
 pub(crate) async fn resolve_entity_node_exact(
     graph: &dyn edgequake_storage::traits::GraphStorageReadOps,
     raw: &str,
     ctx: &crate::middleware::TenantContext,
 ) -> crate::error::ApiResult<GraphNode> {
     let raw = raw.trim();
-    let normalized = normalize_entity_name_for_graph(raw);
-    let mut candidates = vec![normalized.clone(), raw.to_string()];
-    if let Some(ws) = ctx.workspace_id.as_deref().filter(|w| !w.trim().is_empty()) {
-        if !normalized.is_empty() {
-            candidates.push(format!("{ws}::{normalized}"));
-        }
-    }
-    candidates.dedup();
+    let candidates =
+        edgequake_storage::EntityId::exact_lookup_candidates(raw, ctx.workspace_id.as_deref());
     for candidate in &candidates {
         if candidate.is_empty() {
             continue;
@@ -93,8 +83,7 @@ pub(crate) async fn resolve_entity_node_exact(
         }
     }
     Err(crate::error::ApiError::NotFound(format!(
-        "Entity '{raw}' not found (tried: {})",
-        candidates.join(", ")
+        "Entity '{raw}' not found"
     )))
 }
 
@@ -323,6 +312,19 @@ mod resolve_tests {
             resolve_entity_node_exact(&graph, &format!("{WS}::MARC_DUBOIS"), &other)
                 .await
                 .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn not_found_is_opaque() {
+        let graph = graph_with_scoped_node().await;
+        let err = resolve_entity_node_exact(&graph, "NO_SUCH_ENTITY", &ctx())
+            .await
+            .expect_err("must 404");
+        let msg = err.to_string();
+        assert!(
+            !msg.contains("tried:"),
+            "404 must not leak candidates: {msg}"
         );
     }
 }

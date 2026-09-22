@@ -268,6 +268,17 @@ export interface ConnectedEvent {
 }
 
 /**
+ * SPEC-149: subscribe acknowledgement (accepted ids only).
+ */
+export interface SubscribedAckEvent {
+  type: "SubscribedAck";
+  data: {
+    accepted: string[];
+    requested: number;
+  };
+}
+
+/**
  * Status snapshot event containing current pipeline state.
  *
  * WHY: Provides full synchronization of pipeline state when client connects
@@ -282,6 +293,13 @@ export interface StatusSnapshotEvent {
     status: string;
     progress: number;
   }>;
+  /** Backend StatusSnapshot fields when auth is off / unscoped */
+  is_busy?: boolean;
+  job_name?: string | null;
+  processed_documents?: number;
+  total_documents?: number;
+  current_batch?: number;
+  total_batches?: number;
 }
 
 /**
@@ -307,6 +325,9 @@ export interface PdfPageProgressEvent {
     progress: number;
     /** Current phase: "start", "extraction", "partial_complete", "complete" */
     phase?: string;
+    success?: boolean;
+    error?: string;
+    markdown_len?: number;
   };
 }
 
@@ -398,11 +419,15 @@ export type WebSocketProgressMessage =
   | IngestionFailedEvent
   | HeartbeatEvent
   | ConnectedEvent
+  | SubscribedAckEvent
   | StatusSnapshotEvent
   | PdfPageProgressEvent
   | ChunkProgressEvent
   | StageTransitionEvent
   | ChunkFailureEvent
+  | GraphStorageProgressEvent
+  | ProgressSnapshotEvent
+  | PipelineMessageEvent
   | DeletionStartedEvent
   | DeletionPhaseEvent
   | DeletionCompletedEvent
@@ -411,6 +436,42 @@ export type WebSocketProgressMessage =
   | BulkDeletionItemProgressEvent
   | BulkDeletionCompletedEvent
   | BulkDeletionFailedEvent;
+
+/** SPEC-032 / SPEC-149: graph merge sub-phase progress. */
+export interface GraphStorageProgressEvent {
+  type: "GraphStorageProgress";
+  data: {
+    track_id: string;
+    document_id: string;
+    sub_phase: string;
+    sub_phase_label: string;
+    entities_processed: number;
+    entities_total: number;
+    entities_created: number;
+    entities_updated: number;
+    relationships_processed: number;
+    relationships_total: number;
+    relationships_created: number;
+    relationships_updated: number;
+    elapsed_ms: number;
+    eta_ms: number | null;
+  };
+}
+
+/** Per-track PDF progress snapshot (compatibility endpoint). */
+export interface ProgressSnapshotEvent {
+  type: "ProgressSnapshot";
+  data: Record<string, unknown>;
+}
+
+export interface PipelineMessageEvent {
+  type: "Message";
+  data: {
+    level: string;
+    message: string;
+    timestamp: string;
+  };
+}
 
 // ============================================================================
 // Deletion Progress Event Types (SPEC-050)

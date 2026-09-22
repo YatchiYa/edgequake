@@ -20,14 +20,15 @@
 
 import {
     cancelPdfProcessing,
-    createPdfProgressEventSource,
     getPdfProgress,
+    streamPdfProgress,
     type PdfOperationResponse,
     type PdfProgressResponse,
     type PhaseProgressData,
     retryPdfProcessing,
 } from "@/lib/api/edgequake";
 import { getWebSocketClient } from "@/lib/websocket";
+import type { GraphStorageProgressEvent } from "@/types/ingestion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -258,7 +259,7 @@ export function usePdfProgress(
 
   // SSE connection state for real-time page progress
   const [sseConnected, setSseConnected] = useState(false);
-  const sseRef = useRef<EventSource | null>(null);
+  const sseAbortRef = useRef<AbortController | null>(null);
 
   // Page speed tracking: stores timestamps for completed pages
   const pageTimestampsRef = useRef<number[]>([]);
@@ -313,23 +314,18 @@ export function usePdfProgress(
   }, [trackId, enabled, preferWebSocket]);
 
   // SPEC-032 W-04: Subscribe to graph_storage_progress WebSocket events.
-  // These events arrive during the GraphStorage pipeline phase (after extraction)
-  // and contain per-batch entity/relationship merge progress.
   useEffect(() => {
     if (!trackId || !enabled) return;
 
     const wsClient = getWebSocketClient();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const unsubGraphStorage = (wsClient as any).on?.(
+    const unsubGraphStorage = wsClient.on(
       "graph_storage_progress",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (message: any) => {
+      (message: unknown) => {
         try {
-          const data = typeof message === "string" ? JSON.parse(message) : message;
-          // Only update if this event is for our track_id
-          if (data?.track_id !== trackId && data?.data?.track_id !== trackId) return;
-          const payload = data?.data ?? data;
+          const event = message as GraphStorageProgressEvent;
+          const payload = event?.data;
+          if (!payload || payload.track_id !== trackId) return;
           setGraphStorageProgress({
             subPhase: payload.sub_phase ?? "",
             subPhaseLabel: payload.sub_phase_label ?? "",
@@ -347,130 +343,90 @@ export function usePdfProgress(
         } catch {
           // Ignore malformed events
         }
-      }
+      },
     );
 
     return () => {
-      if (typeof unsubGraphStorage === "function") unsubGraphStorage();
+      unsubGraphStorage();
       setGraphStorageProgress(null);
     };
   }, [trackId, enabled]);
 
-  // SSE connection for real-time page-level progress
-  // WHY: SSE provides lower-latency, server-push progress updates without
-  // the overhead of polling. Especially important for large documents (1000+ pages)
-  // where polling would miss page-by-page updates or create excessive requests.
+  // Authenticated fetch SSE for page-level progress (SPEC-149 LAW-149-10).
   useEffect(() => {
     if (!trackId || !enabled || !preferSSE) return;
 
-    // Close any existing SSE connection
-    if (sseRef.current) {
-      sseRef.current.close();
-      sseRef.current = null;
-    }
+    sseAbortRef.current?.abort();
+    const controller = new AbortController();
+    sseAbortRef.current = controller;
+    let cancelled = false;
 
-    const eventSource = createPdfProgressEventSource(trackId);
-    sseRef.current = eventSource;
-
-    eventSource.onopen = () => {
-      setSseConnected(true);
-    };
-
-    // Listen for 'progress' events from the SSE stream
-    eventSource.addEventListener("progress", (event) => {
-      try {
-        const data = JSON.parse(event.data) as PdfProgressResponse;
-        // Update the query cache so the UI reacts immediately
-        queryClient.setQueryData(["pdf-progress", trackId], data);
-
-        // Track page timestamps for speed calculation
-        const conversionPhase = data.phases?.find(
-          (_p: PhaseProgressData, i: number) => i === 1, // pdf_conversion is index 1
-        );
-        if (
-          conversionPhase?.status === "active" &&
-          conversionPhase.current > 0
-        ) {
-          const now = Date.now();
-          const timestamps = pageTimestampsRef.current;
-          // Only add if we have a new page completion
-          if (timestamps.length < conversionPhase.current) {
-            timestamps.push(now);
-            // Calculate speed from last N pages (sliding window)
-            const windowSize = Math.min(10, timestamps.length);
-            if (windowSize >= 2) {
-              const windowStart = timestamps[timestamps.length - windowSize];
-              const windowEnd = timestamps[timestamps.length - 1];
-              const elapsedMinutes = (windowEnd - windowStart) / 60000;
-              if (elapsedMinutes > 0) {
-                setPagesPerMinute(
-                  Math.round(((windowSize - 1) / elapsedMinutes) * 10) / 10,
-                );
-              }
+    const applyPageSpeed = (data: PdfProgressResponse) => {
+      const conversionPhase = data.phases?.find(
+        (_p: PhaseProgressData, i: number) => i === 1,
+      );
+      if (
+        conversionPhase?.status === "active" &&
+        conversionPhase.current > 0
+      ) {
+        const now = Date.now();
+        const timestamps = pageTimestampsRef.current;
+        if (timestamps.length < conversionPhase.current) {
+          timestamps.push(now);
+          const windowSize = Math.min(10, timestamps.length);
+          if (windowSize >= 2) {
+            const windowStart = timestamps[timestamps.length - windowSize];
+            const windowEnd = timestamps[timestamps.length - 1];
+            const elapsedMinutes = (windowEnd - windowStart) / 60000;
+            if (elapsedMinutes > 0) {
+              setPagesPerMinute(
+                Math.round(((windowSize - 1) / elapsedMinutes) * 10) / 10,
+              );
             }
           }
         }
-      } catch {
-        // Ignore parse errors from malformed events
-      }
-    });
-
-    // Listen for 'complete' events
-    eventSource.addEventListener("complete", (event) => {
-      try {
-        const data = JSON.parse(event.data) as PdfProgressResponse;
-        queryClient.setQueryData(["pdf-progress", trackId], data);
-      } catch {
-        // Force a refetch on parse failure
-        queryClient.invalidateQueries({ queryKey: ["pdf-progress", trackId] });
-      }
-      // Close SSE on completion
-      eventSource.close();
-      sseRef.current = null;
-      setSseConnected(false);
-    });
-
-    // Listen for 'error' events from the SSE stream (application-level)
-    eventSource.addEventListener("error_event", (event) => {
-      try {
-        const data = JSON.parse(event.data) as PdfProgressResponse;
-        queryClient.setQueryData(["pdf-progress", trackId], data);
-      } catch {
-        queryClient.invalidateQueries({ queryKey: ["pdf-progress", trackId] });
-      }
-    });
-
-    // Handle connection errors — 4xx (task gone) closes permanently; stop spinning.
-    eventSource.onerror = () => {
-      setSseConnected(false);
-      if (eventSource.readyState === EventSource.CLOSED) {
-        eventSource.close();
-        sseRef.current = null;
       }
     };
 
-    eventSource.addEventListener("timeout", () => {
-      eventSource.close();
-      sseRef.current = null;
-      setSseConnected(false);
-    });
-
-    // Application-level failure stream (cancelled/failed skeleton)
-    eventSource.addEventListener("error", (event) => {
+    (async () => {
       try {
-        const data = JSON.parse((event as MessageEvent).data) as PdfProgressResponse;
-        queryClient.setQueryData(["pdf-progress", trackId], data);
-      } catch {
-        queryClient.invalidateQueries({ queryKey: ["pdf-progress", trackId] });
+        setSseConnected(true);
+        for await (const frame of streamPdfProgress(trackId, {
+          signal: controller.signal,
+        })) {
+          if (cancelled || controller.signal.aborted) break;
+          const data = frame.data;
+          queryClient.setQueryData(["pdf-progress", trackId], data);
+
+          if (frame.event === "progress") {
+            applyPageSpeed(data);
+          }
+
+          if (
+            frame.event === "complete" ||
+            frame.event === "timeout" ||
+            frame.event === "error" ||
+            data.is_complete ||
+            data.is_failed
+          ) {
+            break;
+          }
+        }
+      } catch (err) {
+        if (!controller.signal.aborted && process.env.NODE_ENV === "development") {
+          console.warn("[usePdfProgress] SSE stream ended:", err);
+        }
+      } finally {
+        if (!cancelled) {
+          setSseConnected(false);
+        }
       }
-      eventSource.close();
-      sseRef.current = null;
-      setSseConnected(false);
-    });
+    })();
 
     return () => {
-      eventSource.close();
-      sseRef.current = null;
+      cancelled = true;
+      controller.abort();
+      sseAbortRef.current = null;
       setSseConnected(false);
       pageTimestampsRef.current = [];
       setPagesPerMinute(null);

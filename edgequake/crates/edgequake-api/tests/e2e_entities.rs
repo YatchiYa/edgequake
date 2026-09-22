@@ -20,6 +20,11 @@ use uuid::Uuid;
 const TEST_TENANT_ID: &str = "e2e-entities-tenant";
 const TEST_WORKSPACE_ID: &str = "e2e-entities-workspace";
 
+/// Workspace-scoped graph node id (matches create / ingest merger).
+fn scoped(name: &str) -> String {
+    format!("{TEST_WORKSPACE_ID}::{name}")
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -505,9 +510,10 @@ async fn test_delete_entity_success() {
 
     let body = extract_json(delete_response).await;
     assert_eq!(body.get("status").and_then(|v| v.as_str()), Some("success"));
+    let expected_deleted = scoped("TEMPORARY_ENTITY");
     assert_eq!(
         body.get("deleted_entity_id").and_then(|v| v.as_str()),
-        Some("TEMPORARY_ENTITY")
+        Some(expected_deleted.as_str())
     );
 
     // Verify entity is gone
@@ -643,9 +649,10 @@ async fn test_entity_exists_true() {
 
     let body = extract_json(exists_response).await;
     assert_eq!(body.get("exists").and_then(|v| v.as_bool()), Some(true));
+    let expected_id = scoped("EXISTING_ENTITY");
     assert_eq!(
         body.get("entity_id").and_then(|v| v.as_str()),
-        Some("EXISTING_ENTITY")
+        Some(expected_id.as_str())
     );
 }
 
@@ -1107,12 +1114,16 @@ async fn test_merge_entities_preserves_relationships_in_graph() {
         .cloned()
         .unwrap_or_default();
 
+    let acme = scoped("ACME_ORG");
+    let investor = scoped("INVESTOR_ALLY");
+    let source_person = scoped("SOURCE_PERSON");
+    let target_person = scoped("TARGET_PERSON");
     assert!(nodes
         .iter()
-        .any(|node| node.get("id").and_then(|v| v.as_str()) == Some("ACME_ORG")));
+        .any(|node| node.get("id").and_then(|v| v.as_str()) == Some(acme.as_str())));
     assert!(nodes
         .iter()
-        .any(|node| node.get("id").and_then(|v| v.as_str()) == Some("INVESTOR_ALLY")));
+        .any(|node| node.get("id").and_then(|v| v.as_str()) == Some(investor.as_str())));
     assert!(edges.iter().all(|edge| {
         let source = edge
             .get("source")
@@ -1122,7 +1133,7 @@ async fn test_merge_entities_preserves_relationships_in_graph() {
             .get("target")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
-        source != "SOURCE_PERSON" && target != "SOURCE_PERSON"
+        source != source_person && target != source_person
     }));
     assert!(edges.iter().any(|edge| {
         let source = edge
@@ -1133,7 +1144,7 @@ async fn test_merge_entities_preserves_relationships_in_graph() {
             .get("target")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
-        source == "TARGET_PERSON" || target == "TARGET_PERSON"
+        source == target_person || target == target_person
     }));
 }
 
@@ -1495,9 +1506,10 @@ async fn test_entity_neighborhood_basic() {
     let nodes = body.get("nodes").and_then(|v| v.as_array()).unwrap();
     assert!(!nodes.is_empty());
     // The center node should be in the response
+    let center = scoped("NEIGHBORHOOD_CENTER");
     assert!(nodes
         .iter()
-        .any(|n| n.get("id").and_then(|v| v.as_str()) == Some("NEIGHBORHOOD_CENTER")));
+        .any(|n| n.get("id").and_then(|v| v.as_str()) == Some(center.as_str())));
 }
 
 #[tokio::test]

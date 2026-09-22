@@ -13,7 +13,7 @@
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { useWebSocket } from '@/hooks/use-websocket';
+import { reconnectRealtime } from '@/lib/websocket';
 import { useIngestionStore } from '@/stores/use-ingestion-store';
 import { AlertCircle, RefreshCw, X } from 'lucide-react';
 import { useState } from 'react';
@@ -35,7 +35,6 @@ export interface ConnectionBannerProps {
  */
 export function ConnectionBanner({ className }: ConnectionBannerProps) {
   const { t } = useTranslation();
-  const { connect } = useWebSocket();
   const wsMaxReconnectsReached = useIngestionStore((s) => s.wsMaxReconnectsReached);
   const setWsMaxReconnectsReached = useIngestionStore((s) => s.setWsMaxReconnectsReached);
   const [dismissed, setDismissed] = useState(false);
@@ -47,7 +46,8 @@ export function ConnectionBanner({ className }: ConnectionBannerProps) {
 
   const handleRetry = () => {
     setWsMaxReconnectsReached(false);
-    connect();
+    // SPEC-149: rebuild URL/token and reset backoff (not a bare connect()).
+    reconnectRealtime();
   };
 
   const handleDismiss = () => {

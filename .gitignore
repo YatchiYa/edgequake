@@ -152,6 +152,17 @@ edgequake-website/
 # Root-level marketing screenshots (safe to regenerate)
 /*.png
 
+# Terraform local state, plans, and var files (generated passwords / provider keys).
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/terraform.tfvars
+**/*.auto.tfvars
+**/.terraform/
+
+# SPEC-147 — local source PDFs (customer documents; do not commit to the public repo).
+specs/147-fix-doc/data/*.pdf
+
 # SPEC-134 Slice E — private page-as-unit study outputs / local gold (never commit trigger scans).
 specs/134-manuscrit/study/out/
 specs/134-manuscrit/study/gold.local.json
