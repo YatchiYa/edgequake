@@ -242,6 +242,13 @@
       "before_plan": "Index Scan idx_conversations_tenant_user, Filter is_pinned, 10001 rows removed, 10476 buffers",
       "after_ms": 0.065,
       "after_plan": "Index Scan idx_conversations_tenant_user_pinned_updated, is_pinned is an index condition, stops at 50, 52 buffers. A generic plan of is_pinned = $3 uses this index. A partial WHERE is_pinned index is not implied by that prepared predicate"
+    },
+    {
+      "name": "conversation unfiled page ORDER BY updated_at DESC LIMIT 50, 10001 newest of 15000 filed",
+      "before_ms": 2.196,
+      "before_plan": "Index Scan on (tenant_id, user_id, updated_at DESC), Filter folder_id IS NULL, 10001 rows removed, 10078 buffers. Measured on a committed copy of the 30000 conversations",
+      "after_ms": 0.046,
+      "after_plan": "Index Scan idx_conversations_tenant_user_unfiled_updated, folder_id IS NULL is the partial predicate, stops at 50, 53 buffers. SELECT * is 0.028 ms and 53 buffers"
     }
   ]
 }
