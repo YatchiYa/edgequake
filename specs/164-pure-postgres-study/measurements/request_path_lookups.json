@@ -361,6 +361,20 @@
       "before_plan": "Generic plan. BitmapAnd of the user title GIN (10050 index entries) and idx_conversations_folder, heap fetch 50, 26 buffers",
       "after_ms": 0.169,
       "after_plan": "Generic plan. Bitmap of idx_conversations_tenant_user_folder_title_fts, 50 index entries, 24 buffers. List SQL unchanged"
+    },
+    {
+      "name": "pinned conversation title search, 10000 title matches and 50 pinned",
+      "before_ms": 2.725,
+      "before_plan": "Generic plan. User title GIN bitmap, then filter is_pinned. Rows removed 9950, 464 buffers",
+      "after_ms": 0.205,
+      "after_plan": "Generic plan. Bitmap of idx_conversations_tenant_user_flags_title_fts on is_pinned, 50 rows, 24 buffers"
+    },
+    {
+      "name": "archived conversation title search, 10000 title matches and 50 archived",
+      "before_ms": 2.211,
+      "before_plan": "Generic plan. User title GIN bitmap, then filter is_archived. Rows removed 9950, 464 buffers",
+      "after_ms": 0.158,
+      "after_plan": "Generic plan. Bitmap of idx_conversations_tenant_user_flags_title_fts on is_archived, 50 rows, 25 buffers. Same index as pinned search"
     }
   ]
 }
