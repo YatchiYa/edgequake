@@ -10,7 +10,8 @@ use crate::adapters::postgres::typed_embedding_dims::{
     validate_ann_dimensions, validate_typed_embedding_batch_dims,
 };
 use crate::embedding_family::{
-    classify_legacy_vector_id, entity_name_from_legacy_id, EmbeddingFamily,
+    classify_legacy_vector_id, entity_name_from_legacy_id, parse_relationship_legacy_key,
+    EmbeddingFamily,
 };
 use crate::error::StorageError;
 use crate::graph_batch_dedupe::normalize_relation_type_str;
@@ -163,6 +164,140 @@ impl PgFleetEmbeddingIndex {
              ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $9"
         );
         Self::apply_entity_source(sql, documents)
+    }
+
+    /// `$4 IS NULL OR source_chunk_ids && (chunks of $4)` hides the document
+    /// from a generic plan. When the caller passes documents, the overlap is
+    /// required so `idx_relationships_source_chunk_ids` can start at those rows.
+    /// The chunk ids stay an uncorrelated InitPlan: a lookup from each
+    /// relationship back into `chunks` misses the ANN deadline on a large
+    /// workspace.
+    fn relationship_source_predicate(documents: bool) -> &'static str {
+        if documents {
+            "AND r.source_chunk_ids && ARRAY(SELECT c.id FROM chunks c WHERE c.document_id = ANY($4))"
+        } else {
+            "AND ($4::uuid[] IS NULL OR r.source_chunk_ids && ARRAY(SELECT c.id FROM chunks c WHERE c.document_id = ANY($4)))"
+        }
+    }
+
+    fn relationship_search_sql(dim: i32, cast: &str, documents: bool) -> String {
+        let source = Self::relationship_source_predicate(documents);
+        // No id filter on the document statement: the caller did not pass ids,
+        // so the limit bind stays $7. The unscoped statement keeps the optional
+        // id predicate and binds it as $7.
+        let tail = if documents {
+            format!(
+                "AND $6::text[] IS NULL ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $7"
+            )
+        } else {
+            format!(
+                "AND $6::text[] IS NULL \
+                 AND ($7::text[] IS NULL OR r.id::text = ANY($7) \
+                      OR (es.name || '->' || et.name || ':' || r.relation_type) = ANY($7)) \
+                 ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $8"
+            )
+        };
+        format!(
+            "SELECT (es.name || '->' || et.name || ':' || r.relation_type) AS legacy_id, \
+                    1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
+             FROM relationship_embeddings fe \
+             JOIN relationships r ON r.id = fe.relationship_id \
+             JOIN entities es ON es.id = r.source_id \
+             JOIN entities et ON et.id = r.target_id \
+             WHERE fe.model_id = $2 AND fe.dimensions = {dim} \
+               AND ($3::uuid IS NULL OR fe.workspace_id = $3) \
+               {source} \
+               AND ($5::uuid IS NULL OR r.tenant_id = $5) \
+               {tail}"
+        )
+    }
+
+    /// Id-filtered relationship ANN. A UUID uses `relationships_pkey`. A legacy
+    /// `source->target:type` key uses `idx_entities_name` and then
+    /// `idx_relationships_source`. `OFFSET 0` keeps that lookup from being
+    /// pulled into the distance order.
+    fn relationship_search_sql_in_ids(dim: i32, cast: &str, documents: bool) -> String {
+        let source = Self::relationship_source_predicate(documents);
+        format!(
+            "SELECT (es.name || '->' || et.name || ':' || r.relation_type) AS legacy_id, \
+                    1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
+             FROM ( \
+                SELECT r.id \
+                FROM unnest($7::uuid[]) AS wanted(id) \
+                JOIN LATERAL ( \
+                    SELECT r.id FROM relationships r WHERE r.id = wanted.id OFFSET 0 \
+                ) r ON true \
+                UNION \
+                SELECT r.id \
+                FROM unnest($8::text[], $9::text[], $10::text[]) AS wanted(src, tgt, rel) \
+                JOIN LATERAL ( \
+                    SELECT r.id \
+                    FROM entities es \
+                    JOIN entities et ON et.name = wanted.tgt \
+                    JOIN relationships r \
+                      ON r.source_id = es.id AND r.target_id = et.id \
+                     AND r.relation_type = wanted.rel \
+                    WHERE es.name = wanted.src \
+                    OFFSET 0 \
+                ) r ON true \
+             ) hit \
+             JOIN relationship_embeddings fe \
+               ON fe.relationship_id = hit.id AND fe.model_id = $2 AND fe.dimensions = {dim} \
+             JOIN relationships r ON r.id = hit.id \
+             JOIN entities es ON es.id = r.source_id \
+             JOIN entities et ON et.id = r.target_id \
+             WHERE ($3::uuid IS NULL OR fe.workspace_id = $3) \
+               {source} \
+               AND ($5::uuid IS NULL OR r.tenant_id = $5) \
+               AND $6::text[] IS NULL \
+             ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $11"
+        )
+    }
+
+    /// Split `filter_ids` into relationship UUIDs and legacy
+    /// `source->target:type` keys.
+    fn relationship_id_keys(
+        ids: Option<&[String]>,
+    ) -> (Vec<Uuid>, Vec<String>, Vec<String>, Vec<String>) {
+        let mut uuids = Vec::new();
+        let mut sources = Vec::new();
+        let mut targets = Vec::new();
+        let mut rel_types = Vec::new();
+        for id in ids.unwrap_or(&[]) {
+            if let Ok(parsed) = Uuid::parse_str(id) {
+                uuids.push(parsed);
+            } else if let Some((source, target, rel_type)) = parse_relationship_legacy_key(id) {
+                sources.push(source);
+                targets.push(target);
+                rel_types.push(rel_type);
+            }
+        }
+        (uuids, sources, targets, rel_types)
+    }
+
+    /// `$7 IS NULL OR report_id = ANY($7)` hides the id from a generic plan.
+    /// That plan walks the HNSW index and can stop before the requested id,
+    /// so a row that exists is missing from the answer. When the caller passes
+    /// ids, the statement requires `report_id = ANY($7)` and
+    /// `report_embeddings_pkey` starts at those rows.
+    fn report_search_sql(dim: i32, cast: &str, in_ids: bool) -> String {
+        let id_pred = if in_ids {
+            "AND fe.report_id = ANY($7)"
+        } else {
+            "AND ($7::text[] IS NULL OR fe.report_id = ANY($7))"
+        };
+        format!(
+            "SELECT fe.report_id AS legacy_id, \
+                    1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
+             FROM report_embeddings fe \
+             WHERE fe.model_id = $2 AND fe.dimensions = {dim} \
+               AND ($3::uuid IS NULL OR fe.workspace_id = $3) \
+               AND $4::uuid[] IS NULL \
+               AND $5::uuid IS NULL \
+               AND $6::text[] IS NULL \
+               {id_pred} \
+             ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $8"
+        )
     }
 }
 
@@ -318,44 +453,22 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
         let documents = req.document_ids.as_ref().is_some();
         let in_ids = req.filter_ids.as_ref().is_some();
         let (entity_names, entity_ids) = Self::entity_id_keys(req.filter_ids.as_deref());
+        let (rel_uuids, rel_sources, rel_targets, rel_types) =
+            if matches!(family, EmbeddingFamily::Relationship) && in_ids {
+                Self::relationship_id_keys(req.filter_ids.as_deref())
+            } else {
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new())
+            };
         let q = match family {
             EmbeddingFamily::Entity if in_ids => {
                 Self::entity_search_sql_in_ids(dim, &cast, documents)
             }
             EmbeddingFamily::Entity => Self::entity_search_sql(dim, &cast, documents),
-            // Resolve document chunks once (an uncorrelated InitPlan), rather than
-            // joining chunks for every relationship. The correlated unnest path
-            // exceeds the ANN deadline on large workspaces under tenant RLS.
-            EmbeddingFamily::Relationship => format!(
-                "SELECT (es.name || '->' || et.name || ':' || r.relation_type) AS legacy_id, \
-                        1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
-                 FROM relationship_embeddings fe \
-                 JOIN relationships r ON r.id = fe.relationship_id \
-                 JOIN entities es ON es.id = r.source_id \
-                 JOIN entities et ON et.id = r.target_id \
-                 WHERE fe.model_id = $2 AND fe.dimensions = {dim} \
-                   AND ($3::uuid IS NULL OR fe.workspace_id = $3) \
-                   AND ($4::uuid[] IS NULL OR r.source_chunk_ids && ARRAY( \
-                         SELECT c.id FROM chunks c WHERE c.document_id = ANY($4) \
-                       )) \
-                   AND ($5::uuid IS NULL OR r.tenant_id = $5) \
-                   AND $6::text[] IS NULL \
-                   AND ($7::text[] IS NULL OR r.id::text = ANY($7) \
-                        OR (es.name || '->' || et.name || ':' || r.relation_type) = ANY($7)) \
-                 ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $8"
-            ),
-            EmbeddingFamily::Report => format!(
-                "SELECT fe.report_id AS legacy_id, \
-                        1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
-                 FROM report_embeddings fe \
-                 WHERE fe.model_id = $2 AND fe.dimensions = {dim} \
-                   AND ($3::uuid IS NULL OR fe.workspace_id = $3) \
-                   AND $4::uuid[] IS NULL \
-                   AND $5::uuid IS NULL \
-                   AND $6::text[] IS NULL \
-                   AND ($7::text[] IS NULL OR fe.report_id = ANY($7)) \
-                 ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $8"
-            ),
+            EmbeddingFamily::Relationship if in_ids => {
+                Self::relationship_search_sql_in_ids(dim, &cast, documents)
+            }
+            EmbeddingFamily::Relationship => Self::relationship_search_sql(dim, &cast, documents),
+            EmbeddingFamily::Report => Self::report_search_sql(dim, &cast, in_ids),
         };
 
         let q = super::typed_ann_search::TypedAnnSearch::ordered_sql(&q, req.limit);
@@ -372,6 +485,15 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                 .bind(&entity_ids)
                 .bind(candidate_limit as i64)
         } else if matches!(family, EmbeddingFamily::Entity) {
+            query.bind(candidate_limit as i64)
+        } else if matches!(family, EmbeddingFamily::Relationship) && in_ids {
+            query
+                .bind(&rel_uuids)
+                .bind(&rel_sources)
+                .bind(&rel_targets)
+                .bind(&rel_types)
+                .bind(candidate_limit as i64)
+        } else if matches!(family, EmbeddingFamily::Relationship) && documents {
             query.bind(candidate_limit as i64)
         } else {
             query
@@ -551,5 +673,50 @@ mod tests {
         assert!(!sql.contains("$7::text[] IS NULL"));
         assert!(!sql.contains("id::text = ANY"));
         assert!(sql.contains("LIMIT $9"));
+    }
+
+    #[test]
+    fn relationship_search_requires_chunk_overlap_when_documents_are_passed() {
+        let open = PgFleetEmbeddingIndex::relationship_search_sql(768, "halfvec(768)", false);
+        assert!(open.contains("$4::uuid[] IS NULL OR r.source_chunk_ids && ARRAY"));
+        assert!(open.contains("$7::text[] IS NULL OR r.id::text = ANY($7)"));
+        assert!(open.contains("LIMIT $8"));
+
+        let scoped = PgFleetEmbeddingIndex::relationship_search_sql(768, "halfvec(768)", true);
+        assert!(scoped.contains(
+            "AND r.source_chunk_ids && ARRAY(SELECT c.id FROM chunks c WHERE c.document_id = ANY($4))"
+        ));
+        assert!(!scoped.contains("$4::uuid[] IS NULL"));
+        assert!(!scoped.contains("r.id::text = ANY"));
+        assert!(scoped.contains("LIMIT $7"));
+    }
+
+    #[test]
+    fn relationship_search_by_id_looks_up_uuid_and_legacy_key() {
+        let sql = PgFleetEmbeddingIndex::relationship_search_sql_in_ids(768, "halfvec(768)", true);
+        assert!(sql.contains("OFFSET 0"));
+        assert!(sql.contains("r.id = wanted.id"));
+        assert!(sql.contains("es.name = wanted.src"));
+        assert!(sql.contains("et.name = wanted.tgt"));
+        assert!(sql.contains("r.relation_type = wanted.rel"));
+        assert!(sql.contains(
+            "AND r.source_chunk_ids && ARRAY(SELECT c.id FROM chunks c WHERE c.document_id = ANY($4))"
+        ));
+        assert!(!sql.contains("$7::text[] IS NULL"));
+        assert!(!sql.contains("id::text = ANY"));
+        assert!(sql.contains("LIMIT $11"));
+    }
+
+    #[test]
+    fn report_search_requires_report_id_when_ids_are_passed() {
+        let open = PgFleetEmbeddingIndex::report_search_sql(768, "halfvec(768)", false);
+        assert!(open.contains("$7::text[] IS NULL OR fe.report_id = ANY($7)"));
+        assert!(open.contains("$3::uuid IS NULL OR fe.workspace_id = $3"));
+        assert!(open.contains("LIMIT $8"));
+
+        let scoped = PgFleetEmbeddingIndex::report_search_sql(768, "halfvec(768)", true);
+        assert!(scoped.contains("AND fe.report_id = ANY($7)"));
+        assert!(!scoped.contains("$7::text[] IS NULL"));
+        assert!(scoped.contains("LIMIT $8"));
     }
 }

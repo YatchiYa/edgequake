@@ -522,6 +522,27 @@
       "before_plan": "Generic plan. Parallel seq scan, filter the optional source_ids overlap. Rows removed 19990 per worker, 1721 buffers. Requiring the predicate without an index still seq-scans (6.850 ms)",
       "after_ms": 0.279,
       "after_plan": "Generic plan. Bitmap index scan of idx_entities_source_ids, 20 rows, 83 buffers. Custom plan is 0.103 ms on the same index"
+    },
+    {
+      "name": "relationship ANN filtered by one id, 40000 embeddings",
+      "before_ms": 27.276,
+      "before_plan": "Custom plan. Seq scan of relationships, join filter id::text = ANY OR source->target:type. Rows removed 39999, 2258 buffers",
+      "after_ms": 0.234,
+      "after_plan": "Custom plan. Index only scan of relationships_pkey, then relationship_embeddings_pkey. 1 row. A legacy source->target:type uses idx_entities_name and idx_relationships_source (0.202 ms, 20 edges of that source). No new index"
+    },
+    {
+      "name": "relationship ANN for one document, 20 relationships cite its chunk and 39980 do not",
+      "before_ms": 6.57,
+      "before_plan": "Generic plan. Seq scan of relationships, filter the optional source_chunk_ids overlap. Rows removed 39980, 2282 buffers",
+      "after_ms": 1.018,
+      "after_plan": "Generic plan. Bitmap index scan of idx_relationships_source_chunk_ids, 20 rows, 149 buffers. The chunk ids stay an uncorrelated InitPlan. No new index"
+    },
+    {
+      "name": "report ANN filtered by one id, 40000 embeddings",
+      "before_ms": 0.72,
+      "before_plan": "Generic plan. Index scan of idx_report_embeddings_hnsw_d768, then filter report_id. Rows removed 391, 306 buffers. The same plan returned no row for an id that exists when that id was not among the visited neighbors (0.711 ms). Custom plan for a visited id already used report_embeddings_pkey (0.078 ms)",
+      "after_ms": 0.069,
+      "after_plan": "Generic plan. Index scan of report_embeddings_pkey, Index Cond model_id and report_id = ANY. 1 row, 4 buffers. The id the HNSW filter missed is found the same way (0.133 ms). No new index"
     }
   ]
 }
