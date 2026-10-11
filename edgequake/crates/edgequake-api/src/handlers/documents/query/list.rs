@@ -8,7 +8,7 @@ use axum::{
 };
 use tracing::debug;
 
-use crate::error::ApiResult;
+use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
 use crate::read_path::{
     has_read_budget, run_with_read_path_guard, should_skip_entity_reconcile, ReadPathDbPermit,
@@ -465,6 +465,11 @@ pub(crate) async fn list_documents_inner(
     #[cfg(feature = "postgres")]
     let mut sql_status_counts: Option<StatusCounts> = None;
     #[cfg(feature = "postgres")]
+    let created_bounds = crate::document_read_model::RelationalCreatedBounds {
+        from: list_bound_instant(params.date_from.as_deref())?,
+        to: list_bound_instant(params.date_to.as_deref())?,
+    };
+    #[cfg(feature = "postgres")]
     if _pg_runtime.pool.is_some()
         && (documents.is_empty() || has_read_budget(deadline, LIST_RELATIONAL_HEADROOM))
     {
@@ -473,6 +478,7 @@ pub(crate) async fn list_documents_inner(
             &tenant_ctx,
             MAX_LIST_METADATA_ENTRIES,
             params.status.as_deref(),
+            created_bounds,
         )
         .await
         {
@@ -543,16 +549,17 @@ pub(crate) async fn list_documents_inner(
             .unwrap_or_default();
 
         documents.retain(|doc| {
-            // Date range filter (ISO 8601 string comparison)
+            // KV rows are not in the relational page. Compare instants when both
+            // sides parse so `Z` and `+00:00` agree with the SQL `timestamptz` bound.
             if let Some(ref date_from) = params.date_from {
                 match doc.created_at.as_deref() {
-                    Some(ca) if ca >= date_from.as_str() => {}
+                    Some(ca) if created_in_range(ca, Some(date_from), None) => {}
                     _ => return false,
                 }
             }
             if let Some(ref date_to) = params.date_to {
                 match doc.created_at.as_deref() {
-                    Some(ca) if ca <= date_to.as_str() => {}
+                    Some(ca) if created_in_range(ca, None, Some(date_to)) => {}
                     _ => return false,
                 }
             }
@@ -800,5 +807,74 @@ fn compute_status_counts(documents: &[DocumentSummary]) -> StatusCounts {
                     )
             })
             .count(),
+    }
+}
+
+/// Blank is no bound. A calendar date is midnight UTC. Anything else must be RFC 3339.
+fn list_bound_instant(raw: Option<&str>) -> ApiResult<Option<chrono::DateTime<chrono::Utc>>> {
+    let Some(value) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    parse_document_list_instant(value)
+        .map(Some)
+        .ok_or_else(|| ApiError::BadRequest(format!("date bound must be ISO 8601: {value}")))
+}
+
+fn parse_document_list_instant(raw: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(raw) {
+        return Some(dt.with_timezone(&chrono::Utc));
+    }
+    chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d")
+        .ok()
+        .and_then(|date| date.and_hms_opt(0, 0, 0))
+        .map(|naive| naive.and_utc())
+}
+
+/// Inclusive bounds. Parsed instants agree with the SQL `timestamptz` predicate.
+/// An unparsed side keeps the previous string comparison.
+fn created_in_range(created: &str, from: Option<&str>, to: Option<&str>) -> bool {
+    let created_at = parse_document_list_instant(created);
+    if let Some(from) = from {
+        match (created_at, parse_document_list_instant(from)) {
+            (Some(created_at), Some(from)) if created_at < from => return false,
+            (None, _) | (_, None) if created < from => return false,
+            _ => {}
+        }
+    }
+    if let Some(to) = to {
+        match (created_at, parse_document_list_instant(to)) {
+            (Some(created_at), Some(to)) if created_at > to => return false,
+            (None, _) | (_, None) if created > to => return false,
+            _ => {}
+        }
+    }
+    true
+}
+
+#[cfg(test)]
+mod date_bound_tests {
+    use super::*;
+
+    #[test]
+    fn parsed_bounds_agree_across_offset_spellings() {
+        assert!(created_in_range(
+            "2024-01-02T00:00:00+00:00",
+            Some("2024-01-02T00:00:00Z"),
+            Some("2024-01-02T00:00:00Z"),
+        ));
+        assert!(!created_in_range(
+            "2024-01-01T00:00:00+00:00",
+            Some("2024-01-02T00:00:00Z"),
+            None,
+        ));
+        assert!(!created_in_range(
+            "2024-01-03T00:00:00+00:00",
+            None,
+            Some("2024-01-02T00:00:00Z"),
+        ));
+        assert!(list_bound_instant(Some("  ")).unwrap().is_none());
+        assert!(list_bound_instant(Some("not-a-date")).is_err());
+        let day = list_bound_instant(Some("2024-01-02")).unwrap().unwrap();
+        assert_eq!(day.to_rfc3339(), "2024-01-02T00:00:00+00:00");
     }
 }

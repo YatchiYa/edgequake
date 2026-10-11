@@ -641,6 +641,13 @@
       "before_plan": "Generic plan. Index scan of idx_documents_created_at, filter lower(title) LIKE. Rows removed 79950, 2557 buffers. The newest 2001 rows include 0 of those titles, so the scope picker drops them. A generic plan of the trigram index reads every title when the letter matches all 80000 rows (46.237 ms)",
       "after_ms": 0.168,
       "after_plan": "Custom plan. Tenant union. Bitmap index scan of idx_documents_title_trgm stops at 50, 17 buffers. Migration 202. A one-letter query that matches every title stays on idx_documents_created_at and stops at 50 (0.104 ms, 21 buffers). A miss is 0.009 ms"
+    },
+    {
+      "name": "document list date_to LIMIT 50, 50 oldest rows at or before 2026-10-10 15:53:36.736335+00 and 79950 newer rows",
+      "before_ms": 15.294,
+      "before_plan": "Generic plan. Index scan of idx_documents_created_at, filter ($2 IS NULL OR created_at <= $2) and workspace. Rows removed 79950, 2500 buffers. The open page of the newest 2001 rows includes 0 of those old documents, so the in-memory date filter drops the page",
+      "after_ms": 0.022,
+      "after_plan": "Generic plan. Index scan of idx_documents_created_at, Index Cond created_at <= $2, filter workspace, stops at 50, 15 buffers. No new index. With 40000 newer rows moved to another workspace the plan uses idx_documents_workspace_created, Index Cond workspace_id and created_at <= $2, 0.038 ms, 15 buffers. A from-and-to range is the same index condition and stops at 50 (0.026 ms, 15 buffers)"
     }
   ]
 }

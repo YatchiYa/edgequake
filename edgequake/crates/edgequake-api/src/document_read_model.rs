@@ -146,6 +146,7 @@ pub async fn list_relational_document_summaries(
         tenant_ctx,
         crate::read_path::MAX_LIST_METADATA_ENTRIES,
         None,
+        RelationalCreatedBounds::default(),
     )
     .await?
     .documents)
@@ -272,18 +273,32 @@ fn relational_list_filter(raw: Option<&str>) -> RelationalListFilter {
 /// time index walks every newer indexed row (8.523 ms, 79,950 removed).
 /// `idx_documents_workspace_status_created` stops at the page (0.021 ms).
 /// `status_count` is 0, 1, or 2.
+///
+/// A passed `created_at` bound is required too. `$n IS NULL OR created_at <= $n`
+/// is a filter on the time index and removes the newer rows (10.637 ms,
+/// 79,950 removed). `created_at <= $n` is an index condition on
+/// `idx_documents_created_at` or `idx_documents_workspace_created` and stops
+/// at the page (0.026 ms). No new index: both already lead with the column
+/// the list sorts by.
 #[cfg(feature = "postgres")]
-fn document_list_statement(tenant_scoped: bool, status_count: usize) -> String {
+fn document_list_statement(
+    tenant_scoped: bool,
+    status_count: usize,
+    bounds: CreatedAtPredicate,
+) -> String {
     let projection = DOCUMENT_LIST_PROJECTION;
     let page = DOCUMENT_PAGE_COLUMNS;
     let order = "ORDER BY created_at DESC, id DESC";
+    let start = 2 + usize::from(tenant_scoped) + status_count;
+    let created = bounds.fragment(start);
+    let limit = bounds.limit_placeholder(start);
     match (tenant_scoped, status_count) {
         (false, 0) => format!(
             "SELECT {projection}
              FROM public.documents
-             WHERE workspace_id = $1
+             WHERE workspace_id = $1{created}
              ORDER BY created_at DESC
-             LIMIT $2"
+             LIMIT {limit}"
         ),
         (true, 0) => format!(
             "SELECT {projection}
@@ -291,28 +306,28 @@ fn document_list_statement(tenant_scoped: bool, status_count: usize) -> String {
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id = $2
+                 WHERE workspace_id = $1 AND tenant_id = $2{created}
                  {order}
-                 LIMIT $3
+                 LIMIT {limit}
                )
                UNION ALL
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id IS NULL
+                 WHERE workspace_id = $1 AND tenant_id IS NULL{created}
                  {order}
-                 LIMIT $3
+                 LIMIT {limit}
                )
              ) page
              {order}
-             LIMIT $3"
+             LIMIT {limit}"
         ),
         (false, 1) => format!(
             "SELECT {projection}
              FROM public.documents
-             WHERE workspace_id = $1 AND status = $2
+             WHERE workspace_id = $1 AND status = $2{created}
              {order}
-             LIMIT $3"
+             LIMIT {limit}"
         ),
         (false, 2) => format!(
             "SELECT {projection}
@@ -320,21 +335,21 @@ fn document_list_statement(tenant_scoped: bool, status_count: usize) -> String {
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND status = $2
+                 WHERE workspace_id = $1 AND status = $2{created}
                  {order}
-                 LIMIT $4
+                 LIMIT {limit}
                )
                UNION ALL
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND status = $3
+                 WHERE workspace_id = $1 AND status = $3{created}
                  {order}
-                 LIMIT $4
+                 LIMIT {limit}
                )
              ) page
              {order}
-             LIMIT $4"
+             LIMIT {limit}"
         ),
         (true, 1) => format!(
             "SELECT {projection}
@@ -342,21 +357,21 @@ fn document_list_statement(tenant_scoped: bool, status_count: usize) -> String {
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $3
+                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $3{created}
                  {order}
-                 LIMIT $4
+                 LIMIT {limit}
                )
                UNION ALL
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $3
+                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $3{created}
                  {order}
-                 LIMIT $4
+                 LIMIT {limit}
                )
              ) page
              {order}
-             LIMIT $4"
+             LIMIT {limit}"
         ),
         (true, 2) => format!(
             "SELECT {projection}
@@ -364,39 +379,86 @@ fn document_list_statement(tenant_scoped: bool, status_count: usize) -> String {
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $3
+                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $3{created}
                  {order}
-                 LIMIT $5
+                 LIMIT {limit}
                )
                UNION ALL
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $4
+                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $4{created}
                  {order}
-                 LIMIT $5
+                 LIMIT {limit}
                )
                UNION ALL
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $3
+                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $3{created}
                  {order}
-                 LIMIT $5
+                 LIMIT {limit}
                )
                UNION ALL
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $4
+                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $4{created}
                  {order}
-                 LIMIT $5
+                 LIMIT {limit}
                )
              ) page
              {order}
-             LIMIT $5"
+             LIMIT {limit}"
         ),
-        _ => document_list_statement(tenant_scoped, 0),
+        _ => document_list_statement(tenant_scoped, 0, bounds),
+    }
+}
+
+/// Inclusive `created_at` bounds for one document page.
+///
+/// Both ends empty keeps the unscoped statement. A caller that passes a bound
+/// gets that comparison as a required predicate.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RelationalCreatedBounds {
+    pub from: Option<chrono::DateTime<chrono::Utc>>,
+    pub to: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(Clone, Copy, Default)]
+struct CreatedAtPredicate {
+    from: bool,
+    to: bool,
+}
+
+#[cfg(feature = "postgres")]
+impl CreatedAtPredicate {
+    fn from_bounds(bounds: RelationalCreatedBounds) -> Self {
+        Self {
+            from: bounds.from.is_some(),
+            to: bounds.to.is_some(),
+        }
+    }
+
+    /// ` AND created_at >= $start ...`, or empty when the caller passed no bound.
+    fn fragment(self, start: usize) -> String {
+        match (self.from, self.to) {
+            (false, false) => String::new(),
+            (true, false) => format!(" AND created_at >= ${start}"),
+            (false, true) => format!(" AND created_at <= ${start}"),
+            (true, true) => {
+                format!(
+                    " AND created_at >= ${start} AND created_at <= ${}",
+                    start + 1
+                )
+            }
+        }
+    }
+
+    fn limit_placeholder(self, start: usize) -> String {
+        let slot = start + usize::from(self.from) + usize::from(self.to);
+        format!("${slot}")
     }
 }
 
@@ -407,11 +469,17 @@ fn document_list_statement(tenant_scoped: bool, status_count: usize) -> String {
 /// (10.739 ms, 79,950 newer rows removed). A stage arm skips rows whose
 /// `status` is already a status arm of the same chip, so a row comes back once.
 #[cfg(feature = "postgres")]
-fn chip_list_statement(tenant_scoped: bool, arms: &[ChipArm]) -> String {
+fn chip_list_statement(
+    tenant_scoped: bool,
+    arms: &[ChipArm],
+    bounds: CreatedAtPredicate,
+) -> String {
     let projection = DOCUMENT_LIST_PROJECTION;
     let page = DOCUMENT_PAGE_COLUMNS;
     let order = "ORDER BY created_at DESC, id DESC";
-    let limit = if tenant_scoped { "$3" } else { "$2" };
+    let start = 2 + usize::from(tenant_scoped);
+    let created = bounds.fragment(start);
+    let limit = bounds.limit_placeholder(start);
     let exclusions = chip_status_exclusions(arms);
     let scopes: Vec<&str> = if tenant_scoped {
         vec![
@@ -429,7 +497,7 @@ fn chip_list_statement(tenant_scoped: bool, arms: &[ChipArm]) -> String {
                 "(
                    SELECT {page}
                    FROM public.documents
-                   WHERE {scope} AND {filter}
+                   WHERE {scope} AND {filter}{created}
                    {order}
                    LIMIT {limit}
                  )"
@@ -571,6 +639,7 @@ pub async fn list_relational_document_summaries_limited(
     tenant_ctx: &TenantContext,
     max_entries: usize,
     status: Option<&str>,
+    bounds: RelationalCreatedBounds,
 ) -> Result<RelationalDocumentList, crate::error::ApiError> {
     use crate::error::ApiError;
     use sqlx::Row;
@@ -601,18 +670,20 @@ pub async fn list_relational_document_summaries_limited(
     // Fetch one extra row to detect truncation without a second COUNT.
     let fetch_limit = (max_entries as i64).saturating_add(1);
     let filter = relational_list_filter(status);
+    let created = CreatedAtPredicate::from_bounds(bounds);
     let (sql, status_binds) = match filter {
         RelationalListFilter::Open => (
-            document_list_statement(tenant_uuid.is_some(), 0),
+            document_list_statement(tenant_uuid.is_some(), 0, created),
             Vec::new(),
         ),
         RelationalListFilter::Statuses(values) => {
-            let sql = document_list_statement(tenant_uuid.is_some(), values.len());
+            let sql = document_list_statement(tenant_uuid.is_some(), values.len(), created);
             (sql, values)
         }
-        RelationalListFilter::Chip(arms) => {
-            (chip_list_statement(tenant_uuid.is_some(), arms), Vec::new())
-        }
+        RelationalListFilter::Chip(arms) => (
+            chip_list_statement(tenant_uuid.is_some(), arms, created),
+            Vec::new(),
+        ),
     };
     let mut query = sqlx::query(&sql).bind(workspace_id);
     if let Some(tenant_id) = tenant_uuid {
@@ -620,6 +691,12 @@ pub async fn list_relational_document_summaries_limited(
     }
     for status_value in &status_binds {
         query = query.bind(status_value);
+    }
+    if let Some(from) = bounds.from {
+        query = query.bind(from);
+    }
+    if let Some(to) = bounds.to {
+        query = query.bind(to);
     }
     let rows = query
         .bind(fetch_limit)
@@ -1532,27 +1609,30 @@ mod tests {
             other => panic!("completed must be two status equalities, got {other:?}"),
         }
 
-        let open = document_list_statement(false, 0);
+        let open = document_list_statement(false, 0, CreatedAtPredicate::default());
         assert!(!open.contains("status ="));
         assert!(open.contains("ORDER BY created_at DESC"));
+        assert!(open.contains("LIMIT $2"));
+        assert!(!open.contains("created_at <="));
+        assert!(!open.contains("created_at >="));
 
-        let failed = document_list_statement(false, 1);
+        let failed = document_list_statement(false, 1, CreatedAtPredicate::default());
         assert!(failed.contains("workspace_id = $1 AND status = $2"));
         assert!(failed.contains("ORDER BY created_at DESC, id DESC"));
         assert!(failed.contains("LIMIT $3"));
         assert!(!failed.contains("IS NULL OR"));
 
-        let completed = document_list_statement(false, 2);
+        let completed = document_list_statement(false, 2, CreatedAtPredicate::default());
         assert!(completed.contains("status = $2"));
         assert!(completed.contains("status = $3"));
         assert!(completed.contains("UNION ALL"));
 
-        let tenant = document_list_statement(true, 1);
+        let tenant = document_list_statement(true, 1, CreatedAtPredicate::default());
         assert!(tenant.contains("tenant_id = $2 AND status = $3"));
         assert!(tenant.contains("tenant_id IS NULL AND status = $3"));
         assert!(!tenant.contains("$2::uuid IS NULL"));
 
-        let pending = chip_list_statement(false, PENDING_ARMS);
+        let pending = chip_list_statement(false, PENDING_ARMS, CreatedAtPredicate::default());
         assert!(pending.contains("status = 'pending'"));
         assert!(pending.contains("status = 'queued'"));
         assert!(pending.contains("(metadata->>'current_stage') = 'queued'"));
@@ -1563,17 +1643,65 @@ mod tests {
         assert!(!pending.contains("IS NULL OR"));
         assert!(!pending.contains("ANY("));
 
-        let processing = chip_list_statement(false, PROCESSING_ARMS);
+        let processing = chip_list_statement(false, PROCESSING_ARMS, CreatedAtPredicate::default());
         assert!(processing.contains("status = 'processing'"));
         assert!(processing.contains("(metadata->>'current_stage') = 'extracting'"));
         assert!(processing.contains("status IS DISTINCT FROM 'processing'"));
         assert!(!processing.contains("= ANY("));
 
-        let pending_tenant = chip_list_statement(true, PENDING_ARMS);
+        let pending_tenant = chip_list_statement(true, PENDING_ARMS, CreatedAtPredicate::default());
         assert!(pending_tenant.contains("tenant_id = $2 AND status = 'pending'"));
         assert!(pending_tenant
             .contains("tenant_id IS NULL AND (metadata->>'current_stage') = 'queued'"));
         assert!(pending_tenant.contains("LIMIT $3"));
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn date_page_requires_created_at() {
+        let open = document_list_statement(
+            false,
+            0,
+            CreatedAtPredicate {
+                from: false,
+                to: true,
+            },
+        );
+        assert!(open.contains("workspace_id = $1 AND created_at <= $2"));
+        assert!(open.contains("ORDER BY created_at DESC"));
+        assert!(!open.contains("id DESC"));
+        assert!(open.contains("LIMIT $3"));
+        assert!(!open.contains("IS NULL OR"));
+
+        let ranged = document_list_statement(
+            true,
+            1,
+            CreatedAtPredicate {
+                from: true,
+                to: true,
+            },
+        );
+        assert!(ranged
+            .contains("tenant_id = $2 AND status = $3 AND created_at >= $4 AND created_at <= $5"));
+        assert!(ranged.contains(
+            "tenant_id IS NULL AND status = $3 AND created_at >= $4 AND created_at <= $5"
+        ));
+        assert!(ranged.contains("LIMIT $6"));
+
+        let pending = chip_list_statement(
+            false,
+            PENDING_ARMS,
+            CreatedAtPredicate {
+                from: true,
+                to: false,
+            },
+        );
+        assert!(pending.contains("status = 'pending' AND created_at >= $2"));
+        assert!(pending.contains(
+            "(metadata->>'current_stage') = 'queued' AND status IS DISTINCT FROM 'pending' AND status IS DISTINCT FROM 'queued' AND created_at >= $2"
+        ));
+        assert!(pending.contains("LIMIT $3"));
+        assert!(!pending.contains("IS NULL"));
     }
 
     #[cfg(feature = "postgres")]

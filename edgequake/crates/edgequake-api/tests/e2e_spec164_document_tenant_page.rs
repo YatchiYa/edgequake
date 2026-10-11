@@ -8,7 +8,7 @@ mod postgres_access_pool;
 
 use edgequake_api::document_read_model::{
     count_relational_document_statuses, delete_relational_documents_for_workspace,
-    list_relational_document_summaries_limited,
+    list_relational_document_summaries_limited, RelationalCreatedBounds,
 };
 use edgequake_api::middleware::TenantContext;
 use uuid::Uuid;
@@ -78,9 +78,15 @@ async fn tenant_document_page_keeps_unset_tenant_and_skips_the_other_tenant() {
     insert_doc(&pool, Some(tenant_a), workspace, "own", "3 minutes").await;
 
     let scoped = ctx(Some(tenant_a), workspace);
-    let page = list_relational_document_summaries_limited(Some(&pool), &scoped, 10, None)
-        .await
-        .expect("scoped page");
+    let page = list_relational_document_summaries_limited(
+        Some(&pool),
+        &scoped,
+        10,
+        None,
+        RelationalCreatedBounds::default(),
+    )
+    .await
+    .expect("scoped page");
     let titles: Vec<_> = page
         .documents
         .iter()
@@ -95,9 +101,15 @@ async fn tenant_document_page_keeps_unset_tenant_and_skips_the_other_tenant() {
     assert_eq!(counts.completed, 2);
 
     let open = ctx(None, workspace);
-    let all = list_relational_document_summaries_limited(Some(&pool), &open, 10, None)
-        .await
-        .expect("workspace page");
+    let all = list_relational_document_summaries_limited(
+        Some(&pool),
+        &open,
+        10,
+        None,
+        RelationalCreatedBounds::default(),
+    )
+    .await
+    .expect("workspace page");
     let all_titles: Vec<_> = all
         .documents
         .iter()
@@ -138,4 +150,98 @@ async fn tenant_document_page_keeps_unset_tenant_and_skips_the_other_tenant() {
         .execute(&pool)
         .await
         .expect("cleanup tenants");
+}
+
+#[tokio::test]
+async fn document_page_date_to_returns_the_older_row() {
+    let Some(pool) =
+        postgres_access_pool::test_pool_with_acquire_timeout(std::time::Duration::from_secs(10))
+            .await
+    else {
+        return;
+    };
+    let (tenant, workspace) = scope(&pool, "doc date page").await;
+    let older = chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let newer = chrono::DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    insert_doc_at(&pool, Some(tenant), workspace, "older", older).await;
+    insert_doc_at(&pool, Some(tenant), workspace, "newer", newer).await;
+
+    let scoped = ctx(Some(tenant), workspace);
+    let page = list_relational_document_summaries_limited(
+        Some(&pool),
+        &scoped,
+        10,
+        None,
+        RelationalCreatedBounds {
+            from: None,
+            to: Some(older),
+        },
+    )
+    .await
+    .expect("dated page");
+    let titles: Vec<_> = page
+        .documents
+        .iter()
+        .filter_map(|doc| doc.title.clone())
+        .collect();
+    assert_eq!(titles, vec!["older".to_string()]);
+    assert!(!page.truncated);
+
+    let open = list_relational_document_summaries_limited(
+        Some(&pool),
+        &scoped,
+        10,
+        None,
+        RelationalCreatedBounds::default(),
+    )
+    .await
+    .expect("open page");
+    let open_titles: Vec<_> = open
+        .documents
+        .iter()
+        .filter_map(|doc| doc.title.clone())
+        .collect();
+    assert_eq!(open_titles, vec!["newer".to_string(), "older".to_string()]);
+
+    sqlx::query("DELETE FROM documents WHERE workspace_id = $1")
+        .bind(workspace)
+        .execute(&pool)
+        .await
+        .expect("cleanup documents");
+    sqlx::query("DELETE FROM workspaces WHERE workspace_id = $1")
+        .bind(workspace)
+        .execute(&pool)
+        .await
+        .expect("cleanup workspace");
+    sqlx::query("DELETE FROM tenants WHERE tenant_id = $1")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("cleanup tenant");
+}
+
+async fn insert_doc_at(
+    pool: &sqlx::PgPool,
+    tenant: Option<Uuid>,
+    workspace: Uuid,
+    title: &str,
+    created_at: chrono::DateTime<chrono::Utc>,
+) {
+    sqlx::query(
+        "INSERT INTO documents (id, tenant_id, workspace_id, title, content, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, '', 'indexed', $5, $6)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(tenant)
+    .bind(workspace)
+    .bind(title)
+    .bind(created_at)
+    .bind(created_at)
+    .execute(pool)
+    .await
+    .expect("dated document");
 }
