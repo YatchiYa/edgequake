@@ -543,6 +543,13 @@
       "before_plan": "Generic plan. Index scan of idx_report_embeddings_hnsw_d768, then filter report_id. Rows removed 391, 306 buffers. The same plan returned no row for an id that exists when that id was not among the visited neighbors (0.711 ms). Custom plan for a visited id already used report_embeddings_pkey (0.078 ms)",
       "after_ms": 0.069,
       "after_plan": "Generic plan. Index scan of report_embeddings_pkey, Index Cond model_id and report_id = ANY. 1 row, 4 buffers. The id the HNSW filter missed is found the same way (0.133 ms). No new index"
+    },
+    {
+      "name": "chat history of a 20004-message conversation, keep the newest 64",
+      "before_ms": 2.362,
+      "before_plan": "Generic plan. Index scan of idx_messages_conversation forward, LIMIT 10000. 10000 rows, 229 buffers. Those are the oldest 10000, so the 64 kept from the end of that page are not the newest messages",
+      "after_ms": 0.047,
+      "after_plan": "Generic plan. Index scan backward of idx_messages_conversation, LIMIT 64, then sort those 64 ascending. 64 rows, 5 buffers. No new index"
     }
   ]
 }

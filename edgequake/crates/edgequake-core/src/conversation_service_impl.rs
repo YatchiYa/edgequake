@@ -402,6 +402,19 @@ impl ConversationService for ConversationServiceImpl {
         })
     }
 
+    async fn list_recent_messages(
+        &self,
+        conversation_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<Message>> {
+        let rows = self
+            .storage
+            .list_recent_messages(conversation_id, limit as i64)
+            .await
+            .map_err(Self::map_error)?;
+        Ok(rows.into_iter().map(Self::row_to_message).collect())
+    }
+
     async fn create_folder(
         &self,
         tenant_id: Uuid,

@@ -133,6 +133,16 @@ pub trait ConversationService: Send + Sync {
         limit: usize,
     ) -> Result<PaginatedMessages>;
 
+    /// Newest `limit` messages, oldest of that page first.
+    ///
+    /// Used by chat history. The offset list starts at the beginning of the
+    /// thread, so a large limit reads messages that are then discarded.
+    async fn list_recent_messages(
+        &self,
+        conversation_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<Message>>;
+
     // ============ Folder Operations ============
 
     /// Create a folder.
@@ -368,6 +378,13 @@ mod tests {
         assert_eq!(msgs.items.len(), 2);
         assert_eq!(msgs.items[0].content, "Hello");
         assert_eq!(msgs.items[1].content, "Hi there!");
+
+        let recent = service
+            .list_recent_messages(conv.conversation_id, 1)
+            .await
+            .unwrap();
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].content, "Hi there!");
     }
 
     #[tokio::test]

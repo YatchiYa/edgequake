@@ -373,6 +373,22 @@ impl ConversationService for InMemoryConversationService {
         })
     }
 
+    async fn list_recent_messages(
+        &self,
+        conversation_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<Message>> {
+        let msgs = self.messages.read().unwrap();
+        let mut items: Vec<_> = msgs
+            .values()
+            .filter(|m| m.conversation_id == conversation_id)
+            .cloned()
+            .collect();
+        items.sort_by_key(|item| item.created_at);
+        let start = items.len().saturating_sub(limit);
+        Ok(items.split_off(start))
+    }
+
     async fn create_folder(
         &self,
         tenant_id: Uuid,

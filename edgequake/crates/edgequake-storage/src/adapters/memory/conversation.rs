@@ -379,6 +379,22 @@ impl MemoryConversationStorage {
         Ok((page, total))
     }
 
+    pub async fn list_recent_messages(
+        &self,
+        conversation_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<MessageRow>> {
+        let messages = self.messages.read().map_err(map_lock_err)?;
+        let mut rows: Vec<MessageRow> = messages
+            .values()
+            .filter(|m| m.conversation_id == conversation_id)
+            .cloned()
+            .collect();
+        rows.sort_by_key(|m| m.created_at);
+        let start = rows.len().saturating_sub(limit.max(0) as usize);
+        Ok(rows.split_off(start))
+    }
+
     pub async fn get_message_count(&self, conversation_id: Uuid) -> Result<i64> {
         let messages = self.messages.read().map_err(map_lock_err)?;
         let count = messages
@@ -716,6 +732,14 @@ impl ConversationStorage for MemoryConversationStorage {
         offset: i64,
     ) -> Result<(Vec<MessageRow>, i64)> {
         MemoryConversationStorage::list_messages(self, conversation_id, limit, offset).await
+    }
+
+    async fn list_recent_messages(
+        &self,
+        conversation_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<MessageRow>> {
+        MemoryConversationStorage::list_recent_messages(self, conversation_id, limit).await
     }
 
     async fn create_folder(

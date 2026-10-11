@@ -757,6 +757,40 @@ impl PostgresConversationStorage {
         Ok((rows, total))
     }
 
+    /// Newest `limit` messages in chronological order.
+    ///
+    /// `ORDER BY created_at DESC LIMIT` walks `idx_messages_conversation`
+    /// backward and stops at the page. The outer sort restores oldest-first
+    /// for the caller. A forward `LIMIT` of the same size would return the
+    /// start of the thread.
+    pub async fn list_recent_messages(
+        &self,
+        conversation_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<MessageRow>> {
+        if limit <= 0 {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query_as::<_, MessageRow>(
+            r#"
+            SELECT * FROM (
+                SELECT * FROM messages
+                WHERE conversation_id = $1
+                ORDER BY created_at DESC
+                LIMIT $2
+            ) recent
+            ORDER BY created_at ASC
+            "#,
+        )
+        .bind(conversation_id)
+        .bind(limit)
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(|e| StorageError::Database(format!("Failed to list recent messages: {e}")))?;
+
+        Ok(rows)
+    }
+
     // ============ Folder Operations ============
 
     /// Create a new folder.
@@ -1250,6 +1284,14 @@ impl ConversationStorage for PostgresConversationStorage {
         offset: i64,
     ) -> Result<(Vec<MessageRow>, i64)> {
         PostgresConversationStorage::list_messages(self, conversation_id, limit, offset).await
+    }
+
+    async fn list_recent_messages(
+        &self,
+        conversation_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<MessageRow>> {
+        PostgresConversationStorage::list_recent_messages(self, conversation_id, limit).await
     }
 
     async fn create_folder(

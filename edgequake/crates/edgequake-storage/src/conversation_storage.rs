@@ -108,6 +108,17 @@ pub trait ConversationStorage: Send + Sync {
         offset: i64,
     ) -> Result<(Vec<MessageRow>, i64)>;
 
+    /// Newest `limit` messages, oldest of that page first.
+    ///
+    /// Chat history wants the recent tail. `list_messages` walks
+    /// `idx_messages_conversation` forward from the start of the thread, so a
+    /// large limit reads messages the caller then throws away.
+    async fn list_recent_messages(
+        &self,
+        conversation_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<MessageRow>>;
+
     async fn create_folder(
         &self,
         tenant_id: Uuid,
