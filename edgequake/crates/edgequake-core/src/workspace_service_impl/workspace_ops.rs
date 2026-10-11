@@ -689,12 +689,15 @@ impl WorkspaceServiceImpl {
 
         // The migration gate guarantees typed embedding homes before serve.
         // Database failures must not be reported as a valid zero count.
+        // chunk_embeddings.workspace_id is the workspace key used by ANN search
+        // and workspace delete. idx_chunk_embeddings_workspace answers the count.
+        // Joining chunks scanned that table as well: 2.453 ms and 283 buffers
+        // for 50 embeddings beside 20,000 others, versus 0.027 ms and 4 buffers.
         let embedding_count = sqlx::query_scalar::<_, i64>(
             r#"
             SELECT COUNT(*)::BIGINT
-            FROM public.chunk_embeddings ce
-            INNER JOIN public.chunks c ON c.id = ce.chunk_id
-            WHERE c.workspace_id = $1
+            FROM public.chunk_embeddings
+            WHERE workspace_id = $1
             "#,
         )
         .bind(workspace_id)
@@ -734,5 +737,27 @@ mod workspace_stats_sql {
         );
         assert!(body.contains("SUM(chunk_count)"));
         assert!(body.contains("SUM(file_size_bytes)"));
+    }
+
+    #[test]
+    fn embedding_count_reads_chunk_embeddings_by_workspace() {
+        let src = include_str!("workspace_ops.rs");
+        let start = src
+            .find("async fn pg_get_workspace_stats")
+            .expect("stats fn");
+        let body = &src[start..];
+        let embed = body
+            .find("SELECT COUNT(*)::BIGINT")
+            .expect("embedding count");
+        let end = body
+            .find("Failed to get workspace embedding count")
+            .expect("embedding error");
+        let sql = &body[embed..end];
+        assert!(sql.contains("FROM public.chunk_embeddings"));
+        assert!(sql.contains("WHERE workspace_id = $1"));
+        assert!(
+            !sql.contains("JOIN") && !sql.contains("public.chunks"),
+            "embedding count must use chunk_embeddings.workspace_id"
+        );
     }
 }

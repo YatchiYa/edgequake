@@ -221,6 +221,13 @@
       "before_plan": "Three Seq Scans of documents, 40000 rows removed each time, 6447 buffers. Same totals: 80000 documents, chunk_count 0, storage_bytes 0",
       "after_ms": 17.502,
       "after_plan": "One Seq Scan, 40000 rows removed once, 2149 buffers. A 50-row workspace uses idx_documents_workspace_created and stops at 50 (0.101 ms)"
+    },
+    {
+      "name": "workspace embedding count, 50 rows beside 20000 embeddings in another workspace",
+      "before_ms": 2.453,
+      "before_plan": "Hash Join. Seq Scan of all 20050 chunk_embeddings plus Index Scan of 50 chunks, 283 buffers. Counts matched",
+      "after_ms": 0.027,
+      "after_plan": "Index Only Scan idx_chunk_embeddings_workspace, 50 rows, 4 buffers. The 20000-row workspace seq-scans chunk_embeddings only (2.303 ms, 248 buffers) instead of also scanning 40000 chunks (13.471 ms, 1583 buffers)"
     }
   ]
 }
