@@ -89,14 +89,19 @@ fn is_region_boundary_line(line: &str, lines: &[(usize, &str)], idx: usize) -> b
     is_hard_region_boundary(line) || is_vlm_analyzed_block_start(lines, idx)
 }
 
-fn fence_opener(trimmed: &str) -> Option<&'static str> {
-    if trimmed.starts_with("```") {
-        Some("```")
-    } else if trimmed.starts_with("~~~") {
-        Some("~~~")
-    } else {
-        None
+fn fence_opener(trimmed: &str) -> Option<(char, usize)> {
+    let marker = trimmed.chars().next()?;
+    if !matches!(marker, '`' | '~') {
+        return None;
     }
+    let length = trimmed.chars().take_while(|&c| c == marker).count();
+    (length >= 3).then_some((marker, length))
+}
+
+fn is_fence_closer(trimmed: &str, opener: (char, usize)) -> bool {
+    let (marker, minimum_length) = opener;
+    let length = trimmed.chars().take_while(|&c| c == marker).count();
+    length >= minimum_length && trimmed[length..].trim().is_empty()
 }
 
 fn is_page_marker(line: &str) -> bool {
@@ -205,7 +210,7 @@ pub fn split_preserving_atomic_regions(content: &str) -> Vec<ContentRegion> {
         } else if let Some(opener) = fence_opener(trimmed) {
             idx += 1;
             while idx < lines.len() {
-                if lines[idx].1.trim().starts_with(opener) {
+                if is_fence_closer(lines[idx].1.trim(), opener) {
                     idx += 1;
                     break;
                 }
@@ -279,6 +284,36 @@ pub fn split_preserving_atomic_regions(content: &str) -> Vec<ContentRegion> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn longer_fences_preserve_shorter_nested_delimiters() {
+        for marker in ["`", "~"] {
+            let md = format!(
+                "{}\nfirst\n{}\nstill code\n{}\nAfter",
+                marker.repeat(4),
+                marker.repeat(3),
+                marker.repeat(4)
+            );
+            let regions = split_preserving_atomic_regions(&md);
+            let code: Vec<_> = regions
+                .iter()
+                .filter(|r| r.atomic == Some(AtomicKind::FencedCode))
+                .collect();
+            assert_eq!(code.len(), 1);
+            assert!(code[0].text.contains("still code"));
+            assert!(!code[0].text.contains("After"));
+            assert_eq!(regions.last().unwrap().text, "After");
+        }
+    }
+
+    #[test]
+    fn fence_like_content_with_suffix_does_not_close_code() {
+        let md = "```rust\n```not a closer\nstill code\n````  \nAfter";
+        let regions = split_preserving_atomic_regions(md);
+        assert_eq!(regions.len(), 2);
+        assert!(regions[0].text.contains("still code"));
+        assert_eq!(regions[1].text, "After");
+    }
 
     #[test]
     fn splits_mm_block_as_single_atomic_region() {
