@@ -14,18 +14,21 @@ type HealthResponse struct {
 }
 
 type Document struct {
-	ID            UUID   `json:"id"`
-	FileName      string `json:"file_name,omitempty"`
-	Title         string `json:"title,omitempty"`
-	Status        string `json:"status,omitempty"`
-	FileSize      *int64 `json:"file_size,omitempty"`
-	MimeType      string `json:"mime_type,omitempty"`
-	EntityCount   *int   `json:"entity_count,omitempty"`
-	ChunkCount    *int   `json:"chunk_count,omitempty"`
-	CreatedAt     string `json:"created_at,omitempty"`
-	UpdatedAt     string `json:"updated_at,omitempty"`
-	DisplayStatus string `json:"display_status,omitempty"`
-	UIPhase       string `json:"ui_phase,omitempty"`
+	CurrentStage  string   `json:"current_stage,omitempty"`
+	StageProgress *float64 `json:"stage_progress,omitempty"`
+	StageMessage  string   `json:"stage_message,omitempty"`
+	ID            UUID     `json:"id"`
+	FileName      string   `json:"file_name,omitempty"`
+	Title         string   `json:"title,omitempty"`
+	Status        string   `json:"status,omitempty"`
+	FileSize      *int64   `json:"file_size,omitempty"`
+	MimeType      string   `json:"mime_type,omitempty"`
+	EntityCount   *int     `json:"entity_count,omitempty"`
+	ChunkCount    *int     `json:"chunk_count,omitempty"`
+	CreatedAt     string   `json:"created_at,omitempty"`
+	UpdatedAt     string   `json:"updated_at,omitempty"`
+	DisplayStatus string   `json:"display_status,omitempty"`
+	UIPhase       string   `json:"ui_phase,omitempty"`
 }
 
 type UploadResponse struct {
@@ -87,12 +90,31 @@ type PaginationInfo struct {
 	TotalPages int `json:"total_pages"`
 }
 
+// DocumentStatusCounts preserves the server's batch status buckets.
+type DocumentStatusCounts struct {
+	Pending        int `json:"pending"`
+	Processing     int `json:"processing"`
+	Completed      int `json:"completed"`
+	PartialFailure int `json:"partial_failure"`
+	Failed         int `json:"failed"`
+	Cancelled      int `json:"cancelled"`
+	Unknown        int `json:"unknown"`
+}
+
 type TrackStatus struct {
-	TrackID    string   `json:"track_id"`
-	Status     string   `json:"status"`
-	Progress   *float64 `json:"progress,omitempty"`
-	Message    string   `json:"message,omitempty"`
-	DocumentID string   `json:"document_id,omitempty"`
+	CreatedAt       *string              `json:"created_at,omitempty"`
+	Documents       []Document           `json:"documents,omitempty"`
+	TotalCount      int                  `json:"total_count"`
+	StatusSummary   DocumentStatusCounts `json:"status_summary"`
+	IsComplete      bool                 `json:"is_complete"`
+	ExpectedCount   *int                 `json:"expected_count,omitempty"`
+	RegisteredCount int                  `json:"registered_count"`
+	LatestMessage   *string              `json:"latest_message,omitempty"`
+	TrackID         string               `json:"track_id"`
+	Status          string               `json:"status"`
+	Progress        *float64             `json:"progress,omitempty"`
+	Message         string               `json:"message,omitempty"`
+	DocumentID      string               `json:"document_id,omitempty"`
 }
 
 type ScanRequest struct {
