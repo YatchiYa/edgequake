@@ -45,7 +45,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: migration-guard-${{ github.ref }}
+  # pull_request_target uses the shared base ref, so scope PR runs by number.
+  group: migration-guard-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
