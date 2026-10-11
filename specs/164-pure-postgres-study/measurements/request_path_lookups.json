@@ -564,6 +564,13 @@
       "before_plan": "Generic plan. Index scan of idx_messages_conversation, then OFFSET 15000. 15050 rows, 341 buffers. A keyset on that index stops when created_at is unique (0.106 ms, 5 buffers, 1 row filtered)",
       "after_ms": 0.042,
       "after_plan": "Generic plan. Index only scan of idx_messages_conversation_created_id, Index Cond the row comparison, 50 rows, 5 buffers. The first page stops at 50 (0.025 ms, 4 buffers). A decimal cursor still uses OFFSET. Migration 196"
+    },
+    {
+      "name": "pdf list page after 14950 newer rows, 15000 PDFs in one workspace",
+      "before_ms": 4.036,
+      "before_plan": "Generic plan. Index scan of idx_pdf_documents_workspace_created, Index Cond workspace_id, then OFFSET 14950. 15000 rows, 825 buffers. A status page at OFFSET 14000 reads 14050 rows and removes 586 (3.872 ms, 806 buffers). A keyset that only compares the row, with 20000 foreign PDFs just older than the cursor, uses idx_pdf_documents_created and removes 19999 (6.655 ms, 40247 buffers)",
+      "after_ms": 0.086,
+      "after_plan": "Generic plan. Index scan of idx_pdf_documents_created, Index Cond created_at <= cursor, 49 rows, 1 removed, 6 buffers. The same predicate on the foreign set uses idx_pdf_documents_workspace_created_id and stops at 50 (0.029 ms, 7 buffers). A status keyset uses idx_pdf_documents_workspace_status_created_id (0.047 ms, 4 buffers). The first page stops at 20 (0.033 ms, 3 buffers). An unscoped keyset uses idx_pdf_documents_created_id (0.030 ms, 3 buffers). A page number still uses OFFSET. Migration 197"
     }
   ]
 }

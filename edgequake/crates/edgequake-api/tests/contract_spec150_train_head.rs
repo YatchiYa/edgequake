@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 196, "HEAD schema train must end at 196");
-    for v in 160..=196 {
+    assert_eq!(max, 197, "HEAD schema train must end at 197");
+    for v in 160..=197 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "196");
+    assert_eq!(digits, "197");
 }
 
 #[test]
@@ -317,6 +317,29 @@ fn migration_196_indexes_conversation_page_tiebreak() {
     assert!(list.contains("({sort_col}, conversation_id) {cmp}"));
     assert!(list.contains("(created_at, message_id) > ($2, $3)"));
     assert!(list.contains("ORDER BY created_at ASC, message_id ASC"));
+}
+
+#[test]
+fn migration_197_indexes_pdf_page_tiebreak() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v197 = manifest
+        .split("version = 197")
+        .nth(1)
+        .expect("migration 197");
+    assert!(v197.contains("phase = \"expand\""));
+    assert!(!v197.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/197_pdf_page_tiebreak.sql");
+    assert!(sql.contains("idx_pdf_documents_workspace_created_id"));
+    assert!(sql.contains("(workspace_id, created_at DESC, pdf_id DESC)"));
+    assert!(sql.contains("idx_pdf_documents_workspace_status_created_id"));
+    assert!(sql.contains("(workspace_id, processing_status, created_at DESC, pdf_id DESC)"));
+    assert!(sql.contains("idx_pdf_documents_created_id"));
+    assert!(sql.contains("idx_pdf_documents_status_created_id"));
+    let list = include_str!("../../edgequake-storage/src/adapters/postgres/pdf_list_query.rs");
+    assert!(list.contains("created_at <= ${at}"));
+    assert!(list.contains("(created_at, pdf_id) < (${at}, ${id})"));
+    assert!(list.contains("ORDER BY created_at DESC, pdf_id DESC"));
+    assert!(list.contains("OFFSET ${}"));
 }
 
 #[test]
@@ -640,8 +663,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=196 => \"v0.35.0\""),
-        "release_for_schema must map 170–196 to v0.35.0"
+        src.contains("170..=197 => \"v0.35.0\""),
+        "release_for_schema must map 170–197 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),
