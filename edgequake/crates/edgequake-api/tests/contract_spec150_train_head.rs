@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 176, "HEAD schema train must end at 176");
-    for v in 160..=176 {
+    assert_eq!(max, 177, "HEAD schema train must end at 177");
+    for v in 160..=177 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "176");
+    assert_eq!(digits, "177");
 }
 
 #[test]
@@ -154,6 +154,26 @@ fn migration_176_indexes_conversation_sorts() {
 }
 
 #[test]
+fn migration_177_indexes_task_status_and_type_pages() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v177 = manifest
+        .split("version = 177")
+        .nth(1)
+        .expect("migration 177");
+    assert!(v177.contains("phase = \"expand\""));
+    assert!(!v177.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/177_task_status_type_created_indexes.sql");
+    assert!(sql.contains("idx_tasks_tenant_workspace_status_created_track"));
+    assert!(sql.contains("idx_tasks_tenant_workspace_type_created_track"));
+    assert!(sql.contains("(tenant_id, workspace_id, status, created_at DESC, track_id DESC)"));
+    assert!(sql.contains("(tenant_id, workspace_id, task_type, created_at DESC, track_id DESC)"));
+    let list = include_str!("../../edgequake-tasks/src/postgres.rs");
+    assert!(list.contains("status = $"));
+    assert!(list.contains("task_type = $"));
+    assert!(list.contains("ORDER BY {sort_field} {sort_order}, track_id {sort_order}"));
+}
+
+#[test]
 fn fossils_001_and_019_are_registered() {
     let m = edgequake_migrate_manifest::load();
     let m001 = m.migration.iter().find(|e| e.version == 1).expect("m001");
@@ -206,8 +226,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=176 => \"v0.35.0\""),
-        "release_for_schema must map 170–176 to v0.35.0"
+        src.contains("170..=177 => \"v0.35.0\""),
+        "release_for_schema must map 170–177 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

@@ -193,6 +193,20 @@
       "before_plan": "Seq Scan, 15000 rows removed, top-N heapsort of 15000",
       "after_ms": 0.065,
       "after_plan": "Index Scan Backward idx_conversations_tenant_user_title, stops at 50"
+    },
+    {
+      "name": "task list status=failed LIMIT 50, 80000 newer pending rows in the same workspace",
+      "before_ms": 16.198,
+      "before_plan": "Index Scan idx_tasks_tenant_workspace_created_track, Filter status, 80000 rows removed, 2298 buffers",
+      "after_ms": 0.054,
+      "after_plan": "Index Only Scan idx_tasks_tenant_workspace_status_created_track, stops at 50, 12 buffers"
+    },
+    {
+      "name": "task list task_type=scan LIMIT 50, 80000 newer insert rows in the same workspace",
+      "before_ms": 9.551,
+      "before_plan": "Index Scan idx_tasks_tenant_workspace_created_track, Filter task_type, 80000 rows removed, 2298 buffers",
+      "after_ms": 0.056,
+      "after_plan": "Index Only Scan idx_tasks_tenant_workspace_type_created_track, stops at 50, 12 buffers"
     }
   ]
 }
