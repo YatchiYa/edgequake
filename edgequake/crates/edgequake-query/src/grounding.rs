@@ -129,11 +129,14 @@ pub fn answer_has_context_span(answer: &str, context_corpus: &str) -> bool {
         .collect();
     // Very short answers: treat as grounded if any content token hits corpus.
     if words.len() < 3 {
-        return words.iter().any(|w| corpus.contains(w));
+        return words
+            .iter()
+            .any(|w| corpus.split_whitespace().any(|token| token == *w));
     }
+    let corpus = format!(" {corpus} ");
     words
         .windows(3)
-        .map(|w| w.join(" "))
+        .map(|w| format!(" {} ", w.join(" ")))
         .any(|span| corpus.contains(&span))
 }
 
@@ -152,7 +155,11 @@ pub fn answer_context_token_coverage(answer: &str, context_corpus: &str) -> f32 
     if tokens.is_empty() {
         return 1.0;
     }
-    let hits = tokens.iter().filter(|t| corpus.contains(*t)).count();
+    let corpus_tokens: std::collections::HashSet<&str> = corpus.split_whitespace().collect();
+    let hits = tokens
+        .iter()
+        .filter(|t| corpus_tokens.contains(**t))
+        .count();
     hits as f32 / tokens.len() as f32
 }
 
@@ -248,6 +255,28 @@ mod tests {
             "W3-arith-v2 requires worked example + MUST compute; got:\n{g}"
         );
         assert!(allows_honest_refusal(g));
+    }
+
+    #[test]
+    fn grounding_requires_complete_context_tokens() {
+        assert!(!answer_has_context_span("rust", "crust"));
+        assert!(!answer_has_context_span(
+            "alpha beta gamma",
+            "zalpha beta gammax"
+        ));
+        assert_eq!(
+            answer_context_token_coverage("rust alpha", "crust zalpha"),
+            0.0
+        );
+        assert!(needs_groundedness_retry("rust alpha", "crust zalpha"));
+        assert!(answer_has_context_span(
+            "alpha beta gamma",
+            "Prefix: alpha beta gamma. Suffix"
+        ));
+        assert_eq!(
+            answer_context_token_coverage("rust alpha", "RUST, alpha!"),
+            1.0
+        );
     }
 
     #[test]
