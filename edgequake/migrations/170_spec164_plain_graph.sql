@@ -98,6 +98,30 @@ CREATE INDEX IF NOT EXISTS idx_eq_graph_nodes_type_trgm
     WITH (gin_pending_list_limit = 256)
     WHERE entity_type IS NOT NULL;
 
+-- Case-insensitive type pages. UPPER(COALESCE(entity_type,'')) is not sargable:
+-- a missing type walks every node in primary-key order before LIMIT can stop.
+CREATE INDEX IF NOT EXISTS idx_eq_graph_nodes_type_upper
+    ON public.eq_graph_nodes (namespace, upper(entity_type), node_id)
+    WHERE entity_type IS NOT NULL;
+
+-- Label ranks and distinct types. Index-only; the heap stays out of the aggregate.
+CREATE INDEX IF NOT EXISTS idx_eq_graph_nodes_ws_type
+    ON public.eq_graph_nodes (namespace, workspace_id, entity_type)
+    WHERE entity_type IS NOT NULL AND entity_type <> '';
+
+-- Relationship lookup is an equality on properties->>'id' or source_id||'_'||target_id.
+-- Either expression without an index is a sequential scan of every edge (LIMIT 1
+-- does not stop early on a miss).
+CREATE INDEX IF NOT EXISTS idx_eq_graph_edges_prop_id
+    ON public.eq_graph_edges (namespace, (properties->>'id'));
+CREATE INDEX IF NOT EXISTS idx_eq_graph_edges_pair_key
+    ON public.eq_graph_edges (namespace, (source_id || '_' || target_id));
+
+-- rel_type pages. The primary key orders by source_id first, so a selective
+-- type still read every edge in the namespace.
+CREATE INDEX IF NOT EXISTS idx_eq_graph_edges_rel
+    ON public.eq_graph_edges (namespace, rel_type, source_id, target_id);
+
 CREATE OR REPLACE FUNCTION public.eq_graph_degree_skip()
 RETURNS boolean
 LANGUAGE sql STABLE AS $$

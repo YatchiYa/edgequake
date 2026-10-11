@@ -189,14 +189,15 @@ pub(in crate::adapters::postgres::graph) mod read {
     ) -> Result<Vec<(GraphNode, usize, usize)>> {
         let nodes = get_nodes_batch(storage, node_ids).await?;
         let pool = storage.pool.get().await?;
+        // Two index-only counts. An OR join fetches every incident edge row
+        // just to count it. A self-loop is stored once and counted on both sides.
         let rows = sqlx::query(
             "SELECT id AS node_id,
-                    COUNT(*) FILTER (WHERE e.source_id = id)::bigint AS out_degree,
-                    COUNT(*) FILTER (WHERE e.target_id = id)::bigint AS in_degree
-             FROM unnest($2::text[]) AS id
-             LEFT JOIN public.eq_graph_edges e
-               ON e.namespace = $1 AND (e.source_id = id OR e.target_id = id)
-             GROUP BY id",
+                    (SELECT COUNT(*) FROM public.eq_graph_edges e
+                      WHERE e.namespace = $1 AND e.target_id = id)::bigint AS in_degree,
+                    (SELECT COUNT(*) FROM public.eq_graph_edges e
+                      WHERE e.namespace = $1 AND e.source_id = id)::bigint AS out_degree
+             FROM unnest($2::text[]) AS id",
         )
         .bind(&storage.namespace)
         .bind(node_ids)

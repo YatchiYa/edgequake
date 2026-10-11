@@ -18,8 +18,10 @@ fn node_filter_sql(filter: &NodeListFilter) -> String {
         TenantMode::Strict,
     );
     if let Some(etype) = filter.entity_type.as_deref() {
+        // `upper(entity_type)` matches idx_eq_graph_nodes_type_upper. Wrapping
+        // the column in COALESCE makes that index unusable.
         sql.push_str(&format!(
-            " AND UPPER(COALESCE(n.entity_type, '')) = UPPER('{}')",
+            " AND n.entity_type IS NOT NULL AND upper(n.entity_type) = upper('{}')",
             lit(etype)
         ));
     }
@@ -179,8 +181,17 @@ pub(in crate::adapters::postgres::graph) mod scan {
     ) -> Result<KeysetPage<GraphEdge>> {
         let limit = limit.max(1);
         let extra = edge_filter_sql(filter);
+        // Row comparison uses the primary key. Comparing the tab-joined cursor
+        // as one string filters index entries from the start of the namespace
+        // (hundreds of thousands of rows when the cursor is late). split_part
+        // is an InitPlan, so the bounds are constants. Tab is smaller than any
+        // id character, so the cursor order matches tuple order under C collation.
         let after_sql = if after.is_some() {
-            " AND (e.source_id || chr(9) || e.target_id || chr(9) || e.rel_type) > $2"
+            " AND (e.source_id, e.target_id, e.rel_type) > (
+                 (SELECT split_part($2, chr(9), 1)),
+                 (SELECT split_part($2, chr(9), 2)),
+                 (SELECT split_part($2, chr(9), 3))
+              )"
         } else {
             ""
         };

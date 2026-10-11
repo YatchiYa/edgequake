@@ -67,6 +67,38 @@ fn plain_search_reads_stored_degree_not_every_edge() {
 }
 
 #[test]
+fn plain_bounded_reads_are_index_shaped() {
+    let scan = include_str!("../src/adapters/postgres/graph/plain/scan.rs");
+    assert!(
+        scan.contains("split_part($2, chr(9), 1)"),
+        "edge keyset must bound the primary key with the cursor parts"
+    );
+    assert!(
+        !scan.contains("|| e.rel_type) > $2"),
+        "a concatenated cursor filter walks the index from the start"
+    );
+    assert!(
+        scan.contains("upper(n.entity_type)"),
+        "type filter must be sargable on idx_eq_graph_nodes_type_upper"
+    );
+    let read = include_str!("../src/adapters/postgres/graph/plain/read.rs");
+    assert!(
+        !read.contains("e.source_id = id OR e.target_id = id"),
+        "in/out degrees must be two index counts, not an OR join"
+    );
+    let sql = include_str!("../../../migrations/170_spec164_plain_graph.sql");
+    for index in [
+        "idx_eq_graph_nodes_type_upper",
+        "idx_eq_graph_nodes_ws_type",
+        "idx_eq_graph_edges_prop_id",
+        "idx_eq_graph_edges_pair_key",
+        "idx_eq_graph_edges_rel",
+    ] {
+        assert!(sql.contains(index), "missing {index}");
+    }
+}
+
+#[test]
 fn migration_170_has_no_serving_floor_and_171_raises_it() {
     let manifest = include_str!("../../../migrations/manifest.toml");
     let v170 = manifest

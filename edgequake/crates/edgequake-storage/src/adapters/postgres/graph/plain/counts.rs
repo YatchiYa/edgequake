@@ -44,10 +44,15 @@ pub(in crate::adapters::postgres::graph) mod counts {
         workspace_id: &str,
     ) -> Result<usize> {
         let pool = storage.pool.get().await?;
+        // GROUP BY walks idx_eq_graph_nodes_ws_type. COUNT(DISTINCT) sorted the heap.
         let n: i64 = sqlx::query_scalar(
-            "SELECT COUNT(DISTINCT entity_type)::bigint
-             FROM public.eq_graph_nodes
-             WHERE namespace = $1 AND workspace_id = $2 AND entity_type IS NOT NULL",
+            "SELECT COUNT(*)::bigint FROM (
+                SELECT entity_type
+                FROM public.eq_graph_nodes
+                WHERE namespace = $1 AND workspace_id = $2
+                  AND entity_type IS NOT NULL AND entity_type <> ''
+                GROUP BY entity_type
+             ) types",
         )
         .bind(&storage.namespace)
         .bind(workspace_id)

@@ -240,6 +240,8 @@ async fn plain_graph_queries_are_proven_and_measured() {
         .await
         .expect("with deg");
     assert_eq!(with_deg.len(), 1);
+    assert_eq!(with_deg[0].1, 1, "BOB in-degree");
+    assert_eq!(with_deg[0].2, 1, "BOB out-degree");
     measure!(
         measurements,
         "get_nodes_with_degrees_batch",
@@ -412,10 +414,29 @@ async fn plain_graph_queries_are_proven_and_measured() {
     );
 
     let ekey = storage
-        .scan_edges_after(&edge_filter, None, 10)
+        .scan_edges_after(&edge_filter, None, 1)
         .await
         .expect("scan edges");
-    assert_eq!(ekey.items.len(), 2);
+    assert_eq!(ekey.items.len(), 1);
+    let edge_cursor = ekey.next_after.clone().expect("edge cursor");
+    let ekey2 = storage
+        .scan_edges_after(&edge_filter, Some(&edge_cursor), 1)
+        .await
+        .expect("scan edges page 2");
+    assert_eq!(ekey2.items.len(), 1);
+    assert_ne!(ekey.items[0].source, ekey2.items[0].source);
+
+    let typed = NodeListFilter {
+        entity_type: Some("person".into()),
+        ..node_filter.clone()
+    };
+    let people = storage
+        .list_nodes_filtered(&typed, 0, 10)
+        .await
+        .expect("type page");
+    let ids: Vec<_> = people.items.iter().map(|n| n.id.as_str()).collect();
+    assert!(ids.contains(&"ALICE") && ids.contains(&"BOB"));
+    assert!(!ids.contains(&"CAROL"));
     measure!(
         measurements,
         "scan_edges_after",
