@@ -239,7 +239,7 @@ module EdgeQuake
   class AuthService < Service
     BASE = "/api/v1/auth"
 
-    def login(email:, password:) = @http.post("#{BASE}/login", { email: email, password: password })
+    def login(email:, password:) = @http.post("#{BASE}/login", { username: email, password: password })
     def logout = @http.post("#{BASE}/logout")
     def refresh = @http.post("#{BASE}/refresh")
     def current_user = @http.get("#{BASE}/me")
