@@ -109,7 +109,7 @@ module EdgeQuake
     end
 
     def stream(query:, mode: nil)
-      Enumerator.new { |output| output << @http.post("#{BASE}/stream", { query: query, mode: mode }.compact) }
+      @http.post_events("#{BASE}/stream", { query: query, mode: mode }.compact)
     end
   end
 
@@ -130,7 +130,7 @@ module EdgeQuake
     end
 
     def stream(message:, mode: nil)
-      Enumerator.new { |output| output << completions(message: message, mode: mode, stream: true) }
+      @http.post_events("#{BASE}/stream", { message: message, mode: mode }.compact)
     end
   end
 
