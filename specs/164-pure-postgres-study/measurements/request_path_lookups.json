@@ -6,7 +6,11 @@
     "documents": 80000,
     "pending_tasks": 80000,
     "chunk_entity_links": 80000,
-    "chunks": 40000
+    "chunks": 40000,
+    "conversations": 30000,
+    "messages_on_one_conversation": 20004,
+    "pdf_documents": 30000,
+    "pdf_list_probe_extra_newer_foreign_rolled_back": 40000
   },
   "note": "EXPLAIN (ANALYZE, BUFFERS). A top-k or a miss must not read the rest of the table. Exact counts that answer with one number per row of a set still read that set.",
   "queries": [
@@ -116,6 +120,53 @@
       "name": "shared entities for 3 names",
       "after_ms": 0.101,
       "after_plan": "Index Scan idx_cel_entity_workspace"
+    },
+    {
+      "name": "pdf list LIMIT 50, 40000 newer foreign-workspace rows",
+      "before_ms": 5.827,
+      "before_plan": "Index Scan idx_pdf_documents_created, Filter workspace, 40049 rows removed, 1200 buffers",
+      "after_ms": 0.056,
+      "after_plan": "Index Scan idx_pdf_documents_workspace_created, Index Cond workspace_id, stops at 50, 6 buffers"
+    },
+    {
+      "name": "pdf list by status",
+      "after_ms": 0.190,
+      "after_plan": "Index Scan idx_pdf_documents_workspace_status"
+    },
+    {
+      "name": "pdf checksum lookup",
+      "after_ms": 0.033,
+      "after_plan": "Index Scan idx_pdf_documents_workspace_checksum_unique"
+    },
+    {
+      "name": "conversation list LIMIT 50",
+      "after_ms": 0.335,
+      "after_plan": "Index Scan idx_conversations_tenant_user, 45 buffers. Already stops at the page."
+    },
+    {
+      "name": "conversation title rare uniquezephyr LIMIT 20",
+      "after_ms": 6.293,
+      "after_plan": "Bitmap Index Scan idx_conversations_title_fts, 300 index rows, 60 after the user filter"
+    },
+    {
+      "name": "conversation title common medical LIMIT 20",
+      "after_ms": 0.218,
+      "after_plan": "Index Scan idx_conversations_tenant_user plus title filter, stops at 20"
+    },
+    {
+      "name": "message page 0, conversation of 20004",
+      "after_ms": 0.139,
+      "after_plan": "Index Scan idx_messages_conversation, stops at the page"
+    },
+    {
+      "name": "message OFFSET 15000",
+      "after_ms": 9.538,
+      "after_plan": "Bitmap of all 20004 messages then sort. The OFFSET API is unchanged; scan_*_after is the bounded page where it exists."
+    },
+    {
+      "name": "active pdf task miss",
+      "after_ms": 0.084,
+      "after_plan": "Index Scan idx_tasks_workspace_pdf_id"
     }
   ]
 }

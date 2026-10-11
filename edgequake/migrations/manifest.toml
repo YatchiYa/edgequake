@@ -4,7 +4,7 @@
 
 schema_version = 1
 compat_serve_min = 149
-compat_serve_max = 173
+compat_serve_max = 174
 irreversible_drop = [125, 126, 131, 171]
 legacy_cutover_assert = 142
 
@@ -1262,6 +1262,13 @@ lock_class = "ddl_access_exclusive"
 [[migration]]
 version = 173
 file = "173_injection_list_index.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 174
+file = "174_pdf_workspace_created_index.sql"
 phase = "expand"
 no_transaction = false
 lock_class = "ddl_access_exclusive"

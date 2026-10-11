@@ -288,13 +288,16 @@ async fn full_train_through_171_on_fresh_database() {
     std::env::set_var("EDGEQUAKE_MIGRATE_CLI", "1");
     run_postgres_migrations(&pool)
         .await
-        .unwrap_or_else(|e| panic!("full train through 173 failed (no_age={no_age}): {e}"));
+        .unwrap_or_else(|e| panic!("full train through 174 failed (no_age={no_age}): {e}"));
     let max_version: i64 =
         sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations")
             .fetch_one(&pool)
             .await
             .expect("max");
-    assert_eq!(max_version, 173, "train must include injection index 173");
+    assert_eq!(
+        max_version, 174,
+        "train must include the PDF workspace index 174"
+    );
     let age_on: bool =
         sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
             .fetch_one(&pool)
@@ -329,16 +332,14 @@ async fn full_train_through_171_on_fresh_database() {
              'idx_documents_metadata_track_id',
              'idx_cel_workspace_chunk_pattern',
              'idx_crl_workspace_chunk_pattern',
-             'idx_documents_workspace_injection'
+             'idx_documents_workspace_injection',
+             'idx_pdf_documents_workspace_created'
          )",
     )
     .fetch_one(&pool)
     .await
     .expect("lookup indexes");
-    assert_eq!(
-        lookup_idx, 4,
-        "172 and 173 must index the request-path lookups"
-    );
+    assert_eq!(lookup_idx, 5, "172–174 must index the request-path lookups");
     let ready: String =
         sqlx::query_scalar("SELECT status FROM public.eq_graph_cutover WHERE id = 1")
             .fetch_one(&pool)
