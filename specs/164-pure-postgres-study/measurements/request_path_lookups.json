@@ -319,6 +319,20 @@
       "before_plan": "Index Scan Backward (tenant_id, user_id, title), Filter NOT is_archived, 10001 rows removed, 489 buffers",
       "after_ms": 0.052,
       "after_plan": "Index Scan Backward (tenant_id, user_id, is_archived, title), stops at 50, 5 buffers"
+    },
+    {
+      "name": "task list status=failed AND task_type=scan ORDER BY created_at DESC LIMIT 50, 40000 newer failed inserts",
+      "before_ms": 5.624,
+      "before_plan": "Index Scan (tenant_id, workspace_id, status, created_at DESC, track_id DESC), Filter task_type, 40000 rows removed, 956 buffers",
+      "after_ms": 0.068,
+      "after_plan": "Index Only Scan (tenant_id, workspace_id, status, task_type, created_at DESC, track_id DESC), stops at 50, 5 buffers. Generic plan of status = $3 AND task_type = $4 uses this index. A status-only page still uses the status index"
+    },
+    {
+      "name": "task list status=failed AND task_type=scan ORDER BY updated_at DESC LIMIT 50, 40000 newer failed inserts",
+      "before_ms": 5.402,
+      "before_plan": "Index Scan (tenant_id, workspace_id, status, updated_at DESC), Filter task_type, 40000 rows removed, 867 buffers",
+      "after_ms": 0.050,
+      "after_plan": "Index Scan (tenant_id, workspace_id, status, task_type, updated_at DESC), stops at 50, 6 buffers. Generic plan uses this index"
     }
   ]
 }

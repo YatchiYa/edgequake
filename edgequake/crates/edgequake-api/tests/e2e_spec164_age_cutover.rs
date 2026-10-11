@@ -288,15 +288,15 @@ async fn full_train_through_171_on_fresh_database() {
     std::env::set_var("EDGEQUAKE_MIGRATE_CLI", "1");
     run_postgres_migrations(&pool)
         .await
-        .unwrap_or_else(|e| panic!("full train through 183 failed (no_age={no_age}): {e}"));
+        .unwrap_or_else(|e| panic!("full train through 184 failed (no_age={no_age}): {e}"));
     let max_version: i64 =
         sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations")
             .fetch_one(&pool)
             .await
             .expect("max");
     assert_eq!(
-        max_version, 183,
-        "train must include the conversation filter sort indexes 183"
+        max_version, 184,
+        "train must include the task status and type pair indexes 184"
     );
     let age_on: bool =
         sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
@@ -352,15 +352,17 @@ async fn full_train_through_171_on_fresh_database() {
              'idx_conversations_tenant_user_unfiled_created',
              'idx_conversations_tenant_user_unfiled_title',
              'idx_conversations_tenant_user_archived_created',
-             'idx_conversations_tenant_user_archived_title'
+             'idx_conversations_tenant_user_archived_title',
+             'idx_tasks_tenant_workspace_status_type_created_track',
+             'idx_tasks_tenant_workspace_status_type_updated'
          )",
     )
     .fetch_one(&pool)
     .await
     .expect("lookup indexes");
     assert_eq!(
-        lookup_idx, 24,
-        "172–183 must index the request-path lookups"
+        lookup_idx, 26,
+        "172–184 must index the request-path lookups"
     );
     let ready: String =
         sqlx::query_scalar("SELECT status FROM public.eq_graph_cutover WHERE id = 1")
