@@ -154,10 +154,32 @@ const MODALITY_PREDICATE_OPTIONAL: &str =
     "AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))";
 const MODALITY_PREDICATE_REQUIRED: &str = "AND c.metadata->>'modality' = ANY($6)";
 
+/// `$5 IS NULL OR tenant_id = $5` hides the tenant from a generic plan.
+/// Search then scores every chunk that matches the words and throws away the
+/// other tenants. When the caller passes a tenant, the statement requires
+/// `tenant_id = $5` so `idx_chunks_tenant_workspace` can intersect the
+/// content bitmap before those rows are fetched.
+const TENANT_PREDICATE_OPTIONAL: &str = "AND ($5::uuid IS NULL OR c.tenant_id = $5)";
+const TENANT_PREDICATE_REQUIRED: &str = "AND c.tenant_id = $5";
+
+fn apply_scope_predicates(sql: &str, modality_required: bool, tenant_required: bool) -> String {
+    let sql = if modality_required {
+        sql.replace(MODALITY_PREDICATE_OPTIONAL, MODALITY_PREDICATE_REQUIRED)
+    } else {
+        sql.to_string()
+    };
+    if tenant_required {
+        sql.replace(TENANT_PREDICATE_OPTIONAL, TENANT_PREDICATE_REQUIRED)
+    } else {
+        sql
+    }
+}
+
 pub(crate) fn typed_chunks_fts_sql(
     in_workspace: bool,
     in_documents: bool,
     modality_required: bool,
+    tenant_required: bool,
 ) -> String {
     let base = match (in_workspace, in_documents) {
         (true, true) => TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE_AND_DOCUMENTS,
@@ -165,11 +187,7 @@ pub(crate) fn typed_chunks_fts_sql(
         (false, true) => TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS,
         (false, false) => TYPED_CHUNKS_FTS_SQL,
     };
-    if modality_required {
-        base.replacen(MODALITY_PREDICATE_OPTIONAL, MODALITY_PREDICATE_REQUIRED, 1)
-    } else {
-        base.to_string()
-    }
+    apply_scope_predicates(base, modality_required, tenant_required)
 }
 
 /// Id-filtered typed FTS. `$7 IS NULL OR id = ANY OR legacy key = ANY` makes a
@@ -344,7 +362,12 @@ impl PgVectorStorage {
             .collect();
 
         let rows = if id_filter.is_some() {
-            sqlx::query(TYPED_CHUNKS_FTS_SQL_IN_IDS)
+            let sql = apply_scope_predicates(
+                TYPED_CHUNKS_FTS_SQL_IN_IDS,
+                modalities.is_some(),
+                tenant_id.is_some(),
+            );
+            sqlx::query(&sql)
                 .bind(query_text)
                 .bind(workspace_uuid)
                 .bind(workspace_text)
@@ -361,6 +384,7 @@ impl PgVectorStorage {
                 workspace_uuid.is_some(),
                 document_ids.is_some(),
                 modalities.is_some(),
+                tenant_id.is_some(),
             );
             sqlx::query(&sql)
                 .bind(query_text)
@@ -535,12 +559,20 @@ mod tests {
             assert!(sql.contains("c.document_id = ANY($4)"));
             assert!(!sql.contains("$4::uuid[] IS NULL"));
         }
-        let chart = typed_chunks_fts_sql(true, false, true);
+        let chart = typed_chunks_fts_sql(true, false, true, false);
         assert!(chart.contains(MODALITY_PREDICATE_REQUIRED));
         assert!(!chart.contains("$6::text[] IS NULL"));
         assert!(chart.contains("c.workspace_id = $2 OR c.workspace_id IS NULL"));
-        let open = typed_chunks_fts_sql(false, false, false);
+        assert!(chart.contains(TENANT_PREDICATE_OPTIONAL));
+        let open = typed_chunks_fts_sql(false, false, false, false);
         assert!(open.contains(MODALITY_PREDICATE_OPTIONAL));
+        assert!(open.contains(TENANT_PREDICATE_OPTIONAL));
+        let tenant = typed_chunks_fts_sql(true, false, false, true);
+        assert!(tenant.contains(TENANT_PREDICATE_REQUIRED));
+        assert!(!tenant.contains("$5::uuid IS NULL"));
+        let by_id_tenant = apply_scope_predicates(TYPED_CHUNKS_FTS_SQL_IN_IDS, false, true);
+        assert!(!by_id_tenant.contains("$5::uuid IS NULL"));
+        assert_eq!(by_id_tenant.matches("c.tenant_id = $5").count(), 2);
         let by_id = TYPED_CHUNKS_FTS_SQL_IN_IDS;
         assert!(by_id.contains("OFFSET 0"));
         assert!(by_id.contains("c.metadata->>'legacy_chunk_key' = wanted.key"));

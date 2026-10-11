@@ -405,6 +405,13 @@
       "after_plan": "Generic plan. Merge append of idx_documents_workspace_tenant_created and idx_documents_workspace_null_tenant_created, each stopped at LIMIT. 50 rows, 7 buffers. A page for the tenant that owns the newest rows is 0.084 ms, 12 buffers. Point lookup by id still filters one primary-key row"
     },
     {
+      "name": "workspace chunk search for one tenant, 200 term matches there and 39761 elsewhere",
+      "before_ms": 21.106,
+      "before_plan": "Generic plan. Content GIN bitmap of 39960 entries, then filter tenant. Rows removed 39761, 2259 buffers. The tenant that owns the term still joins every match to its document (118 ms, 160507 buffers) because the rank needs those rows",
+      "after_ms": 2.351,
+      "after_plan": "Generic plan. BitmapAnd of idx_chunks_content_tsv and idx_chunks_tenant_workspace, 199 rows, 819 buffers, no tenant rows removed. No new index. The same large-tenant search stays a rank of its own matches"
+    },
+    {
       "name": "document status buckets, 500 rows for the caller and 79500 for another tenant",
       "before_ms": 5.193,
       "before_plan": "Generic plan. Seq scan. Rows removed by filter 79500, 2906 buffers. The count must read every matching row, not the other tenant",
