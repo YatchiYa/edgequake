@@ -592,6 +592,13 @@
       "before_plan": "Generic plan. Bitmap heap scan of idx_cel_entity_workspace, 1600 rows, 817 buffers. The count needs chunk_id, so every match is fetched from the heap. The first cold run was 32.793 ms with 810 buffer reads",
       "after_ms": 0.763,
       "after_plan": "Generic plan. Index only scan of idx_cel_entity_workspace_chunk, 1600 rows, 26 buffers, 0 heap fetches. Migration 199"
+    },
+    {
+      "name": "shared entities for every name on one document, 80000 chunk_entity_links and 100 names",
+      "before_ms": 50.525,
+      "before_plan": "Generic plan. Bitmap heap scan of idx_cel_entity_workspace, 80000 rows, 1188 buffers, 988 heap blocks. COUNT DISTINCT still sorts those rows. The rows are every link for the names the document page just loaded",
+      "after_ms": 32.946,
+      "after_plan": "Generic plan. Index only scan of idx_cel_entity_workspace_chunk, 80000 rows, 1101 buffers, 0 heap fetches, then an incremental sort. Migration 199. The document's own array_agg is already an index-only scan of chunk_entity_links_pkey (98.715 ms warm) because those 80000 links are the answer"
     }
   ]
 }
