@@ -228,6 +228,13 @@
       "before_plan": "Hash Join. Seq Scan of all 20050 chunk_embeddings plus Index Scan of 50 chunks, 283 buffers. Counts matched",
       "after_ms": 0.027,
       "after_plan": "Index Only Scan idx_chunk_embeddings_workspace, 50 rows, 4 buffers. The 20000-row workspace seq-scans chunk_embeddings only (2.303 ms, 248 buffers) instead of also scanning 40000 chunks (13.471 ms, 1583 buffers)"
+    },
+    {
+      "name": "conversation folder page ORDER BY updated_at DESC LIMIT 50, 5000 oldest of 15000 in the folder",
+      "before_ms": 5.204,
+      "before_plan": "Index Scan idx_conversations_tenant_user, Filter folder_id, 10001 rows removed, 10706 buffers",
+      "after_ms": 0.086,
+      "after_plan": "Index Scan idx_conversations_tenant_user_folder_updated, folder_id is an index condition, stops at 50, 51 buffers"
     }
   ]
 }
