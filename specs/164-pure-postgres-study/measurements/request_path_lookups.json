@@ -214,6 +214,13 @@
       "before_plan": "Index Scan idx_tasks_updated, Filter tenant and workspace, 40000 rows removed, 969 buffers",
       "after_ms": 0.052,
       "after_plan": "Index Only Scan idx_tasks_tenant_workspace_updated_track, stops at 50, 10 buffers"
+    },
+    {
+      "name": "workspace stats document totals, 40000 foreign documents",
+      "before_ms": 46.525,
+      "before_plan": "Three Seq Scans of documents, 40000 rows removed each time, 6447 buffers. Same totals: 80000 documents, chunk_count 0, storage_bytes 0",
+      "after_ms": 17.502,
+      "after_plan": "One Seq Scan, 40000 rows removed once, 2149 buffers. A 50-row workspace uses idx_documents_workspace_created and stops at 50 (0.101 ms)"
     }
   ]
 }
