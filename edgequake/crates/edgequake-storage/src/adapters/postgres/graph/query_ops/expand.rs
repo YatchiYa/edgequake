@@ -230,18 +230,23 @@ impl PostgresAGEGraphStorage {
             EdgeTenantFilterMode::LegacyNullAsWildcard,
         );
 
-        // Q-GRAPH-006: child "EDGE" + eq_* btree, same shape as incident batch.
+        // Q-GRAPH-006: child "EDGE" + eq_source_id / eq_target_id btree.
         // The parent `_ag_label_edge` agtype path was ~212× slower at 200k nodes.
+        // COALESCE(eq_*, agtype) cannot use that btree; use the columns directly
+        // unless EDGEQUAKE_EQ_ID_FALLBACK asks for the NULL-backfill path.
         let eq_present = self.eq_columns_present(&mut conn).await?;
-        let src = if eq_present {
-            super::super::helpers::coalesce_endpoint("e", "source") // eq_source_id
+        let (src, tgt) = if eq_present && !super::super::helpers::eq_id_fallback_env_enabled() {
+            ("e.eq_source_id".to_string(), "e.eq_target_id".to_string())
+        } else if eq_present {
+            (
+                super::super::helpers::coalesce_endpoint("e", "source"),
+                super::super::helpers::coalesce_endpoint("e", "target"),
+            )
         } else {
-            super::super::helpers::prop_only_endpoint("e", "source")
-        };
-        let tgt = if eq_present {
-            super::super::helpers::coalesce_endpoint("e", "target") // eq_target_id
-        } else {
-            super::super::helpers::prop_only_endpoint("e", "target")
+            (
+                super::super::helpers::prop_only_endpoint("e", "source"),
+                super::super::helpers::prop_only_endpoint("e", "target"),
+            )
         };
         let sql = format!(
             r#"SELECT ag_catalog.agtype_to_json(e.properties) AS edge_props

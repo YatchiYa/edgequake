@@ -27,6 +27,24 @@ use sqlx::Row;
 use super::config::{db_pool_role_from_env, resolve_pool_max_connections, PostgresConfig};
 use crate::error::{Result, StorageError};
 
+/// True after migration 171 has recorded that Apache AGE was dropped.
+async fn cutover_marks_age_absent(pool: &PgPool) -> bool {
+    let table_exists: bool =
+        sqlx::query_scalar("SELECT to_regclass('public.eq_graph_cutover') IS NOT NULL")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(false);
+    if !table_exists {
+        return false;
+    }
+    sqlx::query_scalar(
+        "SELECT COALESCE((SELECT age_absent FROM public.eq_graph_cutover WHERE id = 1), false)",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false)
+}
+
 /// Default idle-in-transaction timeout (SPEC-112 / OLTP safety net).
 pub const DEFAULT_IDLE_IN_XACT_TIMEOUT_SECS: u64 = 60;
 
@@ -270,7 +288,18 @@ impl PostgresPool {
                 ))
             })?;
 
-        // Enable Apache AGE extension (fail-closed unless opt-out — SPEC-090 F-090-19)
+        // Enable Apache AGE extension (fail-closed unless opt-out — SPEC-090 F-090-19).
+        // SPEC-164 G11: after 171 the ledger records age_absent. Do not recreate the
+        // extension on a server that still has the package installed.
+        if cutover_marks_age_absent(pool).await {
+            tracing::warn!(
+                "SPEC-164 cutover ledger marks Apache AGE absent. Skipping CREATE EXTENSION age."
+            );
+            self.graph_extension_available
+                .store(false, Ordering::Relaxed);
+            return Ok(());
+        }
+
         let age_ok = match sqlx::query("CREATE EXTENSION IF NOT EXISTS age CASCADE")
             .execute(pool)
             .await
