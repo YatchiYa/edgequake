@@ -14,6 +14,7 @@
 
 use uuid::Uuid;
 
+use edgequake_storage::conversation_storage::ListWindow;
 use edgequake_storage::{PostgresConfig, PostgresConversationStorage};
 
 #[path = "support/postgres_test_config.rs"]
@@ -160,7 +161,9 @@ async fn test_list_messages_empty() {
     let storage = PostgresConversationStorage::new(pool);
 
     // List messages for non-existent conversation
-    let result = storage.list_messages(Uuid::new_v4(), 10, 0).await;
+    let result = storage
+        .list_messages(Uuid::new_v4(), 10, ListWindow::Offset(0))
+        .await;
     assert!(result.is_ok());
     let (messages, total) = result.unwrap();
     assert!(messages.is_empty());
@@ -436,12 +439,28 @@ mod full_workflow_tests {
         assert_eq!(recent[1].message_id, ids[4]);
 
         let (oldest, total) = storage
-            .list_messages(conv.conversation_id, 2, 0)
+            .list_messages(conv.conversation_id, 2, ListWindow::Offset(0))
             .await
             .expect("oldest page");
         assert_eq!(total, 5);
         assert_eq!(oldest[0].message_id, ids[0]);
         assert_eq!(oldest[1].message_id, ids[1]);
+
+        let (keyed, keyed_total) = storage
+            .list_messages(
+                conv.conversation_id,
+                2,
+                ListWindow::AfterTime {
+                    at: oldest[1].created_at,
+                    id: oldest[1].message_id,
+                },
+            )
+            .await
+            .expect("keyset page");
+        assert_eq!(keyed_total, 5);
+        assert_eq!(keyed.len(), 2);
+        assert_eq!(keyed[0].message_id, ids[2]);
+        assert_eq!(keyed[1].message_id, ids[3]);
 
         sqlx::query("DELETE FROM messages WHERE conversation_id = $1")
             .bind(conv.conversation_id)
@@ -545,7 +564,7 @@ mod full_workflow_tests {
 
         // 5. List messages
         let (messages, total) = storage
-            .list_messages(conv_id, 10, 0)
+            .list_messages(conv_id, 10, ListWindow::Offset(0))
             .await
             .expect("Failed to list messages");
         assert_eq!(total, 2);
@@ -599,7 +618,7 @@ mod full_workflow_tests {
             .expect("Failed to delete message");
 
         let (messages_after, total_after) = storage
-            .list_messages(conv_id, 10, 0)
+            .list_messages(conv_id, 10, ListWindow::Offset(0))
             .await
             .expect("Failed to list after delete");
         assert_eq!(messages_after.len(), 1);
@@ -887,7 +906,7 @@ mod full_workflow_tests {
                 "updated_at",
                 true,
                 10,
-                0,
+                ListWindow::Offset(0),
             )
             .await
             .expect("Failed to list");
@@ -907,7 +926,7 @@ mod full_workflow_tests {
                 "updated_at",
                 true,
                 10,
-                0,
+                ListWindow::Offset(0),
             )
             .await
             .expect("Failed to list pinned");
@@ -927,7 +946,7 @@ mod full_workflow_tests {
                 "updated_at",
                 true,
                 10,
-                0,
+                ListWindow::Offset(0),
             )
             .await
             .expect("Failed to list archived");

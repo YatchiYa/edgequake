@@ -3,10 +3,22 @@
 //! Single abstraction for memory and postgres conversation adapters.
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::conversation_types::{ConversationRow, FolderRow, MessageRow};
 use crate::error::Result;
+
+/// Which rows a list statement returns.
+///
+/// `Offset` walks every skipped key. `AfterTime` and `AfterTitle` require the
+/// sort column and the id, so the index can stop at `limit`.
+#[derive(Debug, Clone)]
+pub enum ListWindow {
+    Offset(i64),
+    AfterTime { at: DateTime<Utc>, id: Uuid },
+    AfterTitle { title: String, id: Uuid },
+}
 
 /// Storage port for conversations, messages, and folders.
 #[async_trait]
@@ -51,7 +63,7 @@ pub trait ConversationStorage: Send + Sync {
         sort_field: &str,
         sort_desc: bool,
         limit: i64,
-        offset: i64,
+        window: ListWindow,
     ) -> Result<(Vec<ConversationRow>, i64)>;
 
     async fn share_conversation(&self, conversation_id: Uuid) -> Result<String>;
@@ -105,7 +117,7 @@ pub trait ConversationStorage: Send + Sync {
         &self,
         conversation_id: Uuid,
         limit: i64,
-        offset: i64,
+        window: ListWindow,
     ) -> Result<(Vec<MessageRow>, i64)>;
 
     /// Newest `limit` messages, oldest of that page first.

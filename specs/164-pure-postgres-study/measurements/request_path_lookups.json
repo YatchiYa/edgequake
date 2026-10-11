@@ -550,6 +550,20 @@
       "before_plan": "Generic plan. Index scan of idx_messages_conversation forward, LIMIT 10000. 10000 rows, 229 buffers. Those are the oldest 10000, so the 64 kept from the end of that page are not the newest messages",
       "after_ms": 0.047,
       "after_plan": "Generic plan. Index scan backward of idx_messages_conversation, LIMIT 64, then sort those 64 ascending. 64 rows, 5 buffers. No new index"
+    },
+    {
+      "name": "conversation list page after 14980 newer rows, 15000 conversations for one user and two updated_at values",
+      "before_ms": 2.878,
+      "before_plan": "Generic plan. Index scan of idx_conversations_tenant_user, Index Cond updated_at <= cursor, then filter the id tie-break. Rows removed 14980, 310 buffers. The same ORDER BY on the first page reads all 15000 (3.568 ms, 318 buffers) because updated_at is not unique. OFFSET 14980 with that ORDER BY is 11.711 ms, 318 buffers. ORDER BY updated_at alone stops the first page at 20 (0.071 ms, 6 buffers) and does not order the ties",
+      "after_ms": 0.051,
+      "after_plan": "Generic plan. Index only scan of idx_conversations_tenant_user_updated_id, Index Cond the row comparison, 19 rows, 4 buffers. The first page stops at 20 (0.029 ms, 4 buffers). An unfiled page uses idx_conversations_tenant_user_unfiled_updated_id the same way (0.031 ms, 4 buffers). A decimal cursor still uses OFFSET. Migration 196"
+    },
+    {
+      "name": "message list page after 15000 older messages, 20004 in one conversation",
+      "before_ms": 2.577,
+      "before_plan": "Generic plan. Index scan of idx_messages_conversation, then OFFSET 15000. 15050 rows, 341 buffers. A keyset on that index stops when created_at is unique (0.106 ms, 5 buffers, 1 row filtered)",
+      "after_ms": 0.042,
+      "after_plan": "Generic plan. Index only scan of idx_messages_conversation_created_id, Index Cond the row comparison, 50 rows, 5 buffers. The first page stops at 50 (0.025 ms, 4 buffers). A decimal cursor still uses OFFSET. Migration 196"
     }
   ]
 }

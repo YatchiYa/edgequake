@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 195, "HEAD schema train must end at 195");
-    for v in 160..=195 {
+    assert_eq!(max, 196, "HEAD schema train must end at 196");
+    for v in 160..=196 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "195");
+    assert_eq!(digits, "196");
 }
 
 #[test]
@@ -149,8 +149,10 @@ fn migration_176_indexes_conversation_sorts() {
     let list = include_str!("../../edgequake-storage/src/adapters/postgres/conversation.rs");
     assert!(list.contains("tenant_id = $1"));
     assert!(list.contains("user_id = $2"));
-    assert!(list.contains("created_at {}"));
-    assert!(list.contains("title {}"));
+    assert!(list.contains("\"created_at\" => \"created_at\""));
+    assert!(list.contains("\"title\" => \"title\""));
+    assert!(list.contains("ORDER BY {sort_col} {dir}, conversation_id {dir}"));
+    assert!(list.contains("({sort_col}, conversation_id) {cmp}"));
 }
 
 #[test]
@@ -292,6 +294,29 @@ fn migration_195_indexes_entity_source_ids() {
     assert!(fleet.contains("e.name = wanted.name"));
     assert!(fleet.contains("ENTITY_SOURCE_REQUIRED"));
     assert!(!fleet.contains("e.id::text = ANY($7)"));
+}
+
+#[test]
+fn migration_196_indexes_conversation_page_tiebreak() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v196 = manifest
+        .split("version = 196")
+        .nth(1)
+        .expect("migration 196");
+    assert!(v196.contains("phase = \"expand\""));
+    assert!(!v196.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/196_conversation_page_tiebreak.sql");
+    assert!(sql.contains("idx_conversations_tenant_user_updated_id"));
+    assert!(sql.contains("(tenant_id, user_id, updated_at DESC, conversation_id DESC)"));
+    assert!(sql.contains("idx_conversations_tenant_user_unfiled_updated_id"));
+    assert!(sql.contains("WHERE folder_id IS NULL"));
+    assert!(sql.contains("idx_messages_conversation_created_id"));
+    assert!(sql.contains("(conversation_id, created_at, message_id)"));
+    let list = include_str!("../../edgequake-storage/src/adapters/postgres/conversation.rs");
+    assert!(list.contains("ORDER BY {sort_col} {dir}, conversation_id {dir}"));
+    assert!(list.contains("({sort_col}, conversation_id) {cmp}"));
+    assert!(list.contains("(created_at, message_id) > ($2, $3)"));
+    assert!(list.contains("ORDER BY created_at ASC, message_id ASC"));
 }
 
 #[test]
@@ -485,8 +510,9 @@ fn migration_183_indexes_conversation_filter_sort_pages() {
     assert!(list.contains("is_pinned = $"));
     assert!(list.contains("folder_id IS NULL"));
     assert!(list.contains("is_archived = $"));
-    assert!(list.contains("\"created_at\" => format!(\"created_at {}\", sort_order)"));
-    assert!(list.contains("\"title\" => format!(\"title {}\", sort_order)"));
+    assert!(list.contains("\"created_at\" => \"created_at\""));
+    assert!(list.contains("\"title\" => \"title\""));
+    assert!(list.contains("ORDER BY {sort_col} {dir}, conversation_id {dir}"));
 }
 
 #[test]
@@ -524,7 +550,7 @@ fn migration_181_indexes_conversation_unfiled_pages() {
     assert!(sql.contains("WHERE folder_id IS NULL"));
     let list = include_str!("../../edgequake-storage/src/adapters/postgres/conversation.rs");
     assert!(list.contains("folder_id IS NULL"));
-    assert!(list.contains("updated_at {}"));
+    assert!(list.contains("_ => \"updated_at\""));
 }
 
 #[test]
@@ -541,7 +567,7 @@ fn migration_180_indexes_conversation_pinned_pages() {
     assert!(sql.contains("(tenant_id, user_id, is_pinned, updated_at DESC)"));
     let list = include_str!("../../edgequake-storage/src/adapters/postgres/conversation.rs");
     assert!(list.contains("is_pinned = $"));
-    assert!(list.contains("updated_at {}"));
+    assert!(list.contains("_ => \"updated_at\""));
 }
 
 #[test]
@@ -558,7 +584,7 @@ fn migration_179_indexes_conversation_folder_pages() {
     assert!(sql.contains("(tenant_id, user_id, folder_id, updated_at DESC)"));
     let list = include_str!("../../edgequake-storage/src/adapters/postgres/conversation.rs");
     assert!(list.contains("folder_id = $"));
-    assert!(list.contains("updated_at {}"));
+    assert!(list.contains("_ => \"updated_at\""));
 }
 
 #[test]
@@ -614,8 +640,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=195 => \"v0.35.0\""),
-        "release_for_schema must map 170–195 to v0.35.0"
+        src.contains("170..=196 => \"v0.35.0\""),
+        "release_for_schema must map 170–196 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

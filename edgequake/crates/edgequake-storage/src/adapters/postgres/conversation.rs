@@ -26,6 +26,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::rls::with_rls_transaction;
+use crate::conversation_storage::ListWindow;
 use crate::conversation_types::{ConversationRow, FolderRow, MessageRow};
 use crate::error::{Result, StorageError};
 
@@ -337,7 +338,7 @@ impl PostgresConversationStorage {
         sort_field: &str,
         sort_desc: bool,
         limit: i64,
-        offset: i64,
+        window: ListWindow,
     ) -> Result<(Vec<ConversationRow>, i64)> {
         // Build query with filters
         let mut where_clauses = vec!["tenant_id = $1".to_string(), "user_id = $2".to_string()];
@@ -366,30 +367,48 @@ impl PostgresConversationStorage {
             ));
         }
 
-        let sort_order = if sort_desc { "DESC" } else { "ASC" };
-        let order_by = match sort_field {
-            "created_at" => format!("created_at {}", sort_order),
-            "title" => format!("title {}", sort_order),
-            _ => format!("updated_at {}", sort_order),
+        let sort_col = match sort_field {
+            "created_at" => "created_at",
+            "title" => "title",
+            _ => "updated_at",
+        };
+        let dir = if sort_desc { "DESC" } else { "ASC" };
+        let cmp = if sort_desc { "<" } else { ">" };
+        let count_where = where_clauses.join(" AND ");
+        let keyset_matches = match &window {
+            ListWindow::AfterTime { .. } => sort_col != "title",
+            ListWindow::AfterTitle { .. } => sort_col == "title",
+            ListWindow::Offset(_) => false,
+        };
+        if keyset_matches {
+            param_count += 1;
+            let value_param = param_count;
+            param_count += 1;
+            let id_param = param_count;
+            where_clauses.push(format!(
+                "({sort_col}, conversation_id) {cmp} (${value_param}, ${id_param})"
+            ));
+        }
+        param_count += 1;
+        let limit_param = param_count;
+        let offset_sql = if matches!(window, ListWindow::Offset(_)) {
+            param_count += 1;
+            format!(" OFFSET ${param_count}")
+        } else {
+            String::new()
         };
 
         let query = format!(
             r#"
             SELECT * FROM conversations
             WHERE {}
-            ORDER BY {}
-            LIMIT ${} OFFSET ${}
+            ORDER BY {sort_col} {dir}, conversation_id {dir}
+            LIMIT ${limit_param}{offset_sql}
             "#,
             where_clauses.join(" AND "),
-            order_by,
-            param_count + 1,
-            param_count + 2
         );
 
-        let count_query = format!(
-            "SELECT COUNT(*) FROM conversations WHERE {}",
-            where_clauses.join(" AND ")
-        );
+        let count_query = format!("SELECT COUNT(*) FROM conversations WHERE {count_where}");
 
         let search_owned = search.map(|s| s.to_string());
 
@@ -421,7 +440,21 @@ impl PostgresConversationStorage {
                     count_builder = count_builder.bind(s);
                 }
 
-                query_builder = query_builder.bind(limit).bind(offset);
+                if keyset_matches {
+                    match &window {
+                        ListWindow::AfterTime { at, id } => {
+                            query_builder = query_builder.bind(*at).bind(*id);
+                        }
+                        ListWindow::AfterTitle { title, id } => {
+                            query_builder = query_builder.bind(title.clone()).bind(*id);
+                        }
+                        ListWindow::Offset(_) => {}
+                    }
+                }
+                query_builder = query_builder.bind(limit);
+                if let ListWindow::Offset(offset) = &window {
+                    query_builder = query_builder.bind(*offset);
+                }
 
                 let rows = query_builder.fetch_all(&mut *conn).await.map_err(|e| {
                     StorageError::Database(format!("Failed to list conversations: {e}"))
@@ -730,22 +763,46 @@ impl PostgresConversationStorage {
         &self,
         conversation_id: Uuid,
         limit: i64,
-        offset: i64,
+        window: ListWindow,
     ) -> Result<(Vec<MessageRow>, i64)> {
-        let rows = sqlx::query_as::<_, MessageRow>(
-            r#"
-            SELECT * FROM messages
-            WHERE conversation_id = $1
-            ORDER BY created_at ASC
-            LIMIT $2 OFFSET $3
-            "#,
-        )
-        .bind(conversation_id)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&*self.pool)
-        .await
-        .map_err(|e| StorageError::Database(format!("Failed to list messages: {}", e)))?;
+        let rows = match window {
+            ListWindow::AfterTime { at, id } => sqlx::query_as::<_, MessageRow>(
+                r#"
+                SELECT * FROM messages
+                WHERE conversation_id = $1
+                  AND (created_at, message_id) > ($2, $3)
+                ORDER BY created_at ASC, message_id ASC
+                LIMIT $4
+                "#,
+            )
+            .bind(conversation_id)
+            .bind(at)
+            .bind(id)
+            .bind(limit)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("Failed to list messages: {}", e)))?,
+            other => {
+                let offset = match other {
+                    ListWindow::Offset(offset) => offset,
+                    ListWindow::AfterTime { .. } | ListWindow::AfterTitle { .. } => 0,
+                };
+                sqlx::query_as::<_, MessageRow>(
+                    r#"
+                    SELECT * FROM messages
+                    WHERE conversation_id = $1
+                    ORDER BY created_at ASC, message_id ASC
+                    LIMIT $2 OFFSET $3
+                    "#,
+                )
+                .bind(conversation_id)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(&*self.pool)
+                .await
+                .map_err(|e| StorageError::Database(format!("Failed to list messages: {}", e)))?
+            }
+        };
 
         let total: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM messages WHERE conversation_id = $1")
@@ -1175,11 +1232,11 @@ impl ConversationStorage for PostgresConversationStorage {
         sort_field: &str,
         sort_desc: bool,
         limit: i64,
-        offset: i64,
+        window: ListWindow,
     ) -> Result<(Vec<ConversationRow>, i64)> {
         PostgresConversationStorage::list_conversations(
             self, tenant_id, user_id, archived, pinned, folder_id, unfiled, search, sort_field,
-            sort_desc, limit, offset,
+            sort_desc, limit, window,
         )
         .await
     }
@@ -1281,9 +1338,9 @@ impl ConversationStorage for PostgresConversationStorage {
         &self,
         conversation_id: Uuid,
         limit: i64,
-        offset: i64,
+        window: ListWindow,
     ) -> Result<(Vec<MessageRow>, i64)> {
-        PostgresConversationStorage::list_messages(self, conversation_id, limit, offset).await
+        PostgresConversationStorage::list_messages(self, conversation_id, limit, window).await
     }
 
     async fn list_recent_messages(
