@@ -599,6 +599,27 @@
       "before_plan": "Generic plan. Bitmap heap scan of idx_cel_entity_workspace, 80000 rows, 1188 buffers, 988 heap blocks. COUNT DISTINCT still sorts those rows. The rows are every link for the names the document page just loaded",
       "after_ms": 32.946,
       "after_plan": "Generic plan. Index only scan of idx_cel_entity_workspace_chunk, 80000 rows, 1101 buffers, 0 heap fetches, then an incremental sort. Migration 199. The document's own array_agg is already an index-only scan of chunk_entity_links_pkey (98.715 ms warm) because those 80000 links are the answer"
+    },
+    {
+      "name": "workspace membership page of 2001 ids, 80000 documents in that workspace",
+      "before_ms": 10.596,
+      "before_plan": "Generic plan. Seq scan, workspace_id = $1 OR metadata workspace, 80000 rows, 3091 buffers. The list then keeps 2000 ids in memory",
+      "after_ms": 0.746,
+      "after_plan": "Custom plan. Index scan of idx_documents_created_at stops at 2001 because those newest rows are the workspace, 81 buffers, 0 removed. Each arm is an equality and LIMIT $3"
+    },
+    {
+      "name": "workspace membership page of 2001 ids, 40000 newer documents in another workspace",
+      "before_ms": 13.241,
+      "before_plan": "Generic plan. Seq scan of the OR removes 40000 foreign rows, 3091 buffers, then returns all 80000 matches",
+      "after_ms": 0.718,
+      "after_plan": "Index scan of idx_documents_workspace_created, Index Cond workspace_id, stops at 2001, 85 buffers. The metadata arm is idx_documents_metadata_workspace_expr and returns 0"
+    },
+    {
+      "name": "workspace membership for an empty workspace, 80000 documents elsewhere",
+      "before_ms": 4.817,
+      "before_plan": "Generic plan. Seq scan of workspace_id = $1 removes 80000 rows, 3091 buffers. The same OR is the membership statement",
+      "after_ms": 0.01,
+      "after_plan": "Custom plan. Index scan of idx_documents_workspace_created and idx_documents_metadata_workspace_expr, 0 rows, 6 buffers. A bounded miss of the page statement is 0.029 ms"
     }
   ]
 }
