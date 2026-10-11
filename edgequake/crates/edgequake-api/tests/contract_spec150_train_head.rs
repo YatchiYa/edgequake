@@ -223,7 +223,7 @@ fn migration_185_indexes_workspace_chunk_search() {
     let fts = include_str!("../../edgequake-storage/src/adapters/postgres/vector/fts.rs");
     assert!(fts.contains("TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE"));
     assert!(fts.contains("c.workspace_id = $2 OR c.workspace_id IS NULL"));
-    assert!(fts.contains("if workspace_uuid.is_some()"));
+    assert!(fts.contains("workspace_uuid.is_some()"));
 }
 
 #[test]

@@ -257,6 +257,41 @@ async fn e2e_spec405_typed_fts_without_legacy_vectors() {
     );
     assert_eq!(filtered[0].id, prose_key);
 
+    // 6b) document_ids must not return another document that shares the token.
+    let other_doc = w3::seed_document(&pool, ws).await;
+    let other_id = w3::seed_chunk(
+        &pool,
+        other_doc,
+        ws,
+        0,
+        &format!("{TOKEN} other document shares the term"),
+    )
+    .await;
+    mark_ready(&pool, other_id).await;
+    let other_key = format!("{other_doc}-chunk-0");
+    let scoped_docs = storage
+        .text_search_filtered(
+            TOKEN,
+            10,
+            None,
+            Some(&MetadataFilter {
+                workspace_id: Some(ws.to_string()),
+                document_ids: Some(vec![doc.to_string()]),
+                vector_type: Some("chunk".into()),
+                ..Default::default()
+            }),
+        )
+        .await
+        .expect("document-scoped FTS");
+    assert!(
+        scoped_docs.iter().any(|h| h.id == prose_key),
+        "document scope must keep the requested document, got {scoped_docs:?}"
+    );
+    assert!(
+        scoped_docs.iter().all(|h| h.id != other_key),
+        "document scope must drop the other document, got {scoped_docs:?}"
+    );
+
     // 7) Explicit legacy_tables + missing relation → Err without SELECT 42P01.
     std::env::set_var(VECTOR_BACKEND_ENV, "legacy_tables");
     let legacy_err = storage

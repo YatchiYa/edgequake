@@ -347,6 +347,13 @@
       "before_plan": "Generic plan. Bitmap of idx_conversations_title_fts, then filter tenant and user, 10000 rows removed, 577 buffers",
       "after_ms": 1.259,
       "after_plan": "Generic plan. Bitmap of idx_conversations_tenant_user_title_fts (tenant_id, user_id, title tsvector), 50 rows, 24 buffers. List SQL unchanged"
+    },
+    {
+      "name": "workspace chunk FTS LIMIT 20 scoped to one document, 2000 chunks share the term",
+      "before_ms": 2.294,
+      "before_plan": "Generic plan. Bitmap of content_tsv, then filter document_id = ANY($4), 1999 rows removed, 291 buffers",
+      "after_ms": 0.044,
+      "after_plan": "Generic plan. Bitmap of idx_chunks_document for the required array, 1 row, 8 buffers. No new index"
     }
   ]
 }

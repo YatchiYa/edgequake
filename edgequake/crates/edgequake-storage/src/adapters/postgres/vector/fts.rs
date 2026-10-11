@@ -117,6 +117,61 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE: &str = r#"
             LIMIT $8
             "#;
 
+/// Document-scoped typed FTS. `$4` is a required non-empty array, so a
+/// generic plan can start from `idx_chunks_document` instead of every chunk
+/// that matches the term. Workspace scope stays optional.
+pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS: &str = r#"
+            SELECT coalesce(c.metadata->>'legacy_chunk_key', c.id::text) AS id,
+                   c.metadata,
+                   ts_rank_cd(
+                       c.content_tsv,
+                       websearch_to_tsquery('english', $1)
+                   )::float4 AS score
+            FROM public.chunks c
+            JOIN public.documents d ON d.id = c.document_id
+            WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
+              AND ($2::uuid IS NULL
+                   OR d.workspace_id = $2
+                   OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
+              AND c.document_id = ANY($4)
+              AND ($5::uuid IS NULL OR c.tenant_id = $5)
+              AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+              AND (
+                    $7::text[] IS NULL
+                    OR c.id::text = ANY($7)
+                    OR c.metadata->>'legacy_chunk_key' = ANY($7)
+                  )
+            ORDER BY score DESC
+            LIMIT $8
+            "#;
+
+/// Workspace and document are both required. Same document index start as
+/// [`TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS`], plus the workspace bitmap predicate.
+pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE_AND_DOCUMENTS: &str = r#"
+            SELECT coalesce(c.metadata->>'legacy_chunk_key', c.id::text) AS id,
+                   c.metadata,
+                   ts_rank_cd(
+                       c.content_tsv,
+                       websearch_to_tsquery('english', $1)
+                   )::float4 AS score
+            FROM public.chunks c
+            JOIN public.documents d ON d.id = c.document_id
+            WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
+              AND (c.workspace_id = $2 OR c.workspace_id IS NULL)
+              AND (d.workspace_id = $2
+                   OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
+              AND c.document_id = ANY($4)
+              AND ($5::uuid IS NULL OR c.tenant_id = $5)
+              AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+              AND (
+                    $7::text[] IS NULL
+                    OR c.id::text = ANY($7)
+                    OR c.metadata->>'legacy_chunk_key' = ANY($7)
+                  )
+            ORDER BY score DESC
+            LIMIT $8
+            "#;
+
 impl PgVectorStorage {
     pub(crate) async fn chunk_kv_table_exists_cached(&self) -> Result<bool> {
         if let Some(exists) = self.chunk_kv_table_exists.get() {
@@ -191,10 +246,11 @@ impl PgVectorStorage {
             .filter(|ids| !ids.is_empty())
             .map(|ids| ids.to_vec());
 
-        let sql = if workspace_uuid.is_some() {
-            TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE
-        } else {
-            TYPED_CHUNKS_FTS_SQL
+        let sql = match (workspace_uuid.is_some(), document_ids.is_some()) {
+            (true, true) => TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE_AND_DOCUMENTS,
+            (true, false) => TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE,
+            (false, true) => TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS,
+            (false, false) => TYPED_CHUNKS_FTS_SQL,
         };
         let rows = sqlx::query(sql)
             .bind(query_text)
@@ -361,6 +417,13 @@ mod tests {
         assert!(scoped.contains("c.workspace_id = $2 OR c.workspace_id IS NULL"));
         assert!(scoped.contains("d.workspace_id = $2"));
         assert!(!scoped.contains("$2::uuid IS NULL"));
+        for sql in [
+            TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS,
+            TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE_AND_DOCUMENTS,
+        ] {
+            assert!(sql.contains("c.document_id = ANY($4)"));
+            assert!(!sql.contains("$4::uuid[] IS NULL"));
+        }
     }
 
     #[test]
