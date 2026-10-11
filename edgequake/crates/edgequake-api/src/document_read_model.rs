@@ -583,20 +583,34 @@ pub async fn relational_document_scope(
         .as_ref()
         .and_then(|t| Uuid::parse_str(t).ok());
 
-    let row = sqlx::query(
-        r#"
-        SELECT workspace_id::text AS workspace_id, status, track_id
-        FROM public.documents
-        WHERE id = $1
-          AND workspace_id = $2
-          AND ($3::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $3)
-        "#,
-    )
-    .bind(doc_uuid)
-    .bind(workspace_id)
-    .bind(tenant_uuid)
-    .fetch_optional(pool)
-    .await
+    let row = if let Some(tenant_id) = tenant_uuid {
+        sqlx::query(
+            r#"
+            SELECT workspace_id::text AS workspace_id, status, track_id
+            FROM public.documents
+            WHERE id = $1
+              AND workspace_id = $2
+              AND (tenant_id IS NULL OR tenant_id = $3)
+            "#,
+        )
+        .bind(doc_uuid)
+        .bind(workspace_id)
+        .bind(tenant_id)
+        .fetch_optional(pool)
+        .await
+    } else {
+        sqlx::query(
+            r#"
+            SELECT workspace_id::text AS workspace_id, status, track_id
+            FROM public.documents
+            WHERE id = $1 AND workspace_id = $2
+            "#,
+        )
+        .bind(doc_uuid)
+        .bind(workspace_id)
+        .fetch_optional(pool)
+        .await
+    }
     .map_err(|e| ApiError::Internal(format!("Failed to lookup relational document: {e}")))?;
 
     Ok(row.map(|r| RelationalDocumentScope {
@@ -684,19 +698,32 @@ pub async fn delete_relational_document(
         .as_ref()
         .and_then(|t| Uuid::parse_str(t).ok());
 
-    let result = sqlx::query(
-        r#"
-        DELETE FROM public.documents
-        WHERE id = $1
-          AND workspace_id = $2
-          AND ($3::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $3)
-        "#,
-    )
-    .bind(doc_uuid)
-    .bind(workspace_id)
-    .bind(tenant_uuid)
-    .execute(pool)
-    .await
+    let result = if let Some(tenant_id) = tenant_uuid {
+        sqlx::query(
+            r#"
+            DELETE FROM public.documents
+            WHERE id = $1
+              AND workspace_id = $2
+              AND (tenant_id IS NULL OR tenant_id = $3)
+            "#,
+        )
+        .bind(doc_uuid)
+        .bind(workspace_id)
+        .bind(tenant_id)
+        .execute(pool)
+        .await
+    } else {
+        sqlx::query(
+            r#"
+            DELETE FROM public.documents
+            WHERE id = $1 AND workspace_id = $2
+            "#,
+        )
+        .bind(doc_uuid)
+        .bind(workspace_id)
+        .execute(pool)
+        .await
+    }
     .map_err(|e| {
         ApiError::Internal(format!(
             "Failed to delete relational document {document_id}: {e}"

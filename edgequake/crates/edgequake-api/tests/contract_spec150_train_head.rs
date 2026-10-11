@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 192, "HEAD schema train must end at 192");
-    for v in 160..=192 {
+    assert_eq!(max, 193, "HEAD schema train must end at 193");
+    for v in 160..=193 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "192");
+    assert_eq!(digits, "193");
 }
 
 #[test]
@@ -212,6 +212,37 @@ fn migration_192_indexes_scoped_drain_claims() {
     assert!(quarantine.contains("QUARANTINE_CLAIM_OPEN"));
     assert!(quarantine.contains("QUARANTINE_CLAIM_SCOPED"));
     assert!(!quarantine.contains("$2::uuid IS NULL OR workspace_id = $2"));
+}
+
+#[test]
+fn migration_193_indexes_scoped_projection_claims() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v193 = manifest
+        .split("version = 193")
+        .nth(1)
+        .expect("migration 193");
+    assert!(v193.contains("phase = \"expand\""));
+    assert!(!v193.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/193_projection_binding_due_index.sql");
+    assert!(sql.contains("idx_projection_deliveries_binding_due"));
+    assert!(sql.contains("(binding_id, next_attempt_at, event_id)"));
+    let ledger = include_str!("../../edgequake-storage/src/projection/ledger.rs");
+    assert!(ledger.contains("CLAIM_SQL_OPEN"));
+    assert!(
+        ledger.contains("idx_projection_deliveries_binding_due")
+            || ledger.contains("b.provider = $4")
+    );
+    assert!(!ledger.contains("$4::text IS NULL OR EXISTS"));
+    let connections = include_str!("../src/handlers/connections.rs");
+    assert!(connections.contains("fn connection_list_sql"));
+    assert!(!connections.contains("$1::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $1"));
+    let shell = include_str!("../../edgequake-storage/src/adapters/postgres/document_shell.rs");
+    assert!(shell.contains("ORDER BY documents.id"));
+    assert!(!shell.contains("$1::uuid IS NULL OR id > $1"));
+    let revisions =
+        include_str!("../../edgequake-storage/src/adapters/postgres/ingestion_committer.rs");
+    assert!(revisions.contains("DOCUMENT_REVISION_PAGE_AFTER"));
+    assert!(!revisions.contains("$3::uuid IS NULL OR logical_id > $3"));
 }
 
 #[test]
@@ -534,8 +565,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=192 => \"v0.35.0\""),
-        "release_for_schema must map 170–192 to v0.35.0"
+        src.contains("170..=193 => \"v0.35.0\""),
+        "release_for_schema must map 170–193 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

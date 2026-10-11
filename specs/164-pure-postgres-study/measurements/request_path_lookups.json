@@ -438,6 +438,34 @@
       "before_plan": "Generic plan. Parallel seq scan. Rows removed by filter 39750 per worker, 1346 buffers. A drain with no workspace also seq-scans every due row (12.133 ms) because (status, next_attempt_at) cannot order pending and failed together",
       "after_ms": 0.037,
       "after_plan": "Generic plan. Index scan idx_compensation_quarantine_workspace_next, 50 rows, 4 buffers. The global claim uses idx_compensation_quarantine_due and stops at 50 (0.086 ms, 103 buffers, the lock of those rows)"
+    },
+    {
+      "name": "provider connection list, 50 rows for the caller, 20 shared, and 79500 for another tenant",
+      "before_ms": 6.584,
+      "before_plan": "Generic plan. Seq scan. Rows removed by filter 79500, 1534 buffers. A list with no tenant reads every connection, which is the answer",
+      "after_ms": 0.082,
+      "after_plan": "Generic plan. Merge append of provider_connections_tenant_id_slug_key for the tenant and provider_connections_tenant_idx for tenant_id IS NULL. 70 rows, 9 buffers. No new index"
+    },
+    {
+      "name": "staging shell keyset LIMIT 50 after 79500 earlier staging documents",
+      "before_ms": 6.398,
+      "before_plan": "Generic plan. Index only scan of idx_documents_staging_shell, then filter the optional cursor. Rows removed 79501, 409 buffers. ORDER BY id named the text output, so the index order could not stop the page",
+      "after_ms": 0.098,
+      "after_plan": "Generic plan. Index scan of idx_documents_staging_shell with Index Cond id > cursor, ordered by documents.id. 50 rows, 53 buffers. The first page with no cursor stops at 50 (0.096 ms, 28 buffers). No new index"
+    },
+    {
+      "name": "document revision page LIMIT 50 after 79500 earlier logical ids",
+      "before_ms": 11.54,
+      "before_plan": "Generic plan. Index only scan of object_revisions_pkey, then filter the optional cursor. Rows removed 79501, 1344 buffers. The first page with no cursor already stops at 50",
+      "after_ms": 0.138,
+      "after_plan": "Generic plan. Index only scan of object_revisions_pkey with Index Cond logical_id > cursor. 50 rows, 156 buffers. No new index"
+    },
+    {
+      "name": "scoped projection claim LIMIT 50, 79500 older deliveries for another provider",
+      "before_ms": 8.25,
+      "before_plan": "Generic plan. Index only scan of idx_projection_deliveries_due, then filter the provider. Rows removed 79500, 573 buffers. A claim with no provider stops at 50 on that index (0.037 ms, 4 buffers)",
+      "after_ms": 0.178,
+      "after_plan": "Generic plan. Nested loop from the binding into idx_projection_deliveries_binding_due. 50 rows, 7 buffers. The unscoped claim stays on idx_projection_deliveries_due"
     }
   ]
 }
