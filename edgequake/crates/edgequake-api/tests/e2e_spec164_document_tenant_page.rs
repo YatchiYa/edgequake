@@ -84,6 +84,7 @@ async fn tenant_document_page_keeps_unset_tenant_and_skips_the_other_tenant() {
         10,
         None,
         RelationalCreatedBounds::default(),
+        &[],
     )
     .await
     .expect("scoped page");
@@ -107,6 +108,7 @@ async fn tenant_document_page_keeps_unset_tenant_and_skips_the_other_tenant() {
         10,
         None,
         RelationalCreatedBounds::default(),
+        &[],
     )
     .await
     .expect("workspace page");
@@ -180,6 +182,7 @@ async fn document_page_date_to_returns_the_older_row() {
             from: None,
             to: Some(older),
         },
+        &[],
     )
     .await
     .expect("dated page");
@@ -197,6 +200,7 @@ async fn document_page_date_to_returns_the_older_row() {
         10,
         None,
         RelationalCreatedBounds::default(),
+        &[],
     )
     .await
     .expect("open page");
@@ -206,6 +210,60 @@ async fn document_page_date_to_returns_the_older_row() {
         .filter_map(|doc| doc.title.clone())
         .collect();
     assert_eq!(open_titles, vec!["newer".to_string(), "older".to_string()]);
+
+    sqlx::query("DELETE FROM documents WHERE workspace_id = $1")
+        .bind(workspace)
+        .execute(&pool)
+        .await
+        .expect("cleanup documents");
+    sqlx::query("DELETE FROM workspaces WHERE workspace_id = $1")
+        .bind(workspace)
+        .execute(&pool)
+        .await
+        .expect("cleanup workspace");
+    sqlx::query("DELETE FROM tenants WHERE tenant_id = $1")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("cleanup tenant");
+}
+
+#[tokio::test]
+async fn document_page_title_pattern_returns_the_matching_row() {
+    let Some(pool) =
+        postgres_access_pool::test_pool_with_acquire_timeout(std::time::Duration::from_secs(10))
+            .await
+    else {
+        return;
+    };
+    let (tenant, workspace) = scope(&pool, "doc pattern page").await;
+    let older = chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let newer = chrono::DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    insert_doc_at(&pool, Some(tenant), workspace, "uniquezephyr", older).await;
+    insert_doc_at(&pool, Some(tenant), workspace, "plain", newer).await;
+
+    let scoped = ctx(Some(tenant), workspace);
+    let patterns = vec!["uniquezephyr".to_string()];
+    let page = list_relational_document_summaries_limited(
+        Some(&pool),
+        &scoped,
+        10,
+        None,
+        RelationalCreatedBounds::default(),
+        &patterns,
+    )
+    .await
+    .expect("pattern page");
+    let titles: Vec<_> = page
+        .documents
+        .iter()
+        .filter_map(|doc| doc.title.clone())
+        .collect();
+    assert_eq!(titles, vec!["uniquezephyr".to_string()]);
 
     sqlx::query("DELETE FROM documents WHERE workspace_id = $1")
         .bind(workspace)

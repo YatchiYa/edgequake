@@ -464,6 +464,18 @@ pub(crate) async fn list_documents_inner(
     let relational_truncated = false;
     #[cfg(feature = "postgres")]
     let mut sql_status_counts: Option<StatusCounts> = None;
+    let title_patterns: Vec<String> = params
+        .document_pattern
+        .as_deref()
+        .map(|pattern| {
+            pattern
+                .split(',')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
     #[cfg(feature = "postgres")]
     let created_bounds = crate::document_read_model::RelationalCreatedBounds {
         from: list_bound_instant(params.date_from.as_deref())?,
@@ -479,6 +491,7 @@ pub(crate) async fn list_documents_inner(
             MAX_LIST_METADATA_ENTRIES,
             params.status.as_deref(),
             created_bounds,
+            &title_patterns,
         )
         .await
         {
@@ -536,17 +549,8 @@ pub(crate) async fn list_documents_inner(
     // paginate_vec on the visible page only.
 
     // SPEC-005: Apply optional date range and title pattern filters
-    if params.date_from.is_some() || params.date_to.is_some() || params.document_pattern.is_some() {
-        let patterns: Vec<String> = params
-            .document_pattern
-            .as_ref()
-            .map(|p| {
-                p.split(',')
-                    .map(|s| s.trim().to_lowercase())
-                    .filter(|s| !s.is_empty())
-                    .collect()
-            })
-            .unwrap_or_default();
+    if params.date_from.is_some() || params.date_to.is_some() || !title_patterns.is_empty() {
+        let patterns: Vec<String> = title_patterns.iter().map(|p| p.to_lowercase()).collect();
 
         documents.retain(|doc| {
             // KV rows are not in the relational page. Compare instants when both

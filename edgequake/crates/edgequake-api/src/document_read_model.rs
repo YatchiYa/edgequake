@@ -147,6 +147,7 @@ pub async fn list_relational_document_summaries(
         crate::read_path::MAX_LIST_METADATA_ENTRIES,
         None,
         RelationalCreatedBounds::default(),
+        &[],
     )
     .await?
     .documents)
@@ -285,18 +286,19 @@ fn document_list_statement(
     tenant_scoped: bool,
     status_count: usize,
     bounds: CreatedAtPredicate,
+    titles: TitlePredicate,
 ) -> String {
     let projection = DOCUMENT_LIST_PROJECTION;
     let page = DOCUMENT_PAGE_COLUMNS;
     let order = "ORDER BY created_at DESC, id DESC";
     let start = 2 + usize::from(tenant_scoped) + status_count;
     let created = bounds.fragment(start);
-    let limit = bounds.limit_placeholder(start);
+    let (title_sql, limit) = titles.after(bounds, start);
     match (tenant_scoped, status_count) {
         (false, 0) => format!(
             "SELECT {projection}
              FROM public.documents
-             WHERE workspace_id = $1{created}
+             WHERE workspace_id = $1{created}{title_sql}
              ORDER BY created_at DESC
              LIMIT {limit}"
         ),
@@ -306,7 +308,7 @@ fn document_list_statement(
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id = $2{created}
+                 WHERE workspace_id = $1 AND tenant_id = $2{created}{title_sql}
                  {order}
                  LIMIT {limit}
                )
@@ -314,7 +316,7 @@ fn document_list_statement(
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id IS NULL{created}
+                 WHERE workspace_id = $1 AND tenant_id IS NULL{created}{title_sql}
                  {order}
                  LIMIT {limit}
                )
@@ -325,7 +327,7 @@ fn document_list_statement(
         (false, 1) => format!(
             "SELECT {projection}
              FROM public.documents
-             WHERE workspace_id = $1 AND status = $2{created}
+             WHERE workspace_id = $1 AND status = $2{created}{title_sql}
              {order}
              LIMIT {limit}"
         ),
@@ -335,7 +337,7 @@ fn document_list_statement(
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND status = $2{created}
+                 WHERE workspace_id = $1 AND status = $2{created}{title_sql}
                  {order}
                  LIMIT {limit}
                )
@@ -343,7 +345,7 @@ fn document_list_statement(
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND status = $3{created}
+                 WHERE workspace_id = $1 AND status = $3{created}{title_sql}
                  {order}
                  LIMIT {limit}
                )
@@ -357,7 +359,7 @@ fn document_list_statement(
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $3{created}
+                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $3{created}{title_sql}
                  {order}
                  LIMIT {limit}
                )
@@ -365,7 +367,7 @@ fn document_list_statement(
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $3{created}
+                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $3{created}{title_sql}
                  {order}
                  LIMIT {limit}
                )
@@ -379,7 +381,7 @@ fn document_list_statement(
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $3{created}
+                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $3{created}{title_sql}
                  {order}
                  LIMIT {limit}
                )
@@ -387,7 +389,7 @@ fn document_list_statement(
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $4{created}
+                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $4{created}{title_sql}
                  {order}
                  LIMIT {limit}
                )
@@ -395,7 +397,7 @@ fn document_list_statement(
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $3{created}
+                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $3{created}{title_sql}
                  {order}
                  LIMIT {limit}
                )
@@ -403,7 +405,7 @@ fn document_list_statement(
                (
                  SELECT {page}
                  FROM public.documents
-                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $4{created}
+                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $4{created}{title_sql}
                  {order}
                  LIMIT {limit}
                )
@@ -411,7 +413,7 @@ fn document_list_statement(
              {order}
              LIMIT {limit}"
         ),
-        _ => document_list_statement(tenant_scoped, 0, bounds),
+        _ => document_list_statement(tenant_scoped, 0, bounds, titles),
     }
 }
 
@@ -462,6 +464,39 @@ impl CreatedAtPredicate {
     }
 }
 
+/// Required title substrings. Zero keeps the statement free of `LIKE`.
+///
+/// Each needle is its own `lower(title) LIKE`, so a custom plan can use
+/// `idx_documents_title_trgm` or stop on the time index. `LIKE ANY($array)`
+/// is not an index condition on a generic plan.
+#[cfg(feature = "postgres")]
+#[derive(Clone, Copy, Default)]
+struct TitlePredicate {
+    count: usize,
+}
+
+#[cfg(feature = "postgres")]
+impl TitlePredicate {
+    /// SQL fragment and the LIMIT placeholder. Patterns bind after the dates.
+    fn after(self, bounds: CreatedAtPredicate, start: usize) -> (String, String) {
+        let pattern_start = start + usize::from(bounds.from) + usize::from(bounds.to);
+        if self.count == 0 {
+            return (String::new(), bounds.limit_placeholder(start));
+        }
+        let likes: Vec<String> = (0..self.count)
+            .map(|offset| {
+                format!(
+                    "lower(title) LIKE '%' || lower(${}) || '%' ESCAPE '\\'",
+                    pattern_start + offset
+                )
+            })
+            .collect();
+        let sql = format!(" AND ({})", likes.join(" OR "));
+        let limit = format!("${}", pattern_start + self.count);
+        (sql, limit)
+    }
+}
+
 /// `pending` and `processing` also match `current_stage`.
 ///
 /// One equality per value, then `UNION ALL`, so each arm stops at LIMIT.
@@ -473,13 +508,14 @@ fn chip_list_statement(
     tenant_scoped: bool,
     arms: &[ChipArm],
     bounds: CreatedAtPredicate,
+    titles: TitlePredicate,
 ) -> String {
     let projection = DOCUMENT_LIST_PROJECTION;
     let page = DOCUMENT_PAGE_COLUMNS;
     let order = "ORDER BY created_at DESC, id DESC";
     let start = 2 + usize::from(tenant_scoped);
     let created = bounds.fragment(start);
-    let limit = bounds.limit_placeholder(start);
+    let (title_sql, limit) = titles.after(bounds, start);
     let exclusions = chip_status_exclusions(arms);
     let scopes: Vec<&str> = if tenant_scoped {
         vec![
@@ -497,7 +533,7 @@ fn chip_list_statement(
                 "(
                    SELECT {page}
                    FROM public.documents
-                   WHERE {scope} AND {filter}{created}
+                   WHERE {scope} AND {filter}{created}{title_sql}
                    {order}
                    LIMIT {limit}
                  )"
@@ -640,10 +676,16 @@ pub async fn list_relational_document_summaries_limited(
     max_entries: usize,
     status: Option<&str>,
     bounds: RelationalCreatedBounds,
+    title_patterns: &[String],
 ) -> Result<RelationalDocumentList, crate::error::ApiError> {
     use crate::error::ApiError;
     use sqlx::Row;
 
+    if title_patterns.len() > 16 {
+        return Err(ApiError::BadRequest(
+            "document_pattern accepts at most 16 titles".into(),
+        ));
+    }
     let pool = pool.ok_or_else(|| ApiError::Internal("PostgreSQL pool not available".into()))?;
     let max_entries = max_entries.max(1);
 
@@ -667,21 +709,34 @@ pub async fn list_relational_document_summaries_limited(
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to begin interactive list TX: {e}")))?;
 
+    // A generic plan of `lower(title) LIKE` always starts at the trigram index
+    // and reads every title when the letter matches the table (46.237 ms).
+    // The custom plan keeps a common letter on the time index.
+    if !title_patterns.is_empty() {
+        sqlx::query("SET LOCAL plan_cache_mode = force_custom_plan")
+            .execute(timed.as_mut())
+            .await
+            .map_err(|e| ApiError::Internal(format!("Failed to set list plan mode: {e}")))?;
+    }
+
     // Fetch one extra row to detect truncation without a second COUNT.
     let fetch_limit = (max_entries as i64).saturating_add(1);
     let filter = relational_list_filter(status);
     let created = CreatedAtPredicate::from_bounds(bounds);
+    let titles = TitlePredicate {
+        count: title_patterns.len(),
+    };
     let (sql, status_binds) = match filter {
         RelationalListFilter::Open => (
-            document_list_statement(tenant_uuid.is_some(), 0, created),
+            document_list_statement(tenant_uuid.is_some(), 0, created, titles),
             Vec::new(),
         ),
         RelationalListFilter::Statuses(values) => {
-            let sql = document_list_statement(tenant_uuid.is_some(), values.len(), created);
+            let sql = document_list_statement(tenant_uuid.is_some(), values.len(), created, titles);
             (sql, values)
         }
         RelationalListFilter::Chip(arms) => (
-            chip_list_statement(tenant_uuid.is_some(), arms, created),
+            chip_list_statement(tenant_uuid.is_some(), arms, created, titles),
             Vec::new(),
         ),
     };
@@ -697,6 +752,9 @@ pub async fn list_relational_document_summaries_limited(
     }
     if let Some(to) = bounds.to {
         query = query.bind(to);
+    }
+    for pattern in title_patterns {
+        query = query.bind(escape_title_like_needle(pattern));
     }
     let rows = query
         .bind(fetch_limit)
@@ -1609,30 +1667,55 @@ mod tests {
             other => panic!("completed must be two status equalities, got {other:?}"),
         }
 
-        let open = document_list_statement(false, 0, CreatedAtPredicate::default());
+        let open = document_list_statement(
+            false,
+            0,
+            CreatedAtPredicate::default(),
+            TitlePredicate::default(),
+        );
         assert!(!open.contains("status ="));
         assert!(open.contains("ORDER BY created_at DESC"));
         assert!(open.contains("LIMIT $2"));
         assert!(!open.contains("created_at <="));
         assert!(!open.contains("created_at >="));
 
-        let failed = document_list_statement(false, 1, CreatedAtPredicate::default());
+        let failed = document_list_statement(
+            false,
+            1,
+            CreatedAtPredicate::default(),
+            TitlePredicate::default(),
+        );
         assert!(failed.contains("workspace_id = $1 AND status = $2"));
         assert!(failed.contains("ORDER BY created_at DESC, id DESC"));
         assert!(failed.contains("LIMIT $3"));
         assert!(!failed.contains("IS NULL OR"));
 
-        let completed = document_list_statement(false, 2, CreatedAtPredicate::default());
+        let completed = document_list_statement(
+            false,
+            2,
+            CreatedAtPredicate::default(),
+            TitlePredicate::default(),
+        );
         assert!(completed.contains("status = $2"));
         assert!(completed.contains("status = $3"));
         assert!(completed.contains("UNION ALL"));
 
-        let tenant = document_list_statement(true, 1, CreatedAtPredicate::default());
+        let tenant = document_list_statement(
+            true,
+            1,
+            CreatedAtPredicate::default(),
+            TitlePredicate::default(),
+        );
         assert!(tenant.contains("tenant_id = $2 AND status = $3"));
         assert!(tenant.contains("tenant_id IS NULL AND status = $3"));
         assert!(!tenant.contains("$2::uuid IS NULL"));
 
-        let pending = chip_list_statement(false, PENDING_ARMS, CreatedAtPredicate::default());
+        let pending = chip_list_statement(
+            false,
+            PENDING_ARMS,
+            CreatedAtPredicate::default(),
+            TitlePredicate::default(),
+        );
         assert!(pending.contains("status = 'pending'"));
         assert!(pending.contains("status = 'queued'"));
         assert!(pending.contains("(metadata->>'current_stage') = 'queued'"));
@@ -1643,13 +1726,23 @@ mod tests {
         assert!(!pending.contains("IS NULL OR"));
         assert!(!pending.contains("ANY("));
 
-        let processing = chip_list_statement(false, PROCESSING_ARMS, CreatedAtPredicate::default());
+        let processing = chip_list_statement(
+            false,
+            PROCESSING_ARMS,
+            CreatedAtPredicate::default(),
+            TitlePredicate::default(),
+        );
         assert!(processing.contains("status = 'processing'"));
         assert!(processing.contains("(metadata->>'current_stage') = 'extracting'"));
         assert!(processing.contains("status IS DISTINCT FROM 'processing'"));
         assert!(!processing.contains("= ANY("));
 
-        let pending_tenant = chip_list_statement(true, PENDING_ARMS, CreatedAtPredicate::default());
+        let pending_tenant = chip_list_statement(
+            true,
+            PENDING_ARMS,
+            CreatedAtPredicate::default(),
+            TitlePredicate::default(),
+        );
         assert!(pending_tenant.contains("tenant_id = $2 AND status = 'pending'"));
         assert!(pending_tenant
             .contains("tenant_id IS NULL AND (metadata->>'current_stage') = 'queued'"));
@@ -1666,6 +1759,7 @@ mod tests {
                 from: false,
                 to: true,
             },
+            TitlePredicate::default(),
         );
         assert!(open.contains("workspace_id = $1 AND created_at <= $2"));
         assert!(open.contains("ORDER BY created_at DESC"));
@@ -1680,6 +1774,7 @@ mod tests {
                 from: true,
                 to: true,
             },
+            TitlePredicate::default(),
         );
         assert!(ranged
             .contains("tenant_id = $2 AND status = $3 AND created_at >= $4 AND created_at <= $5"));
@@ -1695,6 +1790,7 @@ mod tests {
                 from: true,
                 to: false,
             },
+            TitlePredicate::default(),
         );
         assert!(pending.contains("status = 'pending' AND created_at >= $2"));
         assert!(pending.contains(
@@ -1702,6 +1798,47 @@ mod tests {
         ));
         assert!(pending.contains("LIMIT $3"));
         assert!(!pending.contains("IS NULL"));
+        assert!(!pending.contains("LIKE"));
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn title_pattern_requires_like() {
+        let open = document_list_statement(
+            false,
+            0,
+            CreatedAtPredicate::default(),
+            TitlePredicate { count: 1 },
+        );
+        assert!(open.contains(
+            "workspace_id = $1 AND (lower(title) LIKE '%' || lower($2) || '%' ESCAPE '\\')"
+        ));
+        assert!(open.contains("LIMIT $3"));
+        assert!(!open.contains("ANY("));
+        assert!(!open.contains("IS NULL OR"));
+
+        let two = document_list_statement(
+            false,
+            0,
+            CreatedAtPredicate {
+                from: false,
+                to: true,
+            },
+            TitlePredicate { count: 2 },
+        );
+        assert!(two.contains("created_at <= $2 AND (lower(title) LIKE '%' || lower($3) || '%' ESCAPE '\\' OR lower(title) LIKE '%' || lower($4) || '%' ESCAPE '\\')"));
+        assert!(two.contains("LIMIT $5"));
+
+        let pending = chip_list_statement(
+            true,
+            PENDING_ARMS,
+            CreatedAtPredicate::default(),
+            TitlePredicate { count: 1 },
+        );
+        assert!(pending.contains(
+            "tenant_id = $2 AND status = 'pending' AND (lower(title) LIKE '%' || lower($3) || '%' ESCAPE '\\')"
+        ));
+        assert!(pending.contains("LIMIT $4"));
     }
 
     #[cfg(feature = "postgres")]
