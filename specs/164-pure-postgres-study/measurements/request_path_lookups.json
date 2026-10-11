@@ -167,6 +167,18 @@
       "name": "active pdf task miss",
       "after_ms": 0.084,
       "after_plan": "Index Scan idx_tasks_workspace_pdf_id"
+    },
+    {
+      "name": "task list LIMIT 50, 40000 newer foreign-workspace rows",
+      "before_ms": 33.919,
+      "before_plan": "Index Scan idx_tasks_created, Filter tenant and workspace, 40000 rows removed, 80397 buffers",
+      "after_ms": 0.100,
+      "after_plan": "Index Only Scan idx_tasks_tenant_workspace_created_track, stops at 50, 11 buffers"
+    },
+    {
+      "name": "task keyset before 2026-10-01 12:00 task-40000",
+      "after_ms": 0.105,
+      "after_plan": "Index Only Scan, row comparison in Index Cond, stops at 50"
     }
   ]
 }
