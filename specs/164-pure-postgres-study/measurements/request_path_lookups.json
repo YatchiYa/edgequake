@@ -179,6 +179,20 @@
       "name": "task keyset before 2026-10-01 12:00 task-40000",
       "after_ms": 0.105,
       "after_plan": "Index Only Scan, row comparison in Index Cond, stops at 50"
+    },
+    {
+      "name": "conversation list ORDER BY created_at DESC LIMIT 50",
+      "before_ms": 57.017,
+      "before_plan": "Seq Scan, 15000 rows removed, top-N heapsort of 15000, 2116 buffers",
+      "after_ms": 0.069,
+      "after_plan": "Index Scan idx_conversations_tenant_user_created, stops at 50, 4 buffers"
+    },
+    {
+      "name": "conversation list ORDER BY title DESC LIMIT 50",
+      "before_ms": 5.581,
+      "before_plan": "Seq Scan, 15000 rows removed, top-N heapsort of 15000",
+      "after_ms": 0.065,
+      "after_plan": "Index Scan Backward idx_conversations_tenant_user_title, stops at 50"
     }
   ]
 }
