@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.34.0] — 2026-10-11
+
+Minor: a plain-English picture tour of every web screen, taken on the public
+demo. Schema stays **169**. `edgequake migrate` is a no-op from 0.33.0.
+Upgrade: [`docs/operations/upgrade-to-0.34.0.md`](docs/operations/upgrade-to-0.34.0.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres`, and
+`edgequake-keycloak` on tag `v0.34.0`.
+
+**SPEC-001 Acc:** attested from existing
+[`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run.
+Retrieval was **not** re-scored. This cut does not change query or storage.
+
+### Added
+
+- **Visual tour:** [tutorial/README.md](tutorial/README.md) walks every web
+  screen in plain English, with screenshots from
+  [demo.edgequake.com](https://demo.edgequake.com/). The README documentation
+  table links it as "Click through the app".
+
 ## [0.33.0] — 2026-10-10
 
 Minor: provider connections with encrypted secrets and onboarding (SPEC-163),

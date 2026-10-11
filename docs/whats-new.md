@@ -3,7 +3,7 @@ title: "What's new"
 description: "Per-release highlights moved out of the README."
 ---
 
-This page lists the highlights of each release from v0.33.0 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide.
+This page lists the highlights of each release from v0.34.0 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide.
 
 ## Schema train at a glance
 
@@ -24,11 +24,21 @@ timeline
     v0.32.0 : 168
     v0.32.2 : 168 pinned
     v0.33.0 : 169
+    v0.34.0 : 169 pinned
 ```
 
-The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.33.0.
+The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.34.0.
 
 Run `edgequake migrate` when you move to a release with a higher number. The [upgrading guide](operations/upgrading.md) covers the steps.
+
+### What's new in 0.34.0
+
+Minor: a plain-English picture tour of the website, [tutorial/README.md](../tutorial/README.md),
+shot on the public demo. Schema stays **169**. From 0.33.0, `edgequake migrate`
+is a no-op. SPEC-001 Acc is attested from the existing 2026-08-15 medical-mid
+pack; retrieval was not re-scored.
+
+Upgrade: **[upgrade-to-0.34.0.md](operations/upgrade-to-0.34.0.md)** · changelog: [CHANGELOG.md](CHANGELOG.md).
 
 ### What's new in 0.33.0
 

@@ -7,8 +7,8 @@ description: "Plain-English guide to upgrade any published EdgeQuake version saf
 
 This is the canonical guide to database upgrades. It is for operators who run EdgeQuake on their own PostgreSQL. Read it before you start a newer image or binary. Per-release pages (`upgrade-to-0.XX.md`) describe product changes; this page describes the migration process, which works from any published version to HEAD.
 
-> **Schema train today:** migration **169** (SPEC-163 provider connections).
-> The released product is **v0.32.2** (schema 168). The next release, v0.33.0, adds schema 169 and is not tagged yet.
+> **Schema train today:** migration **169**.
+> The released product is **v0.34.0** (schema 169). From v0.33.0, `edgequake migrate` is a no-op. Roll the images.
 >
 > **One rule:** the API never changes the database schema. Only `edgequake migrate` (or the Compose service or Helm Job that runs it) writes schema.
 
