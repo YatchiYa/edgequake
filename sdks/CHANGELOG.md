@@ -6,6 +6,7 @@ All notable changes to the EdgeQuake SDKs directory are tracked here. See the ro
 
 ### Changed
 
+- Tier 1 (Python, TypeScript, Rust) **0.4.1**: `POST /api/v1/query` sends `max_results` and `enable_rerank`. Python still accepts `top_k` and `rerank` as aliases. Query `mode` is omitted unless the caller sets it, so the server default (`mix`) applies. Rust serializes the `top_k` field as `max_results` and defaults `QueryMode` to `Mix`.
 - `DELETE /api/v1/documents` (delete-all) is now an **HTTP 202 admit** returning
   `accepted`, `wipe_track_id`, and planned counts. Final wipe status is tracked
   via WebSocket `BulkDeletion*` events or `GET /api/v1/tasks/{wipe_track_id}`.
@@ -13,6 +14,7 @@ All notable changes to the EdgeQuake SDKs directory are tracked here. See the ro
 
 ### Added
 
+- Tier 1 (Python, TypeScript, Rust) **0.4.1**: Connections CRUD, `POST /api/v1/connections/{id}/test`, and `POST /api/v1/providers/test`.
 - Issue #236: SDK batch ingestion support for new API routes:
   - `POST /api/v1/documents/upload/batch`
   - `POST /api/v1/documents/pdf/batch`

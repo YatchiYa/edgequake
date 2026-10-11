@@ -45,6 +45,8 @@ type Client struct {
 	PDF           *PDFService
 	Admin         *AdminService
 	EffectiveCfg  *EffectiveConfigService
+	Connections   *ConnectionService
+	Operations    *OperationsService
 }
 
 // NewClient creates a new Client with the given options.
@@ -82,6 +84,8 @@ func NewClient(opts ...Option) *Client {
 	c.PDF = &PDFService{c: c}
 	c.Admin = &AdminService{c: c}
 	c.EffectiveCfg = &EffectiveConfigService{c: c}
+	c.Connections = &ConnectionService{c: c}
+	c.Operations = &OperationsService{c: c}
 	return c
 }
 
@@ -172,6 +176,27 @@ func (c *Client) do(req *http.Request, v interface{}) error {
 		return apiErr
 	}
 	return lastErr
+}
+
+// raw performs any verb and returns the response body as text.
+func (c *Client) raw(ctx context.Context, method, path string, body any) (string, error) {
+	req, err := c.newRequest(ctx, method, path, body)
+	if err != nil {
+		return "", err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("edgequake: request: %w", err)
+	}
+	defer resp.Body.Close()
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode >= 300 {
+		return "", &APIError{StatusCode: resp.StatusCode, ErrorCode: http.StatusText(resp.StatusCode), Message: string(payload)}
+	}
+	return string(payload), nil
 }
 
 func (c *Client) get(ctx context.Context, path string, params url.Values, v interface{}) error {

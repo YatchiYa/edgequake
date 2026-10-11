@@ -25,6 +25,7 @@ use EdgeQuake\CostService;
 use EdgeQuake\ConversationService;
 use EdgeQuake\FolderService;
 use EdgeQuake\LineageService;
+use EdgeQuake\ConnectionService;
 use EdgeQuake\AuthService;
 use EdgeQuake\WorkspaceService;
 use EdgeQuake\SharedService;
@@ -114,6 +115,7 @@ class UnitTest extends TestCase
         $this->assertInstanceOf(WorkspaceService::class, $client->workspaces);
         $this->assertInstanceOf(SharedService::class, $client->shared);
         $this->assertInstanceOf(LineageService::class, $client->lineage);
+        $this->assertInstanceOf(ConnectionService::class, $client->connections);
     }
 
     public function testClientWithCustomConfig(): void
@@ -832,7 +834,7 @@ class UnitTest extends TestCase
         $mock = new MockHttpHelper('{"answer":"x"}');
         $svc = new QueryService($mock);
         $svc->execute('test');
-        $this->assertSame('hybrid', $mock->lastCall()['body']['mode']);
+        $this->assertArrayNotHasKey('mode', $mock->lastCall()['body']);
     }
 
     public function testChatDefaultStream(): void
@@ -2063,5 +2065,31 @@ class UnitTest extends TestCase
         $svc->revoke('key-1');
         $this->assertEquals('DELETE', $mock->lastCall()['method']);
         $this->assertStringContainsString('/api/v1/api-keys/key-1', $mock->lastCall()['path']);
+    }
+
+    public function testConnectionsCreateAndProbe(): void
+    {
+        $mock = (new MockHttpHelper())->willReturn('{"id":"c1","slug":"local"}');
+        $svc = new ConnectionService($mock);
+        $created = $svc->create([
+            'slug' => 'local',
+            'display_name' => 'Local',
+            'api_shape' => 'openai',
+            'base_url' => 'http://localhost:11434',
+        ]);
+        $this->assertSame('c1', $created['id']);
+        $this->assertSame('POST', $mock->lastCall()['method']);
+        $this->assertSame('/api/v1/connections', $mock->lastCall()['path']);
+        $this->assertSame('openai', $mock->lastCall()['body']['api_shape']);
+
+        $mock = (new MockHttpHelper())->willReturn('{"ok":true,"kind":"ollama","message":"ok"}');
+        $svc = new ConnectionService($mock);
+        $probe = $svc->testProvider([
+            'shape' => 'ollama',
+            'base_url' => 'http://localhost:11434',
+        ]);
+        $this->assertTrue($probe['ok']);
+        $this->assertSame('/api/v1/providers/test', $mock->lastCall()['path']);
+        $this->assertSame('ollama', $mock->lastCall()['body']['shape']);
     }
 }

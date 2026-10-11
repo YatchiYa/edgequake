@@ -809,7 +809,7 @@ public class UnitTest
         var (http, mock) = MockHelperWithCalls(@"{""answer"":""x""}");
         var svc = new QueryService(http);
         await svc.ExecuteAsync("test");
-        Assert.Contains("hybrid", mock.LastCall!.Body!);
+        Assert.DoesNotContain("mode", mock.LastCall!.Body!);
     }
 
     // ── Error Response Bodies ──────────────────────────────────────
@@ -1148,7 +1148,7 @@ public class UserExtendedTests
         var (http, mock) = MockHelperWithCalls(@"{""id"":""u1"",""name"":""Updated""}");
         var svc = new UserService(http);
         await svc.UpdateAsync("u1", "Updated", "admin");
-        Assert.Equal(HttpMethod.Put, mock.LastCall!.Method);
+        Assert.Equal(HttpMethod.Patch, mock.LastCall!.Method);
     }
 
     [Fact]
@@ -1173,15 +1173,6 @@ public class ApiKeyExtendedTests
     }
 
     [Fact]
-    public async Task ApiKeys_Get()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""id"":""ak1"",""name"":""test""}");
-        var svc = new ApiKeyService(http);
-        var result = await svc.GetAsync("ak1");
-        Assert.Equal("ak1", result.Id);
-    }
-
-    [Fact]
     public async Task ApiKeys_Create()
     {
         var (http, mock) = MockHelperWithCalls(@"{""id"":""ak2"",""key"":""sk-...""}");
@@ -1199,14 +1190,6 @@ public class ApiKeyExtendedTests
         Assert.Equal(HttpMethod.Delete, mock.LastCall!.Method);
     }
 
-    [Fact]
-    public async Task ApiKeys_Rotate()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""id"":""ak1"",""key"":""sk-new...""}");
-        var svc = new ApiKeyService(http);
-        await svc.RotateAsync("ak1");
-        Assert.Contains("/rotate", mock.LastCall!.Url);
-    }
 }
 
 /// <summary>Tests for extended TaskService methods (OODA-36).</summary>
@@ -1230,30 +1213,12 @@ public class TaskExtendedTests
     }
 
     [Fact]
-    public async Task Tasks_Create()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""id"":""t2"",""type"":""extract""}");
-        var svc = new TaskService(http);
-        await svc.CreateAsync("extract", "doc-1");
-        Assert.Equal(HttpMethod.Post, mock.LastCall!.Method);
-    }
-
-    [Fact]
     public async Task Tasks_Cancel()
     {
         var (http, mock) = MockHelperWithCalls(@"{""status"":""cancelled""}");
         var svc = new TaskService(http);
         await svc.CancelAsync("t1");
         Assert.Contains("/cancel", mock.LastCall!.Url);
-    }
-
-    [Fact]
-    public async Task Tasks_Status()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""status"":""running"",""progress"":75}");
-        var svc = new TaskService(http);
-        var result = await svc.StatusAsync("t1");
-        Assert.Equal(75, result.Progress);
     }
 
     [Fact]
@@ -1278,33 +1243,6 @@ public class PipelineExtendedTests
     }
 
     [Fact]
-    public async Task Pipeline_Processing()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""items"":[],""total"":0}");
-        var svc = new PipelineService(http);
-        await svc.ProcessingAsync();
-        Assert.Contains("/processing", mock.LastCall!.Url);
-    }
-
-    [Fact]
-    public async Task Pipeline_Pause()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""status"":""paused""}");
-        var svc = new PipelineService(http);
-        await svc.PauseAsync();
-        Assert.Contains("/pause", mock.LastCall!.Url);
-    }
-
-    [Fact]
-    public async Task Pipeline_Resume()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""status"":""resumed""}");
-        var svc = new PipelineService(http);
-        await svc.ResumeAsync();
-        Assert.Contains("/resume", mock.LastCall!.Url);
-    }
-
-    [Fact]
     public async Task Pipeline_Cancel()
     {
         var (http, mock) = MockHelperWithCalls(@"{""status"":""cancelled""}");
@@ -1318,7 +1256,7 @@ public class PipelineExtendedTests
     {
         var (http, mock) = MockHelperWithCalls(@"{""estimated_cost"":0.05,""estimated_tokens"":1000}");
         var svc = new PipelineService(http);
-        var result = await svc.CostEstimateAsync("doc-1");
+        var result = await svc.CostEstimateAsync(1000);
         Assert.Equal(0.05, result.EstimatedCost);
     }
 }
@@ -1332,15 +1270,6 @@ public class ModelExtendedTests
         var handler = new MockHttpMessageHandler(json, status);
         var http = new HttpHelper(new EdgeQuakeConfig(), handler);
         return (http, handler);
-    }
-
-    [Fact]
-    public async Task Models_List()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""models"":[]}");
-        var svc = new ModelService(http);
-        await svc.ListAsync();
-        Assert.Contains("/list", mock.LastCall!.Url);
     }
 
     [Fact]
@@ -1361,23 +1290,6 @@ public class ModelExtendedTests
         Assert.Contains("/providers", mock.LastCall!.Url);
     }
 
-    [Fact]
-    public async Task Models_SetDefault()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""status"":""success""}");
-        var svc = new ModelService(http);
-        await svc.SetDefaultAsync("gpt-4");
-        Assert.Contains("/default", mock.LastCall!.Url);
-    }
-
-    [Fact]
-    public async Task Models_Test()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""success"":true,""response"":""Hello""}");
-        var svc = new ModelService(http);
-        var result = await svc.TestAsync("gpt-4", "Say hello");
-        Assert.True(result.Success);
-    }
 }
 
 /// <summary>Tests for extended CostService methods (OODA-36).</summary>
@@ -1389,33 +1301,6 @@ public class CostExtendedTests
         var handler = new MockHttpMessageHandler(json, status);
         var http = new HttpHelper(new EdgeQuakeConfig(), handler);
         return (http, handler);
-    }
-
-    [Fact]
-    public async Task Costs_Daily()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""days"":[],""total_cost"":1.50}");
-        var svc = new CostService(http);
-        var result = await svc.DailyAsync("2026-01-01", "2026-01-31");
-        Assert.Equal(1.50, result.TotalCost);
-    }
-
-    [Fact]
-    public async Task Costs_ByProvider()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""providers"":[]}");
-        var svc = new CostService(http);
-        await svc.ByProviderAsync();
-        Assert.Contains("/by-provider", mock.LastCall!.Url);
-    }
-
-    [Fact]
-    public async Task Costs_ByModel()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""models"":[]}");
-        var svc = new CostService(http);
-        await svc.ByModelAsync();
-        Assert.Contains("/by-model", mock.LastCall!.Url);
     }
 
     [Fact]
@@ -1463,7 +1348,7 @@ public class ConversationExtendedTests
         var (http, mock) = MockHelperWithCalls(@"{""id"":""c1"",""title"":""Updated""}");
         var svc = new ConversationService(http);
         var result = await svc.UpdateAsync("c1", "Updated", true);
-        Assert.Equal(HttpMethod.Put, mock.LastCall!.Method);
+        Assert.Equal(HttpMethod.Patch, mock.LastCall!.Method);
     }
 
     [Fact]
@@ -1489,17 +1374,8 @@ public class ConversationExtendedTests
     {
         var (http, mock) = MockHelperWithCalls(@"{}");
         var svc = new ConversationService(http);
-        await svc.DeleteMessageAsync("c1", "m1");
+        await svc.DeleteMessageAsync("m1");
         Assert.Equal(HttpMethod.Delete, mock.LastCall!.Method);
-    }
-
-    [Fact]
-    public async Task Conversations_Search()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""results"":[]}");
-        var svc = new ConversationService(http);
-        await svc.SearchAsync("test query");
-        Assert.Contains("q=test%20query", mock.LastCall!.Url);
     }
 
     [Fact]
@@ -1524,40 +1400,14 @@ public class FolderExtendedTests
     }
 
     [Fact]
-    public async Task Folders_Get()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""id"":""f1"",""name"":""Work""}");
-        var svc = new FolderService(http);
-        var result = await svc.GetAsync("f1");
-        Assert.Equal("f1", result.Id);
-    }
-
-    [Fact]
     public async Task Folders_Update()
     {
         var (http, mock) = MockHelperWithCalls(@"{""id"":""f1"",""name"":""Updated""}");
         var svc = new FolderService(http);
-        var result = await svc.UpdateAsync("f1", "Updated");
-        Assert.Equal(HttpMethod.Put, mock.LastCall!.Method);
+        var result =         await svc.UpdateAsync("f1", "Updated");
+        Assert.Equal(HttpMethod.Patch, mock.LastCall!.Method);
     }
 
-    [Fact]
-    public async Task Folders_MoveConversation()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""status"":""moved""}");
-        var svc = new FolderService(http);
-        await svc.MoveConversationAsync("f1", "c1");
-        Assert.Contains("/conversations", mock.LastCall!.Url);
-    }
-
-    [Fact]
-    public async Task Folders_Conversations()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""conversations"":[]}");
-        var svc = new FolderService(http);
-        await svc.ConversationsAsync("f1");
-        Assert.Contains("/f1/conversations", mock.LastCall!.Url);
-    }
 }
 
 /// <summary>Tests for AuthService (OODA-36).</summary>
@@ -1607,14 +1457,6 @@ public class AuthServiceTests
         Assert.Equal("u1", result.Id);
     }
 
-    [Fact]
-    public async Task Auth_ChangePassword()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""status"":""success""}");
-        var svc = new AuthService(http);
-        var result = await svc.ChangePasswordAsync("old", "new");
-        Assert.Equal("success", result.Status);
-    }
 }
 
 /// <summary>Tests for WorkspaceService (OODA-36).</summary>
@@ -1629,30 +1471,12 @@ public class WorkspaceServiceTests
     }
 
     [Fact]
-    public async Task Workspaces_List()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""items"":[]}");
-        var svc = new WorkspaceService(http);
-        await svc.ListAsync();
-        Assert.Contains("/workspaces", mock.LastCall!.Url);
-    }
-
-    [Fact]
     public async Task Workspaces_Get()
     {
         var (http, mock) = MockHelperWithCalls(@"{""id"":""ws1"",""name"":""Test""}");
         var svc = new WorkspaceService(http);
         var result = await svc.GetAsync("ws1");
         Assert.Equal("ws1", result.Id);
-    }
-
-    [Fact]
-    public async Task Workspaces_Create()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""id"":""ws2"",""name"":""New""}");
-        var svc = new WorkspaceService(http);
-        await svc.CreateAsync("New", "Description");
-        Assert.Equal(HttpMethod.Post, mock.LastCall!.Method);
     }
 
     [Fact]
@@ -1682,23 +1506,6 @@ public class WorkspaceServiceTests
         Assert.Equal(10, result.DocumentCount);
     }
 
-    [Fact]
-    public async Task Workspaces_Switch()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""status"":""switched""}");
-        var svc = new WorkspaceService(http);
-        await svc.SwitchAsync("ws1");
-        Assert.Contains("/switch", mock.LastCall!.Url);
-    }
-
-    [Fact]
-    public async Task Workspaces_Rebuild()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""status"":""rebuilding""}");
-        var svc = new WorkspaceService(http);
-        await svc.RebuildAsync("ws1");
-        Assert.Contains("/rebuild", mock.LastCall!.Url);
-    }
 }
 
 /// <summary>Tests for SharedService (OODA-36).</summary>
@@ -1713,15 +1520,6 @@ public class SharedServiceTests
     }
 
     [Fact]
-    public async Task Shared_CreateLink()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""share_id"":""sh1"",""share_url"":""http://...""}");
-        var svc = new SharedService(http);
-        var result = await svc.CreateLinkAsync("c1");
-        Assert.Equal("sh1", result.ShareId);
-    }
-
-    [Fact]
     public async Task Shared_GetLink()
     {
         var (http, mock) = MockHelperWithCalls(@"{""share_id"":""sh1"",""conversation_id"":""c1""}");
@@ -1730,32 +1528,6 @@ public class SharedServiceTests
         Assert.Equal("c1", result.ConversationId);
     }
 
-    [Fact]
-    public async Task Shared_DeleteLink()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{}");
-        var svc = new SharedService(http);
-        await svc.DeleteLinkAsync("sh1");
-        Assert.Equal(HttpMethod.Delete, mock.LastCall!.Method);
-    }
-
-    [Fact]
-    public async Task Shared_Access()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""conversation"":{},""messages"":[]}");
-        var svc = new SharedService(http);
-        await svc.AccessAsync("sh1");
-        Assert.Contains("/access", mock.LastCall!.Url);
-    }
-
-    [Fact]
-    public async Task Shared_ListLinks()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""items"":[]}");
-        var svc = new SharedService(http);
-        await svc.ListLinksAsync();
-        Assert.Contains("/shared", mock.LastCall!.Url);
-    }
 }
 
 /// <summary>Tests for new client services availability (OODA-36).</summary>
@@ -1905,15 +1677,6 @@ public class OODA47EdgeCaseTests
     }
 
     [Fact]
-    public async Task Models_List_Empty()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""models"":[]}");
-        var svc = new ModelService(http);
-        await svc.ListAsync();
-        Assert.Contains("/models/list", mock.LastCall!.Url);
-    }
-
-    [Fact]
     public async Task Models_HealthAsync()
     {
         var (http, mock) = MockHelperWithCalls(@"[{""provider"":""ollama"",""healthy"":true}]");
@@ -1947,15 +1710,6 @@ public class OODA47EdgeCaseTests
         var svc = new FolderService(http);
         await svc.CreateAsync("TestFolder");
         Assert.Contains("name", mock.LastCall!.Body!);
-    }
-
-    [Fact]
-    public async Task Conversations_Search()
-    {
-        var (http, mock) = MockHelperWithCalls(@"{""conversations"":[]}");
-        var svc = new ConversationService(http);
-        await svc.SearchAsync("query");
-        Assert.Contains("/search", mock.LastCall!.Url);
     }
 
     [Fact]
@@ -2050,6 +1804,35 @@ public class OODA47ValidationTests
         var svc = new GraphService(http);
         await svc.SearchAsync("test query");
         Assert.Contains("/search", mock.LastCall!.Url);
+    }
+
+    [Fact]
+    public async Task Connections_CreateAndProbe()
+    {
+        var (http, mock) = MockHelperWithCalls(@"{""id"":""c1"",""slug"":""local""}");
+        var svc = new ConnectionService(http);
+        var created = await svc.CreateAsync(new Dictionary<string, object>
+        {
+            ["slug"] = "local",
+            ["display_name"] = "Local",
+            ["api_shape"] = "openai",
+            ["base_url"] = "http://localhost:11434",
+        });
+        Assert.Equal("c1", created.Id);
+        Assert.Equal(HttpMethod.Post, mock.LastCall!.Method);
+        Assert.Contains("/api/v1/connections", mock.LastCall!.Url);
+        Assert.Contains("api_shape", mock.LastCall!.Body);
+
+        (http, mock) = MockHelperWithCalls(@"{""ok"":true,""kind"":""ollama"",""message"":""ok""}");
+        svc = new ConnectionService(http);
+        var probe = await svc.TestProviderAsync(new Dictionary<string, object>
+        {
+            ["shape"] = "ollama",
+            ["base_url"] = "http://localhost:11434",
+        });
+        Assert.True(probe.Ok);
+        Assert.Contains("/api/v1/providers/test", mock.LastCall!.Url);
+        Assert.Contains("base_url", mock.LastCall!.Body);
     }
 
 }

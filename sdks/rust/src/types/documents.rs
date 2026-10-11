@@ -168,6 +168,10 @@ pub struct DocumentSummary {
     pub stage_message: Option<String>,
     #[serde(default)]
     pub pdf_id: Option<String>,
+    #[serde(default)]
+    pub display_status: Option<String>,
+    #[serde(default)]
+    pub ui_phase: Option<String>,
 }
 
 /// Response from listing documents.

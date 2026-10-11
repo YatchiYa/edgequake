@@ -71,11 +71,6 @@ public class DocumentService {
         return http.get("/api/v1/documents/" + id + "/metadata", null, DocumentMetadataResponse.class);
     }
 
-    /** Update document metadata. */
-    public DocumentMetadataResponse setMetadata(String id, Map<String, Object> metadata) {
-        return http.patch("/api/v1/documents/" + id + "/metadata", Map.of("metadata", metadata), DocumentMetadataResponse.class);
-    }
-
     /** Get failed chunks for a document. */
     public FailedChunksResponse failedChunks(String id) {
         return http.get("/api/v1/documents/" + id + "/failed-chunks", null, FailedChunksResponse.class);

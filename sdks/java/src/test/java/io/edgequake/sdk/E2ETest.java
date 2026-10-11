@@ -30,8 +30,8 @@ class E2ETest {
 
     @BeforeAll
     static void setup() {
-        var baseUrl = System.getenv("EDGEQUAKE_BASE_URL");
-        if (baseUrl == null || baseUrl.isEmpty()) baseUrl = "http://localhost:8080";
+        var baseUrl = System.getenv("EDGEQUAKE_E2E_URL");
+        Assumptions.assumeTrue(baseUrl != null && !baseUrl.isEmpty(), "EDGEQUAKE_E2E_URL not set");
 
         var builder = EdgeQuakeConfig.builder()
                 .baseUrl(baseUrl)
@@ -336,5 +336,29 @@ class E2ETest {
     private static String truncate(String s, int max) {
         if (s == null) return "<null>";
         return s.length() <= max ? s : s.substring(0, max) + "...";
+    }
+
+    @Test @Order(21)
+    void sharedLiveScenario() {
+        assertEquals("healthy", client.health().check().status);
+        assertTrue(client.operations().setupStatus(null, null).contains("needs_setup"));
+        var socket = client.operations().wsPipelineProgress();
+        assertTrue(socket.startsWith("ws") && socket.endsWith("/ws/pipeline/progress"), socket);
+        var listed = client.documents().list(1, 5);
+        if (listed.documents != null && !listed.documents.isEmpty()) {
+            System.out.println("display_status=" + listed.documents.get(0).displayStatus);
+        }
+        var uploaded = client.documents().uploadText("Shared SDK live scenario.", "Java live");
+        assertNotNull(uploaded.documentId);
+        assertNotNull(client.graph().get(50));
+        assertNotNull(client.entities().list(1, 5, null));
+        var query = new QueryRequest();
+        query.query = "What is a knowledge graph?";
+        query.topK = 3;
+        assertNotNull(client.query().execute(query));
+        assertNotNull(client.connections().list());
+        var chat = new ChatCompletionRequest("ping");
+        chat.topK = 2;
+        assertNotNull(client.chat().completions(chat));
     }
 }

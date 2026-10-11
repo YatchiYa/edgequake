@@ -837,7 +837,7 @@ class UnitTest {
     @Test
     fun `QueryRequest defaults`() {
         val q = QueryRequest(query = "test")
-        assertEquals("hybrid", q.mode)
+        assertNull(q.mode)
     }
 
     @Test
@@ -1562,14 +1562,6 @@ class UnitTest {
         assertEquals("admin", result.username)
     }
 
-    @Test
-    fun `auth changePassword`() {
-        fake.respondWith("""{"status":"ok","message":"Password changed"}""")
-        val svc = AuthService(http)
-        val result = svc.changePassword("old", "new")
-        assertEquals("ok", result.status)
-    }
-
     // ── User Extended Tests ──────────────────────────────────────────
 
     @Test
@@ -1607,14 +1599,6 @@ class UnitTest {
     // ── ApiKey Extended Tests ────────────────────────────────────────
 
     @Test
-    fun `apiKeys get`() {
-        fake.respondWith("""{"id":"k1","name":"test-key","prefix":"sk-abc"}""")
-        val svc = ApiKeyService(http)
-        val result = svc.get("k1")
-        assertEquals("test-key", result.name)
-    }
-
-    @Test
     fun `apiKeys create`() {
         fake.respondWith("""{"id":"k-new","name":"new-key","key":"sk-full-key"}""")
         val svc = ApiKeyService(http)
@@ -1628,14 +1612,6 @@ class UnitTest {
         val svc = ApiKeyService(http)
         svc.revoke("k1")
         assertTrue(fake.lastRequest().uri.contains("/api/v1/api-keys/k1"))
-    }
-
-    @Test
-    fun `apiKeys rotate`() {
-        fake.respondWith("""{"id":"k1","key":"sk-new-rotated"}""")
-        val svc = ApiKeyService(http)
-        val result = svc.rotate("k1")
-        assertEquals("sk-new-rotated", result.key)
     }
 
     // ── Tenant Extended Tests ────────────────────────────────────────
@@ -1742,27 +1718,11 @@ class UnitTest {
     // ── Task Extended Tests ──────────────────────────────────────────
 
     @Test
-    fun `tasks create`() {
-        fake.respondWith("""{"id":"t-new","status":"pending","task_type":"extraction"}""")
-        val svc = TaskService(http)
-        val result = svc.create("extraction")
-        assertEquals("pending", result.status)
-    }
-
-    @Test
     fun `tasks cancel`() {
         fake.respondWith("""{"status":"cancelled"}""")
         val svc = TaskService(http)
         val result = svc.cancel("t1")
         assertEquals("cancelled", result.status)
-    }
-
-    @Test
-    fun `tasks status`() {
-        fake.respondWith("""{"status":"running","progress":0.5}""")
-        val svc = TaskService(http)
-        val result = svc.status("t1")
-        assertEquals("running", result.status)
     }
 
     @Test
@@ -1774,30 +1734,6 @@ class UnitTest {
     }
 
     // ── Pipeline Extended Tests ──────────────────────────────────────
-
-    @Test
-    fun `pipeline processing`() {
-        fake.respondWith("""{"items":[{"id":"p1","status":"processing","document_id":"d1"}],"total":1}""")
-        val svc = PipelineService(http)
-        val result = svc.processing()
-        assertEquals(1, result.total)
-    }
-
-    @Test
-    fun `pipeline pause`() {
-        fake.respondWith("""{"status":"paused"}""")
-        val svc = PipelineService(http)
-        val result = svc.pause()
-        assertEquals("paused", result.status)
-    }
-
-    @Test
-    fun `pipeline resume`() {
-        fake.respondWith("""{"status":"resumed"}""")
-        val svc = PipelineService(http)
-        val result = svc.resume()
-        assertEquals("resumed", result.status)
-    }
 
     @Test
     fun `pipeline cancel`() {
@@ -1818,14 +1754,6 @@ class UnitTest {
     // ── Model Extended Tests ─────────────────────────────────────────
 
     @Test
-    fun `models list`() {
-        fake.respondWith("""{"models":[{"id":"m1","name":"GPT-4","provider":"openai"}],"total":1}""")
-        val svc = ModelService(http)
-        val result = svc.list()
-        assertEquals(1, result.total)
-    }
-
-    @Test
     fun `models get`() {
         fake.respondWith("""{"id":"m1","name":"GPT-4","provider":"openai","context_length":8192}""")
         val svc = ModelService(http)
@@ -1839,22 +1767,6 @@ class UnitTest {
         val svc = ModelService(http)
         val result = svc.providers()
         assertEquals(1, result.providers?.size)
-    }
-
-    @Test
-    fun `models setDefault`() {
-        fake.respondWith("""{"status":"ok"}""")
-        val svc = ModelService(http)
-        val result = svc.setDefault("openai", "gpt-4")
-        assertEquals("ok", result.status)
-    }
-
-    @Test
-    fun `models test`() {
-        fake.respondWith("""{"success":true,"response_time_ms":150}""")
-        val svc = ModelService(http)
-        val result = svc.test("m1")
-        assertEquals(true, result.success)
     }
 
     // ── Workspace Extended Tests ─────────────────────────────────────
@@ -1912,43 +1824,11 @@ class UnitTest {
     // ── Cost Extended Tests ──────────────────────────────────────────
 
     @Test
-    fun `costs daily`() {
-        fake.respondWith("""{"date":"2026-01-15","cost":5.50,"breakdown":{"llm":4.0,"embedding":1.5}}""")
-        val svc = CostService(http)
-        val result = svc.daily()
-        assertEquals(5.50, result.cost)
-    }
-
-    @Test
-    fun `costs byProvider`() {
-        fake.respondWith("""{"providers":{"openai":10.0,"ollama":0.0},"total":10.0}""")
-        val svc = CostService(http)
-        val result = svc.byProvider()
-        assertEquals(10.0, result.total)
-    }
-
-    @Test
-    fun `costs byModel`() {
-        fake.respondWith("""{"models":{"gpt-4":8.0,"gpt-3.5":2.0},"total":10.0}""")
-        val svc = CostService(http)
-        val result = svc.byModel()
-        assertEquals(10.0, result.total)
-    }
-
-    @Test
     fun `costs history`() {
         fake.respondWith("""{"history":[{"date":"2026-01-14","cost":3.0},{"date":"2026-01-15","cost":5.0}],"total":8.0}""")
         val svc = CostService(http)
         val result = svc.history("2026-01-14", "2026-01-15")
         assertEquals(2, result.history?.size)
-    }
-
-    @Test
-    fun `costs export`() {
-        fake.respondWith("date,cost\n2026-01-15,5.50")
-        val svc = CostService(http)
-        val result = svc.export("csv")
-        assertTrue(result.contains("date,cost"))
     }
 
     @Test
@@ -2329,5 +2209,30 @@ class UnitTest {
         val result = svc.get("s-empty")
         assertTrue(result.messages?.isEmpty() == true)
         assertTrue(fake.lastRequest().uri.contains("/api/v1/shared/s-empty"))
+    }
+
+    @Test
+    fun `connections create and probe`() {
+        fake.respondWith("""{"id":"c1","slug":"local"}""")
+        val created = ConnectionService(http).create(
+            UpsertConnection(
+                slug = "local",
+                displayName = "Local",
+                apiShape = "openai",
+                baseUrl = "http://localhost:11434"
+            )
+        )
+        assertEquals("c1", created.id)
+        assertEquals("POST", fake.lastRequest().method)
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/connections"))
+        assertTrue(fake.lastRequest().body?.contains("api_shape") == true)
+
+        fake.respondWith("""{"ok":true,"kind":"ollama","message":"ok"}""")
+        val probe = ConnectionService(http).testProvider(
+            ProbeRequest(shape = "ollama", baseUrl = "http://localhost:11434")
+        )
+        assertTrue(probe.ok)
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/providers/test"))
+        assertTrue(fake.lastRequest().body?.contains("base_url") == true)
     }
 }

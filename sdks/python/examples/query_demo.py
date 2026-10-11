@@ -38,7 +38,7 @@ def main():
     hybrid = client.query.execute(
         query="How do knowledge graphs improve RAG?",
         mode="hybrid",
-        top_k=10,
+        max_results=10,
     )
     print(f"\nHybrid query answer: {hybrid['answer']}")
 

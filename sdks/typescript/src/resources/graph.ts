@@ -36,8 +36,8 @@ export class EntitiesResource extends Resource {
     if (query?.label) params.set("label", query.label);
     if (query?.search) params.set("search", query.search);
     if (query?.page !== undefined) params.set("page", String(query.page));
-    if (query?.per_page !== undefined)
-      params.set("per_page", String(query.per_page));
+    const pageSize = query?.page_size ?? query?.per_page;
+    if (pageSize !== undefined) params.set("page_size", String(pageSize));
     const qs = params.toString();
     const path = qs ? `/api/v1/graph/entities?${qs}` : "/api/v1/graph/entities";
     // WHY: API returns paginated { items: [...], total, page, page_size }
@@ -107,8 +107,8 @@ export class RelationshipsResource extends Resource {
     if (query?.target) params.set("target", query.target);
     if (query?.label) params.set("label", query.label);
     if (query?.page !== undefined) params.set("page", String(query.page));
-    if (query?.per_page !== undefined)
-      params.set("per_page", String(query.per_page));
+    const pageSize = query?.page_size ?? query?.per_page;
+    if (pageSize !== undefined) params.set("page_size", String(pageSize));
     const qs = params.toString();
     const path = qs
       ? `/api/v1/graph/relationships?${qs}`

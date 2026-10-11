@@ -14,7 +14,7 @@ import {
   TimeoutError,
   UnauthorizedError,
   ValidationError,
-} from "@edgequake/sdk";
+} from "edgequake-sdk";
 
 async function main() {
   const client = new EdgeQuake({

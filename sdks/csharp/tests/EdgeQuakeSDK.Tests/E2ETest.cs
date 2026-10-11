@@ -4,11 +4,21 @@ using Xunit.Abstractions;
 
 namespace EdgeQuakeSDK.Tests;
 
+public sealed class EdgeQuakeE2EFactAttribute : FactAttribute
+{
+    public EdgeQuakeE2EFactAttribute()
+    {
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("EDGEQUAKE_E2E_URL")))
+            Skip = "EDGEQUAKE_E2E_URL is not set";
+    }
+}
+
 /// <summary>
 /// E2E tests for EdgeQuake C# SDK.
-/// Requires a healthy EdgeQuake API and <c>EDGEQUAKE_E2E=1</c>.
+/// Requires a healthy EdgeQuake API at <c>EDGEQUAKE_E2E_URL</c>.
+/// When that variable is unset, xUnit reports each test as Skipped.
 /// Run unit tests only: <c>dotnet test --filter "E2E!=true"</c>
-/// Run E2E: <c>EDGEQUAKE_E2E=1 dotnet test --filter "E2E=true"</c>
+/// Run E2E: <c>EDGEQUAKE_E2E_URL=http://localhost:8080 dotnet test --filter "E2E=true"</c>
 /// </summary>
 [TestCaseOrderer("EdgeQuakeSDK.Tests.AlphabeticalOrderer", "EdgeQuakeSDK.Tests")]
 [Trait("E2E", "true")]
@@ -20,8 +30,7 @@ public class E2ETest
     public E2ETest(ITestOutputHelper output)
     {
         _output = output;
-        var baseUrl = Environment.GetEnvironmentVariable("EDGEQUAKE_BASE_URL") ?? "http://localhost:8080";
-        // WHY: Default tenant/user IDs from database migration — avoids Skip.
+        var baseUrl = Environment.GetEnvironmentVariable("EDGEQUAKE_E2E_URL")!;
         var tenantId = Environment.GetEnvironmentVariable("EDGEQUAKE_TENANT_ID") ?? "00000000-0000-0000-0000-000000000002";
         var userId = Environment.GetEnvironmentVariable("EDGEQUAKE_USER_ID") ?? "00000000-0000-0000-0000-000000000001";
         _client = new EdgeQuakeClient(new EdgeQuakeConfig
@@ -33,7 +42,7 @@ public class E2ETest
     }
 
     // 1. Health
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test01_HealthCheck()
     {
         var h = await _client.Health.CheckAsync();
@@ -42,7 +51,7 @@ public class E2ETest
     }
 
     // 2. Documents
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test02_DocumentsListAndUpload()
     {
         var list = await _client.Documents.ListAsync();
@@ -58,14 +67,14 @@ public class E2ETest
     }
 
     // 3. Graph
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test03_GraphGet()
     {
         var g = await _client.Graph.GetAsync();
         Assert.NotNull(g);
     }
 
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test04_GraphSearch()
     {
         var r = await _client.Graph.SearchAsync("test");
@@ -73,7 +82,7 @@ public class E2ETest
     }
 
     // 4. Entity CRUD
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test05_EntityCrud()
     {
         var name = $"CSHARP_TEST_ENTITY_{Guid.NewGuid().ToString()[..6].ToUpper()}";
@@ -92,7 +101,7 @@ public class E2ETest
     }
 
     // 5. Relationships
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test06_RelationshipsList()
     {
         var list = await _client.Relationships.ListAsync();
@@ -100,7 +109,7 @@ public class E2ETest
     }
 
     // 6. Query
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test07_Query()
     {
         var r = await _client.Query.ExecuteAsync("What is a knowledge graph?");
@@ -108,7 +117,7 @@ public class E2ETest
     }
 
     // 7. Chat
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test08_Chat()
     {
         try
@@ -123,7 +132,7 @@ public class E2ETest
     }
 
     // 8. Tenants
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test09_TenantsList()
     {
         var list = await _client.Tenants.ListAsync();
@@ -131,7 +140,7 @@ public class E2ETest
     }
 
     // 9. Users
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test10_UsersList()
     {
         var list = await _client.Users.ListAsync();
@@ -139,7 +148,7 @@ public class E2ETest
     }
 
     // 10. API Keys
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test11_ApiKeysList()
     {
         var list = await _client.ApiKeys.ListAsync();
@@ -147,7 +156,7 @@ public class E2ETest
     }
 
     // 11. Tasks
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test12_TasksList()
     {
         var list = await _client.Tasks.ListAsync();
@@ -155,7 +164,7 @@ public class E2ETest
     }
 
     // 12. Pipeline Status
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test13_PipelineStatus()
     {
         var st = await _client.Pipeline.StatusAsync();
@@ -163,7 +172,7 @@ public class E2ETest
     }
 
     // 13. Queue Metrics
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test14_QueueMetrics()
     {
         var m = await _client.Pipeline.QueueMetricsAsync();
@@ -172,7 +181,7 @@ public class E2ETest
     }
 
     // 14. Models Catalog
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test15_ModelsCatalog()
     {
         var cat = await _client.Models.CatalogAsync();
@@ -180,7 +189,7 @@ public class E2ETest
     }
 
     // 15. Models Health
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test16_ModelsHealth()
     {
         var items = await _client.Models.HealthAsync();
@@ -188,7 +197,7 @@ public class E2ETest
     }
 
     // 16. Provider Status
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test17_ProviderStatus()
     {
         var ps = await _client.Models.ProviderStatusAsync();
@@ -196,7 +205,7 @@ public class E2ETest
     }
 
     // 17. Conversations CRUD
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test18_ConversationsCRUD()
     {
         // Create
@@ -219,7 +228,7 @@ public class E2ETest
     }
 
     // 18. Folders CRUD
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test19_FoldersCRUD()
     {
         // Create
@@ -237,7 +246,7 @@ public class E2ETest
     }
 
     // 19. Costs
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test20_CostsSummary()
     {
         var c = await _client.Costs.SummaryAsync();
@@ -245,7 +254,7 @@ public class E2ETest
     }
 
     // 20. Full Workflow
-    [Fact]
+    [EdgeQuakeE2EFact]
     public async Task Test21_FullWorkflow()
     {
         var doc = await _client.Documents.UploadTextAsync(
@@ -259,5 +268,28 @@ public class E2ETest
 
         var ps = await _client.Pipeline.StatusAsync();
         Assert.NotNull(ps.IsBusy);
+    }
+
+    [EdgeQuakeE2EFact]
+    public async Task Test22_SharedLiveScenario()
+    {
+        var health = await _client.Health.CheckAsync();
+        Assert.Equal("healthy", health.Status);
+        Assert.Contains("needs_setup", await _client.Operations.SetupStatus());
+        var socket = _client.Operations.WsPipelineProgress();
+        Assert.StartsWith("ws", socket);
+        Assert.EndsWith("/ws/pipeline/progress", socket);
+        var listed = await _client.Documents.ListAsync(1, 5);
+        if (listed.Documents is { Count: > 0 })
+        {
+            _ = listed.DisplayStatusAt(0);
+        }
+        var uploaded = await _client.Documents.UploadTextAsync("CSharp live", "Shared SDK live scenario.");
+        Assert.False(string.IsNullOrEmpty(uploaded.DocumentId));
+        Assert.NotNull(await _client.Graph.GetAsync());
+        Assert.NotNull(await _client.Entities.ListAsync(1, 5));
+        Assert.NotNull(await _client.Query.ExecuteAsync("What is a knowledge graph?", maxResults: 3));
+        Assert.NotNull(await _client.Connections.ListAsync());
+        Assert.NotNull(await _client.Chat.CompletionsAsync("ping", topK: 2));
     }
 }

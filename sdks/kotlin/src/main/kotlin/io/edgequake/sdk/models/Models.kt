@@ -36,7 +36,9 @@ data class Document(
     @JsonProperty("created_at") val createdAt: String? = null,
     @JsonProperty("updated_at") val updatedAt: String? = null,
     @JsonProperty("file_size") val fileSize: Long? = null,
-    @JsonProperty("chunk_count") val chunkCount: Int? = null
+    @JsonProperty("chunk_count") val chunkCount: Int? = null,
+    @JsonProperty("display_status") val displayStatus: String? = null,
+    @JsonProperty("ui_phase") val uiPhase: String? = null
 )
 
 data class UploadResponse(
@@ -322,7 +324,9 @@ data class NodeDegree(
 
 data class QueryRequest(
     val query: String,
-    val mode: String = "hybrid",
+    val mode: String? = null,
+    @JsonProperty("max_results") val maxResults: Int? = null,
+    @JsonProperty("enable_rerank") val enableRerank: Boolean? = null,
     @JsonProperty("system_prompt") val systemPrompt: String? = null
 )
 
@@ -543,7 +547,8 @@ data class WorkspaceInfo(
     val id: String? = null,
     val name: String? = null,
     val slug: String? = null,
-    @JsonProperty("created_at") val createdAt: String? = null
+    @JsonProperty("created_at") val createdAt: String? = null,
+    @JsonProperty("llm_roles") val llmRoles: Map<String, Any?>? = null
 )
 
 // ── Operations ──────────────────────────────────────────────────────
@@ -734,6 +739,59 @@ data class PdfContentResponse(
 )
 
 // ── Workspace Extended ──────────────────────────────────────────────
+
+data class Connection(
+    val id: String = "",
+    @JsonProperty("tenant_id") val tenantId: String? = null,
+    val slug: String = "",
+    @JsonProperty("display_name") val displayName: String = "",
+    @JsonProperty("api_shape") val apiShape: String = "",
+    val locality: String = "",
+    @JsonProperty("base_url") val baseUrl: String = "",
+    @JsonProperty("auth_scheme") val authScheme: String = "",
+    @JsonProperty("key_fingerprint") val keyFingerprint: String? = null,
+    @JsonProperty("key_configured") val keyConfigured: Boolean = false,
+    @JsonProperty("timeout_secs") val timeoutSecs: Int = 0,
+    @JsonProperty("allow_private_network") val allowPrivateNetwork: Boolean = false,
+    val source: String = "",
+    @JsonProperty("last_test_ok") val lastTestOk: Boolean? = null,
+    @JsonProperty("last_test_error") val lastTestError: String? = null
+)
+
+data class UpsertConnection(
+    val slug: String,
+    @JsonProperty("display_name") val displayName: String,
+    @JsonProperty("api_shape") val apiShape: String,
+    @JsonProperty("base_url") val baseUrl: String,
+    val locality: String? = null,
+    @JsonProperty("auth_scheme") val authScheme: String? = null,
+    @JsonProperty("api_key") val apiKey: String? = null,
+    @JsonProperty("timeout_secs") val timeoutSecs: Int? = null,
+    @JsonProperty("allow_private_network") val allowPrivateNetwork: Boolean? = null
+)
+
+data class ProbeRequest(
+    val shape: String,
+    @JsonProperty("base_url") val baseUrl: String? = null,
+    val model: String? = null,
+    @JsonProperty("embedding_model") val embeddingModel: String? = null,
+    @JsonProperty("api_key") val apiKey: String? = null,
+    @JsonProperty("auth_scheme") val authScheme: String? = null,
+    @JsonProperty("allow_private_network") val allowPrivateNetwork: Boolean? = null,
+    @JsonProperty("expected_dimension") val expectedDimension: Int? = null
+)
+
+data class ProbeResult(
+    val ok: Boolean = false,
+    val kind: String = "",
+    @JsonProperty("latency_ms") val latencyMs: Int = 0,
+    val message: String = "",
+    val models: List<String> = emptyList(),
+    @JsonProperty("embedding_dimension") val embeddingDimension: Int? = null,
+    @JsonProperty("chat_ok") val chatOk: Boolean = false,
+    @JsonProperty("embed_ok") val embedOk: Boolean = false,
+    @JsonProperty("list_ok") val listOk: Boolean = false
+)
 
 /** WHY: Workspace statistics. */
 data class WorkspaceStatsResponse(

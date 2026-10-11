@@ -167,6 +167,10 @@ export interface DocumentSummary {
   stage_message?: string;
   /** Linked PDF document ID (only if source_type is "pdf"). */
   pdf_id?: string;
+  /** Badge key from the server. Prefer this over `status` for UI. */
+  display_status?: string;
+  /** `idle` | `running` | `stopping` | `terminal`. */
+  ui_phase?: string;
 }
 
 /** Document detail response with full content. */
@@ -196,6 +200,8 @@ export interface DocumentDetail {
   stage_progress?: number;
   stage_message?: string;
   pdf_id?: string;
+  display_status?: string;
+  ui_phase?: string;
   metadata?: Record<string, unknown>;
 }
 

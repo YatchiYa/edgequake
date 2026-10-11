@@ -5,13 +5,20 @@ description: Install and use the EdgeQuake TypeScript client (npm package edgequ
 
 # TypeScript SDK
 
-The TypeScript client is the official JavaScript and TypeScript SDK for EdgeQuake. The npm package is **`edgequake-sdk`** (not `@edgequake/sdk`), and it requires **Node.js 18+**. The source tree is version **0.4.0**, and the latest npm release is **0.1.0**.
+The TypeScript client is the official JavaScript and TypeScript SDK for EdgeQuake. The npm package is **`edgequake-sdk`** (not `@edgequake/sdk`), and it requires **Node.js 18+**. The source tree is version **0.4.1**, and the latest npm release is **0.1.0**.
+
+Typed resources are the preferred API. `client.operations` calls every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
+
+```bash
+cd sdks/typescript && bun run test tests/unit/operations-manifest.test.ts
+EDGEQUAKE_E2E_URL=http://localhost:8080 bun test tests/e2e
+```
 
 ## Install
 
 ```bash
 npm install edgequake-sdk@0.1.0   # latest on npm
-# or from source: npm install ./sdks/typescript   (0.4.0)
+# or from source: npm install ./sdks/typescript   (0.4.1)
 ```
 
 ```mermaid
@@ -77,7 +84,7 @@ The query request uses the server's real field names:
 
 ## Notes
 
-- Connections and `POST /api/v1/providers/test` are not wrapped. Use raw HTTP ([Connections](../../api-reference/connections.md)).
+- Connections and `POST /api/v1/providers/test` are on `client.connections`. See [Connections](../../api-reference/connections.md).
 - Do not import from `@edgequake/sdk`. Some comments and examples still use that name, which is a known documentation issue.
 
 Next steps: [TypeScript quickstart](quickstart.md). API details: [REST API](../../api-reference/rest-api.md).

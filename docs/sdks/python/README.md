@@ -5,13 +5,20 @@ description: Install and use the EdgeQuake Python client (edgequake-sdk). Sync a
 
 # Python SDK
 
-The Python client wraps the EdgeQuake REST API with a sync client and an async twin. It needs **Python 3.10+**. The source tree is version **0.4.0**, and the latest release on PyPI is **0.3.0**.
+The Python client wraps the EdgeQuake REST API with a sync client and an async twin. It needs **Python 3.10+**. The source tree is version **0.4.1**, and the latest release on PyPI is **0.3.0**.
+
+Typed resources are the preferred API. `client.operations` and `AsyncEdgeQuake.operations` call every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
+
+```bash
+cd sdks/python && python3 -m pytest tests/test_operations_manifest.py -q
+EDGEQUAKE_E2E_URL=http://localhost:8080 python3 -m pytest tests/test_e2e.py
+```
 
 ## Install
 
 ```bash
 pip install edgequake-sdk==0.3.0   # latest on PyPI
-pip install ./sdks/python          # source tree, 0.4.0
+pip install ./sdks/python          # source tree, 0.4.1
 ```
 
 ## Create a client
@@ -105,9 +112,9 @@ print(ans.answer)
 Known gaps on this client:
 
 - The `mode` type hint lists `local`, `global`, `hybrid` and `naive` only. The server also accepts `mix` (its default) and `bypass`. Passing `mode="mix"` works at runtime, but type checkers flag it until the hint is widened.
-- The client defaults to `hybrid`, not the server default `mix`.
+- Query `mode` is omitted unless you set it, so the server default `mix` applies.
 - The client sends `top_k` and `rerank`. The server ignores them, so the result count is set by the server.
 
-Connections and `providers/test` are not wrapped. Use raw HTTP ([Connections](../../api-reference/connections.md)).
+Connections and `providers/test` are on `client.connections`. See [Connections](../../api-reference/connections.md).
 
 Quickstart walkthrough: [quickstart.md](quickstart.md). API shapes: [REST API](../../api-reference/rest-api.md).

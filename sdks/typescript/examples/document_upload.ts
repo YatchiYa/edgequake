@@ -7,7 +7,7 @@
  * Usage:
  *   npx tsx examples/document_upload.ts
  */
-import { EdgeQuake } from "@edgequake/sdk";
+import { EdgeQuake } from "edgequake-sdk";
 import { readFileSync } from "node:fs";
 
 async function main() {

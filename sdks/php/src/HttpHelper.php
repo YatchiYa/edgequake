@@ -42,6 +42,16 @@ class HttpHelper
         return $this->requestRaw('GET', $path);
     }
 
+    public function baseUrl(): string
+    {
+        return $this->config->baseUrl;
+    }
+
+    public function raw(string $method, string $path, ?array $body = null): string
+    {
+        return $this->requestRaw($method, $path, $body);
+    }
+
     protected function request(string $method, string $path, ?array $body = null): array
     {
         $raw = $this->requestRaw($method, $path, $body);

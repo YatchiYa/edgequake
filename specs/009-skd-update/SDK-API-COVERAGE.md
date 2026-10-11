@@ -1,7 +1,9 @@
 # SDK ↔ HTTP API coverage (brutal assessment)
 
 **Authority:** `edgequake/crates/edgequake-api/src/routes.rs` + [API-CANON.md](./API-CANON.md).  
-**Last updated:** 2026-04-24 (iteration 3 — document list law + Tier 2 bulk bodies + docs/sdks).  
+**Last updated:** 2026-10-11. The Ruby library is in `sdks/ruby/lib`. Every SDK now has a generated operations module for HTTP routes the typed services do not already mention. WebSocket methods return a `ws://` or `wss://` URL. SSE methods return `data:` lines. The shared live scenario passed on 2026-10-11 against a healthy API at `http://127.0.0.1:8091` for all ten SDKs.
+
+**Last updated (previous):** 2026-04-24 (iteration 3 — document list law + Tier 2 bulk bodies + docs/sdks).  
 **Scope:** Routed REST surface vs **first-class** client methods and **primary** DTO shapes.
 
 ## How to read this
@@ -100,8 +102,8 @@ These track the same canon; conversation **list query** parity may still lag Tie
 ## Residual ⚠️ (honest)
 
 1. **Full OpenAPI field parity** on every struct (tokens, context blobs, tenant UUIDs) — still trimmed for ergonomics.
-2. **SSE** for PDF progress / graph stream — clients expose bytes or helpers, not a typed event model everywhere.
-3. **WebSocket** progress — not modeled uniformly across languages.
+2. **SSE** — generated operations return the same `data:` lines through one parser per SDK. Hand-written stream helpers still differ.
+3. **WebSocket** — every SDK exposes the two progress URLs (`ws://` / `wss://`). Python and TypeScript also open the socket. The other languages stop at the URL.
 
 ---
 
@@ -116,7 +118,7 @@ These track the same canon; conversation **list query** parity may still lag Tie
 | Is cost estimation routed correctly in TS? | **Yes**, with **DRY** path constants. |
 | What still needs human judgment? | Tier-2 conversation **list** filter parity; SSE/WebSocket; exhaustive OpenAPI field coverage. |
 
-**Verdict:** **Tier 1** matches `routes.rs` for documents list, conversations, and costs paths addressed here. **Tier 2** bulk conversation POST bodies were a real drift; fixed in-repo for the listed languages. **Ruby** remains unreliable until `lib/` packaging is restored ([BRUTAL-ASSESSMENT.md](../../docs/sdks/BRUTAL-ASSESSMENT.md)).
+**Verdict:** **Tier 1** matches `routes.rs` for documents list, conversations, and costs paths addressed here. **Tier 2** bulk conversation POST bodies were a real drift; fixed in-repo for the listed languages. **Ruby** ships `sdks/ruby/lib` and `client.operations`. Remaining HTTP routes are on the generated operations module in all ten SDKs. Typed models still trim optional OpenAPI fields. Query uses `max_results` (or omits `mode`). Lists use `page_size`. Chat still sends `top_k`. Document models expose `display_status` where they parse the document object.
 
 ---
 

@@ -7,6 +7,13 @@ description: Use the EdgeQuake .NET client (EdgeQuake.SDK 0.4.0, net10.0). Not o
 
 The .NET client is package `EdgeQuake.SDK`, source version **0.4.0**, targeting **`net10.0`**. It is **not published** to NuGet, so reference the project directly from `sdks/csharp`. The client exposes async services such as `Documents`, `Query` and `Entities` on `EdgeQuakeClient`.
 
+Typed services are the preferred API. `client.Operations` calls every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
+
+```bash
+cd sdks/csharp && dotnet test --filter FullyQualifiedName~OperationsManifestTest
+EDGEQUAKE_E2E_URL=http://localhost:8080 dotnet test --filter "E2E=true"
+```
+
 ## Install
 
 ```bash
@@ -44,7 +51,7 @@ Console.WriteLine(answer.Answer);
 
 ## Notes
 
-- `Query.ExecuteAsync` defaults `mode` to `"hybrid"`, not the server default `mix`. Pass `mode: "mix"` explicitly.
-- Connections and `POST /api/v1/providers/test` are not wrapped. Use raw HTTP ([Connections](../../api-reference/connections.md)).
+- `Query.ExecuteAsync` omits `mode` unless you pass it, so the server default `mix` applies.
+- Connections and `POST /api/v1/providers/test` are on `client.Connections`. See [Connections](../../api-reference/connections.md).
 
 See the [SDK overview](../README.md) for the full language matrix.

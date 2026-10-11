@@ -2,15 +2,18 @@ package io.edgequake.sdk.models;
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /** Query and Chat model classes. */
 public class QueryModels {
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class QueryRequest {
         @JsonProperty("query") public String query;
         @JsonProperty("mode") public String mode;
-        @JsonProperty("top_k") public Integer topK;
+        @JsonProperty("max_results") public Integer topK;
+        @JsonProperty("enable_rerank") public Boolean enableRerank;
         @JsonProperty("stream") public Boolean stream;
         @JsonProperty("only_need_context") public Boolean onlyNeedContext;
         @JsonProperty("system_prompt") public String systemPrompt;
@@ -51,6 +54,7 @@ public class QueryModels {
         }
     }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class ChatCompletionRequest {
         @JsonProperty("message") public String message;
         @JsonProperty("stream") public Boolean stream;

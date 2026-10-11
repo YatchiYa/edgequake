@@ -92,6 +92,8 @@ export interface SearchParams {
 
 export interface ListEntitiesQuery {
   page?: number;
+  /** Server query parameter. `per_page` is accepted as an alias. */
+  page_size?: number;
   per_page?: number;
   search?: string;
   label?: string;
@@ -101,7 +103,8 @@ export interface EntitiesListResponse {
   entities: EntityInfo[];
   total: number;
   page: number;
-  per_page: number;
+  page_size?: number;
+  per_page?: number;
 }
 
 export interface EntityInfo {
@@ -164,6 +167,8 @@ export interface NeighborhoodResponse {
 
 export interface ListRelationshipsQuery {
   page?: number;
+  /** Server query parameter. `per_page` is accepted as an alias. */
+  page_size?: number;
   per_page?: number;
   source?: string;
   target?: string;
@@ -174,7 +179,8 @@ export interface RelationshipsListResponse {
   relationships: RelationshipInfo[];
   total: number;
   page: number;
-  per_page: number;
+  page_size?: number;
+  per_page?: number;
 }
 
 export interface RelationshipInfo {

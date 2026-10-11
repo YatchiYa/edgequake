@@ -7,7 +7,7 @@
  * Usage:
  *   npx tsx examples/basic_usage.ts
  */
-import { EdgeQuake } from "@edgequake/sdk";
+import { EdgeQuake } from "edgequake-sdk";
 
 async function main() {
   // WHY: baseUrl points to your EdgeQuake backend; apiKey authenticates.

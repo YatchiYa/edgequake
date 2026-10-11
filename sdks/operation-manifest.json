@@ -1,0 +1,4556 @@
+[
+  {
+    "operationId": "mcp_registry_server_json",
+    "method": "GET",
+    "path": "/.well-known/mcp/server.json",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "oauth_authorization_server_metadata",
+    "method": "GET",
+    "path": "/.well-known/oauth-authorization-server",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "mcp_oauth_protected_resource",
+    "method": "GET",
+    "path": "/.well-known/oauth-protected-resource",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "mcp_oauth_protected_resource_path",
+    "method": "GET",
+    "path": "/.well-known/oauth-protected-resource/mcp",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "openid_configuration",
+    "method": "GET",
+    "path": "/.well-known/openid-configuration",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "ollama_chat",
+    "method": "POST",
+    "path": "/api/chat",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": false,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "ollama_generate",
+    "method": "POST",
+    "path": "/api/generate",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": false,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "ollama_ps",
+    "method": "GET",
+    "path": "/api/ps",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": false,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "ollama_tags",
+    "method": "GET",
+    "path": "/api/tags",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": false,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "ann_warmup",
+    "method": "POST",
+    "path": "/api/v1/admin/ann/warmup",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_server_defaults",
+    "method": "GET",
+    "path": "/api/v1/admin/config/defaults",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": true,
+      "kotlin": false,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_server_defaults",
+    "method": "PATCH",
+    "path": "/api/v1/admin/config/defaults",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": true,
+      "kotlin": false,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "entity_reconcile_plan",
+    "method": "GET",
+    "path": "/api/v1/admin/entities/reconcile",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "entity_reconcile_execute",
+    "method": "POST",
+    "path": "/api/v1/admin/entities/reconcile",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "admin_list_identity_providers",
+    "method": "GET",
+    "path": "/api/v1/admin/identity-providers",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "admin_upsert_identity_provider",
+    "method": "PUT",
+    "path": "/api/v1/admin/identity-providers/{slug}",
+    "pathParams": [
+      "slug"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "admin_delete_identity_provider",
+    "method": "DELETE",
+    "path": "/api/v1/admin/identity-providers/{slug}",
+    "pathParams": [
+      "slug"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_migration_jobs",
+    "method": "GET",
+    "path": "/api/v1/admin/migration-jobs",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_migration_job",
+    "method": "GET",
+    "path": "/api/v1/admin/migration-jobs/{job_id}",
+    "pathParams": [
+      "job_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "cancel_migration_job",
+    "method": "POST",
+    "path": "/api/v1/admin/migration-jobs/{job_id}/cancel",
+    "pathParams": [
+      "job_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "pause_migration_job",
+    "method": "POST",
+    "path": "/api/v1/admin/migration-jobs/{job_id}/pause",
+    "pathParams": [
+      "job_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "resume_migration_job",
+    "method": "POST",
+    "path": "/api/v1/admin/migration-jobs/{job_id}/resume",
+    "pathParams": [
+      "job_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "storage_inspect",
+    "method": "GET",
+    "path": "/api/v1/admin/storage/inspect",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "storage_repair",
+    "method": "POST",
+    "path": "/api/v1/admin/storage/repair",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_tenant_quota",
+    "method": "PATCH",
+    "path": "/api/v1/admin/tenants/{tenant_id}/quota",
+    "pathParams": [
+      "tenant_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_api_keys",
+    "method": "GET",
+    "path": "/api/v1/api-keys",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "create_api_key",
+    "method": "POST",
+    "path": "/api/v1/api-keys",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "revoke_api_key",
+    "method": "DELETE",
+    "path": "/api/v1/api-keys/{key_id}",
+    "pathParams": [
+      "key_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "redeem_sso_handoff",
+    "method": "POST",
+    "path": "/api/v1/auth/handoff",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "login",
+    "method": "POST",
+    "path": "/api/v1/auth/login",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "logout",
+    "method": "POST",
+    "path": "/api/v1/auth/logout",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_me",
+    "method": "GET",
+    "path": "/api/v1/auth/me",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "oidc_backchannel_logout",
+    "method": "POST",
+    "path": "/api/v1/auth/oidc/backchannel-logout",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "oidc_callback",
+    "method": "GET",
+    "path": "/api/v1/auth/oidc/callback",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "oidc_login",
+    "method": "GET",
+    "path": "/api/v1/auth/oidc/login",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "refresh_token",
+    "method": "POST",
+    "path": "/api/v1/auth/refresh",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "list_sso_providers",
+    "method": "GET",
+    "path": "/api/v1/auth/sso/providers",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "chat_completion",
+    "method": "POST",
+    "path": "/api/v1/chat/completions",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "chat_completion_stream",
+    "method": "POST",
+    "path": "/api/v1/chat/completions/stream",
+    "pathParams": [],
+    "kind": "sse",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_chunk_detail",
+    "method": "GET",
+    "path": "/api/v1/chunks/{chunk_id}",
+    "pathParams": [
+      "chunk_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": false,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_chunk_lineage",
+    "method": "GET",
+    "path": "/api/v1/chunks/{chunk_id}/lineage",
+    "pathParams": [
+      "chunk_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_effective_config",
+    "method": "GET",
+    "path": "/api/v1/config/effective",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": true,
+      "kotlin": false,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_connections",
+    "method": "GET",
+    "path": "/api/v1/connections",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "create_connection",
+    "method": "POST",
+    "path": "/api/v1/connections",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "update_connection",
+    "method": "PUT",
+    "path": "/api/v1/connections/{id}",
+    "pathParams": [
+      "id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "delete_connection",
+    "method": "DELETE",
+    "path": "/api/v1/connections/{id}",
+    "pathParams": [
+      "id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "test_stored_connection",
+    "method": "POST",
+    "path": "/api/v1/connections/{id}/test",
+    "pathParams": [
+      "id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_conversations",
+    "method": "GET",
+    "path": "/api/v1/conversations",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "create_conversation",
+    "method": "POST",
+    "path": "/api/v1/conversations",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "bulk_archive_conversations",
+    "method": "POST",
+    "path": "/api/v1/conversations/bulk/archive",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": false,
+      "kotlin": true,
+      "csharp": true,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "bulk_delete_conversations",
+    "method": "POST",
+    "path": "/api/v1/conversations/bulk/delete",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "bulk_move_conversations",
+    "method": "POST",
+    "path": "/api/v1/conversations/bulk/move",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": false,
+      "kotlin": true,
+      "csharp": true,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "import_conversations",
+    "method": "POST",
+    "path": "/api/v1/conversations/import",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "set_message_feedback",
+    "method": "PATCH",
+    "path": "/api/v1/conversations/{conversation_id}/messages/{message_id}/feedback",
+    "pathParams": [
+      "conversation_id",
+      "message_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_conversation",
+    "method": "GET",
+    "path": "/api/v1/conversations/{id}",
+    "pathParams": [
+      "id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": true,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "delete_conversation",
+    "method": "DELETE",
+    "path": "/api/v1/conversations/{id}",
+    "pathParams": [
+      "id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": true,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "update_conversation",
+    "method": "PATCH",
+    "path": "/api/v1/conversations/{id}",
+    "pathParams": [
+      "id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": true,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "list_messages",
+    "method": "GET",
+    "path": "/api/v1/conversations/{id}/messages",
+    "pathParams": [
+      "id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "create_message",
+    "method": "POST",
+    "path": "/api/v1/conversations/{id}/messages",
+    "pathParams": [
+      "id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "share_conversation",
+    "method": "POST",
+    "path": "/api/v1/conversations/{id}/share",
+    "pathParams": [
+      "id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "unshare_conversation",
+    "method": "DELETE",
+    "path": "/api/v1/conversations/{id}/share",
+    "pathParams": [
+      "id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_budget_status",
+    "method": "GET",
+    "path": "/api/v1/costs/budget",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "update_budget",
+    "method": "PATCH",
+    "path": "/api/v1/costs/budget",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_cost_history",
+    "method": "GET",
+    "path": "/api/v1/costs/history",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_cost_summary",
+    "method": "GET",
+    "path": "/api/v1/costs/summary",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_decision_models",
+    "method": "GET",
+    "path": "/api/v1/decision/models",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_decision_status",
+    "method": "GET",
+    "path": "/api/v1/decision/status",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_documents",
+    "method": "GET",
+    "path": "/api/v1/documents",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "upload_document",
+    "method": "POST",
+    "path": "/api/v1/documents",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "delete_all_documents",
+    "method": "DELETE",
+    "path": "/api/v1/documents",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "batch_delete_documents",
+    "method": "POST",
+    "path": "/api/v1/documents/batch-delete",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_pdfs",
+    "method": "GET",
+    "path": "/api/v1/documents/pdf",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "upload_pdf_document",
+    "method": "POST",
+    "path": "/api/v1/documents/pdf",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "upload_pdf_batch_document",
+    "method": "POST",
+    "path": "/api/v1/documents/pdf/batch",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_pdf_progress_stream",
+    "method": "GET",
+    "path": "/api/v1/documents/pdf/progress/stream/{track_id}",
+    "pathParams": [
+      "track_id"
+    ],
+    "kind": "sse",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_pdf_progress",
+    "method": "GET",
+    "path": "/api/v1/documents/pdf/progress/{track_id}",
+    "pathParams": [
+      "track_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_pdf_status",
+    "method": "GET",
+    "path": "/api/v1/documents/pdf/{pdf_id}",
+    "pathParams": [
+      "pdf_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "delete_pdf",
+    "method": "DELETE",
+    "path": "/api/v1/documents/pdf/{pdf_id}",
+    "pathParams": [
+      "pdf_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "cancel_pdf_processing",
+    "method": "DELETE",
+    "path": "/api/v1/documents/pdf/{pdf_id}/cancel",
+    "pathParams": [
+      "pdf_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_pdf_content",
+    "method": "GET",
+    "path": "/api/v1/documents/pdf/{pdf_id}/content",
+    "pathParams": [
+      "pdf_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "download_pdf",
+    "method": "GET",
+    "path": "/api/v1/documents/pdf/{pdf_id}/download",
+    "pathParams": [
+      "pdf_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "retry_pdf_processing",
+    "method": "POST",
+    "path": "/api/v1/documents/pdf/{pdf_id}/retry",
+    "pathParams": [
+      "pdf_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "recover_stuck",
+    "method": "POST",
+    "path": "/api/v1/documents/recover-stuck",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "reprocess_failed",
+    "method": "POST",
+    "path": "/api/v1/documents/reprocess",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "scan_directory",
+    "method": "POST",
+    "path": "/api/v1/documents/scan",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "search_documents",
+    "method": "GET",
+    "path": "/api/v1/documents/search",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_track_status",
+    "method": "GET",
+    "path": "/api/v1/documents/track/{track_id}",
+    "pathParams": [
+      "track_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": false,
+      "csharp": false,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "upload_file",
+    "method": "POST",
+    "path": "/api/v1/documents/upload",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": true,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "upload_files_batch",
+    "method": "POST",
+    "path": "/api/v1/documents/upload/batch",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": true,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_document",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "delete_document",
+    "method": "DELETE",
+    "path": "/api/v1/documents/{document_id}",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_document_assets",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/assets",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "include_document_assets_from_pdf",
+    "method": "POST",
+    "path": "/api/v1/documents/{document_id}/assets/include-from-pdf",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "download_document_asset_by_id",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/assets/{asset_id}",
+    "pathParams": [
+      "document_id",
+      "asset_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "cancel_document",
+    "method": "POST",
+    "path": "/api/v1/documents/{document_id}/cancel",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "analyze_deletion_impact",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/deletion-impact",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "download_document_markdown",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/download/markdown",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "download_document_original",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/download/original",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_failed_chunks",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/failed-chunks",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_document_full_lineage",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/lineage",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "export_document_lineage",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/lineage/export",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_document_metadata",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/metadata",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "download_document_mm_asset",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/mm-assets/{asset_path}",
+    "pathParams": [
+      "document_id",
+      "asset_path"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_document_pages",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/pages",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_pages_health",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/pages/health",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "reprocess_pages",
+    "method": "POST",
+    "path": "/api/v1/documents/{document_id}/pages/reprocess",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_document_page_layout",
+    "method": "GET",
+    "path": "/api/v1/documents/{document_id}/pages/{page_number}/layout",
+    "pathParams": [
+      "document_id",
+      "page_number"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "reanalyze_multimodal",
+    "method": "POST",
+    "path": "/api/v1/documents/{document_id}/reanalyze",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "retry_failed_chunks",
+    "method": "POST",
+    "path": "/api/v1/documents/{document_id}/retry-chunks",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_entity_provenance",
+    "method": "GET",
+    "path": "/api/v1/entities/{entity_id}/provenance",
+    "pathParams": [
+      "entity_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_folders",
+    "method": "GET",
+    "path": "/api/v1/folders",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "create_folder",
+    "method": "POST",
+    "path": "/api/v1/folders",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "delete_folder",
+    "method": "DELETE",
+    "path": "/api/v1/folders/{folder_id}",
+    "pathParams": [
+      "folder_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_folder",
+    "method": "PATCH",
+    "path": "/api/v1/folders/{folder_id}",
+    "pathParams": [
+      "folder_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_graph",
+    "method": "GET",
+    "path": "/api/v1/graph",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_graph_communities",
+    "method": "GET",
+    "path": "/api/v1/graph/communities",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_degrees_batch",
+    "method": "POST",
+    "path": "/api/v1/graph/degrees/batch",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "list_entities",
+    "method": "GET",
+    "path": "/api/v1/graph/entities",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "create_entity",
+    "method": "POST",
+    "path": "/api/v1/graph/entities",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "entity_exists",
+    "method": "GET",
+    "path": "/api/v1/graph/entities/exists",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "merge_entities",
+    "method": "POST",
+    "path": "/api/v1/graph/entities/merge",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_entity",
+    "method": "GET",
+    "path": "/api/v1/graph/entities/{entity_name}",
+    "pathParams": [
+      "entity_name"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_entity",
+    "method": "PUT",
+    "path": "/api/v1/graph/entities/{entity_name}",
+    "pathParams": [
+      "entity_name"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "delete_entity",
+    "method": "DELETE",
+    "path": "/api/v1/graph/entities/{entity_name}",
+    "pathParams": [
+      "entity_name"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_entity_neighborhood",
+    "method": "GET",
+    "path": "/api/v1/graph/entities/{entity_name}/neighborhood",
+    "pathParams": [
+      "entity_name"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_graph_facets",
+    "method": "GET",
+    "path": "/api/v1/graph/facets",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_popular_labels",
+    "method": "GET",
+    "path": "/api/v1/graph/labels/popular",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "search_labels",
+    "method": "GET",
+    "path": "/api/v1/graph/labels/search",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "search_nodes",
+    "method": "GET",
+    "path": "/api/v1/graph/nodes/search",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_node",
+    "method": "GET",
+    "path": "/api/v1/graph/nodes/{node_id}",
+    "pathParams": [
+      "node_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_relationships",
+    "method": "GET",
+    "path": "/api/v1/graph/relationships",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "create_relationship",
+    "method": "POST",
+    "path": "/api/v1/graph/relationships",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_relationship",
+    "method": "GET",
+    "path": "/api/v1/graph/relationships/{relationship_id}",
+    "pathParams": [
+      "relationship_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_relationship",
+    "method": "PUT",
+    "path": "/api/v1/graph/relationships/{relationship_id}",
+    "pathParams": [
+      "relationship_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "delete_relationship",
+    "method": "DELETE",
+    "path": "/api/v1/graph/relationships/{relationship_id}",
+    "pathParams": [
+      "relationship_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "stream_graph",
+    "method": "GET",
+    "path": "/api/v1/graph/stream",
+    "pathParams": [],
+    "kind": "sse",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "post_ingestion_progress_batch",
+    "method": "POST",
+    "path": "/api/v1/ingestion/progress",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_ingestion_progress",
+    "method": "GET",
+    "path": "/api/v1/ingestion/{track_id}/progress",
+    "pathParams": [
+      "track_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_document_lineage",
+    "method": "GET",
+    "path": "/api/v1/lineage/documents/{document_id}",
+    "pathParams": [
+      "document_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_entity_lineage",
+    "method": "GET",
+    "path": "/api/v1/lineage/entities/{entity_name}",
+    "pathParams": [
+      "entity_name"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "mcp_openapi_v1",
+    "method": "POST",
+    "path": "/api/v1/mcp",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "delete_message",
+    "method": "DELETE",
+    "path": "/api/v1/messages/{message_id}",
+    "pathParams": [
+      "message_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": false,
+      "csharp": true,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_message",
+    "method": "PATCH",
+    "path": "/api/v1/messages/{message_id}",
+    "pathParams": [
+      "message_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": false,
+      "csharp": true,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_models",
+    "method": "GET",
+    "path": "/api/v1/models",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "refresh_model_discovery",
+    "method": "POST",
+    "path": "/api/v1/models/discover/refresh",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_embedding_models",
+    "method": "GET",
+    "path": "/api/v1/models/embedding",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "check_providers_health",
+    "method": "GET",
+    "path": "/api/v1/models/health",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "list_llm_models",
+    "method": "GET",
+    "path": "/api/v1/models/llm",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "search_models",
+    "method": "GET",
+    "path": "/api/v1/models/search",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_provider",
+    "method": "GET",
+    "path": "/api/v1/models/{provider}",
+    "pathParams": [
+      "provider"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_model",
+    "method": "GET",
+    "path": "/api/v1/models/{provider}/{model}",
+    "pathParams": [
+      "provider",
+      "model"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "parse_document",
+    "method": "POST",
+    "path": "/api/v1/parse",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_parse_backends",
+    "method": "GET",
+    "path": "/api/v1/parse/backends",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_parse_job",
+    "method": "GET",
+    "path": "/api/v1/parse/jobs/{id}",
+    "pathParams": [
+      "id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_pipeline_activity",
+    "method": "GET",
+    "path": "/api/v1/pipeline/activity",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "cancel_pipeline",
+    "method": "POST",
+    "path": "/api/v1/pipeline/cancel",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "estimate_cost",
+    "method": "POST",
+    "path": "/api/v1/pipeline/costs/estimate",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_model_pricing",
+    "method": "GET",
+    "path": "/api/v1/pipeline/costs/pricing",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_queue_metrics",
+    "method": "GET",
+    "path": "/api/v1/pipeline/queue-metrics",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_pipeline_status",
+    "method": "GET",
+    "path": "/api/v1/pipeline/status",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "test_provider",
+    "method": "POST",
+    "path": "/api/v1/providers/test",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "execute_query",
+    "method": "POST",
+    "path": "/api/v1/query",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "retrieve_query_context",
+    "method": "POST",
+    "path": "/api/v1/query/context",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_context_artifact",
+    "method": "GET",
+    "path": "/api/v1/query/context/artifacts/{artifact_type}/{artifact_id}",
+    "pathParams": [
+      "artifact_type",
+      "artifact_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "search_query_context",
+    "method": "POST",
+    "path": "/api/v1/query/context/search",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "fetch_query_context",
+    "method": "GET",
+    "path": "/api/v1/query/context/{retrieval_id}",
+    "pathParams": [
+      "retrieval_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "stream_query",
+    "method": "POST",
+    "path": "/api/v1/query/stream",
+    "pathParams": [],
+    "kind": "sse",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_app_attribution_settings",
+    "method": "GET",
+    "path": "/api/v1/settings/app-attribution",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_app_attribution",
+    "method": "PATCH",
+    "path": "/api/v1/settings/app-attribution",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_attribution_settings",
+    "method": "GET",
+    "path": "/api/v1/settings/attribution",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_langfuse_settings",
+    "method": "GET",
+    "path": "/api/v1/settings/langfuse",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_llm_defaults",
+    "method": "GET",
+    "path": "/api/v1/settings/llm-defaults",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_llm_defaults",
+    "method": "PATCH",
+    "path": "/api/v1/settings/llm-defaults",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_provider_status",
+    "method": "GET",
+    "path": "/api/v1/settings/provider/status",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "list_available_providers",
+    "method": "GET",
+    "path": "/api/v1/settings/providers",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "setup_initialize",
+    "method": "POST",
+    "path": "/api/v1/setup/initialize",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "setup_status",
+    "method": "GET",
+    "path": "/api/v1/setup/status",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_shared_conversation",
+    "method": "GET",
+    "path": "/api/v1/shared/{share_id}",
+    "pathParams": [
+      "share_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": false,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "list_tasks",
+    "method": "GET",
+    "path": "/api/v1/tasks",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_task",
+    "method": "GET",
+    "path": "/api/v1/tasks/{track_id}",
+    "pathParams": [
+      "track_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "cancel_task",
+    "method": "POST",
+    "path": "/api/v1/tasks/{track_id}/cancel",
+    "pathParams": [
+      "track_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "retry_task",
+    "method": "POST",
+    "path": "/api/v1/tasks/{track_id}/retry",
+    "pathParams": [
+      "track_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_tenants",
+    "method": "GET",
+    "path": "/api/v1/tenants",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "create_tenant",
+    "method": "POST",
+    "path": "/api/v1/tenants",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_tenant",
+    "method": "GET",
+    "path": "/api/v1/tenants/{tenant_id}",
+    "pathParams": [
+      "tenant_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_tenant",
+    "method": "PUT",
+    "path": "/api/v1/tenants/{tenant_id}",
+    "pathParams": [
+      "tenant_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "delete_tenant",
+    "method": "DELETE",
+    "path": "/api/v1/tenants/{tenant_id}",
+    "pathParams": [
+      "tenant_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_workspaces",
+    "method": "GET",
+    "path": "/api/v1/tenants/{tenant_id}/workspaces",
+    "pathParams": [
+      "tenant_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "create_workspace",
+    "method": "POST",
+    "path": "/api/v1/tenants/{tenant_id}/workspaces",
+    "pathParams": [
+      "tenant_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_workspace_by_slug",
+    "method": "GET",
+    "path": "/api/v1/tenants/{tenant_id}/workspaces/by-slug/{slug}",
+    "pathParams": [
+      "tenant_id",
+      "slug"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_users",
+    "method": "GET",
+    "path": "/api/v1/users",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "create_user",
+    "method": "POST",
+    "path": "/api/v1/users",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "get_user",
+    "method": "GET",
+    "path": "/api/v1/users/{user_id}",
+    "pathParams": [
+      "user_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "delete_user",
+    "method": "DELETE",
+    "path": "/api/v1/users/{user_id}",
+    "pathParams": [
+      "user_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_user",
+    "method": "PATCH",
+    "path": "/api/v1/users/{user_id}",
+    "pathParams": [
+      "user_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_workspace",
+    "method": "GET",
+    "path": "/api/v1/workspaces/{workspace_id}",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_workspace",
+    "method": "PUT",
+    "path": "/api/v1/workspaces/{workspace_id}",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "delete_workspace",
+    "method": "DELETE",
+    "path": "/api/v1/workspaces/{workspace_id}",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "put_injection",
+    "method": "PUT",
+    "path": "/api/v1/workspaces/{workspace_id}/injection",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "put_injection_file",
+    "method": "PUT",
+    "path": "/api/v1/workspaces/{workspace_id}/injection/file",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_injections",
+    "method": "GET",
+    "path": "/api/v1/workspaces/{workspace_id}/injections",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_injection",
+    "method": "GET",
+    "path": "/api/v1/workspaces/{workspace_id}/injections/{injection_id}",
+    "pathParams": [
+      "workspace_id",
+      "injection_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "delete_injection",
+    "method": "DELETE",
+    "path": "/api/v1/workspaces/{workspace_id}/injections/{injection_id}",
+    "pathParams": [
+      "workspace_id",
+      "injection_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "update_injection",
+    "method": "PATCH",
+    "path": "/api/v1/workspaces/{workspace_id}/injections/{injection_id}",
+    "pathParams": [
+      "workspace_id",
+      "injection_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_metrics_history",
+    "method": "GET",
+    "path": "/api/v1/workspaces/{workspace_id}/metrics-history",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "trigger_metrics_snapshot",
+    "method": "POST",
+    "path": "/api/v1/workspaces/{workspace_id}/metrics-snapshot",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "rebuild_embeddings",
+    "method": "POST",
+    "path": "/api/v1/workspaces/{workspace_id}/rebuild-embeddings",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "rebuild_knowledge_graph",
+    "method": "POST",
+    "path": "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "reprocess_all_documents",
+    "method": "POST",
+    "path": "/api/v1/workspaces/{workspace_id}/reprocess-documents",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_workspace_stats",
+    "method": "GET",
+    "path": "/api/v1/workspaces/{workspace_id}/stats",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": true,
+      "rust": false,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_workspace_jobs",
+    "method": "GET",
+    "path": "/api/v2/workspaces/{workspace_id}/jobs",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "create_workspace_job",
+    "method": "POST",
+    "path": "/api/v2/workspaces/{workspace_id}/jobs",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "list_workspace_job_catalog",
+    "method": "GET",
+    "path": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+    "pathParams": [
+      "workspace_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_workspace_job",
+    "method": "GET",
+    "path": "/api/v2/workspaces/{workspace_id}/jobs/{job_id}",
+    "pathParams": [
+      "workspace_id",
+      "job_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "cancel_workspace_job",
+    "method": "DELETE",
+    "path": "/api/v2/workspaces/{workspace_id}/jobs/{job_id}",
+    "pathParams": [
+      "workspace_id",
+      "job_id"
+    ],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "ollama_version",
+    "method": "GET",
+    "path": "/api/version",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": false,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": false,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "health_check",
+    "method": "GET",
+    "path": "/health",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "liveness_check",
+    "method": "GET",
+    "path": "/live",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "mcp_openapi",
+    "method": "POST",
+    "path": "/mcp",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "get_metrics",
+    "method": "GET",
+    "path": "/metrics",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "oauth_authorize_get",
+    "method": "GET",
+    "path": "/oauth/authorize",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "oauth_authorize_post",
+    "method": "POST",
+    "path": "/oauth/authorize",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "oauth_register_post",
+    "method": "POST",
+    "path": "/oauth/register",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "oauth_revoke_post",
+    "method": "POST",
+    "path": "/oauth/revoke",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "oauth_token_post",
+    "method": "POST",
+    "path": "/oauth/token",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": true,
+      "typescript": true,
+      "rust": true,
+      "go": true,
+      "java": true,
+      "kotlin": true,
+      "csharp": true,
+      "php": true,
+      "ruby": true,
+      "swift": true
+    }
+  },
+  {
+    "operationId": "readiness_check",
+    "method": "GET",
+    "path": "/ready",
+    "pathParams": [],
+    "kind": "http",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "ws_pipeline_progress",
+    "method": "GET",
+    "path": "/ws/pipeline/progress",
+    "pathParams": [],
+    "kind": "websocket",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  },
+  {
+    "operationId": "ws_progress_by_track_id",
+    "method": "GET",
+    "path": "/ws/progress/{track_id}",
+    "pathParams": [
+      "track_id"
+    ],
+    "kind": "websocket",
+    "missing": {
+      "python": false,
+      "typescript": false,
+      "rust": false,
+      "go": false,
+      "java": false,
+      "kotlin": false,
+      "csharp": false,
+      "php": false,
+      "ruby": false,
+      "swift": false
+    }
+  }
+]

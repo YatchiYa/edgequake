@@ -1,4 +1,4 @@
-# Streaming Guide — @edgequake/sdk
+# Streaming Guide — edgequake-sdk
 
 ## Overview
 
@@ -14,7 +14,7 @@ EdgeQuake supports two streaming protocols:
 ### Query Streaming
 
 ```typescript
-import { EdgeQuake } from "@edgequake/sdk";
+import { EdgeQuake } from "edgequake-sdk";
 
 const client = new EdgeQuake({
   baseUrl: "http://localhost:8080",
@@ -78,7 +78,7 @@ for await (const event of client.graph.stream()) {
 ### Pipeline Progress
 
 ```typescript
-import { EdgeQuakeWebSocket } from "@edgequake/sdk";
+import { EdgeQuakeWebSocket } from "edgequake-sdk";
 
 const wsUrl = client.transport.websocketUrl("/ws/pipeline/progress");
 const ws = new EdgeQuakeWebSocket(wsUrl);

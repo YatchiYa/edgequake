@@ -116,11 +116,11 @@ class GraphService(private val http: HttpHelper) {
 }
 
 class QueryService(private val http: HttpHelper) {
-    fun execute(query: String, mode: String = "hybrid"): QueryResponse =
-        http.post("/api/v1/query", QueryRequest(query, mode))
-    
+    fun execute(query: String, mode: String? = null, maxResults: Int? = null, enableRerank: Boolean? = null): QueryResponse =
+        http.post("/api/v1/query", QueryRequest(query, mode, maxResults, enableRerank))
+
     /** WHY: Stream query results via SSE. Returns raw SSE text. */
-    fun stream(query: String, mode: String = "hybrid"): String =
+    fun stream(query: String, mode: String? = null): String =
         http.postRaw("/api/v1/query/stream", QueryRequest(query, mode))
 }
 
@@ -153,10 +153,6 @@ class AuthService(private val http: HttpHelper) {
     
     /** WHY: Get current user info. */
     fun me(): AuthUserResponse = http.get("/api/v1/auth/me")
-    
-    /** WHY: Change password for current user. */
-    fun changePassword(oldPassword: String, newPassword: String): StatusResponse =
-        http.post("/api/v1/auth/change-password", mapOf("old_password" to oldPassword, "new_password" to newPassword))
 }
 
 class UserService(private val http: HttpHelper) {
@@ -171,7 +167,7 @@ class UserService(private val http: HttpHelper) {
     
     /** WHY: Update user (admin only). */
     fun update(id: String, updates: Map<String, Any?>): UserInfo =
-        http.put("/api/v1/users/$id", updates)
+        http.patch("/api/v1/users/$id", updates)
     
     /** WHY: Delete user (admin only). */
     fun delete(id: String) { http.deleteRaw("/api/v1/users/$id") }
@@ -180,19 +176,12 @@ class UserService(private val http: HttpHelper) {
 class ApiKeyService(private val http: HttpHelper) {
     fun list(): ApiKeyListResponse = http.get("/api/v1/api-keys")
     
-    /** WHY: Get API key by ID. */
-    fun get(id: String): ApiKeyInfo = http.get("/api/v1/api-keys/$id")
-    
     /** WHY: Create new API key. */
     fun create(name: String, expiresAt: String? = null): CreateApiKeyResponse =
         http.post("/api/v1/api-keys", mapOf("name" to name, "expires_at" to expiresAt))
     
     /** WHY: Revoke an API key. */
     fun revoke(id: String) { http.deleteRaw("/api/v1/api-keys/$id") }
-    
-    /** WHY: Rotate an API key (create new, revoke old). */
-    fun rotate(id: String): CreateApiKeyResponse =
-        http.post("/api/v1/api-keys/$id/rotate")
 }
 
 class TenantService(private val http: HttpHelper) {
@@ -281,17 +270,9 @@ class TaskService(private val http: HttpHelper) {
 
     fun get(id: String): TaskInfo = http.get("/api/v1/tasks/$id")
     
-    /** WHY: Create new background task. */
-    fun create(taskType: String, params: Map<String, Any?> = emptyMap()): TaskInfo =
-        http.post("/api/v1/tasks", mapOf("task_type" to taskType, "params" to params))
-    
     /** WHY: Cancel running task. */
     fun cancel(id: String): StatusResponse =
         http.post("/api/v1/tasks/$id/cancel")
-    
-    /** WHY: Get task status only (lightweight). */
-    fun status(id: String): TaskStatusResponse =
-        http.get("/api/v1/tasks/$id/status")
     
     /** WHY: Retry failed task. */
     fun retry(id: String): TaskInfo =
@@ -302,16 +283,6 @@ class PipelineService(private val http: HttpHelper) {
     fun status(): PipelineStatus = http.get("/api/v1/pipeline/status")
 
     fun queueMetrics(): QueueMetrics = http.get("/api/v1/pipeline/queue-metrics")
-    
-    /** WHY: Get processing queue items. */
-    fun processing(): ProcessingListResponse =
-        http.get("/api/v1/pipeline/processing")
-    
-    /** WHY: Pause pipeline processing. */
-    fun pause(): StatusResponse = http.post("/api/v1/pipeline/pause")
-    
-    /** WHY: Resume pipeline processing. */
-    fun resume(): StatusResponse = http.post("/api/v1/pipeline/resume")
     
     /** WHY: Cancel current pipeline run. */
     fun cancel(): StatusResponse = http.post("/api/v1/pipeline/cancel")
@@ -332,22 +303,11 @@ class ModelService(private val http: HttpHelper) {
     fun providerStatus(): ProviderStatus =
         http.get("/api/v1/settings/provider/status")
     
-    /** WHY: List available models. */
-    fun list(): ModelListResponse = http.get("/api/v1/models/list")
-    
     /** WHY: Get specific model info. */
     fun get(modelId: String): ModelInfo = http.get("/api/v1/models/$modelId")
     
     /** WHY: List available providers. */
     fun providers(): ProviderListResponse = http.get("/api/v1/settings/providers")
-    
-    /** WHY: Set default model for provider. */
-    fun setDefault(providerId: String, modelId: String): StatusResponse =
-        http.put("/api/v1/models/default", mapOf("provider_id" to providerId, "model_id" to modelId))
-    
-    /** WHY: Test model connectivity. */
-    fun test(modelId: String): ModelTestResponse =
-        http.post("/api/v1/models/$modelId/test")
 }
 
 class WorkspaceService(private val http: HttpHelper) {
@@ -403,32 +363,16 @@ class PdfService(private val http: HttpHelper) {
 class CostService(private val http: HttpHelper) {
     fun summary(): CostSummary = http.get("/api/v1/costs/summary")
     
-    /** WHY: Get daily cost breakdown. */
-    fun daily(date: String? = null): DailyCostResponse {
-        val path = if (date != null) "/api/v1/costs/daily?date=$date" else "/api/v1/costs/daily"
-        return http.get(path)
-    }
-    
-    /** WHY: Get costs grouped by provider. */
-    fun byProvider(): ProviderCostResponse = http.get("/api/v1/costs/by-provider")
-    
-    /** WHY: Get costs grouped by model. */
-    fun byModel(): ModelCostResponse = http.get("/api/v1/costs/by-model")
-    
     /** WHY: Get cost history for date range. */
     fun history(startDate: String, endDate: String): CostHistoryResponse =
         http.get("/api/v1/costs/history?start_date=$startDate&end_date=$endDate")
-    
-    /** WHY: Export cost data. */
-    fun export(format: String = "csv"): String =
-        http.getRaw("/api/v1/costs/export?format=$format")
     
     /** WHY: Get current budget info. */
     fun budget(): BudgetInfo = http.get("/api/v1/costs/budget")
     
     /** WHY: Set cost budget. */
     fun setBudget(amount: Double, period: String = "monthly"): StatusResponse =
-        http.post("/api/v1/costs/budget", mapOf("amount" to amount, "period" to period))
+        http.patch("/api/v1/costs/budget", mapOf("amount" to amount, "period" to period))
 }
 
 /** WHY: PATCH/GET under /api/v1/admin/ (quota, config defaults). */
@@ -458,4 +402,24 @@ class EffectiveConfigService(private val http: HttpHelper) {
 class SharedService(private val http: HttpHelper) {
     fun get(shareId: String): ConversationDetail =
         http.get("/api/v1/shared/$shareId")
+}
+
+class ConnectionService(private val http: HttpHelper) {
+    fun list(): List<Connection> = http.get("/api/v1/connections")
+
+    fun create(body: UpsertConnection): Connection =
+        http.post("/api/v1/connections", body)
+
+    fun update(id: String, body: UpsertConnection): Connection =
+        http.put("/api/v1/connections/$id", body)
+
+    fun delete(id: String) {
+        http.deleteRaw("/api/v1/connections/$id")
+    }
+
+    fun test(id: String): ProbeResult =
+        http.post("/api/v1/connections/$id/test")
+
+    fun testProvider(body: ProbeRequest): ProbeResult =
+        http.post("/api/v1/providers/test", body)
 }

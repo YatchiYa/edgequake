@@ -1,4 +1,4 @@
-# API Reference — @edgequake/sdk
+# API Reference — edgequake-sdk
 
 ## Client
 
@@ -7,7 +7,7 @@
 Create a new SDK client.
 
 ```typescript
-import { EdgeQuake } from "@edgequake/sdk";
+import { EdgeQuake } from "edgequake-sdk";
 
 const client = new EdgeQuake({
   baseUrl: "http://localhost:8080",
@@ -229,7 +229,7 @@ import {
   InternalServerError, // 500
   NetworkError, // Connection failures
   TimeoutError, // Request timeout
-} from "@edgequake/sdk";
+} from "edgequake-sdk";
 ```
 
 ## Pagination
@@ -254,7 +254,7 @@ for await (const event of client.query.stream({ query: "..." })) {
 }
 
 // WebSocket
-import { EdgeQuakeWebSocket } from "@edgequake/sdk";
+import { EdgeQuakeWebSocket } from "edgequake-sdk";
 const ws = new EdgeQuakeWebSocket("ws://localhost:8080/ws/pipeline/progress");
 for await (const event of ws) {
   console.log(event.type, event.progress);

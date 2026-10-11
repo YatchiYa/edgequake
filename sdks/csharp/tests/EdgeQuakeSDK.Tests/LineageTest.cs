@@ -795,8 +795,8 @@ public class LineageTest
         var props = typeof(EdgeQuakeClient).GetProperties();
         // Health, Documents, Entities, Relationships, Graph, Query, Chat, Tenants, Users,
         // ApiKeys, Tasks, Pipeline, Models, Costs, Conversations, Folders, Lineage, Auth,
-        // Workspaces, Shared, Admin, EffectiveConfig
-        Assert.Equal(22, props.Length);
+        // Workspaces, Shared, Admin, EffectiveConfig, Connections
+        Assert.Equal(24, props.Length);
     }
 
     // ── LineageService Endpoint Tests (OODA-25) ────────────────────

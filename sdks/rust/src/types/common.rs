@@ -20,7 +20,7 @@ pub struct HealthResponse {
 pub struct PaginationInfo {
     #[serde(default)]
     pub page: Option<u32>,
-    #[serde(default)]
+    #[serde(default, alias = "page_size")]
     pub per_page: Option<u32>,
     #[serde(default)]
     pub total: Option<u64>,

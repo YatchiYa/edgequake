@@ -5,7 +5,7 @@
  * including environment variables, explicit config, and multi-environment setup.
  */
 
-import { EdgeQuake } from "@edgequake/sdk";
+import { EdgeQuake } from "edgequake-sdk";
 
 // --- Pattern 1: Minimal configuration ---
 // WHY: baseUrl defaults to EDGEQUAKE_BASE_URL env var or http://localhost:8080

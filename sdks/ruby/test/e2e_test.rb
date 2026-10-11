@@ -7,7 +7,8 @@ require_relative "../lib/edgequake"
 # Requires running backend at localhost:8080 (or EDGEQUAKE_BASE_URL).
 class E2ETest < Minitest::Test
   def setup
-    base = ENV.fetch("EDGEQUAKE_BASE_URL", "http://localhost:8080")
+    base = ENV["EDGEQUAKE_E2E_URL"]
+    skip "EDGEQUAKE_E2E_URL not set" if base.nil? || base.empty?
     tenant_id = ENV.fetch("EDGEQUAKE_TENANT_ID", "00000000-0000-0000-0000-000000000002")
     user_id = ENV.fetch("EDGEQUAKE_USER_ID", "00000000-0000-0000-0000-000000000001")
     config = EdgeQuake::Config.new(base_url: base, tenant_id: tenant_id, user_id: user_id)
@@ -195,5 +196,25 @@ class E2ETest < Minitest::Test
     # Pipeline status
     ps = @client.pipeline.status
     refute_nil ps.key?("is_busy")
+  end
+
+  def test_shared_live_scenario
+    health = @client.health.check
+    assert_equal "healthy", health["status"]
+    status = @client.operations.setup_status
+    assert_includes status, "needs_setup"
+    socket = @client.operations.ws_pipeline_progress
+    assert socket.start_with?("ws")
+    assert socket.end_with?("/ws/pipeline/progress")
+    listed = @client.documents.list(page: 1, page_size: 5)
+    docs = listed["documents"] || []
+    docs.first&.[]("display_status")
+    uploaded = @client.documents.upload_text(title: "Ruby live", content: "Shared SDK live scenario.")
+    refute_nil uploaded["document_id"]
+    refute_nil @client.graph.get
+    refute_nil @client.entities.list(page: 1, page_size: 5)
+    refute_nil @client.query.execute_with_context(query: "What is a knowledge graph?", top_k: 3)
+    refute_nil @client.connections.list
+    refute_nil @client.chat.completions(message: "ping", top_k: 2)
   end
 end

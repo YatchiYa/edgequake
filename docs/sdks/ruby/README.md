@@ -7,6 +7,13 @@ description: Use the EdgeQuake Ruby gem edgequake 0.4.0 from the monorepo. Requi
 
 The Ruby client is gem `edgequake`, source version **0.4.0**, and needs **Ruby 3.0+**. It is **not published** to RubyGems, so install it from a path in your Gemfile. Build a `EdgeQuake::Config` first, then pass it to `EdgeQuake::Client`.
 
+Typed services are the preferred API. `client.operations` calls every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
+
+```bash
+cd sdks/ruby && bundle exec ruby -Itest test/operations_manifest_test.rb
+EDGEQUAKE_E2E_URL=http://localhost:8080 bundle exec ruby -Itest test/e2e_test.rb
+```
+
 ## Install
 
 ```ruby
@@ -50,7 +57,7 @@ Passing `base_url:` and `api_key:` straight to `EdgeQuake::Client.new` raises `u
 
 ## Notes
 
-- `query.execute` defaults `mode` to `"hybrid"`. Pass `mode: "mix"` to match the server default.
-- Connections and `POST /api/v1/providers/test` are not wrapped. Use raw HTTP ([Connections](../../api-reference/connections.md)).
+- `query.execute` omits `mode` unless you pass it, so the server default `mix` applies.
+- Connections and `POST /api/v1/providers/test` are on `client.connections`. See [Connections](../../api-reference/connections.md).
 
 See the [SDK overview](../README.md) for the full language matrix.

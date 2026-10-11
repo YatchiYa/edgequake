@@ -7,7 +7,7 @@
  * Usage:
  *   npx tsx examples/websocket_progress.ts
  */
-import { EdgeQuake, EdgeQuakeWebSocket } from "@edgequake/sdk";
+import { EdgeQuake, EdgeQuakeWebSocket } from "edgequake-sdk";
 
 async function main() {
   const client = new EdgeQuake({

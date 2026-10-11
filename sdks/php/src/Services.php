@@ -268,9 +268,12 @@ class QueryService
 {
     public function __construct(private readonly HttpHelper $http) {}
 
-    public function execute(string $query, string $mode = 'hybrid', ?string $systemPrompt = null): array
+    public function execute(string $query, ?string $mode = null, ?int $maxResults = null, ?bool $enableRerank = null, ?string $systemPrompt = null): array
     {
-        $body = ['query' => $query, 'mode' => $mode];
+        $body = ['query' => $query];
+        if ($mode !== null) { $body['mode'] = $mode; }
+        if ($maxResults !== null) { $body['max_results'] = $maxResults; }
+        if ($enableRerank !== null) { $body['enable_rerank'] = $enableRerank; }
         if ($systemPrompt !== null) { $body['system_prompt'] = $systemPrompt; }
         return $this->http->post('/api/v1/query', $body);
     }
@@ -278,9 +281,10 @@ class QueryService
     // OODA-39: Streaming query.
 
     /** Execute streaming query. Returns generator of chunks. */
-    public function stream(string $query, string $mode = 'hybrid', ?string $systemPrompt = null): \Generator
+    public function stream(string $query, ?string $mode = null, ?string $systemPrompt = null): \Generator
     {
-        $body = ['query' => $query, 'mode' => $mode];
+        $body = ['query' => $query];
+        if ($mode !== null) { $body['mode'] = $mode; }
         if ($systemPrompt !== null) { $body['system_prompt'] = $systemPrompt; }
         return $this->http->streamPost('/api/v1/query/stream', $body);
     }
@@ -290,10 +294,11 @@ class ChatService
 {
     public function __construct(private readonly HttpHelper $http) {}
 
-    public function completions(string $message, string $mode = 'hybrid', bool $stream = false, ?string $systemPrompt = null): array
+    public function completions(string $message, string $mode = 'hybrid', bool $stream = false, ?string $systemPrompt = null, ?int $topK = null): array
     {
         $body = ['message' => $message, 'mode' => $mode, 'stream' => $stream];
         if ($systemPrompt !== null) { $body['system_prompt'] = $systemPrompt; }
+        if ($topK !== null) { $body['top_k'] = $topK; }
         return $this->http->post('/api/v1/chat/completions', $body);
     }
 
@@ -740,5 +745,43 @@ class LineageService
     {
         $encoded = rawurlencode($id);
         return $this->http->get("/api/v1/entities/{$encoded}/provenance");
+    }
+}
+
+class ConnectionService
+{
+    public function __construct(private readonly HttpHelper $http) {}
+
+    public function list(): array
+    {
+        return $this->http->get('/api/v1/connections');
+    }
+
+    public function create(array $body): array
+    {
+        return $this->http->post('/api/v1/connections', $body);
+    }
+
+    public function update(string $id, array $body): array
+    {
+        $encoded = rawurlencode($id);
+        return $this->http->put("/api/v1/connections/{$encoded}", $body);
+    }
+
+    public function delete(string $id): array
+    {
+        $encoded = rawurlencode($id);
+        return $this->http->delete("/api/v1/connections/{$encoded}");
+    }
+
+    public function test(string $id): array
+    {
+        $encoded = rawurlencode($id);
+        return $this->http->post("/api/v1/connections/{$encoded}/test");
+    }
+
+    public function testProvider(array $body): array
+    {
+        return $this->http->post('/api/v1/providers/test', $body);
     }
 }

@@ -12,16 +12,19 @@ from pydantic import BaseModel, Field
 
 
 class QueryRequest(BaseModel):
-    """Request body for POST /api/v1/query."""
+    """Request body for POST /api/v1/query.
+
+    Omit `mode` to use the server default (`mix`). `max_results` and
+    `enable_rerank` are the fields the handler reads.
+    """
 
     query: str
-    mode: Literal["local", "global", "hybrid", "naive"] = "hybrid"
-    top_k: int = 10
-    rerank: bool = False
-    provider: str | None = None
-    model: str | None = None
-    conversation_id: str | None = None
-    response_type: str | None = None
+    mode: Literal["local", "global", "hybrid", "naive", "mix", "bypass"] | None = None
+    max_results: int | None = None
+    enable_rerank: bool | None = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    session_id: str | None = None
     system_prompt: str | None = None
 
 

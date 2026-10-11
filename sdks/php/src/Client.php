@@ -34,6 +34,8 @@ class Client
     public readonly WorkspaceService $workspaces;
     public readonly SharedService $shared;
     public readonly LineageService $lineage;
+    public readonly ConnectionService $connections;
+    public readonly OperationsGenerated $operations;
 
     public function __construct(?Config $config = null)
     {
@@ -60,5 +62,7 @@ class Client
         $this->workspaces    = new WorkspaceService($http);
         $this->shared        = new SharedService($http);
         $this->lineage       = new LineageService($http);
+        $this->connections   = new ConnectionService($http);
+        $this->operations    = new OperationsGenerated($http);
     }
 }

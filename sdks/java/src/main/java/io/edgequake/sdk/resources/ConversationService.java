@@ -77,13 +77,13 @@ public class ConversationService {
 
     /** Update a message. */
     public Message updateMessage(String conversationId, String messageId, String content) {
-        return http.patch("/api/v1/conversations/" + conversationId + "/messages/" + messageId,
+        return http.patch("/api/v1/messages/" + messageId,
                 Map.of("content", content), Message.class);
     }
 
     /** Delete a message. */
     public void deleteMessage(String conversationId, String messageId) {
-        http.delete("/api/v1/conversations/" + conversationId + "/messages/" + messageId);
+        http.delete("/api/v1/messages/" + messageId);
     }
 
     /** Unshare a conversation. */

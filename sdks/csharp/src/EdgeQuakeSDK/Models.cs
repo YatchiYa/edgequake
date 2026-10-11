@@ -44,6 +44,18 @@ public class DocumentListResponse
     public int? PageSize { get; set; }
     public int? TotalPages { get; set; }
     public bool? HasMore { get; set; }
+
+    public string? DisplayStatusAt(int index) => JsonStringAt(index, "display_status");
+
+    public string? UiPhaseAt(int index) => JsonStringAt(index, "ui_phase");
+
+    private string? JsonStringAt(int index, string name)
+    {
+        if (Documents == null || index < 0 || index >= Documents.Count) return null;
+        return Documents[index].TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+    }
 }
 
 public class DocumentDetailResponse
@@ -55,6 +67,8 @@ public class DocumentDetailResponse
     public int? ChunkCount { get; set; }
     public int? EntityCount { get; set; }
     public Dictionary<string, object>? Metadata { get; set; }
+    public string? DisplayStatus { get; set; }
+    public string? UiPhase { get; set; }
 }
 
 public class DocumentChunksResponse
@@ -633,6 +647,7 @@ public class WorkspaceInfo
     public string? Description { get; set; }
     public string? CreatedAt { get; set; }
     public string? UpdatedAt { get; set; }
+    public Dictionary<string, JsonElement>? LlmRoles { get; set; }
 }
 
 public class WorkspaceStatsResponse

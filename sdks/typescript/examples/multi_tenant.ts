@@ -8,7 +8,7 @@
  * Usage:
  *   npx tsx examples/multi_tenant.ts
  */
-import { EdgeQuake } from "@edgequake/sdk";
+import { EdgeQuake } from "edgequake-sdk";
 
 async function main() {
   // ── 1. Admin client (no tenant scope) ─────────────────────

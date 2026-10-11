@@ -31,6 +31,8 @@ import { DocumentsResource } from "./resources/documents.js";
 import { FoldersResource } from "./resources/folders.js";
 import { GraphResource } from "./resources/graph.js";
 import { LineageResource } from "./resources/lineage.js";
+import { ConnectionsResource } from "./resources/connections.js";
+import { OperationsResource } from "./resources/operations-generated.js";
 import { ModelsResource } from "./resources/models.js";
 import { OllamaResource } from "./resources/ollama.js";
 import { ParseResource } from "./resources/parse.js";
@@ -49,7 +51,7 @@ import { WorkspacesResource } from "./resources/workspaces.js";
  *
  * @example
  * ```ts
- * import { EdgeQuake } from "@edgequake/sdk";
+ * import { EdgeQuake } from "edgequake-sdk";
  *
  * const client = new EdgeQuake({
  *   baseUrl: "http://localhost:8080",
@@ -148,6 +150,12 @@ export class EdgeQuake {
   /** Model configuration and health. */
   readonly models: ModelsResource;
 
+  /** Saved LLM provider connections and provider probes. */
+  readonly connections: ConnectionsResource;
+
+  /** OpenAPI operations that the typed resources do not already wrap. */
+  readonly operations: OperationsResource;
+
   /** Ollama-compatible API. */
   readonly ollama: OllamaResource;
 
@@ -186,6 +194,8 @@ export class EdgeQuake {
     this.provenance = new ProvenanceResource(this._transport);
     this.settings = new SettingsResource(this._transport);
     this.models = new ModelsResource(this._transport);
+    this.connections = new ConnectionsResource(this._transport);
+    this.operations = new OperationsResource(this._transport);
     this.ollama = new OllamaResource(this._transport);
     this.parse = new ParseResource(this._transport);
     this.admin = new AdminResource(this._transport);

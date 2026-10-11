@@ -1,92 +1,51 @@
 # frozen_string_literal: true
 
-module EdgeQuake
-  # WHY: Each service maps 1:1 to an API resource for discoverability.
-  # OODA-34: Enhanced with complete API coverage (~80 methods across 20 services).
+require "uri"
 
-  class HealthService
-    def initialize(http) = @http = http
+module EdgeQuake
+  class Service
+    def initialize(http)
+      @http = http
+    end
+
+    private
+
+    def encode(value) = URI.encode_www_form_component(value.to_s)
+    def query(values) = URI.encode_www_form(values.reject { |_, value| value.nil? })
+  end
+
+  class HealthService < Service
     def check = @http.get("/health")
     def readiness = @http.get("/ready")
     def liveness = @http.get("/live")
     def metrics = @http.get_raw("/metrics")
   end
 
-  class DocumentService
-    def initialize(http) = @http = http
+  class DocumentService < Service
+    BASE = "/api/v1/documents"
 
-    def list(page: 1, page_size: 20)
-      @http.get("/api/v1/documents?page=#{page}&page_size=#{page_size}")
-    end
-
-    def get(id:)
-      @http.get("/api/v1/documents/#{id}")
-    end
-
-    def upload_text(title:, content:, file_type: "txt")
-      @http.post("/api/v1/documents", { title: title, content: content, file_type: file_type })
-    end
-
-    def upload_batch(file_paths:)
-      @http.upload_many("/api/v1/documents/upload/batch", file_paths: file_paths, field_name: "files")
-    end
-
-    def upload_pdf_batch(file_paths:)
-      @http.upload_many("/api/v1/documents/pdf/batch", file_paths: file_paths, field_name: "files")
-    end
-
-    def delete(id:)
-      @http.delete("/api/v1/documents/#{id}")
-    end
-
-    def track(track_id:)
-      enc = URI.encode_www_form_component(track_id.to_s)
-      @http.get("/api/v1/documents/track/#{enc}")
-    end
-
-    def reprocess_failed
-      @http.post("/api/v1/documents/reprocess", {})
-    end
-
-    def recover_stuck
-      @http.post("/api/v1/documents/recover-stuck", {})
-    end
-
-    # OODA-42: Additional document methods
-    def get_metadata(id:)
-      @http.get("/api/v1/documents/#{id}/metadata")
-    end
-
-    def failed_chunks(id:)
-      @http.get("/api/v1/documents/#{id}/failed-chunks")
-    end
-
-    def retry_chunks(id:)
-      @http.post("/api/v1/documents/#{id}/retry-chunks", {})
-    end
-
-    def deletion_impact(id:)
-      @http.get("/api/v1/documents/#{id}/deletion-impact")
-    end
-
-    def lineage(id:)
-      @http.get("/api/v1/documents/#{id}/lineage")
-    end
+    def list(page: 1, page_size: 20) = @http.get("#{BASE}?#{query(page: page, page_size: page_size)}")
+    def get(id:) = @http.get("#{BASE}/#{encode(id)}")
+    def upload_text(title:, content:, file_type: "txt") = @http.post(BASE, { title: title, content: content, file_type: file_type })
+    def delete(id:) = @http.delete("#{BASE}/#{encode(id)}")
+    def track(track_id:) = @http.get("#{BASE}/track/#{encode(track_id)}")
+    def reprocess_failed = @http.post("#{BASE}/reprocess")
+    def recover_stuck = @http.post("#{BASE}/recover-stuck")
+    def get_metadata(id:) = @http.get("#{BASE}/#{encode(id)}/metadata")
+    def failed_chunks(id:) = @http.get("#{BASE}/#{encode(id)}/failed-chunks")
+    def retry_chunks(id:) = @http.post("#{BASE}/#{encode(id)}/retry-chunks")
+    def deletion_impact(id:) = @http.get("#{BASE}/#{encode(id)}/deletion-impact")
+    def lineage(id:) = @http.get("#{BASE}/#{encode(id)}/lineage")
   end
 
-  class EntityService
-    def initialize(http) = @http = http
+  class EntityService < Service
+    BASE = "/api/v1/graph/entities"
 
-    def list(page: 1, page_size: 20)
-      @http.get("/api/v1/graph/entities?page=#{page}&page_size=#{page_size}")
-    end
-
-    def get(name:)
-      @http.get("/api/v1/graph/entities/#{name}")
-    end
+    def list(page: 1, page_size: 20) = @http.get("#{BASE}?#{query(page: page, page_size: page_size)}")
+    def get(name:) = @http.get("#{BASE}/#{encode(name)}")
 
     def create(entity_name:, entity_type:, description:, source_id:)
-      @http.post("/api/v1/graph/entities", {
+      @http.post(BASE, {
         entity_name: entity_name,
         entity_type: entity_type,
         description: description,
@@ -94,522 +53,271 @@ module EdgeQuake
       })
     end
 
-    def delete(name:)
-      @http.delete("/api/v1/graph/entities/#{name}?confirm=true")
-    end
-
-    def exists?(name:)
-      @http.get("/api/v1/graph/entities/exists?entity_name=#{name}")
-    end
-
     def update(name:, description: nil, entity_type: nil)
-      body = {}
-      body[:description] = description if description
-      body[:entity_type] = entity_type if entity_type
-      @http.put("/api/v1/graph/entities/#{name}", body)
+      @http.put("#{BASE}/#{encode(name)}", { description: description, entity_type: entity_type }.compact)
     end
 
-    def merge(source_name:, target_name:)
-      @http.post("/api/v1/graph/entities/merge", {
-        source_name: source_name,
-        target_name: target_name
-      })
-    end
-
-    def neighborhood(name:, depth: 1)
-      enc = URI.encode_www_form_component(name.to_s)
-      @http.get("/api/v1/graph/entities/#{enc}/neighborhood?depth=#{depth}")
-    end
+    def delete(name:) = @http.delete("#{BASE}/#{encode(name)}?confirm=true")
+    def exists?(name:) = @http.get("#{BASE}/exists?#{query(entity_name: name)}")
+    def merge(source_name:, target_name:) = @http.post("#{BASE}/merge", { source_name: source_name, target_name: target_name })
+    def neighborhood(name:, depth: 1) = @http.get("#{BASE}/#{encode(name)}/neighborhood?#{query(depth: depth)}")
   end
 
-  class RelationshipService
-    def initialize(http) = @http = http
+  class RelationshipService < Service
+    BASE = "/api/v1/graph/relationships"
 
-    def list(page: 1, page_size: 20)
-      @http.get("/api/v1/graph/relationships?page=#{page}&page_size=#{page_size}")
-    end
+    def list(page: 1, page_size: 20) = @http.get("#{BASE}?#{query(page: page, page_size: page_size)}")
 
-    def create(src_id:, tgt_id:, keywords:, description:, source_id: "manual_entry", weight: 0.8, metadata: {})
-      body = {
+    def create(src_id:, tgt_id:, keywords:, description:)
+      @http.post(BASE, {
         src_id: src_id,
         tgt_id: tgt_id,
         keywords: keywords,
-        description: description,
-        source_id: source_id,
-        weight: weight
-      }
-      body[:metadata] = metadata if metadata && !metadata.empty?
-      @http.post("/api/v1/graph/relationships", body)
-    end
-
-    def get(id:)
-      enc = URI.encode_www_form_component(id.to_s)
-      @http.get("/api/v1/graph/relationships/#{enc}")
-    end
-
-    def delete(id:)
-      @http.delete("/api/v1/graph/relationships/#{id}")
-    end
-  end
-
-  class GraphService
-    def initialize(http) = @http = http
-
-    def get
-      @http.get("/api/v1/graph")
-    end
-
-    def search(query:)
-      encoded = URI.encode_www_form_component(query)
-      @http.get("/api/v1/graph/nodes/search?q=#{encoded}")
-    end
-
-    def get_node(node_id:)
-      enc = URI.encode_www_form_component(node_id.to_s)
-      @http.get("/api/v1/graph/nodes/#{enc}")
-    end
-
-    def label_search(query:, limit: 20)
-      q = URI.encode_www_form_component(query)
-      @http.get("/api/v1/graph/labels/search?q=#{q}&limit=#{limit}")
-    end
-
-    def popular_labels(limit: 20)
-      @http.get("/api/v1/graph/labels/popular?limit=#{limit}")
-    end
-
-    def degrees_batch(node_ids:)
-      @http.post("/api/v1/graph/degrees/batch", { node_ids: node_ids })
-    end
-  end
-
-  class QueryService
-    def initialize(http) = @http = http
-
-    def execute(query:, mode: "hybrid", system_prompt: nil)
-      body = { query: query, mode: mode }
-      body[:system_prompt] = system_prompt if system_prompt
-      @http.post("/api/v1/query", body)
-    end
-
-    # OODA-42: Additional query methods
-    def execute_with_context(query:, mode: "hybrid", top_k: 5, only_need_context: false)
-      @http.post("/api/v1/query", {
-        query: query,
-        mode: mode,
-        top_k: top_k,
-        only_need_context: only_need_context
+        description: description
       })
     end
 
-    def stream(query:, mode: "hybrid", &block)
-      Enumerator.new do |yielder|
-        @http.stream_post("/api/v1/query/stream", { query: query, mode: mode, stream: true }) do |chunk|
-          yielder << chunk
-        end
-      end
+    def get(id:) = @http.get("#{BASE}/#{encode(id)}")
+    def delete(id:) = @http.delete("#{BASE}/#{encode(id)}")
+  end
+
+  class GraphService < Service
+    BASE = "/api/v1/graph"
+
+    def get = @http.get(BASE)
+    def search(query:) = @http.get("#{BASE}/nodes/search?#{self.query(q: query)}")
+    def get_node(node_id:) = @http.get("#{BASE}/nodes/#{encode(node_id)}")
+    def label_search(query:) = @http.get("#{BASE}/labels/search?#{self.query(q: query)}")
+    def popular_labels(limit: 20) = @http.get("#{BASE}/labels/popular?#{query(limit: limit)}")
+    def degrees_batch(node_ids:) = @http.post("#{BASE}/degrees/batch", { node_ids: node_ids })
+  end
+
+  class QueryService < Service
+    BASE = "/api/v1/query"
+
+    def execute(query:, mode: nil)
+      @http.post(BASE, { query: query, mode: mode }.compact)
+    end
+
+    def execute_with_context(query:, top_k: nil, only_need_context: nil, mode: nil)
+      @http.post(BASE, {
+        query: query,
+        max_results: top_k,
+        only_need_context: only_need_context,
+        mode: mode
+      }.compact)
+    end
+
+    def stream(query:, mode: nil)
+      Enumerator.new { |output| output << @http.post("#{BASE}/stream", { query: query, mode: mode }.compact) }
     end
   end
 
-  class ChatService
-    def initialize(http) = @http = http
+  class ChatService < Service
+    BASE = "/api/v1/chat/completions"
 
-    def completions(message:, mode: "hybrid", stream: false, system_prompt: nil)
-      body = { message: message, mode: mode, stream: stream }
-      body[:system_prompt] = system_prompt if system_prompt
-      @http.post("/api/v1/chat/completions", body)
+    def completions(message:, mode: nil, stream: nil, top_k: nil)
+      @http.post(BASE, { message: message, mode: mode, stream: stream, top_k: top_k }.compact)
     end
 
-    # OODA-42: Additional chat methods
-    def completions_with_conversation(message:, conversation_id:, mode: "hybrid", stream: false)
-      @http.post("/api/v1/chat/completions", {
+    def completions_with_conversation(message:, conversation_id:, mode: nil, stream: nil)
+      @http.post(BASE, {
         message: message,
         conversation_id: conversation_id,
         mode: mode,
         stream: stream
-      })
+      }.compact)
     end
 
-    def stream(message:, mode: "hybrid", conversation_id: nil, &block)
-      body = { message: message, mode: mode, stream: true }
-      body[:conversation_id] = conversation_id if conversation_id
-      Enumerator.new do |yielder|
-        @http.stream_post("/api/v1/chat/completions/stream", body) do |chunk|
-          yielder << chunk
-        end
-      end
+    def stream(message:, mode: nil)
+      Enumerator.new { |output| output << completions(message: message, mode: mode, stream: true) }
     end
   end
 
-  class TenantService
-    def initialize(http) = @http = http
-    def list = @http.get("/api/v1/tenants")
-    def get(id:) = @http.get("/api/v1/tenants/#{id}")
-    def create(name:, settings: nil)
-      body = { name: name }
-      body[:settings] = settings if settings
-      @http.post("/api/v1/tenants", body)
-    end
-    def update(id:, name: nil, settings: nil)
-      body = {}
-      body[:name] = name if name
-      body[:settings] = settings if settings
-      @http.put("/api/v1/tenants/#{id}", body)
-    end
-    def delete(id:) = @http.delete("/api/v1/tenants/#{id}")
+  class TenantService < Service
+    BASE = "/api/v1/tenants"
+
+    def list = @http.get(BASE)
+    def get(id:) = @http.get("#{BASE}/#{encode(id)}")
+    def create(name:, settings: nil) = @http.post(BASE, { name: name, settings: settings }.compact)
+    def update(id:, name: nil, settings: nil) = @http.put("#{BASE}/#{encode(id)}", { name: name, settings: settings }.compact)
+    def delete(id:) = @http.delete("#{BASE}/#{encode(id)}")
   end
 
-  class UserService
-    def initialize(http) = @http = http
-    def list = @http.get("/api/v1/users")
-    def get(id:) = @http.get("/api/v1/users/#{id}")
-    def create(email:, name: nil, role: "user")
-      body = { email: email, role: role }
-      body[:name] = name if name
-      @http.post("/api/v1/users", body)
-    end
-    def update(id:, name: nil, role: nil)
-      body = {}
-      body[:name] = name if name
-      body[:role] = role if role
-      @http.put("/api/v1/users/#{id}", body)
-    end
-    def delete(id:) = @http.delete("/api/v1/users/#{id}")
+  class UserService < Service
+    BASE = "/api/v1/users"
+
+    def list = @http.get(BASE)
+    def get(id:) = @http.get("#{BASE}/#{encode(id)}")
+    def create(email:, name: nil, role: "user") = @http.post(BASE, { email: email, name: name, role: role }.compact)
+    def update(id:, name: nil, role: nil) = @http.patch("#{BASE}/#{encode(id)}", { name: name, role: role }.compact)
+    def delete(id:) = @http.delete("#{BASE}/#{encode(id)}")
   end
 
-  class ApiKeyService
-    def initialize(http) = @http = http
-    def list = @http.get("/api/v1/api-keys")
-    def get(id:) = @http.get("/api/v1/api-keys/#{id}")
-    def create(name:, permissions: [])
-      @http.post("/api/v1/api-keys", { name: name, permissions: permissions })
-    end
-    def revoke(id:) = @http.delete("/api/v1/api-keys/#{id}")
-    def rotate(id:) = @http.post("/api/v1/api-keys/#{id}/rotate", {})
+  class ApiKeyService < Service
+    BASE = "/api/v1/api-keys"
+
+    def list = @http.get(BASE)
+    def create(name:, permissions:) = @http.post(BASE, { name: name, permissions: permissions })
+    def revoke(id:) = @http.delete("#{BASE}/#{encode(id)}")
   end
 
-  class TaskService
-    def initialize(http) = @http = http
-    def list = @http.get("/api/v1/tasks")
-    def get(id:) = @http.get("/api/v1/tasks/#{id}")
-    def create(task_type:, parameters: {})
-      @http.post("/api/v1/tasks", { task_type: task_type, parameters: parameters })
-    end
-    def cancel(id:) = @http.post("/api/v1/tasks/#{id}/cancel", {})
-    def status(id:) = @http.get("/api/v1/tasks/#{id}/status")
+  class TaskService < Service
+    BASE = "/api/v1/tasks"
+
+    def list = @http.get(BASE)
+    def get(id:) = @http.get("#{BASE}/#{encode(id)}")
+    def cancel(id:) = @http.post("#{BASE}/#{encode(id)}/cancel")
   end
 
-  class PipelineService
-    def initialize(http) = @http = http
+  class PipelineService < Service
+    BASE = "/api/v1/pipeline"
 
-    def status
-      @http.get("/api/v1/pipeline/status")
-    end
-
-    def queue_metrics
-      @http.get("/api/v1/pipeline/queue-metrics")
-    end
-
-    def health
-      @http.get("/api/v1/pipeline/health")
-    end
+    def status = @http.get("#{BASE}/status")
+    def queue_metrics = @http.get("#{BASE}/queue-metrics")
   end
 
-  class ModelService
-    def initialize(http) = @http = http
+  class ModelService < Service
+    BASE = "/api/v1/models"
 
-    def catalog
-      @http.get("/api/v1/models")
-    end
-
-    def health
-      raw = @http.get_raw("/api/v1/models/health")
-      JSON.parse(raw, symbolize_names: false)
-    end
-
-    def provider_status
-      @http.get("/api/v1/settings/provider/status")
-    end
-
-    def list_providers
-      @http.get("/api/v1/models/providers")
-    end
-
-    def get_model(id:)
-      @http.get("/api/v1/models/#{id}")
-    end
-
-    def set_active(id:)
-      @http.post("/api/v1/models/#{id}/activate", {})
-    end
-
-    def usage(id: nil, days: 7)
-      path = id ? "/api/v1/models/#{id}/usage?days=#{days}" : "/api/v1/models/usage?days=#{days}"
-      @http.get(path)
-    end
+    def catalog = @http.get(BASE)
+    def health = @http.get("#{BASE}/health")
+    def provider_status = @http.get("/api/v1/settings/provider/status")
+    def list_providers = @http.get("/api/v1/settings/providers")
+    def get_model(id:) = @http.get("#{BASE}/#{encode(id)}")
   end
 
-  class CostService
-    def initialize(http) = @http = http
+  class CostService < Service
+    BASE = "/api/v1/costs"
 
-    def summary
-      @http.get("/api/v1/costs/summary")
-    end
-
-    def breakdown(start_date: nil, end_date: nil)
-      params = []
-      params << "start_date=#{start_date}" if start_date
-      params << "end_date=#{end_date}" if end_date
-      query = params.empty? ? "" : "?#{params.join("&")}"
-      @http.get("/api/v1/costs/breakdown#{query}")
-    end
-
-    def by_model(days: 30)
-      @http.get("/api/v1/costs/by-model?days=#{days}")
-    end
-
-    def by_tenant(days: 30)
-      @http.get("/api/v1/costs/by-tenant?days=#{days}")
-    end
-
-    def history(days: 30)
-      @http.get("/api/v1/costs/history?days=#{days}")
-    end
+    def summary = @http.get("#{BASE}/summary")
+    def history(days: 30) = @http.get("#{BASE}/history?#{query(days: days)}")
   end
 
-  class ConversationService
-    def initialize(http) = @http = http
+  class ConversationService < Service
+    BASE = "/api/v1/conversations"
 
-    def list
-      @http.get("/api/v1/conversations")
+    def list = @http.get(BASE)
+    def get(id:) = @http.get("#{BASE}/#{encode(id)}")
+    def create(title:, mode: nil, folder_id: nil) = @http.post(BASE, { title: title, mode: mode, folder_id: folder_id }.compact)
+    def update(id:, title:) = @http.patch("#{BASE}/#{encode(id)}", { title: title })
+    def delete(id:) = @http.delete("#{BASE}/#{encode(id)}")
+    def messages(id:) = @http.get("#{BASE}/#{encode(id)}/messages")
+    def add_message(id:, role:, content:) = @http.post("#{BASE}/#{encode(id)}/messages", { role: role, content: content })
+
+    def delete_message(message_id:)
+      @http.delete("/api/v1/messages/#{encode(message_id)}")
     end
 
-    def get(id:)
-      @http.get("/api/v1/conversations/#{id}")
-    end
-
-    def create(title:, mode: nil, folder_id: nil)
-      body = { title: title }
-      body[:mode] = mode if mode
-      body[:folder_id] = folder_id if folder_id
-      @http.post("/api/v1/conversations", body)
-    end
-
-    def update(id:, title: nil, folder_id: nil)
-      body = {}
-      body[:title] = title if title
-      body[:folder_id] = folder_id if folder_id
-      @http.put("/api/v1/conversations/#{id}", body)
-    end
-
-    def delete(id:)
-      @http.delete("/api/v1/conversations/#{id}")
-    end
-
-    def messages(id:)
-      @http.get("/api/v1/conversations/#{id}/messages")
-    end
-
-    def add_message(id:, role:, content:)
-      @http.post("/api/v1/conversations/#{id}/messages", { role: role, content: content })
-    end
-
-    def delete_message(conversation_id:, message_id:)
-      @http.delete("/api/v1/conversations/#{conversation_id}/messages/#{message_id}")
-    end
-
-    def search(query:)
-      encoded = URI.encode_www_form_component(query)
-      @http.get("/api/v1/conversations/search?q=#{encoded}")
-    end
-
-    def export(id:, format: "json")
-      @http.get("/api/v1/conversations/#{id}/export?format=#{format}")
-    end
-
-    def clear_messages(id:)
-      @http.delete("/api/v1/conversations/#{id}/messages")
-    end
-
-    # OODA-42: Additional conversation methods
-    def share(id:)
-      @http.post("/api/v1/conversations/#{id}/share", {})
-    end
-
-    def unshare(id:)
-      @http.delete("/api/v1/conversations/#{id}/share")
-    end
-
-    def pin(id:)
-      @http.post("/api/v1/conversations/#{id}/pin", {})
-    end
-
-    def unpin(id:)
-      @http.delete("/api/v1/conversations/#{id}/pin")
-    end
-
-    def bulk_delete(ids:)
-      @http.post("/api/v1/conversations/bulk/delete", { ids: ids })
-    end
-
-    def bulk_archive(ids:)
-      @http.post("/api/v1/conversations/bulk/archive", { ids: ids })
-    end
-
-    def bulk_move(ids:, folder_id:)
-      @http.post("/api/v1/conversations/bulk/move", { ids: ids, folder_id: folder_id })
-    end
-
-    def import_conversation(data:)
-      @http.post("/api/v1/conversations/import", data)
-    end
+    def share(id:) = @http.post("#{BASE}/#{encode(id)}/share")
+    def unshare(id:) = @http.delete("#{BASE}/#{encode(id)}/share")
+    def bulk_delete(ids:) = @http.post("#{BASE}/bulk/delete", { ids: ids })
+    def bulk_archive(ids:) = @http.post("#{BASE}/bulk/archive", { ids: ids })
+    def bulk_move(ids:, folder_id:) = @http.post("#{BASE}/bulk/move", { ids: ids, folder_id: folder_id })
+    def import_conversation(data:) = @http.post("#{BASE}/import", data)
   end
 
-  class FolderService
-    def initialize(http) = @http = http
+  class FolderService < Service
+    BASE = "/api/v1/folders"
 
-    def list
-      @http.get("/api/v1/folders")
-    end
-
-    def get(id:)
-      @http.get("/api/v1/folders/#{id}")
-    end
-
-    def create(name:, parent_id: nil)
-      body = { name: name }
-      body[:parent_id] = parent_id if parent_id
-      @http.post("/api/v1/folders", body)
-    end
-
-    def update(id:, name:)
-      @http.put("/api/v1/folders/#{id}", { name: name })
-    end
-
-    def delete(id:)
-      @http.delete("/api/v1/folders/#{id}")
-    end
-
-    def contents(id:)
-      @http.get("/api/v1/folders/#{id}/contents")
-    end
+    def list = @http.get(BASE)
+    def create(name:, parent_id: nil) = @http.post(BASE, { name: name, parent_id: parent_id }.compact)
+    def update(id:, name:) = @http.patch("#{BASE}/#{encode(id)}", { name: name })
+    def delete(id:) = @http.delete("#{BASE}/#{encode(id)}")
   end
 
-  # OODA-34: New services for complete API coverage.
-
-  class AuthService
-    def initialize(http) = @http = http
-
-    def login(email:, password:)
-      @http.post("/api/v1/auth/login", { email: email, password: password })
-    end
-
-    def logout
-      @http.post("/api/v1/auth/logout", {})
-    end
-
-    def refresh
-      @http.post("/api/v1/auth/refresh", {})
-    end
-
-    def current_user
-      @http.get("/api/v1/auth/me")
-    end
+  class LineageService < Service
+    def entity_lineage(name:) = @http.get("/api/v1/lineage/entities/#{encode(name)}")
+    def document_lineage(id:) = @http.get("/api/v1/lineage/documents/#{encode(id)}")
+    def document_full_lineage(id:) = @http.get("/api/v1/documents/#{encode(id)}/lineage")
+    def export_lineage(id:, format: "json") = @http.get_raw("/api/v1/documents/#{encode(id)}/lineage/export?#{query(format: format)}")
+    def chunk_detail(id:) = @http.get("/api/v1/chunks/#{encode(id)}")
+    def chunk_lineage(id:) = @http.get("/api/v1/chunks/#{encode(id)}/lineage")
+    def entity_provenance(id:) = @http.get("/api/v1/entities/#{encode(id)}/provenance")
   end
 
-  class WorkspaceService
-    def initialize(http) = @http = http
+  class AuthService < Service
+    BASE = "/api/v1/auth"
 
-    def list
-      @http.get("/api/v1/workspaces")
-    end
-
-    def get(id:)
-      @http.get("/api/v1/workspaces/#{id}")
-    end
-
-    def create(name:, description: nil)
-      body = { name: name }
-      body[:description] = description if description
-      @http.post("/api/v1/workspaces", body)
-    end
-
-    def update(id:, name: nil, description: nil)
-      body = {}
-      body[:name] = name if name
-      body[:description] = description if description
-      @http.put("/api/v1/workspaces/#{id}", body)
-    end
-
-    def delete(id:)
-      @http.delete("/api/v1/workspaces/#{id}")
-    end
-
-    def switch(id:)
-      @http.post("/api/v1/workspaces/#{id}/switch", {})
-    end
+    def login(email:, password:) = @http.post("#{BASE}/login", { email: email, password: password })
+    def logout = @http.post("#{BASE}/logout")
+    def refresh = @http.post("#{BASE}/refresh")
+    def current_user = @http.get("#{BASE}/me")
   end
 
-  class SharedService
-    def initialize(http) = @http = http
+  class WorkspaceService < Service
+    BASE = "/api/v1/workspaces"
 
-    def version
-      @http.get("/api/v1/version")
-    end
-
-    def settings
-      @http.get("/api/v1/settings")
-    end
-
-    def update_settings(settings:)
-      @http.put("/api/v1/settings", settings)
-    end
-
-    def metrics
-      @http.get("/api/v1/metrics")
-    end
+    def get(id:) = @http.get("#{BASE}/#{encode(id)}")
+    def update(id:, name: nil, description: nil) = @http.put("#{BASE}/#{encode(id)}", { name: name, description: description }.compact)
+    def delete(id:) = @http.delete("#{BASE}/#{encode(id)}")
   end
 
-  # WHY: Lineage & provenance service — maps 7 lineage API endpoints.
-  # OODA-28: Ruby SDK lineage service.
-  class LineageService
-    def initialize(http) = @http = http
+  class SharedService < Service
+    def version = @http.get("/api/version")
+    def metrics = @http.get("/metrics")
+  end
 
-    # Get entity lineage showing all source documents.
-    def entity_lineage(name:)
-      encoded = URI.encode_www_form_component(name)
-      @http.get("/api/v1/lineage/entities/#{encoded}")
+  class ConnectionService < Service
+    BASE = "/api/v1/connections"
+
+    def list = @http.get(BASE)
+
+    def create(slug:, display_name:, api_shape:, base_url:, locality: nil,
+               auth_scheme: nil, api_key: nil, timeout_secs: nil,
+               allow_private_network: nil)
+      @http.post(BASE, connection_body(
+        slug: slug, display_name: display_name, api_shape: api_shape,
+        base_url: base_url, locality: locality, auth_scheme: auth_scheme,
+        api_key: api_key, timeout_secs: timeout_secs,
+        allow_private_network: allow_private_network
+      ))
     end
 
-    # Get document graph lineage with entities and relationships.
-    def document_lineage(id:)
-      @http.get("/api/v1/lineage/documents/#{id}")
+    def update(id:, slug:, display_name:, api_shape:, base_url:, locality: nil,
+               auth_scheme: nil, api_key: nil, timeout_secs: nil,
+               allow_private_network: nil)
+      @http.put("#{BASE}/#{encode(id)}", connection_body(
+        slug: slug, display_name: display_name, api_shape: api_shape,
+        base_url: base_url, locality: locality, auth_scheme: auth_scheme,
+        api_key: api_key, timeout_secs: timeout_secs,
+        allow_private_network: allow_private_network
+      ))
     end
 
-    # Get full document lineage including metadata.
-    def document_full_lineage(id:)
-      @http.get("/api/v1/documents/#{id}/lineage")
+    def delete(id:) = @http.delete("#{BASE}/#{encode(id)}")
+    def test_stored(id:) = @http.post("#{BASE}/#{encode(id)}/test")
+
+    def test_provider(shape:, base_url: nil, model: nil, embedding_model: nil,
+                      api_key: nil, auth_scheme: nil, allow_private_network: nil,
+                      expected_dimension: nil)
+      @http.post("/api/v1/providers/test", {
+        shape: shape,
+        base_url: base_url,
+        model: model,
+        embedding_model: embedding_model,
+        api_key: api_key,
+        auth_scheme: auth_scheme,
+        allow_private_network: allow_private_network,
+        expected_dimension: expected_dimension
+      }.compact)
     end
 
-    # Export document lineage as JSON or CSV. Returns raw string.
-    def export_lineage(id:, format: "json")
-      fmt = URI.encode_www_form_component(format)
-      @http.get_raw("/api/v1/documents/#{id}/lineage/export?format=#{fmt}")
-    end
+    private
 
-    # Get chunk detail with extracted entities and relationships.
-    def chunk_detail(id:)
-      @http.get("/api/v1/chunks/#{id}")
-    end
-
-    # Get chunk lineage with parent document references.
-    def chunk_lineage(id:)
-      @http.get("/api/v1/chunks/#{id}/lineage")
-    end
-
-    # Get entity provenance with source documents and related entities.
-    def entity_provenance(id:)
-      @http.get("/api/v1/entities/#{id}/provenance")
+    def connection_body(slug:, display_name:, api_shape:, base_url:, locality:,
+                        auth_scheme:, api_key:, timeout_secs:, allow_private_network:)
+      {
+        slug: slug,
+        display_name: display_name,
+        api_shape: api_shape,
+        base_url: base_url,
+        locality: locality,
+        auth_scheme: auth_scheme,
+        api_key: api_key,
+        timeout_secs: timeout_secs,
+        allow_private_network: allow_private_network
+      }.compact
     end
   end
 end

@@ -86,6 +86,8 @@ export interface CreateWorkspaceRequest {
   vision_llm_model?: string;
   /** Vision LLM provider ("openai", "ollama"). Inherits from tenant if not set. */
   vision_llm_provider?: string;
+  /** Role map. Each role may set `connection_id` to a saved Connection. */
+  llm_roles?: Record<string, unknown>;
 }
 
 export interface WorkspaceInfo {
@@ -107,6 +109,7 @@ export interface WorkspaceInfo {
   vision_llm_model?: string;
   /** Vision LLM provider (optional – only set when configured or inherited from tenant). */
   vision_llm_provider?: string;
+  llm_roles?: Record<string, unknown>;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
@@ -132,6 +135,8 @@ export interface UpdateWorkspaceRequest {
   vision_llm_model?: string;
   /** Vision LLM provider. */
   vision_llm_provider?: string;
+  /** Role map. Each role may set `connection_id` to a saved Connection. */
+  llm_roles?: Record<string, unknown>;
 }
 
 export interface WorkspaceStats {

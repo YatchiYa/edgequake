@@ -770,7 +770,7 @@ final class EdgeCaseTests: XCTestCase {
         _ = try await QueryService(http).execute(query: "test")
         let body = MockURLProtocol.lastRequest?.body
         if let data = body, let str = String(data: data, encoding: .utf8) {
-            XCTAssertTrue(str.contains("hybrid"))
+            XCTAssertFalse(str.contains("hybrid"))
         }
     }
 
@@ -1449,5 +1449,22 @@ final class OODA45TenantUserTests: XCTestCase {
         let http = mockHelper(json: #"{"id":"u-1","email":"test@example.com"}"#)
         let res = try await UserService(http).get(id: "u-1")
         XCTAssertEqual(res.email, "test@example.com")
+    }
+
+    func testConnectionsCreateAndProbe() async throws {
+        let http = mockHelper(json: #"{"id":"c1","slug":"local"}"#)
+        let created = try await ConnectionService(http).create(
+            UpsertConnection(
+                slug: "local", displayName: "Local", apiShape: "openai",
+                baseUrl: "http://localhost:11434"))
+        XCTAssertEqual(created.id, "c1")
+        XCTAssertEqual(MockURLProtocol.lastRequest?.method, "POST")
+        XCTAssertTrue(MockURLProtocol.lastRequest?.url.contains("/api/v1/connections") == true)
+
+        let probeHttp = mockHelper(json: #"{"ok":true,"kind":"ollama","message":"ok"}"#)
+        let probe = try await ConnectionService(probeHttp).testProvider(
+            ProbeRequest(shape: "ollama", baseUrl: "http://localhost:11434"))
+        XCTAssertEqual(probe.ok, true)
+        XCTAssertTrue(MockURLProtocol.lastRequest?.url.contains("/api/v1/providers/test") == true)
     }
 }

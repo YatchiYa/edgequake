@@ -139,18 +139,39 @@ public class GraphService(HttpHelper http)
 
 public class QueryService(HttpHelper http)
 {
-    public Task<QueryResponse> ExecuteAsync(string query, string mode = "hybrid", string? systemPrompt = null) =>
-        http.PostAsync<QueryResponse>("/api/v1/query", new { query, mode, system_prompt = systemPrompt });
+    public Task<QueryResponse> ExecuteAsync(string query, string? mode = null, int? maxResults = null, bool? enableRerank = null, string? systemPrompt = null)
+    {
+        var body = new Dictionary<string, object?> { ["query"] = query };
+        if (mode != null) body["mode"] = mode;
+        if (maxResults != null) body["max_results"] = maxResults;
+        if (enableRerank != null) body["enable_rerank"] = enableRerank;
+        if (systemPrompt != null) body["system_prompt"] = systemPrompt;
+        return http.PostAsync<QueryResponse>("/api/v1/query", body);
+    }
 
-    public Task<string> StreamAsync(string query, string mode = "hybrid", string? systemPrompt = null) =>
-        http.PostRawAsync("/api/v1/query/stream", new { query, mode, stream = true, system_prompt = systemPrompt });
+    public Task<string> StreamAsync(string query, string? mode = null, string? systemPrompt = null)
+    {
+        var body = new Dictionary<string, object?> { ["query"] = query, ["stream"] = true };
+        if (mode != null) body["mode"] = mode;
+        if (systemPrompt != null) body["system_prompt"] = systemPrompt;
+        return http.PostRawAsync("/api/v1/query/stream", body);
+    }
 }
 
 public class ChatService(HttpHelper http)
 {
-    public Task<ChatCompletionResponse> CompletionsAsync(string message, string mode = "hybrid", bool stream = false, string? systemPrompt = null) =>
-        http.PostAsync<ChatCompletionResponse>("/api/v1/chat/completions",
-            new { message, mode, stream, system_prompt = systemPrompt });
+    public Task<ChatCompletionResponse> CompletionsAsync(string message, string mode = "hybrid", bool stream = false, string? systemPrompt = null, int? topK = null)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["message"] = message,
+            ["mode"] = mode,
+            ["stream"] = stream,
+            ["system_prompt"] = systemPrompt,
+        };
+        if (topK != null) body["top_k"] = topK;
+        return http.PostAsync<ChatCompletionResponse>("/api/v1/chat/completions", body);
+    }
 
     public Task<ChatCompletionResponse> CompletionsWithConversationAsync(string conversationId, string message, string mode = "hybrid", string? systemPrompt = null) =>
         http.PostAsync<ChatCompletionResponse>("/api/v1/chat/completions",
@@ -188,7 +209,7 @@ public class UserService(HttpHelper http)
         http.PostAsync<UserInfo>("/api/v1/users", new { email, name, role });
 
     public Task<UserInfo> UpdateAsync(string id, string name, string role) =>
-        http.PutAsync<UserInfo>($"/api/v1/users/{id}", new { name, role });
+        http.PatchAsync<UserInfo>($"/api/v1/users/{id}", new { name, role });
 
     public Task DeleteAsync(string id) =>
         http.DeleteNoContentAsync($"/api/v1/users/{id}");
@@ -198,17 +219,11 @@ public class ApiKeyService(HttpHelper http)
 {
     public Task<ApiKeyListResponse> ListAsync() => http.GetAsync<ApiKeyListResponse>("/api/v1/api-keys");
 
-    public Task<ApiKeyInfo> GetAsync(string id) =>
-        http.GetAsync<ApiKeyInfo>($"/api/v1/api-keys/{id}");
-
     public Task<CreateApiKeyResponse> CreateAsync(string name, string[] scopes) =>
         http.PostAsync<CreateApiKeyResponse>("/api/v1/api-keys", new { name, scopes });
 
     public Task RevokeAsync(string id) =>
         http.DeleteNoContentAsync($"/api/v1/api-keys/{id}");
-
-    public Task<CreateApiKeyResponse> RotateAsync(string id) =>
-        http.PostAsync<CreateApiKeyResponse>($"/api/v1/api-keys/{id}/rotate", null);
 }
 
 public class TaskService(HttpHelper http)
@@ -218,14 +233,8 @@ public class TaskService(HttpHelper http)
     public Task<TaskInfo> GetAsync(string id) =>
         http.GetAsync<TaskInfo>($"/api/v1/tasks/{id}");
 
-    public Task<TaskInfo> CreateAsync(string type, string documentId) =>
-        http.PostAsync<TaskInfo>("/api/v1/tasks", new { type, document_id = documentId });
-
     public Task<StatusResponse> CancelAsync(string id) =>
         http.PostAsync<StatusResponse>($"/api/v1/tasks/{id}/cancel", null);
-
-    public Task<TaskStatusResponse> StatusAsync(string id) =>
-        http.GetAsync<TaskStatusResponse>($"/api/v1/tasks/{id}/status");
 
     public Task<TaskInfo> RetryAsync(string id) =>
         http.PostAsync<TaskInfo>($"/api/v1/tasks/{id}/retry", null);
@@ -239,29 +248,17 @@ public class PipelineService(HttpHelper http)
     public Task<QueueMetricsResponse> QueueMetricsAsync() =>
         http.GetAsync<QueueMetricsResponse>("/api/v1/pipeline/queue-metrics");
 
-    public Task<ProcessingListResponse> ProcessingAsync() =>
-        http.GetAsync<ProcessingListResponse>("/api/v1/pipeline/processing");
-
-    public Task<StatusResponse> PauseAsync() =>
-        http.PostAsync<StatusResponse>("/api/v1/pipeline/pause", null);
-
-    public Task<StatusResponse> ResumeAsync() =>
-        http.PostAsync<StatusResponse>("/api/v1/pipeline/resume", null);
-
     public Task<StatusResponse> CancelAsync(string documentId) =>
         http.PostAsync<StatusResponse>("/api/v1/pipeline/cancel", new { document_id = documentId });
 
-    public Task<CostEstimateResponse> CostEstimateAsync(string documentId) =>
-        http.GetAsync<CostEstimateResponse>($"/api/v1/pipeline/costs/estimate?document_id={documentId}");
+    public Task<CostEstimateResponse> CostEstimateAsync(int contentLength, string? model = null) =>
+        http.PostAsync<CostEstimateResponse>("/api/v1/pipeline/costs/estimate", new { content_length = contentLength, model });
 }
 
 public class ModelService(HttpHelper http)
 {
     public Task<ProviderCatalog> CatalogAsync() =>
         http.GetAsync<ProviderCatalog>("/api/v1/models");
-
-    public Task<ModelListResponse> ListAsync() =>
-        http.GetAsync<ModelListResponse>("/api/v1/models/list");
 
     public Task<ModelInfo> GetAsync(string modelId) =>
         http.GetAsync<ModelInfo>($"/api/v1/models/{modelId}");
@@ -278,12 +275,6 @@ public class ModelService(HttpHelper http)
 
     public Task<ProviderListResponse> ProvidersAsync() =>
         http.GetAsync<ProviderListResponse>("/api/v1/settings/providers");
-
-    public Task<StatusResponse> SetDefaultAsync(string modelId) =>
-        http.PostAsync<StatusResponse>("/api/v1/models/default", new { model_id = modelId });
-
-    public Task<ModelTestResponse> TestAsync(string modelId, string prompt) =>
-        http.PostAsync<ModelTestResponse>("/api/v1/models/test", new { model_id = modelId, prompt });
 }
 
 public class CostService(HttpHelper http)
@@ -291,26 +282,14 @@ public class CostService(HttpHelper http)
     public Task<CostSummary> SummaryAsync() =>
         http.GetAsync<CostSummary>("/api/v1/costs/summary");
 
-    public Task<DailyCostResponse> DailyAsync(string startDate, string endDate) =>
-        http.GetAsync<DailyCostResponse>($"/api/v1/costs/daily?start_date={startDate}&end_date={endDate}");
-
-    public Task<ProviderCostResponse> ByProviderAsync() =>
-        http.GetAsync<ProviderCostResponse>("/api/v1/costs/by-provider");
-
-    public Task<ModelCostResponse> ByModelAsync() =>
-        http.GetAsync<ModelCostResponse>("/api/v1/costs/by-model");
-
     public Task<CostHistoryResponse> HistoryAsync(int page = 1, int pageSize = 20) =>
         http.GetAsync<CostHistoryResponse>($"/api/v1/costs/history?page={page}&page_size={pageSize}");
-
-    public Task<string> ExportAsync(string format = "csv") =>
-        http.GetRawAsync($"/api/v1/costs/export?format={format}");
 
     public Task<BudgetInfo> BudgetAsync() =>
         http.GetAsync<BudgetInfo>("/api/v1/costs/budget");
 
     public Task<BudgetInfo> SetBudgetAsync(double limit, string period = "monthly") =>
-        http.PostAsync<BudgetInfo>("/api/v1/costs/budget", new { limit, period });
+        http.PatchAsync<BudgetInfo>("/api/v1/costs/budget", new { limit, period });
 }
 
 public class ConversationService(HttpHelper http)
@@ -329,7 +308,7 @@ public class ConversationService(HttpHelper http)
         http.GetAsync<ConversationDetail>($"/api/v1/conversations/{id}");
 
     public Task<ConversationInfo> UpdateAsync(string id, string title, bool isPinned = false) =>
-        http.PutAsync<ConversationInfo>($"/api/v1/conversations/{id}", new { title, is_pinned = isPinned });
+        http.PatchAsync<ConversationInfo>($"/api/v1/conversations/{id}", new { title, is_pinned = isPinned });
 
     /// <summary>WHY: DELETE returns 204 No Content — no body to deserialize.</summary>
     public Task DeleteAsync(string id) =>
@@ -347,11 +326,8 @@ public class ConversationService(HttpHelper http)
         http.PostAsync<ConversationMessage>($"/api/v1/conversations/{conversationId}/messages",
             new { role, content });
 
-    public Task DeleteMessageAsync(string conversationId, string messageId) =>
-        http.DeleteNoContentAsync($"/api/v1/conversations/{conversationId}/messages/{messageId}");
-
-    public Task<SearchResponse> SearchAsync(string query) =>
-        http.GetAsync<SearchResponse>($"/api/v1/conversations/search?q={Uri.EscapeDataString(query)}");
+    public Task DeleteMessageAsync(string messageId) =>
+        http.DeleteNoContentAsync($"/api/v1/messages/{messageId}");
 
     public Task<ShareLinkResponse> ShareAsync(string id) =>
         http.PostAsync<ShareLinkResponse>($"/api/v1/conversations/{id}/share", null);
@@ -365,25 +341,15 @@ public class FolderService(HttpHelper http)
     public Task<List<FolderInfo>> ListAsync() =>
         http.GetAsync<List<FolderInfo>>("/api/v1/folders");
 
-    public Task<FolderInfo> GetAsync(string id) =>
-        http.GetAsync<FolderInfo>($"/api/v1/folders/{id}");
-
     public Task<FolderInfo> CreateAsync(string name) =>
         http.PostAsync<FolderInfo>("/api/v1/folders", new { name });
 
     public Task<FolderInfo> UpdateAsync(string id, string name) =>
-        http.PutAsync<FolderInfo>($"/api/v1/folders/{id}", new { name });
+        http.PatchAsync<FolderInfo>($"/api/v1/folders/{id}", new { name });
 
     /// <summary>WHY: DELETE returns 204 No Content — no body to deserialize.</summary>
     public Task DeleteAsync(string id) =>
         http.DeleteNoContentAsync($"/api/v1/folders/{id}");
-
-    public Task<StatusResponse> MoveConversationAsync(string folderId, string conversationId) =>
-        http.PostAsync<StatusResponse>($"/api/v1/folders/{folderId}/conversations",
-            new { conversation_id = conversationId });
-
-    public Task<FolderConversationsResponse> ConversationsAsync(string folderId) =>
-        http.GetAsync<FolderConversationsResponse>($"/api/v1/folders/{folderId}/conversations");
 }
 
 // ── Auth Service (OODA-36) ─────────────────────────────────────
@@ -401,24 +367,14 @@ public class AuthService(HttpHelper http)
 
     public Task<AuthUserResponse> MeAsync() =>
         http.GetAsync<AuthUserResponse>("/api/v1/auth/me");
-
-    public Task<StatusResponse> ChangePasswordAsync(string currentPassword, string newPassword) =>
-        http.PostAsync<StatusResponse>("/api/v1/auth/change-password",
-            new { current_password = currentPassword, new_password = newPassword });
 }
 
 // ── Workspace Service (OODA-36) ────────────────────────────────
 
 public class WorkspaceService(HttpHelper http)
 {
-    public Task<WorkspaceListResponse> ListAsync() =>
-        http.GetAsync<WorkspaceListResponse>("/api/v1/workspaces");
-
     public Task<WorkspaceInfo> GetAsync(string id) =>
         http.GetAsync<WorkspaceInfo>($"/api/v1/workspaces/{id}");
-
-    public Task<WorkspaceInfo> CreateAsync(string name, string description) =>
-        http.PostAsync<WorkspaceInfo>("/api/v1/workspaces", new { name, description });
 
     public Task<WorkspaceInfo> UpdateAsync(string id, string name, string description) =>
         http.PutAsync<WorkspaceInfo>($"/api/v1/workspaces/{id}", new { name, description });
@@ -428,30 +384,12 @@ public class WorkspaceService(HttpHelper http)
 
     public Task<WorkspaceStatsResponse> StatsAsync(string id) =>
         http.GetAsync<WorkspaceStatsResponse>($"/api/v1/workspaces/{id}/stats");
-
-    public Task<StatusResponse> SwitchAsync(string id) =>
-        http.PostAsync<StatusResponse>($"/api/v1/workspaces/{id}/switch", null);
-
-    public Task<StatusResponse> RebuildAsync(string id) =>
-        http.PostAsync<StatusResponse>($"/api/v1/workspaces/{id}/rebuild", null);
 }
 
 // ── Shared Service (OODA-36) ───────────────────────────────────
 
 public class SharedService(HttpHelper http)
 {
-    public Task<SharedLinkResponse> CreateLinkAsync(string conversationId) =>
-        http.PostAsync<SharedLinkResponse>("/api/v1/shared", new { conversation_id = conversationId });
-
     public Task<SharedLinkResponse> GetLinkAsync(string shareId) =>
         http.GetAsync<SharedLinkResponse>($"/api/v1/shared/{shareId}");
-
-    public Task DeleteLinkAsync(string shareId) =>
-        http.DeleteNoContentAsync($"/api/v1/shared/{shareId}");
-
-    public Task<SharedAccessResponse> AccessAsync(string shareId) =>
-        http.GetAsync<SharedAccessResponse>($"/api/v1/shared/{shareId}/access");
-
-    public Task<SharedLinksListResponse> ListLinksAsync() =>
-        http.GetAsync<SharedLinksListResponse>("/api/v1/shared");
 }

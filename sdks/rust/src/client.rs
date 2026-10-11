@@ -110,6 +110,14 @@ impl EdgeQuakeClient {
         crate::resources::models::ModelsResource { client: self }
     }
 
+    pub fn connections(&self) -> crate::resources::connections::ConnectionsResource<'_> {
+        crate::resources::connections::ConnectionsResource { client: self }
+    }
+
+    pub fn operations(&self) -> crate::resources::operations_generated::OperationsResource<'_> {
+        crate::resources::operations_generated::OperationsResource { client: self }
+    }
+
     pub fn workspaces(&self) -> crate::resources::workspaces::WorkspacesResource<'_> {
         crate::resources::workspaces::WorkspacesResource { client: self }
     }
@@ -225,6 +233,20 @@ impl EdgeQuakeClient {
     }
 
     /// Plain-text or non-JSON GET (e.g. `/ready`, `/metrics`).
+    pub(crate) async fn exchange_text<B: Serialize>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&B>,
+    ) -> Result<String> {
+        let resp = self.send_with_retry(method, path, body).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(Error::from_response(resp).await);
+        }
+        resp.text().await.map_err(Error::Network)
+    }
+
     pub(crate) async fn get_text(&self, path: &str) -> Result<String> {
         let resp = self
             .send_with_retry(Method::GET, path, Option::<&()>::None)

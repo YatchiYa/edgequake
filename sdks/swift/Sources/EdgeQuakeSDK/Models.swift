@@ -45,6 +45,8 @@ public struct Document: Codable, Sendable {
     public let updatedAt: String?
     public let fileSize: Int?
     public let chunkCount: Int?
+    public let displayStatus: String?
+    public let uiPhase: String?
 }
 
 public struct UploadResponse: Codable, Sendable {
@@ -267,18 +269,48 @@ public struct EntityNeighborhoodResponse: Codable, Sendable {
 
 public struct QueryRequest: Codable, Sendable {
     public let query: String
-    public let mode: String
+    public let mode: String?
+    public let maxResults: Int?
+    public let enableRerank: Bool?
     public let systemPrompt: String?
 
     enum CodingKeys: String, CodingKey {
         case query, mode
+        case maxResults = "max_results"
+        case enableRerank = "enable_rerank"
         case systemPrompt = "system_prompt"
     }
 
-    public init(query: String, mode: String = "hybrid", systemPrompt: String? = nil) {
+    public init(
+        query: String,
+        mode: String? = nil,
+        maxResults: Int? = nil,
+        enableRerank: Bool? = nil,
+        systemPrompt: String? = nil
+    ) {
         self.query = query
         self.mode = mode
+        self.maxResults = maxResults
+        self.enableRerank = enableRerank
         self.systemPrompt = systemPrompt
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(query, forKey: .query)
+        try container.encodeIfPresent(mode, forKey: .mode)
+        try container.encodeIfPresent(maxResults, forKey: .maxResults)
+        try container.encodeIfPresent(enableRerank, forKey: .enableRerank)
+        try container.encodeIfPresent(systemPrompt, forKey: .systemPrompt)
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        query = try container.decode(String.self, forKey: .query)
+        mode = try container.decodeIfPresent(String.self, forKey: .mode)
+        maxResults = try container.decodeIfPresent(Int.self, forKey: .maxResults)
+        enableRerank = try container.decodeIfPresent(Bool.self, forKey: .enableRerank)
+        systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt)
     }
 }
 
@@ -303,17 +335,20 @@ public struct ChatCompletionRequest: Codable, Sendable {
     public let mode: String?
     public let stream: Bool
     public let systemPrompt: String?
+    public let topK: Int?
 
     enum CodingKeys: String, CodingKey {
         case message, mode, stream
         case systemPrompt = "system_prompt"
+        case topK = "top_k"
     }
 
-    public init(message: String, mode: String? = "hybrid", stream: Bool = false, systemPrompt: String? = nil) {
+    public init(message: String, mode: String? = "hybrid", stream: Bool = false, systemPrompt: String? = nil, topK: Int? = nil) {
         self.message = message
         self.mode = mode
         self.stream = stream
         self.systemPrompt = systemPrompt
+        self.topK = topK
     }
 }
 
@@ -883,6 +918,7 @@ public struct WorkspaceInfo: Codable, Sendable {
     public let settings: [String: AnyCodable]?
     public let createdAt: String?
     public let updatedAt: String?
+    public let llmRoles: [String: AnyCodable]?
 }
 
 public struct WorkspaceListResponse: Codable, Sendable {
@@ -911,4 +947,80 @@ public struct SharedAccessResponse: Codable, Sendable {
     public let resourceType: String?
     public let resourceId: String?
     public let content: AnyCodable?
+}
+
+public struct Connection: Codable, Sendable {
+    public let id: String?
+    public let slug: String?
+    public let displayName: String?
+    public let apiShape: String?
+    public let baseUrl: String?
+    public let source: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, slug, source
+        case displayName = "display_name"
+        case apiShape = "api_shape"
+        case baseUrl = "base_url"
+    }
+}
+
+public struct UpsertConnection: Encodable, Sendable {
+    public let slug: String
+    public let displayName: String
+    public let apiShape: String
+    public let baseUrl: String
+    public let apiKey: String?
+
+    enum CodingKeys: String, CodingKey {
+        case slug
+        case displayName = "display_name"
+        case apiShape = "api_shape"
+        case baseUrl = "base_url"
+        case apiKey = "api_key"
+    }
+
+    public init(slug: String, displayName: String, apiShape: String, baseUrl: String, apiKey: String? = nil) {
+        self.slug = slug
+        self.displayName = displayName
+        self.apiShape = apiShape
+        self.baseUrl = baseUrl
+        self.apiKey = apiKey
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(slug, forKey: .slug)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(apiShape, forKey: .apiShape)
+        try container.encode(baseUrl, forKey: .baseUrl)
+        try container.encodeIfPresent(apiKey, forKey: .apiKey)
+    }
+}
+
+public struct ProbeRequest: Encodable, Sendable {
+    public let shape: String
+    public let baseUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case shape
+        case baseUrl = "base_url"
+    }
+
+    public init(shape: String, baseUrl: String? = nil) {
+        self.shape = shape
+        self.baseUrl = baseUrl
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(shape, forKey: .shape)
+        try container.encodeIfPresent(baseUrl, forKey: .baseUrl)
+    }
+}
+
+public struct ProbeResult: Codable, Sendable {
+    public let ok: Bool?
+    public let kind: String?
+    public let message: String?
 }

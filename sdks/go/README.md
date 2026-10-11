@@ -333,9 +333,6 @@ folder, err := client.Folders.Create(ctx, &edgequake.CreateFolderParams{
 // List folders
 folders, err := client.Folders.List(ctx)
 
-// Get a folder
-folder, err := client.Folders.Get(ctx, "folder-id")
-
 // Delete a folder
 err := client.Folders.Delete(ctx, "folder-id")
 ```

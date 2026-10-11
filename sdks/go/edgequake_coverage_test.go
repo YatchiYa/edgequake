@@ -123,8 +123,8 @@ func TestDocuments_List_WithPagination(t *testing.T) {
 	defer srv.Close()
 	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
 	_, _ = c.Documents.List(context.Background(), 2, 25)
-	if !strings.Contains(gotPath, "page=2") || !strings.Contains(gotPath, "per_page=25") {
-		t.Fatalf("expected page/per_page params, got %s", gotPath)
+	if !strings.Contains(gotPath, "page=2") || !strings.Contains(gotPath, "page_size=25") {
+		t.Fatalf("expected page/page_size params, got %s", gotPath)
 	}
 }
 
@@ -137,7 +137,7 @@ func TestDocuments_List_NoParams(t *testing.T) {
 	defer srv.Close()
 	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
 	_, _ = c.Documents.List(context.Background(), 0, 0)
-	if strings.Contains(gotPath, "page=") || strings.Contains(gotPath, "per_page=") {
+	if strings.Contains(gotPath, "page=") || strings.Contains(gotPath, "page_size=") {
 		t.Fatalf("should not include page params for zero values, got %s", gotPath)
 	}
 }
@@ -411,19 +411,6 @@ func TestFolders_List(t *testing.T) {
 	}
 	if len(folders) != 1 {
 		t.Fatalf("got %d", len(folders))
-	}
-}
-
-func TestFolders_Get(t *testing.T) {
-	srv := mockServer(t, 200, edgequake.FolderInfo{ID: "f1", Name: "Research"})
-	defer srv.Close()
-	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
-	f, err := c.Folders.Get(context.Background(), "f1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.Name != "Research" {
-		t.Fatalf("got %s", f.Name)
 	}
 }
 
@@ -1789,16 +1776,6 @@ func TestFolders_List_Error(t *testing.T) {
 	}
 }
 
-func TestFolders_Get_Error(t *testing.T) {
-	srv := mockServer(t, 404, map[string]string{"error": "Not Found"})
-	defer srv.Close()
-	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
-	_, err := c.Folders.Get(context.Background(), "missing")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-}
-
 func TestTasks_List_Error(t *testing.T) {
 	srv := mockServer(t, 500, map[string]string{"error": "Internal Server Error"})
 	defer srv.Close()
@@ -2386,21 +2363,6 @@ func TestFolders_Create_WithParentID(t *testing.T) {
 	}
 	if folder.ParentID != "f-parent" {
 		t.Fatalf("expected parent_id f-parent, got %s", folder.ParentID)
-	}
-}
-
-func TestFolders_Get_WithConversationCount(t *testing.T) {
-	srv := mockServer(t, 200, edgequake.FolderInfo{
-		ID: "folder-abc", Name: "Projects", ConversationCount: 42,
-	})
-	defer srv.Close()
-	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
-	folder, err := c.Folders.Get(context.Background(), "folder-abc")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if folder.ConversationCount != 42 {
-		t.Fatalf("expected 42 conversations, got %d", folder.ConversationCount)
 	}
 }
 

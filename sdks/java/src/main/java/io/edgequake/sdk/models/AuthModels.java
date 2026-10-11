@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /** Auth, tenant, user, and API key model classes. */
@@ -245,12 +246,15 @@ public class AuthModels {
         @JsonProperty("description") public String description;
         @JsonProperty("tenant_id") public String tenantId;
         @JsonProperty("created_at") public String createdAt;
+        @JsonProperty("llm_roles") public java.util.Map<String, Object> llmRoles;
     }
 
     public static class CreateWorkspaceRequest {
         @JsonProperty("name") public String name;
         @JsonProperty("slug") public String slug;
         @JsonProperty("description") public String description;
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        @JsonProperty("llm_roles") public java.util.Map<String, Object> llmRoles;
     }
 
     public static class WorkspaceStats {

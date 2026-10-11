@@ -31,7 +31,10 @@ class E2ETest
 
     public function __construct()
     {
-        $base = getenv('EDGEQUAKE_BASE_URL') ?: 'http://localhost:8080';
+        $base = getenv('EDGEQUAKE_E2E_URL') ?: '';
+        if ($base === '') {
+            throw new \RuntimeException('EDGEQUAKE_E2E_URL not set');
+        }
         $tenantId = getenv('EDGEQUAKE_TENANT_ID') ?: '00000000-0000-0000-0000-000000000002';
         $userId = getenv('EDGEQUAKE_USER_ID') ?: '00000000-0000-0000-0000-000000000001';
         $this->client = new Client(new Config(baseUrl: $base, tenantId: $tenantId, userId: $userId));
@@ -388,7 +391,39 @@ class E2ETest
             $this->fail('Full Workflow', $e->getMessage());
         }
     }
+
+    public function testSharedLiveScenario(): void
+    {
+        try {
+            $health = $this->client->health->check();
+            assert(($health['status'] ?? '') === 'healthy', 'healthy');
+            $setup = $this->client->operations->setup_status();
+            assert(str_contains($setup, 'needs_setup'), 'setup status');
+            $socket = $this->client->operations->ws_pipeline_progress();
+            assert(str_starts_with($socket, 'ws') && str_ends_with($socket, '/ws/pipeline/progress'), 'ws url');
+            $listed = $this->client->documents->list(1, 5);
+            $docs = $listed['documents'] ?? [];
+            if (is_array($docs) && isset($docs[0]) && is_array($docs[0])) {
+                $docs[0]['display_status'] ?? null;
+            }
+            $uploaded = $this->client->documents->uploadText('PHP live', 'Shared SDK live scenario.');
+            assert(isset($uploaded['document_id']), 'document_id');
+            $this->client->graph->get();
+            $this->client->entities->list(1, 5);
+            $this->client->query->execute('What is a knowledge graph?', null, 3);
+            $this->client->connections->list();
+            $this->client->chat->completions('ping', 'hybrid', false, null, 2);
+            $this->pass('Shared Live Scenario');
+        } catch (\Throwable $e) {
+            $this->fail('Shared Live Scenario', $e->getMessage());
+        }
+    }
 }
 
-// Run
-(new E2ETest())->run();
+if (PHP_SAPI === 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath((string) $_SERVER['SCRIPT_FILENAME']) === realpath(__FILE__)) {
+    if ((getenv('EDGEQUAKE_E2E_URL') ?: '') === '') {
+        echo "skip: EDGEQUAKE_E2E_URL not set\n";
+        exit(0);
+    }
+    (new E2ETest())->run();
+}

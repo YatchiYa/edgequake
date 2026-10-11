@@ -1,131 +1,69 @@
 # frozen_string_literal: true
 
-require "net/http"
 require "json"
+require "net/http"
 require "uri"
-require "pathname"
 
 module EdgeQuake
-  # Internal HTTP helper using Net::HTTP.
-  # WHY: Zero external dependencies — net/http is stdlib.
   class HttpHelper
     def initialize(config)
       @config = config
     end
 
-    def get(path)
-      request(:get, path)
-    end
-
-    def post(path, body = nil)
-      request(:post, path, body)
-    end
-
-    def delete(path)
-      request(:delete, path)
-    end
-
-    def put(path, body = nil)
-      request(:put, path, body)
-    end
-
-    def patch(path, body = nil)
-      request(:patch, path, body)
-    end
-
-    def get_raw(path)
-      request_raw(:get, path)
-    end
-
-    def upload_many(path, file_paths:, field_name: "files", extra_fields: {})
-      uri = URI("#{@config.base_url}#{path}")
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = uri.scheme == "https"
-      http.read_timeout = @config.timeout
-      http.open_timeout = @config.timeout
-
-      req = Net::HTTP::Post.new(uri)
-      req["Accept"] = "application/json"
-      req["X-API-Key"] = @config.api_key if @config.api_key
-      req["X-Tenant-ID"] = @config.tenant_id if @config.tenant_id
-      req["X-User-ID"] = @config.user_id if @config.user_id
-      req["X-Workspace-ID"] = @config.workspace_id if @config.workspace_id
-
-      parts = file_paths.map do |path_str|
-        {
-          name: field_name,
-          filename: Pathname.new(path_str).basename.to_s,
-          content_type: "application/octet-stream",
-          data: File.binread(path_str)
-        }
-      end
-      extra_fields.each { |k, v| parts << [k.to_s, v.to_s] }
-      req.set_form(parts, "multipart/form-data")
-
-      resp = http.request(req)
-      unless resp.is_a?(Net::HTTPSuccess)
-        raise ApiError.new(
-          "HTTP #{resp.code}: #{resp.body}",
-          status_code: resp.code.to_i,
-          response_body: resp.body
-        )
-      end
-      JSON.parse(resp.body, symbolize_names: false)
-    end
+    def get(path) = parse(request_raw(:get, path))
+    def post(path, body = nil) = parse(request_raw(:post, path, body))
+    def put(path, body = nil) = parse(request_raw(:put, path, body))
+    def patch(path, body = nil) = parse(request_raw(:patch, path, body))
+    def delete(path, body = nil) = parse(request_raw(:delete, path, body))
+    def get_raw(path) = request_raw(:get, path)
+    def call_raw(method, path, body = nil) = request_raw(method.to_sym, path, body)
+    def base_url = @config.base_url
 
     private
 
-    def request(method, path, body = nil)
-      data = request_raw(method, path, body)
-      JSON.parse(data, symbolize_names: false)
+    def parse(raw)
+      return {} if raw.nil? || raw.empty?
+
+      JSON.parse(raw)
     end
 
     def request_raw(method, path, body = nil)
-      uri = URI("#{@config.base_url}#{path}")
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = uri.scheme == "https"
-      http.read_timeout = @config.timeout
-      http.open_timeout = @config.timeout
+      uri = URI.parse("#{@config.base_url}#{path}")
+      request = {
+        get: Net::HTTP::Get,
+        post: Net::HTTP::Post,
+        put: Net::HTTP::Put,
+        patch: Net::HTTP::Patch,
+        delete: Net::HTTP::Delete,
+        head: Net::HTTP::Head,
+        options: Net::HTTP::Options
+      }.fetch(method).new(uri)
+      headers.each { |key, value| request[key] = value }
+      request.body = JSON.generate(body) unless body.nil?
 
-      req = build_request(method, uri, body)
-      resp = http.request(req)
+      response = Net::HTTP.start(
+        uri.host, uri.port,
+        use_ssl: uri.scheme == "https",
+        open_timeout: @config.timeout,
+        read_timeout: @config.timeout
+      ) { |http| http.request(request) }
+      raw = response.body.to_s
+      return raw if response.is_a?(Net::HTTPSuccess)
 
-      unless resp.is_a?(Net::HTTPSuccess)
-        raise ApiError.new(
-          "HTTP #{resp.code}: #{resp.body}",
-          status_code: resp.code.to_i,
-          response_body: resp.body
-        )
-      end
-
-      resp.body
+      raise ApiError.new(
+        "HTTP #{response.code}: #{raw}",
+        status_code: response.code.to_i,
+        response_body: raw
+      )
     end
 
-    def build_request(method, uri, body)
-      klass = case method
-              when :get    then Net::HTTP::Get
-              when :post   then Net::HTTP::Post
-              when :delete then Net::HTTP::Delete
-              when :put    then Net::HTTP::Put
-              when :patch  then Net::HTTP::Patch
-              else raise ArgumentError, "Unknown method: #{method}"
-              end
-
-      req = klass.new(uri)
-      req["Content-Type"] = "application/json"
-      req["Accept"] = "application/json"
-      req["X-API-Key"] = @config.api_key if @config.api_key
-      req["X-Tenant-ID"] = @config.tenant_id if @config.tenant_id
-      req["X-User-ID"] = @config.user_id if @config.user_id
-      req["X-Workspace-ID"] = @config.workspace_id if @config.workspace_id
-
-      if body
-        req.body = JSON.generate(body)
-      elsif %i[post put patch].include?(method)
-        req.body = "{}"
-      end
-
-      req
+    def headers
+      result = { "Accept" => "application/json", "Content-Type" => "application/json" }
+      result["X-API-Key"] = @config.api_key if @config.api_key
+      result["X-Tenant-ID"] = @config.tenant_id if @config.tenant_id
+      result["X-User-ID"] = @config.user_id if @config.user_id
+      result["X-Workspace-ID"] = @config.workspace_id if @config.workspace_id
+      result
     end
   end
 end

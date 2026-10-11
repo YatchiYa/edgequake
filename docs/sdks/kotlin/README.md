@@ -7,6 +7,13 @@ description: Use the EdgeQuake Kotlin client (io.edgequake:edgequake-sdk-kotlin 
 
 The Kotlin client is a Maven artifact, `io.edgequake:edgequake-sdk-kotlin:0.4.0`, built from `sdks/kotlin`. It targets **JVM 17**. It is **not published** to Maven Central, so install it into your local Maven repository first.
 
+Typed services are the preferred API. `client.operations` calls every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
+
+```bash
+cd sdks/kotlin && mvn -q -Dtest=OperationsManifestTest test
+EDGEQUAKE_E2E_URL=http://localhost:8080 mvn -Pe2e -Dtest=E2ETest test
+```
+
 ## Install
 
 ```bash
@@ -54,7 +61,7 @@ The Kotlin client is a thin layer over the same REST API as the Java client.
 ## Limits
 
 - The surface matches the [Java SDK](../java/README.md). Check the classes in `sdks/kotlin/src` for exact signatures.
-- Connections and `POST /api/v1/providers/test` are not wrapped. Use raw HTTP ([Connections](../../api-reference/connections.md)).
-- Query defaults to `hybrid` in the client. Pass `mode = "mix"` to match the server default.
+- Connections and `POST /api/v1/providers/test` are on `client.connections`. See [Connections](../../api-reference/connections.md).
+- Query omits `mode` unless you pass it, so the server default `mix` applies.
 
 See the [SDK overview](../README.md) for the full language matrix.

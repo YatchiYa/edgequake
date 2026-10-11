@@ -730,6 +730,7 @@ class TestResourceAccessFromClient:
         assert client.provenance is not None
         assert client.settings is not None
         assert client.models is not None
+        assert client.connections is not None
         client.close()
 
     def test_async_client_has_all_resources(self) -> None:
@@ -756,6 +757,7 @@ class TestResourceAccessFromClient:
         assert client.provenance is not None
         assert client.settings is not None
         assert client.models is not None
+        assert client.connections is not None
 
     def test_resources_are_cached(self) -> None:
         """Verify cached_property returns same instance."""

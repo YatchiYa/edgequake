@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod chat;
 pub mod common;
+pub mod connections;
 pub mod conversations;
 pub mod documents;
 pub mod graph;

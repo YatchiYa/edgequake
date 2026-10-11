@@ -116,6 +116,7 @@ class UnitTest {
         assertNotNull(client.pdf());
         assertNotNull(client.costs());
         assertNotNull(client.lineage());
+        assertNotNull(client.connections());
     }
 
     // ── HttpHelper error handling ────────────────────────────────────
@@ -694,16 +695,6 @@ class UnitTest {
         var svc = new FolderService(http);
         var result = svc.create(new CreateFolderRequest("New Folder"));
         assertEquals("f-new", result.id);
-    }
-
-    @Test
-    void foldersGet() {
-        fake.respondWith("""
-            {"id":"f1","name":"Folder","conversation_count":3}
-            """);
-        var svc = new FolderService(http);
-        var result = svc.get("f1");
-        assertEquals(3, result.conversationCount);
     }
 
     @Test
@@ -1960,22 +1951,6 @@ class UnitTest {
     }
 
     @Test
-    void documentSetMetadata() {
-        fake.respondWith("{\"document_id\":\"d1\",\"metadata\":{\"tags\":[\"AI\"]}}");
-        var svc = new DocumentService(http);
-        var result = svc.setMetadata("d1", Map.of("tags", List.of("AI")));
-        assertTrue(fake.lastRequest().uri().contains("/metadata"));
-    }
-
-    @Test
-    void documentSetMetadataPartial() {
-        fake.respondWith("{\"document_id\":\"d1\",\"metadata\":{\"category\":\"updated\"}}");
-        var svc = new DocumentService(http);
-        svc.setMetadata("d1", Map.of("category", "updated"));
-        assertEquals("PATCH", fake.lastRequest().method());
-    }
-
-    @Test
     void documentFailedChunks() {
         fake.respondWith("{\"document_id\":\"d1\",\"chunks\":[{\"id\":\"c1\",\"error\":\"timeout\"}],\"total\":1}");
         var svc = new DocumentService(http);
@@ -2015,7 +1990,7 @@ class UnitTest {
         fake.respondWith("{\"id\":\"u1\",\"username\":\"updated_user\",\"email\":\"new@example.com\"}");
         var svc = new UserService(http);
         var result = svc.update("u1", Map.of("email", "new@example.com"));
-        assertEquals("PUT", fake.lastRequest().method());
+        assertEquals("PATCH", fake.lastRequest().method());
         assertEquals("updated_user", result.username);
     }
 
@@ -2396,6 +2371,30 @@ class UnitTest {
         svc.cancel("t-cancel");
         assertEquals("POST", fake.lastRequest().method());
         assertTrue(fake.lastRequest().uri().contains("/t-cancel/cancel"));
+    }
+
+    @Test
+    void connectionsCreateAndProbe() {
+        fake.respondWith("{\"id\":\"c1\",\"slug\":\"local\"}");
+        var body = new io.edgequake.sdk.models.ConnectionModels.UpsertConnection();
+        body.slug = "local";
+        body.displayName = "Local";
+        body.apiShape = "openai";
+        body.baseUrl = "http://localhost:11434";
+        var created = new io.edgequake.sdk.resources.ConnectionService(http).create(body);
+        assertEquals("c1", created.id);
+        assertEquals("POST", fake.lastRequest().method());
+        assertTrue(fake.lastRequest().uri().contains("/api/v1/connections"));
+        assertTrue(fake.lastRequest().body().contains("\"api_shape\":\"openai\""));
+
+        fake.respondWith("{\"ok\":true,\"kind\":\"ollama\",\"message\":\"ok\"}");
+        var probe = new io.edgequake.sdk.models.ConnectionModels.ProbeRequest();
+        probe.shape = "ollama";
+        probe.baseUrl = "http://localhost:11434";
+        var result = new io.edgequake.sdk.resources.ConnectionService(http).testProvider(probe);
+        assertTrue(result.ok);
+        assertTrue(fake.lastRequest().uri().contains("/api/v1/providers/test"));
+        assertTrue(fake.lastRequest().body().contains("\"base_url\""));
     }
 }
 

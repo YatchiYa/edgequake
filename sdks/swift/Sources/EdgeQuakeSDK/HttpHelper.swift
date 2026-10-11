@@ -64,6 +64,11 @@ final class HttpHelper: @unchecked Sendable {
         try await executeRaw(buildRequest(path: path, method: "GET"))
     }
 
+    func call(_ method: String, path: String, body: (any Encodable)? = nil) async throws -> String {
+        let data = try await executeRaw(buildRequest(path: path, method: method, body: body))
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
     func postRaw(_ path: String, body: (any Encodable)? = nil) async throws -> Data {
         try await executeRaw(buildRequest(path: path, method: "POST", body: body))
     }

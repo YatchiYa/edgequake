@@ -7,7 +7,7 @@
  * Usage:
  *   npx tsx examples/streaming_query.ts
  */
-import { EdgeQuake } from "@edgequake/sdk";
+import { EdgeQuake } from "edgequake-sdk";
 
 async function main() {
   const client = new EdgeQuake({

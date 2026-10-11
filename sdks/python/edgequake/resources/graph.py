@@ -157,14 +157,18 @@ class EntitiesResource(SyncResource):
         self,
         *,
         page: int = 1,
-        per_page: int = 20,
+        page_size: int | None = None,
+        per_page: int | None = None,
         entity_type: str | None = None,
     ) -> list[Entity]:
         """List entities.
 
         GET /api/v1/graph/entities
         """
-        params: dict[str, Any] = {"page": page, "per_page": per_page}
+        params: dict[str, Any] = {"page": page}
+        size = page_size if page_size is not None else per_page
+        if size is not None:
+            params["page_size"] = size
         if entity_type:
             params["entity_type"] = entity_type
         data = self._get("/api/v1/graph/entities", params=params)
@@ -265,14 +269,18 @@ class RelationshipsResource(SyncResource):
         self,
         *,
         page: int = 1,
-        per_page: int = 20,
+        page_size: int | None = None,
+        per_page: int | None = None,
         source: str | None = None,
     ) -> list[Relationship]:
         """List relationships.
 
         GET /api/v1/graph/relationships
         """
-        params: dict[str, Any] = {"page": page, "per_page": per_page}
+        params: dict[str, Any] = {"page": page}
+        size = page_size if page_size is not None else per_page
+        if size is not None:
+            params["page_size"] = size
         if source:
             params["source"] = source
         data = self._get("/api/v1/graph/relationships", params=params)
@@ -411,9 +419,17 @@ class AsyncEntitiesResource(AsyncResource):
     """Async entity CRUD."""
 
     async def list(
-        self, *, page: int = 1, per_page: int = 20, entity_type: str | None = None
+        self,
+        *,
+        page: int = 1,
+        page_size: int | None = None,
+        per_page: int | None = None,
+        entity_type: str | None = None,
     ) -> list[Entity]:
-        params: dict[str, Any] = {"page": page, "per_page": per_page}
+        params: dict[str, Any] = {"page": page}
+        size = page_size if page_size is not None else per_page
+        if size is not None:
+            params["page_size"] = size
         if entity_type:
             params["entity_type"] = entity_type
         data = await self._get("/api/v1/graph/entities", params=params)
@@ -485,9 +501,17 @@ class AsyncRelationshipsResource(AsyncResource):
     """Async relationship CRUD."""
 
     async def list(
-        self, *, page: int = 1, per_page: int = 20, source: str | None = None
+        self,
+        *,
+        page: int = 1,
+        page_size: int | None = None,
+        per_page: int | None = None,
+        source: str | None = None,
     ) -> list[Relationship]:
-        params: dict[str, Any] = {"page": page, "per_page": per_page}
+        params: dict[str, Any] = {"page": page}
+        size = page_size if page_size is not None else per_page
+        if size is not None:
+            params["page_size"] = size
         if source:
             params["source"] = source
         data = await self._get("/api/v1/graph/relationships", params=params)

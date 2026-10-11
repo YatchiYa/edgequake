@@ -24,6 +24,8 @@ export interface ListQuery {
 /** Page-based query parameters. */
 export interface PageQuery {
   page?: number;
+  page_size?: number;
+  /** Alias of `page_size` for older callers. */
   per_page?: number;
 }
 

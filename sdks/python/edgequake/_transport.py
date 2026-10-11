@@ -48,6 +48,10 @@ class SyncTransport:
             headers=config.build_headers(),
         )
 
+    @property
+    def base_url(self) -> str:
+        return str(self._client.base_url)
+
     def request(
         self,
         method: str,
@@ -309,6 +313,10 @@ class AsyncTransport:
             timeout=httpx.Timeout(config.timeout),
             headers=config.build_headers(),
         )
+
+    @property
+    def base_url(self) -> str:
+        return str(self._client.base_url)
 
     async def request(
         self,

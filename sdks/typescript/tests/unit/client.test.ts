@@ -63,6 +63,7 @@ describe("EdgeQuake client", () => {
     // Settings & models
     expect(client.settings).toBeDefined();
     expect(client.models).toBeDefined();
+    expect(client.connections).toBeDefined();
     expect(client.ollama).toBeDefined();
   });
 

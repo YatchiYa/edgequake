@@ -234,8 +234,17 @@ public final class QueryService: @unchecked Sendable {
     private let http: HttpHelper
     init(_ http: HttpHelper) { self.http = http }
 
-    public func execute(query: String, mode: String = "hybrid") async throws -> QueryResponse {
-        try await http.post("/api/v1/query", body: QueryRequest(query: query, mode: mode))
+    public func execute(
+        query: String,
+        mode: String? = nil,
+        maxResults: Int? = nil,
+        enableRerank: Bool? = nil
+    ) async throws -> QueryResponse {
+        try await http.post(
+            "/api/v1/query",
+            body: QueryRequest(
+                query: query, mode: mode, maxResults: maxResults, enableRerank: enableRerank)
+        )
     }
 
     /// Execute query with a QueryRequest object.
@@ -613,5 +622,37 @@ public final class SharedService: @unchecked Sendable {
     public func get(shareId: String) async throws -> ConversationDetail {
         let enc = shareId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? shareId
         return try await http.get("/api/v1/shared/\(enc)")
+    }
+}
+
+public final class ConnectionService: @unchecked Sendable {
+    private let http: HttpHelper
+    init(_ http: HttpHelper) { self.http = http }
+
+    public func list() async throws -> [Connection] {
+        try await http.get("/api/v1/connections")
+    }
+
+    public func create(_ body: UpsertConnection) async throws -> Connection {
+        try await http.post("/api/v1/connections", body: body)
+    }
+
+    public func update(id: String, body: UpsertConnection) async throws -> Connection {
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await http.put("/api/v1/connections/\(enc)", body: body)
+    }
+
+    public func delete(id: String) async throws {
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        _ = try await http.deleteRaw("/api/v1/connections/\(enc)")
+    }
+
+    public func test(id: String) async throws -> ProbeResult {
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await http.post("/api/v1/connections/\(enc)/test")
+    }
+
+    public func testProvider(_ body: ProbeRequest) async throws -> ProbeResult {
+        try await http.post("/api/v1/providers/test", body: body)
     }
 }

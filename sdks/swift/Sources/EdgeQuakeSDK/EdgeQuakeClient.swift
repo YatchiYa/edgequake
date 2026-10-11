@@ -32,6 +32,8 @@ public final class EdgeQuakeClient: @unchecked Sendable {
     public let auth: AuthService
     public let workspaces: WorkspaceService
     public let shared: SharedService
+    public let connections: ConnectionService
+    public let operations: OperationsGenerated
 
     public init(config: EdgeQuakeConfig = EdgeQuakeConfig()) {
         self.http = HttpHelper(config: config)
@@ -56,5 +58,7 @@ public final class EdgeQuakeClient: @unchecked Sendable {
         self.auth = AuthService(http)
         self.workspaces = WorkspaceService(http)
         self.shared = SharedService(http)
+        self.connections = ConnectionService(http)
+        self.operations = OperationsGenerated(http)
     }
 }

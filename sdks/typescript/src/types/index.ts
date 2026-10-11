@@ -7,6 +7,7 @@
 export type * from "./auth.js";
 export type * from "./chat.js";
 export type * from "./common.js";
+export type * from "./connections.js";
 export type * from "./conversations.js";
 export type * from "./costs.js";
 export type * from "./documents.js";

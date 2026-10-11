@@ -1,11 +1,11 @@
 ---
 title: API Reference
-description: Map of the EdgeQuake REST API for v0.32.x and the v0.33.0 additions. Start here to find the right page for documents, queries, graph, tasks, connections and more.
+description: Map of the EdgeQuake REST API. Start here to find the right page for documents, queries, graph, tasks, connections and more.
 ---
 
 # API Reference
 
-This section describes the EdgeQuake HTTP API for developers who call EdgeQuake from their own code or write an SDK. The product pin is **v0.32.2**. Pages also cover the **v0.33.0** additions (provider Connections, `POST /api/v1/providers/test`, honest `/health`), marked "v0.33.0" on each page.
+This section describes the EdgeQuake HTTP API for developers who call EdgeQuake from their own code or write an SDK. The product pin is **v0.33.0**.
 
 ## Pick a page
 
@@ -79,6 +79,6 @@ Read it top to bottom. Uploads return at once; the server does the heavy work in
 
 ## Source of truth
 
-The running server publishes its own contract at `/api-docs/openapi.json` and a Try-it-out UI at `/swagger-ui/` (default `http://localhost:8080`). A committed copy of the v0.32.2 contract is in [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json). It does not yet include the v0.33.0 routes. Where this documentation and the server disagree, trust the server.
+The running server publishes its own contract at `/api-docs/openapi.json` and a Try-it-out UI at `/swagger-ui/` (default `http://localhost:8080`). A committed copy of the v0.33.0 contract is in [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json). It includes the Connections routes. Where this documentation and the server disagree, trust the server.
 
 Related: [Ingestion cancel and fairness](../ingestion-cancel-and-fairness.md), [Decision extraction](../concepts/decision-extraction.md), [Environment variables](../operations/env-reference.md).

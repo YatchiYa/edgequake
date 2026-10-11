@@ -484,7 +484,7 @@ module EdgeQuake
       result = svc.execute_with_context(query: "test", top_k: 10, only_need_context: true)
       assert_equal "yes", result["answer"]
       body = mock.last_call[:body]
-      assert_equal 10, body[:top_k]
+      assert_equal 10, body[:max_results]
       assert_equal true, body[:only_need_context]
     end
 
@@ -621,7 +621,7 @@ module EdgeQuake
       svc = UserService.new(mock)
       result = svc.update(id: "u1", name: "Updated Name")
       assert_equal "Updated Name", result["name"]
-      assert_equal :put, mock.last_call[:method]
+      assert_equal :patch, mock.last_call[:method]
     end
 
     def test_delete
@@ -648,14 +648,6 @@ module EdgeQuake
     end
 
     # OODA-34: New api key method tests
-    def test_get
-      mock = MockHttpHelper.new('{"id":"ak-1","name":"My Key"}')
-      svc = ApiKeyService.new(mock)
-      result = svc.get(id: "ak-1")
-      assert_equal "ak-1", result["id"]
-      assert_includes mock.last_call[:path], "/api/v1/api-keys/ak-1"
-    end
-
     def test_create
       mock = MockHttpHelper.new('{"id":"ak-2","key":"sk-new"}')
       svc = ApiKeyService.new(mock)
@@ -672,15 +664,6 @@ module EdgeQuake
       svc.revoke(id: "ak-1")
       assert_equal :delete, mock.last_call[:method]
       assert_includes mock.last_call[:path], "/api/v1/api-keys/ak-1"
-    end
-
-    def test_rotate
-      mock = MockHttpHelper.new('{"id":"ak-1","key":"sk-rotated"}')
-      svc = ApiKeyService.new(mock)
-      result = svc.rotate(id: "ak-1")
-      assert_equal "ak-1", result["id"]
-      assert_equal :post, mock.last_call[:method]
-      assert_includes mock.last_call[:path], "/api/v1/api-keys/ak-1/rotate"
     end
 
     def test_list_error
@@ -707,15 +690,6 @@ module EdgeQuake
       assert_includes mock.last_call[:path], "/api/v1/tasks/t1"
     end
 
-    def test_create
-      mock = MockHttpHelper.new('{"id":"t2","status":"pending"}')
-      svc = TaskService.new(mock)
-      result = svc.create(task_type: "extraction", parameters: { doc_id: "d1" })
-      assert_equal "t2", result["id"]
-      assert_equal :post, mock.last_call[:method]
-      assert_equal "extraction", mock.last_call[:body][:task_type]
-    end
-
     def test_cancel
       mock = MockHttpHelper.new('{"id":"t1","status":"cancelled"}')
       svc = TaskService.new(mock)
@@ -723,14 +697,6 @@ module EdgeQuake
       assert_equal "cancelled", result["status"]
       assert_equal :post, mock.last_call[:method]
       assert_includes mock.last_call[:path], "/api/v1/tasks/t1/cancel"
-    end
-
-    def test_status
-      mock = MockHttpHelper.new('{"id":"t1","status":"running"}')
-      svc = TaskService.new(mock)
-      result = svc.status(id: "t1")
-      assert_equal "running", result["status"]
-      assert_includes mock.last_call[:path], "/api/v1/tasks/t1/status"
     end
 
     def test_list_error
@@ -756,14 +722,6 @@ module EdgeQuake
     end
 
     # OODA-34: New pipeline method tests
-    def test_health
-      mock = MockHttpHelper.new('{"healthy":true,"workers":4}')
-      svc = PipelineService.new(mock)
-      result = svc.health
-      assert_equal true, result["healthy"]
-      assert_includes mock.last_call[:path], "/api/v1/pipeline/health"
-    end
-
     def test_status_error
       mock = MockHttpHelper.new.will_return("{}", 500)
       svc = PipelineService.new(mock)
@@ -805,7 +763,7 @@ module EdgeQuake
       svc = ModelService.new(mock)
       result = svc.list_providers
       assert_equal 2, result["providers"].size
-      assert_includes mock.last_call[:path], "/api/v1/models/providers"
+      assert_includes mock.last_call[:path], "/api/v1/settings/providers"
     end
 
     def test_get_model
@@ -814,31 +772,6 @@ module EdgeQuake
       result = svc.get_model(id: "m1")
       assert_equal "m1", result["id"]
       assert_includes mock.last_call[:path], "/api/v1/models/m1"
-    end
-
-    def test_set_active
-      mock = MockHttpHelper.new('{"id":"m1","active":true}')
-      svc = ModelService.new(mock)
-      result = svc.set_active(id: "m1")
-      assert_equal true, result["active"]
-      assert_equal :post, mock.last_call[:method]
-      assert_includes mock.last_call[:path], "/api/v1/models/m1/activate"
-    end
-
-    def test_usage
-      mock = MockHttpHelper.new('{"total_tokens":1000}')
-      svc = ModelService.new(mock)
-      result = svc.usage(days: 14)
-      assert_equal 1000, result["total_tokens"]
-      assert_includes mock.last_call[:path], "days=14"
-    end
-
-    def test_usage_for_specific_model
-      mock = MockHttpHelper.new('{"model_id":"m1","total_tokens":500}')
-      svc = ModelService.new(mock)
-      result = svc.usage(id: "m1", days: 7)
-      assert_equal 500, result["total_tokens"]
-      assert_includes mock.last_call[:path], "/api/v1/models/m1/usage"
     end
 
     def test_catalog_error
@@ -863,30 +796,6 @@ module EdgeQuake
     end
 
     # OODA-34: New cost method tests
-    def test_breakdown
-      mock = MockHttpHelper.new('{"breakdown":[{"category":"llm","cost":10}]}')
-      svc = CostService.new(mock)
-      result = svc.breakdown(start_date: "2025-01-01")
-      assert_equal 1, result["breakdown"].size
-      assert_includes mock.last_call[:path], "start_date=2025-01-01"
-    end
-
-    def test_by_model
-      mock = MockHttpHelper.new('{"models":[{"name":"gpt-4","cost":5}]}')
-      svc = CostService.new(mock)
-      result = svc.by_model(days: 14)
-      assert_equal 1, result["models"].size
-      assert_includes mock.last_call[:path], "days=14"
-    end
-
-    def test_by_tenant
-      mock = MockHttpHelper.new('{"tenants":[{"id":"t1","cost":8}]}')
-      svc = CostService.new(mock)
-      result = svc.by_tenant(days: 7)
-      assert_equal 1, result["tenants"].size
-      assert_includes mock.last_call[:path], "days=7"
-    end
-
     def test_history
       mock = MockHttpHelper.new('{"history":[{"date":"2025-01-01","cost":1}]}')
       svc = CostService.new(mock)
@@ -982,7 +891,7 @@ module EdgeQuake
       svc = ConversationService.new(mock)
       result = svc.update(id: "c1", title: "Updated Title")
       assert_equal "Updated Title", result["title"]
-      assert_equal :put, mock.last_call[:method]
+      assert_equal :patch, mock.last_call[:method]
     end
 
     def test_delete
@@ -1013,32 +922,9 @@ module EdgeQuake
     def test_delete_message
       mock = MockHttpHelper.new('{}')
       svc = ConversationService.new(mock)
-      svc.delete_message(conversation_id: "c1", message_id: "m1")
+      svc.delete_message(message_id: "m1")
       assert_equal :delete, mock.last_call[:method]
-      assert_includes mock.last_call[:path], "/api/v1/conversations/c1/messages/m1"
-    end
-
-    def test_search
-      mock = MockHttpHelper.new('{"conversations":[{"id":"c1"}]}')
-      svc = ConversationService.new(mock)
-      result = svc.search(query: "test")
-      assert_equal 1, result["conversations"].size
-      assert_includes mock.last_call[:path], "q=test"
-    end
-
-    def test_export
-      mock = MockHttpHelper.new('{"id":"c1","messages":[]}')
-      svc = ConversationService.new(mock)
-      result = svc.export(id: "c1")
-      assert mock.last_call[:path].include?("/api/v1/conversations/c1/export")
-    end
-
-    def test_clear_messages
-      mock = MockHttpHelper.new('{}')
-      svc = ConversationService.new(mock)
-      svc.clear_messages(id: "c1")
-      assert_equal :delete, mock.last_call[:method]
-      assert_equal "/api/v1/conversations/c1/messages", mock.last_call[:path]
+      assert_includes mock.last_call[:path], "/api/v1/messages/m1"
     end
 
     def test_list_error
@@ -1069,22 +955,6 @@ module EdgeQuake
       svc.unshare(id: "c1")
       assert_equal :delete, mock.last_call[:method]
       assert_includes mock.last_call[:path], "/api/v1/conversations/c1/share"
-    end
-
-    def test_pin
-      mock = MockHttpHelper.new('{}')
-      svc = ConversationService.new(mock)
-      svc.pin(id: "c1")
-      assert_equal :post, mock.last_call[:method]
-      assert_includes mock.last_call[:path], "/api/v1/conversations/c1/pin"
-    end
-
-    def test_unpin
-      mock = MockHttpHelper.new('{}')
-      svc = ConversationService.new(mock)
-      svc.unpin(id: "c1")
-      assert_equal :delete, mock.last_call[:method]
-      assert_includes mock.last_call[:path], "/api/v1/conversations/c1/pin"
     end
 
     def test_bulk_delete
@@ -1155,14 +1025,6 @@ module EdgeQuake
     end
 
     # OODA-34: New folder method tests
-    def test_get
-      mock = MockHttpHelper.new('{"id":"f1","name":"Folder 1"}')
-      svc = FolderService.new(mock)
-      result = svc.get(id: "f1")
-      assert_equal "f1", result["id"]
-      assert_includes mock.last_call[:path], "/api/v1/folders/f1"
-    end
-
     def test_create_with_parent
       mock = MockHttpHelper.new('{"id":"f3","name":"Subfolder"}')
       svc = FolderService.new(mock)
@@ -1176,7 +1038,7 @@ module EdgeQuake
       svc = FolderService.new(mock)
       result = svc.update(id: "f1", name: "Updated Name")
       assert_equal "Updated Name", result["name"]
-      assert_equal :put, mock.last_call[:method]
+      assert_equal :patch, mock.last_call[:method]
     end
 
     def test_delete
@@ -1185,14 +1047,6 @@ module EdgeQuake
       svc.delete(id: "f1")
       assert_equal :delete, mock.last_call[:method]
       assert_includes mock.last_call[:path], "/api/v1/folders/f1"
-    end
-
-    def test_contents
-      mock = MockHttpHelper.new('{"items":[{"id":"d1","type":"document"}]}')
-      svc = FolderService.new(mock)
-      result = svc.contents(id: "f1")
-      assert_equal 1, result["items"].size
-      assert_includes mock.last_call[:path], "/api/v1/folders/f1/contents"
     end
 
     def test_list_error
@@ -1571,31 +1425,12 @@ module EdgeQuake
   end
 
   class WorkspaceServiceTest < Minitest::Test
-    def test_list
-      mock = MockHttpHelper.new('{"items":[{"id":"ws1","name":"Main"}]}')
-      svc = WorkspaceService.new(mock)
-      result = svc.list
-      assert_equal 1, result["items"].size
-      assert_equal :get, mock.last_call[:method]
-      assert_includes mock.last_call[:path], "/api/v1/workspaces"
-    end
-
     def test_get
       mock = MockHttpHelper.new('{"id":"ws1","name":"Main Workspace"}')
       svc = WorkspaceService.new(mock)
       result = svc.get(id: "ws1")
       assert_equal "ws1", result["id"]
       assert_includes mock.last_call[:path], "/api/v1/workspaces/ws1"
-    end
-
-    def test_create
-      mock = MockHttpHelper.new('{"id":"ws2","name":"New Workspace"}')
-      svc = WorkspaceService.new(mock)
-      result = svc.create(name: "New Workspace", description: "My new workspace")
-      assert_equal "ws2", result["id"]
-      assert_equal :post, mock.last_call[:method]
-      assert_equal "New Workspace", mock.last_call[:body][:name]
-      assert_equal "My new workspace", mock.last_call[:body][:description]
     end
 
     def test_update
@@ -1614,20 +1449,6 @@ module EdgeQuake
       assert_includes mock.last_call[:path], "/api/v1/workspaces/ws1"
     end
 
-    def test_switch
-      mock = MockHttpHelper.new('{"current_workspace":"ws2"}')
-      svc = WorkspaceService.new(mock)
-      result = svc.switch(id: "ws2")
-      assert_equal "ws2", result["current_workspace"]
-      assert_equal :post, mock.last_call[:method]
-      assert_includes mock.last_call[:path], "/api/v1/workspaces/ws2/switch"
-    end
-
-    def test_list_error
-      mock = MockHttpHelper.new.will_return("{}", 500)
-      svc = WorkspaceService.new(mock)
-      assert_raises(ApiError) { svc.list }
-    end
   end
 
   class SharedServiceTest < Minitest::Test
@@ -1636,24 +1457,7 @@ module EdgeQuake
       svc = SharedService.new(mock)
       result = svc.version
       assert_equal "1.0.0", result["version"]
-      assert_includes mock.last_call[:path], "/api/v1/version"
-    end
-
-    def test_settings
-      mock = MockHttpHelper.new('{"theme":"dark","language":"en"}')
-      svc = SharedService.new(mock)
-      result = svc.settings
-      assert_equal "dark", result["theme"]
-      assert_includes mock.last_call[:path], "/api/v1/settings"
-    end
-
-    def test_update_settings
-      mock = MockHttpHelper.new('{"theme":"light","language":"fr"}')
-      svc = SharedService.new(mock)
-      result = svc.update_settings(settings: { theme: "light", language: "fr" })
-      assert_equal "light", result["theme"]
-      assert_equal :put, mock.last_call[:method]
-      assert_includes mock.last_call[:path], "/api/v1/settings"
+      assert_includes mock.last_call[:path], "/api/version"
     end
 
     def test_metrics
@@ -1661,13 +1465,45 @@ module EdgeQuake
       svc = SharedService.new(mock)
       result = svc.metrics
       assert_equal 1000, result["requests_total"]
-      assert_includes mock.last_call[:path], "/api/v1/metrics"
+      assert_includes mock.last_call[:path], "/metrics"
     end
 
     def test_version_error
       mock = MockHttpHelper.new.will_return("{}", 500)
       svc = SharedService.new(mock)
       assert_raises(ApiError) { svc.version }
+    end
+  end
+
+  class ConnectionServiceTest < Minitest::Test
+    def test_list_create_and_test_provider
+      mock = MockHttpHelper.new("[]")
+      svc = ConnectionService.new(mock)
+
+      svc.list
+      assert_equal :get, mock.last_call[:method]
+      assert_equal "/api/v1/connections", mock.last_call[:path]
+
+      mock.will_return('{"id":"conn-1"}')
+      svc.create(
+        slug: "local-ollama",
+        display_name: "Local Ollama",
+        api_shape: "ollama",
+        base_url: "http://localhost:11434"
+      )
+      assert_equal :post, mock.last_call[:method]
+      assert_equal "/api/v1/connections", mock.last_call[:path]
+      assert_equal "http://localhost:11434", mock.last_call[:body][:base_url]
+
+      mock.will_return('{"ok":true}')
+      svc.test_provider(
+        shape: "openai_compatible",
+        base_url: "http://localhost:11434/v1"
+      )
+      assert_equal :post, mock.last_call[:method]
+      assert_equal "/api/v1/providers/test", mock.last_call[:path]
+      assert_equal "openai_compatible", mock.last_call[:body][:shape]
+      assert_equal "http://localhost:11434/v1", mock.last_call[:body][:base_url]
     end
   end
 
@@ -1754,13 +1590,6 @@ module EdgeQuake
       assert_equal 25, result["pending_tasks"]
     end
 
-    def test_health_with_workers_ooda50
-      mock = MockHttpHelper.new('{"healthy":true,"workers":8,"queue_depth":3}')
-      svc = PipelineService.new(mock)
-      result = svc.health
-      assert_equal 8, result["workers"]
-      assert_equal 3, result["queue_depth"]
-    end
   end
 
   class Ooda50TasksTest < Minitest::Test
@@ -1780,13 +1609,6 @@ module EdgeQuake
       assert_equal :post, mock.last_call[:method]
     end
 
-    def test_status_pending_ooda50
-      mock = MockHttpHelper.new('{"id":"task-50","status":"pending","progress":0}')
-      svc = TaskService.new(mock)
-      result = svc.status(id: "task-50")
-      assert_equal "pending", result["status"]
-      assert_equal 0, result["progress"]
-    end
   end
 
   class Ooda50ModelsTest < Minitest::Test
@@ -1805,13 +1627,6 @@ module EdgeQuake
       assert_equal "gpt-4o", result["name"]
     end
 
-    def test_set_active_ooda50
-      mock = MockHttpHelper.new('{"id":"model-50","active":true}')
-      svc = ModelService.new(mock)
-      result = svc.set_active(id: "model-50")
-      assert_equal true, result["active"]
-      assert_includes mock.last_call[:path], "/activate"
-    end
   end
 
   class Ooda50CostsTest < Minitest::Test
@@ -1820,15 +1635,6 @@ module EdgeQuake
       svc = CostService.new(mock)
       result = svc.summary
       assert_equal 42.50, result["total_cost_usd"]
-    end
-
-    def test_breakdown_date_range_ooda50
-      mock = MockHttpHelper.new('{"breakdown":[{"category":"embedding","cost":5.0}]}')
-      svc = CostService.new(mock)
-      result = svc.breakdown(start_date: "2025-01-01", end_date: "2025-01-31")
-      path = mock.last_call[:path]
-      assert_includes path, "start_date=2025-01-01"
-      assert_includes path, "end_date=2025-01-31"
     end
 
     def test_history_custom_days_ooda50
@@ -1958,3 +1764,5 @@ module EdgeQuake
     end
   end
 end
+
+require_relative "operations_manifest_test"

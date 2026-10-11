@@ -14,7 +14,7 @@ export interface ConversationMessage {
 
 export interface QueryRequest {
   query: string;
-  mode?: "naive" | "local" | "global" | "hybrid" | "mix";
+  mode?: "naive" | "local" | "global" | "hybrid" | "mix" | "bypass";
   context_only?: boolean;
   prompt_only?: boolean;
   include_references?: boolean;
@@ -33,7 +33,7 @@ export interface QueryRequest {
 
 export interface StreamQueryRequest {
   query: string;
-  mode?: "naive" | "local" | "global" | "hybrid" | "mix";
+  mode?: "naive" | "local" | "global" | "hybrid" | "mix" | "bypass";
   /** Optional system prompt to prepend to the LLM context (SPEC-004). */
   system_prompt?: string;
   /** Payload tier for source snippets (SPEC-037 + SPEC-028). */

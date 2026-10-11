@@ -84,11 +84,13 @@ class TestQueryResource:
         )
         body = mock_req.call_args[1]["json"]
         assert body["mode"] == "local"
-        assert body["top_k"] == 5
-        assert body["rerank"] is True
-        assert body["provider"] == "openai"
-        assert body["model"] == "gpt-4"
-        assert body["conversation_id"] == "conv-1"
+        assert body["max_results"] == 5
+        assert body["enable_rerank"] is True
+        assert body["llm_provider"] == "openai"
+        assert body["llm_model"] == "gpt-4"
+        assert body["session_id"] == "conv-1"
+        assert "top_k" not in body
+        assert "rerank" not in body
         client.close()
 
     @patch("edgequake._transport.SyncTransport.stream")
@@ -183,8 +185,11 @@ class TestAsyncQueryResource:
         )
         body = mock_req.call_args[1]["json"]
         assert body["mode"] == "global"
-        assert body["top_k"] == 20
-        assert body["rerank"] is True
+        assert body["max_results"] == 20
+        assert body["enable_rerank"] is True
+        assert body["llm_provider"] == "ollama"
+        assert body["llm_model"] == "llama2"
+        assert body["session_id"] == "c-1"
 
     @pytest.mark.asyncio
     @patch("edgequake._transport.AsyncTransport.stream", new_callable=AsyncMock)
@@ -441,12 +446,12 @@ class TestQueryEdgeCases:
         client.query.execute(query="just a query")
         body = mock_req.call_args[1]["json"]
         assert body["query"] == "just a query"
-        assert body["mode"] == "hybrid"
-        assert body["top_k"] == 10
-        assert body["rerank"] is False
-        assert "provider" not in body
-        assert "model" not in body
-        assert "conversation_id" not in body
+        assert "mode" not in body
+        assert "max_results" not in body
+        assert "enable_rerank" not in body
+        assert "llm_provider" not in body
+        assert "llm_model" not in body
+        assert "session_id" not in body
         client.close()
 
     @patch("edgequake._transport.SyncTransport.request")
@@ -459,7 +464,8 @@ class TestQueryEdgeCases:
         client = EdgeQuake()
         client.query.execute(query="test", rerank=True)
         body = mock_req.call_args[1]["json"]
-        assert body["rerank"] is True
+        assert body["enable_rerank"] is True
+        assert "rerank" not in body
         client.close()
 
     @patch("edgequake._transport.SyncTransport.request")
@@ -472,7 +478,8 @@ class TestQueryEdgeCases:
         client = EdgeQuake()
         client.query.execute(query="test", top_k=50)
         body = mock_req.call_args[1]["json"]
-        assert body["top_k"] == 50
+        assert body["max_results"] == 50
+        assert "top_k" not in body
         client.close()
 
 
@@ -617,15 +624,24 @@ class TestQueryRequestModel:
 
     def test_query_request_defaults(self) -> None:
         req = QueryRequest(query="test")
-        assert req.mode == "hybrid"
-        assert req.top_k == 10
-        assert req.rerank is False
+        assert req.mode is None
+        assert req.max_results is None
+        assert req.enable_rerank is None
 
     def test_query_request_custom(self) -> None:
-        req = QueryRequest(query="test", mode="local", top_k=5, rerank=True)
+        req = QueryRequest(
+            query="test", mode="local", max_results=5, enable_rerank=True
+        )
         assert req.mode == "local"
-        assert req.top_k == 5
-        assert req.rerank is True
+        assert req.max_results == 5
+        assert req.enable_rerank is True
+
+    def test_query_request_server_names_win(self) -> None:
+        client_body_note = QueryRequest(query="test", mode="bypass", max_results=3)
+        data = client_body_note.model_dump(exclude_none=True)
+        assert data["max_results"] == 3
+        assert data["mode"] == "bypass"
+        assert "top_k" not in data
 
     def test_query_request_serialization(self) -> None:
         req = QueryRequest(query="test", mode="global")

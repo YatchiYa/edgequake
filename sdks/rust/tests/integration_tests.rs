@@ -361,6 +361,117 @@ mod tests {
         assert_eq!(r.sources.len(), 1);
     }
 
+    #[tokio::test]
+    async fn test_connections_crud_and_probe() {
+        let mock_server = MockServer::start().await;
+        let connection = json!({
+            "id": "11111111-1111-1111-1111-111111111111",
+            "tenant_id": null,
+            "slug": "my-ollama",
+            "display_name": "Ollama",
+            "api_shape": "ollama",
+            "locality": "local",
+            "base_url": "http://127.0.0.1:11434",
+            "auth_scheme": "none",
+            "key_fingerprint": null,
+            "key_configured": false,
+            "timeout_secs": 120,
+            "allow_private_network": true,
+            "source": "db",
+            "last_test_ok": null,
+            "last_test_error": null
+        });
+        let probe = json!({
+            "ok": true,
+            "kind": "ok",
+            "latency_ms": 12,
+            "message": "ok",
+            "models": ["gemma3"],
+            "embedding_dimension": null,
+            "chat_ok": true,
+            "embed_ok": false,
+            "list_ok": true
+        });
+        Mock::given(method("GET"))
+            .and(path("/api/v1/connections"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([connection])))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/connections"))
+            .and(wiremock::matchers::body_json(json!({
+                "slug": "my-ollama",
+                "display_name": "Ollama",
+                "api_shape": "ollama",
+                "base_url": "http://127.0.0.1:11434",
+                "api_key": "secret",
+                "allow_private_network": false
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(&connection))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path(
+                "/api/v1/connections/11111111-1111-1111-1111-111111111111",
+            ))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/providers/test"))
+            .and(wiremock::matchers::body_json(json!({
+                "shape": "ollama",
+                "base_url": "http://127.0.0.1:11434"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&probe))
+            .mount(&mock_server)
+            .await;
+
+        let client = test_client(&mock_server).await;
+        let rows = client.connections().list().await.unwrap();
+        assert_eq!(rows[0].slug, "my-ollama");
+
+        let created = client
+            .connections()
+            .create(&types::connections::UpsertConnection {
+                slug: "my-ollama".into(),
+                display_name: "Ollama".into(),
+                api_shape: "ollama".into(),
+                base_url: "http://127.0.0.1:11434".into(),
+                locality: None,
+                auth_scheme: None,
+                api_key: Some("secret".into()),
+                timeout_secs: None,
+                allow_private_network: Some(false),
+            })
+            .await
+            .unwrap();
+        assert_eq!(created.source, "db");
+
+        client
+            .connections()
+            .delete("11111111-1111-1111-1111-111111111111")
+            .await
+            .unwrap();
+
+        let probed = client
+            .connections()
+            .test_provider(&types::connections::ProviderTestRequest {
+                shape: "ollama".into(),
+                base_url: Some("http://127.0.0.1:11434".into()),
+                model: None,
+                embedding_model: None,
+                api_key: None,
+                auth_scheme: None,
+                allow_private_network: None,
+                expected_dimension: None,
+            })
+            .await
+            .unwrap();
+        assert!(probed.ok);
+        assert_eq!(probed.kind, "ok");
+    }
+
     // ── Chat ─────────────────────────────────────────────────────────
 
     #[tokio::test]
@@ -1505,7 +1616,10 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("DELETE"))
             .and(path("/api/v1/documents"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"deleted_count": 5, "accepted": true})))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"deleted_count": 5, "accepted": true})),
+            )
             .mount(&mock_server)
             .await;
         let client = test_client(&mock_server).await;

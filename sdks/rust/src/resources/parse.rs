@@ -134,8 +134,6 @@ impl<'a> ParseResource<'a> {
 
     /// GET /api/v1/parse/jobs/{id}
     pub async fn job(&self, id: &str) -> Result<ParseJobStatusResponse> {
-        self.client
-            .get(&format!("/api/v1/parse/jobs/{id}"))
-            .await
+        self.client.get(&format!("/api/v1/parse/jobs/{id}")).await
     }
 }

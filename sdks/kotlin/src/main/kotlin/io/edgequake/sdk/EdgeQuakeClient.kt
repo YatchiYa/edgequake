@@ -42,4 +42,6 @@ class EdgeQuakeClient(config: EdgeQuakeConfig = EdgeQuakeConfig()) {
     val shared = SharedService(http)
     val admin = AdminService(http)
     val effectiveConfig = EffectiveConfigService(http)
+    val connections = ConnectionService(http)
+    val operations = OperationsGenerated(http)
 }

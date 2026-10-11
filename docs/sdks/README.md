@@ -1,13 +1,13 @@
 ---
 title: EdgeQuake SDKs
-description: Install and use EdgeQuake HTTP clients. Source packages are 0.4.0; published registry versions may lag. Covers Python, TypeScript, Rust and other languages.
+description: Install and use EdgeQuake HTTP clients. Python, TypeScript, and Rust source packages are 0.4.1; other clients and published registry versions may lag. Covers Python, TypeScript, Rust and other languages.
 ---
 
 # EdgeQuake SDKs
 
-EdgeQuake ships official HTTP clients for ten languages. Use them when you want a typed library instead of raw `curl`. This page shows which clients exist, where each one is published, and which routes they do not wrap yet.
+EdgeQuake ships official HTTP clients for ten languages. Use them when you want a typed library instead of raw `curl`. This page shows which clients exist, where each one is published, and which routes stay on `client.operations`.
 
-The server pin is **v0.32.2**. The client source trees in `sdks/` are **0.4.0** and track the HTTP surface, not the product number. The server contract is the OpenAPI snapshot plus `routes.rs`. When an SDK and the server disagree, the server wins.
+The server pin is **v0.33.0**. Python, TypeScript, and Rust in `sdks/` are **0.4.1**. The other versioned client trees are **0.4.0**. Clients track the HTTP surface, not the product number. The server contract is the OpenAPI snapshot plus `routes.rs`. When an SDK and the server disagree, the server wins.
 
 ## How SDKs connect to the server
 
@@ -24,7 +24,9 @@ classDef eqActor fill:#FCE7F3,stroke:#EC4899,color:#500724
 class SDK eqActor
 ```
 
-Use an SDK for common resources. Call Connections and `POST /api/v1/providers/test` with raw HTTP until an SDK wraps them.
+Use an SDK for common resources. Every client wraps Connections and `POST /api/v1/providers/test`. Routes the typed services do not mention are on `client.operations`.
+
+The checker `sdks/tools/sdk_coverage.py` compared 228 OpenAPI operations with each SDK. After generation, every HTTP path is present in that SDK's sources. WebSocket upgrades stay out of band. Live tests share one scenario and skip unless `EDGEQUAKE_E2E_URL` is set. `make sdk-e2e` runs all ten suites when that URL is a healthy EdgeQuake API, and exits 0 when it is not.
 
 ## Language matrix
 
@@ -32,9 +34,9 @@ Registry checks ran on 2026-10-10. "Published" means the package is on that regi
 
 | Tier | Language | Source | Package id | Source version | Published | Client class |
 |------|----------|--------|------------|----------------|-----------|--------------|
-| 1 | Python | [python](python/README.md) | PyPI `edgequake-sdk` | 0.4.0 | **0.3.0** on PyPI | `EdgeQuake` / `AsyncEdgeQuake` |
-| 1 | TypeScript | [typescript](typescript/README.md) | npm `edgequake-sdk` | 0.4.0 | **0.1.0** on npm | `EdgeQuake` |
-| 1 | Rust | [rust](rust/README.md) | crates.io `edgequake-sdk` | 0.4.0 | **0.4.0** on crates.io | `EdgeQuakeClient` |
+| 1 | Python | [python](python/README.md) | PyPI `edgequake-sdk` | 0.4.1 | **0.3.0** on PyPI | `EdgeQuake` / `AsyncEdgeQuake` |
+| 1 | TypeScript | [typescript](typescript/README.md) | npm `edgequake-sdk` | 0.4.1 | **0.1.0** on npm | `EdgeQuake` |
+| 1 | Rust | [rust](rust/README.md) | crates.io `edgequake-sdk` | 0.4.1 | **0.4.0** on crates.io | `EdgeQuakeClient` |
 | 2 | Go | [go](go/README.md) | `github.com/edgequake/edgequake-go` | no version field (Go 1.21+) | Not on the Go module proxy | `edgequake.NewClient` |
 | 2 | Java | [java](java/README.md) | `io.edgequake:edgequake-sdk` | 0.4.0 | Not on Maven Central | `EdgeQuakeClient` |
 | 2 | Kotlin | [kotlin](kotlin/README.md) | `io.edgequake:edgequake-sdk-kotlin` | 0.4.0 | Not on Maven Central | `EdgeQuakeClient` |
@@ -49,7 +51,7 @@ Install from a registry only when the table says the package is published. Other
 
 ```bash
 pip install edgequake-sdk==0.3.0   # latest on PyPI
-# or from source: pip install ./sdks/python   (source 0.4.0)
+# or from source: pip install ./sdks/python   (source 0.4.1)
 ```
 
 ```python
@@ -62,15 +64,16 @@ answer = client.query.execute(query="How many Nobel Prizes?", mode="mix")
 print(answer.answer)
 ```
 
-Pass `mode="mix"` explicitly. The server default is `mix`, but the Python client defaults to `hybrid`. The Python client also sends `top_k` and `rerank`, which the server ignores. TypeScript sends the server's real fields (`max_results`, `enable_rerank`).
+Pass `mode` only when you need a specific retrieval strategy. Omitting it lets the server use its default (`mix`). `max_results` and `enable_rerank` are the fields the query handler reads. `top_k` and `rerank` still work as Python aliases of those fields.
 
 ## Coverage notes
 
 | Area | Status |
 |------|--------|
 | Documents, PDF, query, chat, graph, conversations, tasks, parse | Tier 1 covers most. Tier 2 covers a useful subset. |
-| `display_status` / `ui_phase` | The server returns them. No SDK models them yet. |
-| Connections, `providers/test`, `llm_roles.connection_id` | Not in any SDK. Use raw HTTP. |
-| Go list calls | Documents, entities, relationships and tasks send `per_page`. The server reads `page_size`. |
+| `display_status` / `ui_phase` | Python, TypeScript, Rust, Go, Java, Kotlin, and Swift document models include them. C#, PHP, and Ruby return the JSON object, so the fields stay on the payload. |
+| Connections, `providers/test`, `llm_roles` | Every SDK wraps Connections and `providers/test`. Workspace create and update bodies include `llm_roles`, where a role can set `connection_id`. |
+| List pagination | Document, entity, relationship, and task lists send `page` and `page_size`. |
+| Remaining HTTP routes | `client.operations` (language equivalent below). Unit proof: each SDK's operation-manifest test. Live proof: `EDGEQUAKE_E2E_URL` plus `make sdk-e2e`. |
 
 Further reading: [Brutal assessment](BRUTAL-ASSESSMENT.md) for gaps and client bugs, [Version policy](VERSION-POLICY.md) for pins, [SDK API coverage](../../specs/009-skd-update/SDK-API-COVERAGE.md) for the spec tracker, [Connections](../api-reference/connections.md) for the raw HTTP routes, and the [API reference](../api-reference/index.md).

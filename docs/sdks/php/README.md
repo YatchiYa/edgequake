@@ -7,6 +7,13 @@ description: Use the EdgeQuake PHP client (Composer package edgequake/sdk). Requ
 
 The PHP client is Composer package `edgequake/sdk`, requires **PHP 8.1+**, and is **not published** to Packagist. Install it from a Composer path repository that points at `sdks/php`. Build a `Config` object and pass it to `Client`.
 
+Typed services are the preferred API. `$client->operations` calls every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
+
+```bash
+cd sdks/php && php vendor/bin/phpunit --filter OperationsManifestTest
+EDGEQUAKE_E2E_URL=http://localhost:8080 php tests/E2ETest.php
+```
+
 ## Install
 
 Add the path repository and the package to `composer.json`:
@@ -59,7 +66,7 @@ Passing an associative array to `new Client([...])` throws a `TypeError`. Always
 
 ## Notes
 
-- `query->execute` defaults `mode` to `'hybrid'`. Pass `'mix'` to match the server default.
-- Connections and `POST /api/v1/providers/test` are not wrapped. Use raw HTTP ([Connections](../../api-reference/connections.md)).
+- `query->execute` omits `mode` unless you pass it, so the server default `mix` applies.
+- Connections and `POST /api/v1/providers/test` are on `$client->connections`. See [Connections](../../api-reference/connections.md).
 
 See the [SDK overview](../README.md) for the full language matrix.

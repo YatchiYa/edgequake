@@ -11,10 +11,9 @@ final class E2ETest: XCTestCase {
 
     override func setUp() async throws {
         try XCTSkipIf(
-            ProcessInfo.processInfo.environment["EDGEQUAKE_E2E"] != "1",
-            "Set EDGEQUAKE_E2E=1 with a running EdgeQuake API (see IMPLEMENTATION-PROOF.md).")
-        let base =
-            ProcessInfo.processInfo.environment["EDGEQUAKE_BASE_URL"] ?? "http://localhost:8080"
+            (ProcessInfo.processInfo.environment["EDGEQUAKE_E2E_URL"] ?? "").isEmpty,
+            "EDGEQUAKE_E2E_URL not set")
+        let base = ProcessInfo.processInfo.environment["EDGEQUAKE_E2E_URL"]!
         /// WHY: Default tenant/user IDs from database migration — avoids XCTSkip.
         let tenantId =
             ProcessInfo.processInfo.environment["EDGEQUAKE_TENANT_ID"]
@@ -253,5 +252,23 @@ final class E2ETest: XCTestCase {
         // Verify pipeline status
         let ps = try await client.pipeline.status()
         XCTAssertNotNil(ps.isBusy)
+    }
+
+    func testSharedLiveScenario() async throws {
+        let health = try await client.health.check()
+        XCTAssertEqual(health.status, "healthy")
+        let setup = try await client.operations.setupStatus()
+        XCTAssertTrue(setup.contains("needs_setup"))
+        let socket = client.operations.wsPipelineProgress()
+        XCTAssertTrue(socket.hasPrefix("ws") && socket.hasSuffix("/ws/pipeline/progress"))
+        let listed = try await client.documents.list(page: 1, pageSize: 5)
+        _ = listed.documents?.first?.displayStatus
+        let uploaded = try await client.documents.uploadText(title: "Swift live", content: "Shared SDK live scenario.")
+        XCTAssertNotNil(uploaded.documentId)
+        _ = try await client.graph.get()
+        _ = try await client.entities.list(page: 1, pageSize: 5)
+        _ = try await client.query.execute(query: "What is a knowledge graph?", maxResults: 3)
+        _ = try await client.connections.list()
+        _ = try await client.chat.completions(ChatCompletionRequest(message: "ping", topK: 2))
     }
 }

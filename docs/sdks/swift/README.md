@@ -7,6 +7,13 @@ description: Use the EdgeQuake Swift package EdgeQuakeSDK (Swift 5.9+, macOS 13+
 
 The Swift client is the `EdgeQuakeSDK` product, built with Swift 5.9 and targeting **macOS 13+**. It is distributed as source under `sdks/swift` and installed as a Swift Package Manager path dependency. Create an `EdgeQuakeClient` from an `EdgeQuakeConfig`, then call the async services.
 
+Typed services are the preferred API. `client.operations` calls every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
+
+```bash
+cd sdks/swift && swift test --filter OperationsManifestTest
+EDGEQUAKE_E2E_URL=http://localhost:8080 swift test --filter E2ETest
+```
+
 ## Install
 
 Add the path dependency and product to your `Package.swift`:
@@ -56,7 +63,7 @@ print(answer.answer ?? "")
 
 ## Notes
 
-- `query.execute` defaults `mode` to `"hybrid"`. Pass `mode: "mix"` to match the server default.
-- Connections and `POST /api/v1/providers/test` are not wrapped. Use raw HTTP ([Connections](../../api-reference/connections.md)).
+- `query.execute` omits `mode` unless you pass it, so the server default `mix` applies.
+- Connections and `POST /api/v1/providers/test` are on `client.connections`. See [Connections](../../api-reference/connections.md).
 
 See the [SDK overview](../README.md) for the full language matrix.

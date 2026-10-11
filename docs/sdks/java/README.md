@@ -7,6 +7,13 @@ description: Use the EdgeQuake Java client (io.edgequake:edgequake-sdk 0.4.0). R
 
 The Java client is a Maven artifact, `io.edgequake:edgequake-sdk:0.4.0`, built from `sdks/java`. It targets **Java 17** and is **not published** to Maven Central, so you install it into your local Maven repository first.
 
+Typed services are the preferred API. `client.operations()` calls every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
+
+```bash
+cd sdks/java && mvn -q -Dtest=OperationsManifestTest test
+EDGEQUAKE_E2E_URL=http://localhost:8080 mvn -Pe2e -Dtest=E2ETest test
+```
+
 ## Install
 
 ```bash
@@ -59,7 +66,7 @@ var docs = client.documents().list(1, 20);
 
 ## Limits
 
-- Connections and `POST /api/v1/providers/test` are not wrapped. Use raw HTTP ([Connections](../../api-reference/connections.md)).
+- Connections and `POST /api/v1/providers/test` are on `client.connections()`. `QueryRequest.topK` serializes as `max_results`. See [Connections](../../api-reference/connections.md).
 - Defaults were not audited in this pass. Pass `mode` explicitly on query calls.
 
 See the [SDK overview](../README.md) for the full language matrix.

@@ -5,7 +5,14 @@ description: Install and use the EdgeQuake Rust client crate edgequake-sdk 0.4.0
 
 # Rust SDK
 
-The Rust client is an async crate built on Tokio. It is the only SDK whose latest source version (**0.4.0**) matches its published crates.io release. Use `EdgeQuakeClient` for documents, query, parse and the other resources, and `ClientBuilder` to configure the base URL and API key.
+The Rust client is an async crate built on Tokio. Source is **0.4.1**. crates.io is still **0.4.0**. Use `EdgeQuakeClient` for documents, query, parse and the other resources, and `ClientBuilder` to configure the base URL and API key.
+
+Typed resources are the preferred API. `client.operations()` calls every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
+
+```bash
+cd sdks/rust && cargo test --offline --test operations_contract
+EDGEQUAKE_E2E_URL=http://localhost:8080 cargo test --test e2e_tests --features e2e
+```
 
 ## Install
 
@@ -80,7 +87,7 @@ Resources mirror the REST API: `documents`, `pdf`, `parse`, `query`, `chat`, `gr
 
 ## Limits
 
-- Connections and `POST /api/v1/providers/test` are not wrapped. Use raw HTTP ([Connections](../../api-reference/connections.md)).
+- Connections and `POST /api/v1/providers/test` are on `client.connections()`. See [Connections](../../api-reference/connections.md).
 - `display_status` and `ui_phase` are not modelled.
 
 Next steps: [Rust quickstart](quickstart.md). Overview of all clients: [SDK overview](../README.md).

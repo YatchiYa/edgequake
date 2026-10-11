@@ -123,6 +123,6 @@ A successful call returns `202` with a `wipe_track_id`. Progress arrives over th
 
 ## OpenAPI
 
-Interactive docs are at `http://localhost:8080/swagger-ui/`. The snapshot for v0.32.2 is [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json). Connections appear only in the current source until the next snapshot.
+Interactive docs are at `http://localhost:8080/swagger-ui/`. The snapshot for v0.33.0 is [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json). It includes the Connections routes.
 
 Related: [Integrations](index.md), [MCP](mcp.md), [REST API](../api-reference/rest-api.md).

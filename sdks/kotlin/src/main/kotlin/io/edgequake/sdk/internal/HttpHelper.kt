@@ -71,6 +71,18 @@ open class HttpHelper(@PublishedApi internal val config: EdgeQuakeConfig) {
         return resp.body()
     }
 
+    open fun exchange(method: String, path: String, body: Any? = null): String {
+        val req = buildRequest(path, method, body)
+        val resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString())
+        if (resp.statusCode() !in 200..299) {
+            throw EdgeQuakeException(
+                "HTTP ${resp.statusCode()}: ${resp.body()}",
+                resp.statusCode(), resp.body()
+            )
+        }
+        return resp.body()
+    }
+
     open fun postRaw(path: String, body: Any? = null): String {
         val req = buildRequest(path, "POST", body)
         val resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString())

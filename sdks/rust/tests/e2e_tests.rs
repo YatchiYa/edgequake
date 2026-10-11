@@ -7,11 +7,16 @@
 
 #![cfg(feature = "e2e")]
 
+use edgequake_sdk::types::chat::ChatCompletionRequest;
+use edgequake_sdk::types::documents::{DocumentListQuery, UploadDocumentRequest};
+use edgequake_sdk::types::query::QueryRequest;
 use edgequake_sdk::*;
 
-fn e2e_client() -> EdgeQuakeClient {
-    let base_url =
-        std::env::var("EDGEQUAKE_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
+fn e2e_client() -> Option<EdgeQuakeClient> {
+    let base_url = match std::env::var("EDGEQUAKE_E2E_URL") {
+        Ok(url) if !url.is_empty() => url,
+        _ => return None,
+    };
     let mut builder = EdgeQuakeClient::builder().base_url(&base_url);
 
     if let Ok(key) = std::env::var("EDGEQUAKE_API_KEY") {
@@ -33,14 +38,17 @@ fn e2e_client() -> EdgeQuakeClient {
     builder
         .max_retries(0)
         .build()
-        .expect("failed to build client")
+        .ok()
 }
 
 // ── Health ───────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn e2e_health() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let h = c.health().check().await.unwrap();
     assert_eq!(h.status, "healthy");
     println!(
@@ -53,7 +61,10 @@ async fn e2e_health() {
 
 #[tokio::test]
 async fn e2e_documents_list() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let docs = c.documents().list().await.unwrap();
     println!("Documents: {} items", docs.documents.len());
 }
@@ -62,14 +73,20 @@ async fn e2e_documents_list() {
 
 #[tokio::test]
 async fn e2e_graph_get() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let g = c.graph().get().await.unwrap();
     println!("Graph: {} nodes, {} edges", g.nodes.len(), g.edges.len());
 }
 
 #[tokio::test]
 async fn e2e_graph_search() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let r = c.graph().search("test").await.unwrap();
     println!("Search: {} nodes found", r.nodes.len());
 }
@@ -78,7 +95,10 @@ async fn e2e_graph_search() {
 
 #[tokio::test]
 async fn e2e_entities_list_and_create() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
 
     // Cleanup any leftover entity from previous runs.
     let _ = c.entities().delete("E2E_RUST_TEST").await;
@@ -125,7 +145,10 @@ async fn e2e_entities_list_and_create() {
 
 #[tokio::test]
 async fn e2e_relationships_list() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let r = c.relationships().list().await.unwrap();
     println!("Relationships: {} total (page {})", r.total, r.page);
 }
@@ -134,7 +157,10 @@ async fn e2e_relationships_list() {
 
 #[tokio::test]
 async fn e2e_query_execute() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let req = types::query::QueryRequest {
         query: "What is EdgeQuake?".into(),
         top_k: Some(3),
@@ -152,7 +178,10 @@ async fn e2e_query_execute() {
 
 #[tokio::test]
 async fn e2e_chat_completions() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     // WHY: EdgeQuake chat API uses `message` (singular string), not messages array
     let req = types::chat::ChatCompletionRequest {
         message: "Say hello".into(),
@@ -173,7 +202,10 @@ async fn e2e_chat_completions() {
 
 #[tokio::test]
 async fn e2e_tasks_list() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let r = c.tasks().list().await.unwrap();
     println!("Tasks: {} total", r.total);
 }
@@ -182,7 +214,10 @@ async fn e2e_tasks_list() {
 
 #[tokio::test]
 async fn e2e_pipeline_status() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let r = c.pipeline().status().await.unwrap();
     println!(
         "Pipeline: is_busy={} pending={} processing={}",
@@ -192,7 +227,10 @@ async fn e2e_pipeline_status() {
 
 #[tokio::test]
 async fn e2e_pipeline_metrics() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let r = c.pipeline().metrics().await.unwrap();
     println!(
         "Queue metrics: depth={} processing={}",
@@ -204,7 +242,10 @@ async fn e2e_pipeline_metrics() {
 
 #[tokio::test]
 async fn e2e_costs_summary() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let r = c.costs().summary().await.unwrap();
     println!(
         "Costs: total=${:.4} tokens={}",
@@ -214,7 +255,10 @@ async fn e2e_costs_summary() {
 
 #[tokio::test]
 async fn e2e_costs_budget() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let r = c.costs().budget().await.unwrap();
     println!("Budget: current_spend=${:.4}", r.current_spend_usd);
 }
@@ -223,7 +267,10 @@ async fn e2e_costs_budget() {
 
 #[tokio::test]
 async fn e2e_models_list() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let catalog = c.models().list().await.unwrap();
     println!("Models: {} providers", catalog.providers.len());
     for p in &catalog.providers {
@@ -238,7 +285,10 @@ async fn e2e_models_list() {
 
 #[tokio::test]
 async fn e2e_models_providers_health() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let health = c.models().providers_health().await.unwrap();
     println!("Provider health: {} providers", health.len());
 }
@@ -247,7 +297,10 @@ async fn e2e_models_providers_health() {
 
 #[tokio::test]
 async fn e2e_tenants_list() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let resp = c.tenants().list().await.unwrap();
     println!("Tenants: {} items", resp.items.len());
     for t in &resp.items {
@@ -259,7 +312,10 @@ async fn e2e_tenants_list() {
 
 #[tokio::test]
 async fn e2e_lineage_for_entity() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     // Expected to 404 for non-existent entity
     match c.provenance().for_entity("NONEXISTENT_ENTITY").await {
         Ok(r) => println!("Provenance: entity={}", r.entity_name),
@@ -271,7 +327,10 @@ async fn e2e_lineage_for_entity() {
 
 #[tokio::test]
 async fn e2e_document_lineage() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let docs = c.documents().list().await.unwrap();
     if let Some(doc) = docs.documents.first() {
         match c.documents().get_lineage(&doc.id).await {
@@ -293,7 +352,10 @@ async fn e2e_document_lineage() {
 
 #[tokio::test]
 async fn e2e_document_metadata() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let docs = c.documents().list().await.unwrap();
     if let Some(doc) = docs.documents.first() {
         match c.documents().get_metadata(&doc.id).await {
@@ -314,7 +376,10 @@ async fn e2e_document_metadata() {
 
 #[tokio::test]
 async fn e2e_chunk_lineage() {
-    let c = e2e_client();
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
     let docs = c.documents().list().await.unwrap();
     if let Some(doc) = docs.documents.first() {
         // Try chunk-0 for this document
@@ -334,4 +399,53 @@ async fn e2e_chunk_lineage() {
     } else {
         println!("Chunk lineage: skipped (no documents)");
     }
+}
+
+#[tokio::test]
+async fn e2e_shared_live_scenario() {
+    let Some(c) = e2e_client() else {
+        eprintln!("skip: EDGEQUAKE_E2E_URL not set");
+        return;
+    };
+    let health = c.health().check().await.unwrap();
+    assert_eq!(health.status, "healthy");
+    let setup = c.operations().setup_status(None, None).await.unwrap();
+    assert!(setup.contains("needs_setup"), "{setup}");
+    let socket = c.operations().ws_pipeline_progress();
+    assert!(socket.starts_with("ws") && socket.ends_with("/ws/pipeline/progress"), "{socket}");
+    let listed = c
+        .documents()
+        .list_with_query(&DocumentListQuery {
+            page: Some(1),
+            page_size: Some(5),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    for item in &listed.documents {
+        let _ = &item.display_status;
+    }
+    let mut upload = UploadDocumentRequest::text("Shared SDK live scenario.");
+    upload.title = Some("shared-live".into());
+    let uploaded = c.documents().upload(&upload).await.unwrap();
+    assert!(!uploaded.id.is_empty());
+    c.graph().get().await.unwrap();
+    c.entities().list().await.unwrap();
+    c.query()
+        .execute(&QueryRequest {
+            query: "What is a knowledge graph?".into(),
+            top_k: Some(3),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    c.connections().list().await.unwrap();
+    c.chat()
+        .completions(&ChatCompletionRequest {
+            message: "ping".into(),
+            top_k: Some(2),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
 }

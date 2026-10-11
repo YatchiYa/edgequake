@@ -86,6 +86,8 @@ class DocumentSummary(BaseModel):
     metadata: dict[str, Any] | None = None
     cost: DocumentCostInfo | None = None
     processing_time_ms: int | None = None
+    display_status: str | None = None
+    ui_phase: str | None = None
 
 
 # WHY: Legacy alias for backward compatibility
@@ -182,6 +184,8 @@ class DocumentDetail(BaseModel):
     metadata: dict[str, Any] | None = None
     cost: DocumentCostInfo | None = None
     processing_time_ms: int | None = None
+    display_status: str | None = None
+    ui_phase: str | None = None
     chunks: list[dict[str, Any]] | None = None
     entities: list[dict[str, Any]] | None = None
     relationships: list[dict[str, Any]] | None = None

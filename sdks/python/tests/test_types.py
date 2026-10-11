@@ -61,7 +61,7 @@ class TestQueryTypes:
     def test_query_request(self) -> None:
         qr = QueryRequest(query="test query")
         assert qr.query == "test query"
-        assert qr.mode == "hybrid"  # default
+        assert qr.mode is None
 
     def test_query_request_with_mode(self) -> None:
         qr = QueryRequest(query="test", mode="hybrid")

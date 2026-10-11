@@ -5,7 +5,7 @@ description: "v0.33.0 API for saved LLM provider Connections, POST /api/v1/provi
 
 # Connections and provider test
 
-This page covers the **v0.33.0** (SPEC-163) endpoints that store LLM provider endpoints, probe them before you save a key, and route workspace roles through a saved Connection. It is for operators and admins who configure providers. The product pin is still **v0.32.2**; these routes ship with **v0.33.0**. Upgrade notes: [Upgrade to 0.33.0](../operations/upgrade-to-0.33.0.md).
+This page covers the **v0.33.0** (SPEC-163) endpoints that store LLM provider endpoints, probe them before you save a key, and route workspace roles through a saved Connection. It is for operators and admins who configure providers. The product pin is **v0.33.0**. Every SDK wraps these routes on `client.connections` (Rust: `client.connections()`, Java: `client.connections()`). Upgrade notes: [Upgrade to 0.33.0](../operations/upgrade-to-0.33.0.md).
 
 Auth: every Connections and probe route requires an **admin** JWT or API key (`ApiRequireAdmin`). Send `Authorization: Bearer <token>`. See [Provider security](../providers/security.md).
 

@@ -117,6 +117,28 @@ public class HttpHelper
         return await resp.Content.ReadAsStringAsync();
     }
 
+    public async Task<string> ExchangeAsync(string method, string path, object? body = null)
+    {
+        var req = new HttpRequestMessage(new HttpMethod(method), path);
+        if (body is not null)
+        {
+            req.Content = new StringContent(JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json");
+        }
+        var resp = await _client.SendAsync(req);
+        await EnsureSuccess(resp);
+        return await resp.Content.ReadAsStringAsync();
+    }
+
+    public string WebSocketUrl(string path)
+    {
+        var root = _client.BaseAddress!.ToString().TrimEnd('/');
+        if (root.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            root = "wss://" + root["https://".Length..];
+        else if (root.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            root = "ws://" + root["http://".Length..];
+        return root + path;
+    }
+
     public async Task<string> GetRawAsync(string path)
     {
         var resp = await _client.GetAsync(path);

@@ -1,4 +1,4 @@
-# @edgequake/sdk
+# edgequake-sdk
 
 TypeScript SDK for the [EdgeQuake](https://github.com/raphaelmansuy/edgequake) RAG API.
 
@@ -16,13 +16,13 @@ TypeScript SDK for the [EdgeQuake](https://github.com/raphaelmansuy/edgequake) R
 ## Installation
 
 ```bash
-npm install @edgequake/sdk
+npm install edgequake-sdk
 ```
 
 ## Quick Start
 
 ```typescript
-import { EdgeQuake } from "@edgequake/sdk";
+import { EdgeQuake } from "edgequake-sdk";
 
 const client = new EdgeQuake({
   baseUrl: "http://localhost:8080",
@@ -128,7 +128,7 @@ import {
   NotFoundError,
   RateLimitedError,
   EdgeQuakeError,
-} from "@edgequake/sdk";
+} from "edgequake-sdk";
 
 try {
   await client.documents.get("missing-id");

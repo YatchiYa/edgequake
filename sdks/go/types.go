@@ -14,16 +14,18 @@ type HealthResponse struct {
 }
 
 type Document struct {
-	ID          UUID   `json:"id"`
-	FileName    string `json:"file_name,omitempty"`
-	Title       string `json:"title,omitempty"`
-	Status      string `json:"status,omitempty"`
-	FileSize    *int64 `json:"file_size,omitempty"`
-	MimeType    string `json:"mime_type,omitempty"`
-	EntityCount *int   `json:"entity_count,omitempty"`
-	ChunkCount  *int   `json:"chunk_count,omitempty"`
-	CreatedAt   string `json:"created_at,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
+	ID            UUID   `json:"id"`
+	FileName      string `json:"file_name,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Status        string `json:"status,omitempty"`
+	FileSize      *int64 `json:"file_size,omitempty"`
+	MimeType      string `json:"mime_type,omitempty"`
+	EntityCount   *int   `json:"entity_count,omitempty"`
+	ChunkCount    *int   `json:"chunk_count,omitempty"`
+	CreatedAt     string `json:"created_at,omitempty"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
+	DisplayStatus string `json:"display_status,omitempty"`
+	UIPhase       string `json:"ui_phase,omitempty"`
 }
 
 type UploadResponse struct {
@@ -70,12 +72,17 @@ type PdfBatchUploadResponse struct {
 
 type ListDocumentsResponse struct {
 	Documents  []Document      `json:"documents"`
+	Total      int             `json:"total,omitempty"`
+	Page       int             `json:"page,omitempty"`
+	PageSize   int             `json:"page_size,omitempty"`
+	TotalPages int             `json:"total_pages,omitempty"`
+	HasMore    bool            `json:"has_more,omitempty"`
 	Pagination *PaginationInfo `json:"pagination,omitempty"`
 }
 
 type PaginationInfo struct {
 	Page       int `json:"page"`
-	PerPage    int `json:"per_page"`
+	PerPage    int `json:"page_size"`
 	Total      int `json:"total"`
 	TotalPages int `json:"total_pages"`
 }
@@ -102,17 +109,17 @@ type ScanResponse struct {
 
 // DeleteAllResponse is the HTTP 202 admit payload for DELETE /api/v1/documents.
 type DeleteAllResponse struct {
-	Accepted                      bool     `json:"accepted"`
-	WipeTrackID                   string   `json:"wipe_track_id,omitempty"`
-	DeletedCount                  int      `json:"deleted_count"`
-	PlannedDeleteCount            *int     `json:"planned_delete_count,omitempty"`
-	TotalChunksDeleted            int      `json:"total_chunks_deleted"`
-	TotalEntitiesRemoved          int      `json:"total_entities_removed"`
-	TotalRelationshipsRemoved     int      `json:"total_relationships_removed"`
-	TotalPdfsDeleted              int      `json:"total_pdfs_deleted"`
-	SkippedCount                  int      `json:"skipped_count"`
-	SkippedDocuments              []string `json:"skipped_documents,omitempty"`
-	Message                       string   `json:"message,omitempty"`
+	Accepted                  bool     `json:"accepted"`
+	WipeTrackID               string   `json:"wipe_track_id,omitempty"`
+	DeletedCount              int      `json:"deleted_count"`
+	PlannedDeleteCount        *int     `json:"planned_delete_count,omitempty"`
+	TotalChunksDeleted        int      `json:"total_chunks_deleted"`
+	TotalEntitiesRemoved      int      `json:"total_entities_removed"`
+	TotalRelationshipsRemoved int      `json:"total_relationships_removed"`
+	TotalPdfsDeleted          int      `json:"total_pdfs_deleted"`
+	SkippedCount              int      `json:"skipped_count"`
+	SkippedDocuments          []string `json:"skipped_documents,omitempty"`
+	Message                   string   `json:"message,omitempty"`
 }
 
 type DeletionImpact struct {
@@ -246,7 +253,8 @@ type CreateRelationshipParams struct {
 type QueryRequest struct {
 	Query           string `json:"query"`
 	Mode            string `json:"mode,omitempty"`
-	TopK            *int   `json:"top_k,omitempty"`
+	TopK            *int   `json:"max_results,omitempty"`
+	EnableRerank    *bool  `json:"enable_rerank,omitempty"`
 	Stream          *bool  `json:"stream,omitempty"`
 	OnlyNeedContext *bool  `json:"only_need_context,omitempty"`
 	SystemPrompt    string `json:"system_prompt,omitempty"`
@@ -663,8 +671,9 @@ type CreateWorkspaceParams struct {
 	EmbeddingProvider  string `json:"embedding_provider,omitempty"`
 	EmbeddingDimension int    `json:"embedding_dimension,omitempty"`
 	// Vision LLM for PDF image extraction (SPEC-041). Inherits from tenant if not set.
-	VisionLLMModel    string `json:"vision_llm_model,omitempty"`
-	VisionLLMProvider string `json:"vision_llm_provider,omitempty"`
+	VisionLLMModel    string         `json:"vision_llm_model,omitempty"`
+	VisionLLMProvider string         `json:"vision_llm_provider,omitempty"`
+	LLMRoles          map[string]any `json:"llm_roles,omitempty"`
 }
 
 // WorkspaceListResponse is returned by GET /api/v1/tenants/{tenant_id}/workspaces.
@@ -695,10 +704,11 @@ type WorkspaceInfo struct {
 	EmbeddingDimension int    `json:"embedding_dimension,omitempty"`
 	EmbeddingFullID    string `json:"embedding_full_id,omitempty"`
 	// Vision LLM – only present when configured or inherited from tenant.
-	VisionLLMModel    string `json:"vision_llm_model,omitempty"`
-	VisionLLMProvider string `json:"vision_llm_provider,omitempty"`
-	CreatedAt         string `json:"created_at,omitempty"`
-	UpdatedAt         string `json:"updated_at,omitempty"`
+	VisionLLMModel    string         `json:"vision_llm_model,omitempty"`
+	VisionLLMProvider string         `json:"vision_llm_provider,omitempty"`
+	LLMRoles          map[string]any `json:"llm_roles,omitempty"`
+	CreatedAt         string         `json:"created_at,omitempty"`
+	UpdatedAt         string         `json:"updated_at,omitempty"`
 }
 
 type WorkspaceStats struct {
@@ -787,4 +797,61 @@ type APIKeyListResponse struct {
 	Page       int          `json:"page"`
 	PageSize   int          `json:"page_size"`
 	TotalPages int          `json:"total_pages"`
+}
+
+// Connection is a stored or env-backed provider connection. The API key is never returned.
+type Connection struct {
+	ID                  string  `json:"id"`
+	TenantID            string  `json:"tenant_id,omitempty"`
+	Slug                string  `json:"slug"`
+	DisplayName         string  `json:"display_name"`
+	APIShape            string  `json:"api_shape"`
+	Locality            string  `json:"locality"`
+	BaseURL             string  `json:"base_url"`
+	AuthScheme          string  `json:"auth_scheme"`
+	KeyFingerprint      string  `json:"key_fingerprint,omitempty"`
+	KeyConfigured       bool    `json:"key_configured"`
+	TimeoutSecs         int     `json:"timeout_secs"`
+	AllowPrivateNetwork bool    `json:"allow_private_network"`
+	Source              string  `json:"source"`
+	LastTestOK          *bool   `json:"last_test_ok,omitempty"`
+	LastTestError       *string `json:"last_test_error,omitempty"`
+}
+
+// UpsertConnection is the body for POST and PUT /api/v1/connections.
+type UpsertConnection struct {
+	Slug                string `json:"slug"`
+	DisplayName         string `json:"display_name"`
+	APIShape            string `json:"api_shape"`
+	BaseURL             string `json:"base_url"`
+	Locality            string `json:"locality,omitempty"`
+	AuthScheme          string `json:"auth_scheme,omitempty"`
+	APIKey              string `json:"api_key,omitempty"`
+	TimeoutSecs         int    `json:"timeout_secs,omitempty"`
+	AllowPrivateNetwork *bool  `json:"allow_private_network,omitempty"`
+}
+
+// ProbeRequest is the body for POST /api/v1/providers/test.
+type ProbeRequest struct {
+	Shape               string `json:"shape"`
+	BaseURL             string `json:"base_url,omitempty"`
+	Model               string `json:"model,omitempty"`
+	EmbeddingModel      string `json:"embedding_model,omitempty"`
+	APIKey              string `json:"api_key,omitempty"`
+	AuthScheme          string `json:"auth_scheme,omitempty"`
+	AllowPrivateNetwork *bool  `json:"allow_private_network,omitempty"`
+	ExpectedDimension   *int   `json:"expected_dimension,omitempty"`
+}
+
+// ProbeResult is the response from a stored or ad-hoc provider probe.
+type ProbeResult struct {
+	OK                 bool     `json:"ok"`
+	Kind               string   `json:"kind"`
+	LatencyMs          int      `json:"latency_ms"`
+	Message            string   `json:"message"`
+	Models             []string `json:"models"`
+	EmbeddingDimension *int     `json:"embedding_dimension,omitempty"`
+	ChatOK             bool     `json:"chat_ok"`
+	EmbedOK            bool     `json:"embed_ok"`
+	ListOK             bool     `json:"list_ok"`
 }

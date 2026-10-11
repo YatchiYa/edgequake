@@ -32,7 +32,7 @@ func (s *DocumentService) List(ctx context.Context, page, perPage int) (*ListDoc
 		params.Set("page", strconv.Itoa(page))
 	}
 	if perPage > 0 {
-		params.Set("per_page", strconv.Itoa(perPage))
+		params.Set("page_size", strconv.Itoa(perPage))
 	}
 	var out ListDocumentsResponse
 	if err := s.c.get(ctx, "/api/v1/documents", params, &out); err != nil {
@@ -143,7 +143,7 @@ func (s *EntityService) List(ctx context.Context, page, perPage int, entityType 
 		params.Set("page", strconv.Itoa(page))
 	}
 	if perPage > 0 {
-		params.Set("per_page", strconv.Itoa(perPage))
+		params.Set("page_size", strconv.Itoa(perPage))
 	}
 	if entityType != "" {
 		params.Set("entity_type", entityType)
@@ -217,7 +217,7 @@ func (s *RelationshipService) List(ctx context.Context, page, perPage int) (*Rel
 		params.Set("page", strconv.Itoa(page))
 	}
 	if perPage > 0 {
-		params.Set("per_page", strconv.Itoa(perPage))
+		params.Set("page_size", strconv.Itoa(perPage))
 	}
 	var out RelationshipListResponse
 	if err := s.c.get(ctx, "/api/v1/graph/relationships", params, &out); err != nil {
@@ -445,14 +445,6 @@ func (s *FolderService) List(ctx context.Context) ([]FolderInfo, error) {
 	return out, nil
 }
 
-func (s *FolderService) Get(ctx context.Context, id string) (*FolderInfo, error) {
-	var out FolderInfo
-	if err := s.c.get(ctx, fmt.Sprintf("/api/v1/folders/%s", id), nil, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
 func (s *FolderService) Delete(ctx context.Context, id string) error {
 	return s.c.delNoContent(ctx, fmt.Sprintf("/api/v1/folders/%s", id))
 }
@@ -469,7 +461,7 @@ func (s *TaskService) List(ctx context.Context, status string, page, perPage int
 		params.Set("page", strconv.Itoa(page))
 	}
 	if perPage > 0 {
-		params.Set("per_page", strconv.Itoa(perPage))
+		params.Set("page_size", strconv.Itoa(perPage))
 	}
 	var out TaskListResponse
 	if err := s.c.get(ctx, "/api/v1/tasks", params, &out); err != nil {
@@ -794,4 +786,51 @@ func (s *PDFService) List(ctx context.Context) ([]Document, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// ConnectionService handles /api/v1/connections and POST /api/v1/providers/test.
+type ConnectionService struct{ c *Client }
+
+func (s *ConnectionService) List(ctx context.Context) ([]Connection, error) {
+	var out []Connection
+	if err := s.c.get(ctx, "/api/v1/connections", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *ConnectionService) Create(ctx context.Context, body UpsertConnection) (*Connection, error) {
+	var out Connection
+	if err := s.c.post(ctx, "/api/v1/connections", body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (s *ConnectionService) Update(ctx context.Context, id string, body UpsertConnection) (*Connection, error) {
+	var out Connection
+	if err := s.c.put(ctx, "/api/v1/connections/"+id, body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (s *ConnectionService) Delete(ctx context.Context, id string) error {
+	return s.c.delNoContent(ctx, "/api/v1/connections/"+id)
+}
+
+func (s *ConnectionService) Test(ctx context.Context, id string) (*ProbeResult, error) {
+	var out ProbeResult
+	if err := s.c.post(ctx, "/api/v1/connections/"+id+"/test", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (s *ConnectionService) TestProvider(ctx context.Context, body ProbeRequest) (*ProbeResult, error) {
+	var out ProbeResult
+	if err := s.c.post(ctx, "/api/v1/providers/test", body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }

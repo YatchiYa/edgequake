@@ -1,15 +1,15 @@
 /**
- * @edgequake/sdk — TypeScript SDK for the EdgeQuake RAG API.
+ * edgequake-sdk — TypeScript SDK for the EdgeQuake RAG API.
  *
  * @example
  * ```ts
- * import { EdgeQuake } from "@edgequake/sdk";
+ * import { EdgeQuake } from "edgequake-sdk";
  *
  * const client = new EdgeQuake({ apiKey: "eq-key-xxx" });
  * const health = await client.health();
  * ```
  *
- * @module @edgequake/sdk
+ * @module edgequake-sdk
  */
 
 // Client

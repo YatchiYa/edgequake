@@ -7,7 +7,7 @@
  * Usage:
  *   npx tsx examples/query_demo.ts
  */
-import { EdgeQuake } from "@edgequake/sdk";
+import { EdgeQuake } from "edgequake-sdk";
 
 async function main() {
   const client = new EdgeQuake({
@@ -30,7 +30,7 @@ async function main() {
   const hybrid = await client.query.execute({
     query: "How do knowledge graphs improve RAG?",
     mode: "hybrid",
-    top_k: 10,
+    max_results: 10,
   });
   console.log("\nHybrid query answer:", hybrid.answer);
 

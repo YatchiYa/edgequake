@@ -222,24 +222,25 @@ print(status["status"])  # "processing", "completed", "failed"
 
 ## Query
 
-### `client.query.execute(query, mode="hybrid", top_k=10, **kwargs)`
+### `client.query.execute(query, mode=None, max_results=None, **kwargs)`
 
 Execute a RAG query against the knowledge base.
 
 ```python
 result = client.query.execute(
     query="What are knowledge graphs?",
-    mode="hybrid",
-    top_k=5
+    mode="mix",
+    max_results=5,
 )
-print(result["answer"])
+print(result.answer)
 ```
 
 **Parameters:**
 
 - `query` (str): Natural language query
-- `mode` (str, optional): Retrieval mode (`"simple"`, `"hybrid"`, `"local"`, `"global"`)
-- `top_k` (int, optional): Number of results to retrieve (default: 10)
+- `mode` (str, optional): Retrieval mode (`"naive"`, `"local"`, `"global"`, `"hybrid"`, `"mix"`, `"bypass"`). Omit it to use the server default (`mix`).
+- `max_results` (int, optional): Maximum number of results. `top_k` is an alias.
+- `enable_rerank` (bool, optional): Rerank retrieved chunks. `rerank` is an alias. Omit it to use the server default.
 
 **Returns:** Dictionary with:
 
@@ -249,7 +250,7 @@ print(result["answer"])
 
 ---
 
-### `client.query.stream(query, mode="hybrid", **kwargs)`
+### `client.query.stream(query, mode=None, **kwargs)`
 
 Execute a streaming query (returns tokens incrementally).
 

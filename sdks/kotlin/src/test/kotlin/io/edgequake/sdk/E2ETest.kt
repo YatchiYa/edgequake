@@ -25,7 +25,8 @@ class E2ETest {
         @JvmStatic
         @BeforeAll
         fun setup() {
-            val baseUrl = System.getenv("EDGEQUAKE_BASE_URL") ?: "http://localhost:8080"
+            val baseUrl = System.getenv("EDGEQUAKE_E2E_URL")
+            Assumptions.assumeTrue(!baseUrl.isNullOrBlank(), "EDGEQUAKE_E2E_URL not set")
             // WHY: Default tenant/user UUIDs match migration-created defaults,
             // so conversations/folders tests work without env vars.
             client = EdgeQuakeClient(
@@ -288,5 +289,22 @@ class E2ETest {
         val costs = client.costs.summary()
         assertNotNull(costs.totalCost)
         println("Costs: total=${costs.totalCost} documents=${costs.documentCount} queries=${costs.queryCount}")
+    }
+
+    @Test @Order(21)
+    fun sharedLiveScenario() {
+        assertEquals("healthy", client.health.check().status)
+        assertTrue(client.operations.setupStatus().contains("needs_setup"))
+        val socket = client.operations.wsPipelineProgress()
+        assertTrue(socket.startsWith("ws") && socket.endsWith("/ws/pipeline/progress"), socket)
+        val listed = client.documents.list(1, 5)
+        listed.documents?.firstOrNull()?.displayStatus
+        val uploaded = client.documents.uploadText("Kotlin live", "Shared SDK live scenario.")
+        assertNotNull(uploaded.documentId)
+        assertNotNull(client.graph.get())
+        assertNotNull(client.entities.list(1, 5))
+        assertNotNull(client.query.execute("What is a knowledge graph?", maxResults = 3))
+        assertNotNull(client.connections.list())
+        assertNotNull(client.chat.completions(ChatCompletionRequest(message = "ping", topK = 2)))
     }
 }

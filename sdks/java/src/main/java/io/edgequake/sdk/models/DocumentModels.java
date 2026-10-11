@@ -1,5 +1,6 @@
 package io.edgequake.sdk.models;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +19,8 @@ public class DocumentModels {
         @JsonProperty("chunk_count") public Integer chunkCount;
         @JsonProperty("created_at") public String createdAt;
         @JsonProperty("updated_at") public String updatedAt;
+        @JsonProperty("display_status") public String displayStatus;
+        @JsonProperty("ui_phase") public String uiPhase;
     }
 
     public static class UploadResponse {
@@ -33,12 +36,19 @@ public class DocumentModels {
 
     public static class ListDocumentsResponse {
         @JsonProperty("documents") public List<Document> documents;
+        @JsonProperty("total") public int total;
+        @JsonProperty("page") public int page;
+        @JsonProperty("page_size") public int pageSize;
+        @JsonProperty("total_pages") public int totalPages;
+        @JsonProperty("has_more") public boolean hasMore;
         @JsonProperty("pagination") public PaginationInfo pagination;
     }
 
     public static class PaginationInfo {
         @JsonProperty("page") public int page;
-        @JsonProperty("per_page") public int perPage;
+        @JsonProperty("page_size")
+        @JsonAlias("per_page")
+        public int perPage;
         @JsonProperty("total") public int total;
         @JsonProperty("total_pages") public int totalPages;
     }

@@ -27,6 +27,9 @@ pub struct CreateWorkspaceRequest {
     pub vision_llm_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_llm_provider: Option<String>,
+    /// Role map. A role object may set `connection_id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_roles: Option<serde_json::Value>,
 }
 
 /// Workspace summary.
@@ -61,6 +64,8 @@ pub struct WorkspaceInfo {
     pub vision_llm_model: Option<String>,
     #[serde(default)]
     pub vision_llm_provider: Option<String>,
+    #[serde(default)]
+    pub llm_roles: Option<serde_json::Value>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]

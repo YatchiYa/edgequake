@@ -340,3 +340,35 @@ class TestCleanup:
         except Exception:
             # Expected — document was deleted
             pass
+
+
+class TestSharedLiveScenario:
+    """One shape shared by every SDK live suite."""
+
+    def test_shared_surface(self, tenant_client):
+        client = tenant_client
+        health = client.health()
+        assert health.status == "healthy"
+        setup = client.operations.setup_status()
+        assert "needs_setup" in setup
+        socket = client.operations.ws_pipeline_progress()
+        assert socket.startswith("ws") and socket.endswith("/ws/pipeline/progress")
+        listed = client.documents.list(page=1, page_size=5)
+        assert listed.documents is not None
+        for item in listed.documents:
+            _ = item.display_status
+        uploaded = client.documents.upload(
+            content="Shared SDK live scenario.",
+            title=f"shared-live-{uuid.uuid4().hex[:8]}",
+        )
+        assert uploaded.document_id
+        graph = client.graph.get()
+        assert graph is not None
+        entities = client.entities.list(page=1, page_size=5)
+        assert entities is not None
+        answer = client.query.execute("What is a knowledge graph?", max_results=3)
+        assert answer is not None
+        connections = client.connections.list()
+        assert connections is not None
+        chat = client.chat.complete("ping", top_k=2)
+        assert chat is not None

@@ -29,7 +29,7 @@ public class UserService {
 
     /** Update user. */
     public UserInfo update(String id, Map<String, Object> data) {
-        return http.put("/api/v1/users/" + id, data, UserInfo.class);
+        return http.patch("/api/v1/users/" + id, data, UserInfo.class);
     }
 
     /** Delete user. */

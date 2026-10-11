@@ -5,6 +5,7 @@ package edgequake_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,10 +13,18 @@ import (
 )
 
 func e2eBaseURL() string {
-	if u := os.Getenv("EDGEQUAKE_BASE_URL"); u != "" {
-		return u
+	return os.Getenv("EDGEQUAKE_E2E_URL")
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(m.Run())
+}
+
+func skipWithoutServer(t *testing.T) {
+	t.Helper()
+	if e2eBaseURL() == "" {
+		t.Skip("EDGEQUAKE_E2E_URL not set")
 	}
-	return "http://localhost:8080"
 }
 
 func e2eClient() *edgequake.Client {
@@ -46,6 +55,7 @@ func e2eClient() *edgequake.Client {
 }
 
 func TestE2E_Health(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	h, err := c.Health.Check(ctx)
@@ -63,6 +73,7 @@ func TestE2E_Health(t *testing.T) {
 }
 
 func TestE2E_Documents_ListAndUpload(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 
@@ -100,6 +111,7 @@ func TestE2E_Documents_ListAndUpload(t *testing.T) {
 }
 
 func TestE2E_Graph_Get(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	g, err := c.Graph.Get(ctx, 10)
@@ -110,6 +122,7 @@ func TestE2E_Graph_Get(t *testing.T) {
 }
 
 func TestE2E_Graph_Search(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	results, err := c.Graph.Search(ctx, "test", 5)
@@ -120,6 +133,7 @@ func TestE2E_Graph_Search(t *testing.T) {
 }
 
 func TestE2E_Entities_ListAndCreate(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 
@@ -170,6 +184,7 @@ func TestE2E_Entities_ListAndCreate(t *testing.T) {
 }
 
 func TestE2E_Relationships_List(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	resp, err := c.Relationships.List(ctx, 1, 10)
@@ -180,6 +195,7 @@ func TestE2E_Relationships_List(t *testing.T) {
 }
 
 func TestE2E_Query_Execute(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	resp, err := c.Query.Execute(ctx, &edgequake.QueryRequest{
@@ -195,6 +211,7 @@ func TestE2E_Query_Execute(t *testing.T) {
 }
 
 func TestE2E_Chat_Completions(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	// WHY: EdgeQuake chat API uses `message` (singular string), not messages array
@@ -214,6 +231,7 @@ func TestE2E_Chat_Completions(t *testing.T) {
 }
 
 func TestE2E_Conversations_CRUD(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 
@@ -255,6 +273,7 @@ func TestE2E_Conversations_CRUD(t *testing.T) {
 }
 
 func TestE2E_Folders_CRUD(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 
@@ -279,6 +298,7 @@ func TestE2E_Folders_CRUD(t *testing.T) {
 }
 
 func TestE2E_Tasks_List(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	tasks, err := c.Tasks.List(ctx, "", 1, 10)
@@ -289,6 +309,7 @@ func TestE2E_Tasks_List(t *testing.T) {
 }
 
 func TestE2E_Pipeline_Status(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	status, err := c.Pipeline.Status(ctx)
@@ -300,6 +321,7 @@ func TestE2E_Pipeline_Status(t *testing.T) {
 }
 
 func TestE2E_Pipeline_Metrics(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	metrics, err := c.Pipeline.Metrics(ctx)
@@ -311,6 +333,7 @@ func TestE2E_Pipeline_Metrics(t *testing.T) {
 }
 
 func TestE2E_Costs_Summary(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	summary, err := c.Costs.Summary(ctx)
@@ -322,6 +345,7 @@ func TestE2E_Costs_Summary(t *testing.T) {
 }
 
 func TestE2E_Costs_Budget(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	budget, err := c.Costs.Budget(ctx)
@@ -332,6 +356,7 @@ func TestE2E_Costs_Budget(t *testing.T) {
 }
 
 func TestE2E_Models_List(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	catalog, err := c.Models.List(ctx)
@@ -346,6 +371,7 @@ func TestE2E_Models_List(t *testing.T) {
 }
 
 func TestE2E_Models_ProviderStatus(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	status, err := c.Models.ProviderStatus(ctx)
@@ -357,6 +383,7 @@ func TestE2E_Models_ProviderStatus(t *testing.T) {
 }
 
 func TestE2E_Models_ProviderHealth(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	providers, err := c.Models.ProviderHealth(ctx)
@@ -367,6 +394,7 @@ func TestE2E_Models_ProviderHealth(t *testing.T) {
 }
 
 func TestE2E_Tenants_List(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	resp, err := c.Tenants.List(ctx)
@@ -380,6 +408,7 @@ func TestE2E_Tenants_List(t *testing.T) {
 }
 
 func TestE2E_Users_List(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	resp, err := c.Users.List(ctx)
@@ -390,6 +419,7 @@ func TestE2E_Users_List(t *testing.T) {
 }
 
 func TestE2E_APIKeys_List(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	resp, err := c.APIKeys.List(ctx)
@@ -400,6 +430,7 @@ func TestE2E_APIKeys_List(t *testing.T) {
 }
 
 func TestE2E_Lineage_ForEntity(t *testing.T) {
+	skipWithoutServer(t)
 	c := e2eClient()
 	ctx := context.Background()
 	graph, err := c.Lineage.ForEntity(ctx, "EDGEQUAKE", 2)
@@ -415,4 +446,61 @@ func truncStr(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+func TestE2E_SharedLiveScenario(t *testing.T) {
+	skipWithoutServer(t)
+	c := e2eClient()
+	ctx := context.Background()
+	health, err := c.Health.Check(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if health.Status != "healthy" {
+		t.Fatalf("status %s", health.Status)
+	}
+	setup, err := c.Operations.SetupStatus(ctx, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(setup, "needs_setup") {
+		t.Fatal(setup)
+	}
+	socket := c.Operations.WsPipelineProgress()
+	if !strings.HasPrefix(socket, "ws") || !strings.HasSuffix(socket, "/ws/pipeline/progress") {
+		t.Fatal(socket)
+	}
+	listed, err := c.Documents.List(ctx, 1, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range listed.Documents {
+		_ = item.DisplayStatus
+	}
+	uploaded, err := c.Documents.UploadText(ctx, map[string]interface{}{
+		"title": "shared-live", "content": "Shared SDK live scenario.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploaded.ID == "" {
+		t.Fatal("missing document id")
+	}
+	if _, err := c.Graph.Get(ctx, 50); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Entities.List(ctx, 1, 5, ""); err != nil {
+		t.Fatal(err)
+	}
+	maxResults := 3
+	if _, err := c.Query.Execute(ctx, &edgequake.QueryRequest{Query: "What is a knowledge graph?", TopK: &maxResults}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Connections.List(ctx); err != nil {
+		t.Fatal(err)
+	}
+	topK := 2
+	if _, err := c.Chat.Completions(ctx, &edgequake.ChatCompletionRequest{Message: "ping", TopK: &topK}); err != nil {
+		t.Fatal(err)
+	}
 }

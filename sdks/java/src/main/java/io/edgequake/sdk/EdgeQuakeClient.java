@@ -45,6 +45,8 @@ public class EdgeQuakeClient {
     private final PdfService pdfService;
     private final CostService costService;
     private final LineageService lineageService;
+    private final ConnectionService connectionService;
+    private final OperationsGenerated operationsGenerated;
 
     public EdgeQuakeClient(EdgeQuakeConfig config) {
         this.http = new HttpHelper(config);
@@ -68,6 +70,8 @@ public class EdgeQuakeClient {
         this.pdfService = new PdfService(http);
         this.costService = new CostService(http);
         this.lineageService = new LineageService(http);
+        this.connectionService = new ConnectionService(http);
+        this.operationsGenerated = new OperationsGenerated(http);
     }
 
     // ── Service accessors ────────────────────────────────────────────
@@ -92,4 +96,6 @@ public class EdgeQuakeClient {
     public PdfService pdf() { return pdfService; }
     public CostService costs() { return costService; }
     public LineageService lineage() { return lineageService; }
+    public ConnectionService connections() { return connectionService; }
+    public OperationsGenerated operations() { return operationsGenerated; }
 }

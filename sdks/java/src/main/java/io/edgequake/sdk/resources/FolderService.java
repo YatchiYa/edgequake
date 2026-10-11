@@ -22,10 +22,6 @@ public class FolderService {
                 new TypeReference<List<FolderInfo>>() {});
     }
 
-    public FolderInfo get(String id) {
-        return http.get("/api/v1/folders/" + id, null, FolderInfo.class);
-    }
-
     public void delete(String id) {
         http.delete("/api/v1/folders/" + id);
     }

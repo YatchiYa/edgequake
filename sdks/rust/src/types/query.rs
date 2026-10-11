@@ -4,15 +4,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Query mode.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum QueryMode {
-    #[default]
     Hybrid,
     Local,
     Global,
     Naive,
+    #[default]
     Mix,
+    Bypass,
 }
 
 /// Query request.
@@ -21,8 +22,11 @@ pub struct QueryRequest {
     pub query: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<QueryMode>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Serialized as `max_results`. The server ignores a `top_k` key on `/api/v1/query`.
+    #[serde(rename = "max_results", skip_serializing_if = "Option::is_none")]
     pub top_k: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_rerank: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -139,4 +143,35 @@ pub struct QueryStreamStats {
     pub tokens_per_second: Option<f32>,
     #[serde(default)]
     pub query_mode: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn query_request_serializes_server_fields() {
+        let req = QueryRequest {
+            query: "q".into(),
+            mode: Some(QueryMode::Bypass),
+            top_k: Some(5),
+            enable_rerank: Some(false),
+            ..Default::default()
+        };
+        let value = serde_json::to_value(&req).unwrap();
+        assert_eq!(value["max_results"], 5);
+        assert!(value.get("top_k").is_none());
+        assert_eq!(value["enable_rerank"], false);
+        assert_eq!(value["mode"], "bypass");
+        assert_eq!(QueryMode::default(), QueryMode::Mix);
+
+        let omitted = QueryRequest {
+            query: "q".into(),
+            ..Default::default()
+        };
+        let bare = serde_json::to_value(&omitted).unwrap();
+        assert!(bare.get("mode").is_none());
+        assert!(bare.get("max_results").is_none());
+        assert!(bare.get("enable_rerank").is_none());
+    }
 }

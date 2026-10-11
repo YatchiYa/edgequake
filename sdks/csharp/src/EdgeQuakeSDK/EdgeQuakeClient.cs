@@ -30,6 +30,8 @@ public class EdgeQuakeClient
     public SharedService Shared { get; }
     public AdminService Admin { get; }
     public EffectiveConfigService EffectiveConfig { get; }
+    public ConnectionService Connections { get; }
+    public OperationsGenerated Operations { get; }
 
     public EdgeQuakeClient(EdgeQuakeConfig? config = null)
     {
@@ -58,5 +60,7 @@ public class EdgeQuakeClient
         Shared = new SharedService(http);
         Admin = new AdminService(http);
         EffectiveConfig = new EffectiveConfigService(http);
+        Connections = new ConnectionService(http);
+        Operations = new OperationsGenerated(http);
     }
 }

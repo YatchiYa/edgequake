@@ -81,6 +81,14 @@ from edgequake.resources.operations import (
     TasksResource,
     WorkspacesResource,
 )
+from edgequake.resources.connections import (
+    AsyncConnectionsResource,
+    ConnectionsResource,
+)
+from edgequake.resources.operations_generated import (
+    AsyncOperationsResource,
+    OperationsResource,
+)
 from edgequake.resources.query import AsyncQueryResource, QueryResource
 from edgequake.types.shared import HealthResponse
 
@@ -97,7 +105,8 @@ class EdgeQuake:
         client.auth, client.users, client.api_keys, client.tenants,
         client.workspaces, client.conversations, client.folders,
         client.tasks, client.pipeline, client.costs, client.lineage,
-        client.chunks, client.provenance, client.settings, client.models
+        client.chunks, client.provenance, client.settings, client.models,
+        client.connections
 
     Args:
         base_url: EdgeQuake API server URL (default: http://localhost:8080)
@@ -255,6 +264,16 @@ class EdgeQuake:
         return ModelsResource(self._transport)
 
     @cached_property
+    def connections(self) -> ConnectionsResource:
+        """Saved LLM provider connections and provider probes."""
+        return ConnectionsResource(self._transport)
+
+    @cached_property
+    def operations(self) -> OperationsResource:
+        """OpenAPI operations that the typed resources do not already wrap."""
+        return OperationsResource(self._transport)
+
+    @cached_property
     def admin(self) -> AdminResource:
         """Admin — tenant quotas and server defaults."""
         return AdminResource(self._transport)
@@ -318,7 +337,8 @@ class AsyncEdgeQuake:
         client.auth, client.users, client.api_keys, client.tenants,
         client.workspaces, client.conversations, client.folders,
         client.tasks, client.pipeline, client.costs, client.lineage,
-        client.chunks, client.provenance, client.settings, client.models
+        client.chunks, client.provenance, client.settings, client.models,
+        client.connections
 
     Args:
         Same as EdgeQuake.
@@ -466,6 +486,16 @@ class AsyncEdgeQuake:
     def models(self) -> AsyncModelsResource:
         """Model management — list, health, provider details."""
         return AsyncModelsResource(self._transport)
+
+    @cached_property
+    def connections(self) -> AsyncConnectionsResource:
+        """Saved LLM provider connections and provider probes."""
+        return AsyncConnectionsResource(self._transport)
+
+    @cached_property
+    def operations(self) -> AsyncOperationsResource:
+        """OpenAPI operations that the typed resources do not already wrap."""
+        return AsyncOperationsResource(self._transport)
 
     @cached_property
     def admin(self) -> AsyncAdminResource:

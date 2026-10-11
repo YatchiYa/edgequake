@@ -1,11 +1,11 @@
-# Authentication Guide — @edgequake/sdk
+# Authentication Guide — edgequake-sdk
 
 ## API Key Authentication
 
 The simplest way to authenticate. Recommended for server-side applications.
 
 ```typescript
-import { EdgeQuake } from "@edgequake/sdk";
+import { EdgeQuake } from "edgequake-sdk";
 
 const client = new EdgeQuake({
   baseUrl: "http://localhost:8080",
@@ -60,8 +60,8 @@ const client = new EdgeQuake({
 Add custom auth logic via middleware:
 
 ```typescript
-import { EdgeQuake } from "@edgequake/sdk";
-import type { Middleware } from "@edgequake/sdk";
+import { EdgeQuake } from "edgequake-sdk";
+import type { Middleware } from "edgequake-sdk";
 
 const customAuth: Middleware = async (req, next) => {
   req.headers = {

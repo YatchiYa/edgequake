@@ -1,5 +1,6 @@
 package io.edgequake.sdk.internal;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,7 +36,8 @@ public class HttpHelper {
     public HttpHelper(EdgeQuakeConfig config) {
         this.config = config;
         this.mapper = new ObjectMapper()
-                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+                .setSerializationInclusion(JsonInclude.Include.NON_NULL);
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(config.timeoutSeconds()))
                 .build();
@@ -74,6 +76,29 @@ public class HttpHelper {
     // OODA-40: Add postRaw for raw string responses (e.g., streaming).
     public String postRaw(String path, Object payload) {
         return doRequest(buildPost(url(path, null), serialize(payload)));
+    }
+
+    /** Any verb, raw response body. Path may already include a query string. */
+    public String exchange(String method, String path, Object body) {
+        var url = path.startsWith("http") ? path : config.baseUrl() + path;
+        var json = body == null ? null : serialize(body);
+        HttpRequest request = switch (method) {
+            case "GET", "HEAD" -> baseRequest(url).method(method, HttpRequest.BodyPublishers.noBody()).build();
+            case "DELETE" -> baseRequest(url).DELETE().build();
+            case "POST" -> buildPost(url, json);
+            case "PUT" -> buildPut(url, json);
+            case "PATCH" -> buildPatch(url, json);
+            default -> baseRequest(url).method(method, HttpRequest.BodyPublishers.ofString(json != null ? json : "")).build();
+        };
+        return doRequest(request);
+    }
+
+    /** WebSocket URL for a path such as /ws/pipeline/progress. */
+    public String websocketUrl(String path) {
+        var root = config.baseUrl().replaceAll("/+$", "");
+        if (root.startsWith("https://")) root = "wss://" + root.substring("https://".length());
+        else if (root.startsWith("http://")) root = "ws://" + root.substring("http://".length());
+        return root + path;
     }
 
     // ── DELETE ───────────────────────────────────────────────────────────

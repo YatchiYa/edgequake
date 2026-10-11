@@ -7,6 +7,13 @@ description: Use the EdgeQuake Go client from the monorepo module github.com/edg
 
 The Go client lives in `sdks/go` and uses the module path `github.com/edgequake/edgequake-go` with Go 1.21+. The module is **not on the public Go module proxy**, so `go get github.com/edgequake/edgequake-go` fails. Install it from a local checkout with a `replace` directive.
 
+Typed services are the preferred API. `client.Operations` calls every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
+
+```bash
+cd sdks/go && go test -count=1 -run TestOperationsManifestPathAndVerb .
+EDGEQUAKE_E2E_URL=http://localhost:8080 go test -tags e2e -count=1 .
+```
+
 ## Install from a checkout
 
 ```bash
@@ -65,8 +72,7 @@ func main() {
 
 | Issue | Effect | Workaround |
 |-------|--------|------------|
-| List calls send `per_page` | `Documents.List`, entity, relationship and task lists. The server reads `page_size`, so the page size is ignored. | Call the REST route directly, or patch the query parameter in `sdks/go/services.go` |
 | No registry release | Nothing to pin in `go.sum` | Use the local `replace` above |
-| Connections not wrapped | No Go method for `/api/v1/connections` | Use raw HTTP ([Connections](../../api-reference/connections.md)) |
+| Query field name | `QueryRequest.TopK` serializes as `max_results` | Set `TopK` when you want a result cap |
 
 Overview of all clients: [SDK overview](../README.md). Gap list: [Brutal assessment](../BRUTAL-ASSESSMENT.md).

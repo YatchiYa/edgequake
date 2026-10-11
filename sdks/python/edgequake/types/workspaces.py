@@ -86,6 +86,7 @@ class WorkspaceCreate(BaseModel):
     # Vision LLM for PDF image extraction (SPEC-041). Inherits from tenant if not set.
     vision_llm_model: str | None = None
     vision_llm_provider: str | None = None
+    llm_roles: dict[str, Any] | None = None
 
 
 class WorkspaceUpdate(BaseModel):
@@ -100,6 +101,7 @@ class WorkspaceUpdate(BaseModel):
     embedding_dimension: int | None = None
     vision_llm_model: str | None = None
     vision_llm_provider: str | None = None
+    llm_roles: dict[str, Any] | None = None
 
 
 class WorkspaceInfo(BaseModel):
@@ -123,6 +125,7 @@ class WorkspaceInfo(BaseModel):
     # Vision LLM (SPEC-041) – only present when configured or inherited from tenant.
     vision_llm_model: str | None = None
     vision_llm_provider: str | None = None
+    llm_roles: dict[str, Any] | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
