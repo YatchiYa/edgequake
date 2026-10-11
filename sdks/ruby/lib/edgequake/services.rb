@@ -10,7 +10,7 @@ module EdgeQuake
 
     private
 
-    def encode(value) = URI.encode_www_form_component(value.to_s)
+    def encode(value) = URI.encode_www_form_component(value.to_s).gsub("+", "%20")
     def query(values) = URI.encode_www_form(values.reject { |_, value| value.nil? })
   end
 

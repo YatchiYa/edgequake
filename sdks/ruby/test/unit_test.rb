@@ -1260,7 +1260,7 @@ module EdgeQuake
       mock = MockHttpHelper.new('{"entity_name":"HELLO WORLD"}')
       svc = LineageService.new(mock)
       svc.entity_lineage(name: "HELLO WORLD")
-      assert_equal "/api/v1/lineage/entities/HELLO+WORLD", mock.last_call[:path]
+      assert_equal "/api/v1/lineage/entities/HELLO%20WORLD", mock.last_call[:path]
     end
 
     def test_entity_lineage_special_chars
