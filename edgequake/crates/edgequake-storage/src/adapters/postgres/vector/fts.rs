@@ -145,6 +145,33 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS: &str = r#"
             LIMIT $8
             "#;
 
+/// `$6 IS NULL OR modality = ANY($6)` hides the modality predicate from a
+/// generic plan. Chart search then scores every chunk that matches the words
+/// and throws away the other modalities. When the caller passes modalities,
+/// the statement requires `metadata->>'modality' = ANY($6)` so
+/// `idx_chunks_modality` can start at those rows.
+const MODALITY_PREDICATE_OPTIONAL: &str =
+    "AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))";
+const MODALITY_PREDICATE_REQUIRED: &str = "AND c.metadata->>'modality' = ANY($6)";
+
+pub(crate) fn typed_chunks_fts_sql(
+    in_workspace: bool,
+    in_documents: bool,
+    modality_required: bool,
+) -> String {
+    let base = match (in_workspace, in_documents) {
+        (true, true) => TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE_AND_DOCUMENTS,
+        (true, false) => TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE,
+        (false, true) => TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS,
+        (false, false) => TYPED_CHUNKS_FTS_SQL,
+    };
+    if modality_required {
+        base.replacen(MODALITY_PREDICATE_OPTIONAL, MODALITY_PREDICATE_REQUIRED, 1)
+    } else {
+        base.to_string()
+    }
+}
+
 /// Workspace and document are both required. Same document index start as
 /// [`TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS`], plus the workspace bitmap predicate.
 pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE_AND_DOCUMENTS: &str = r#"
@@ -246,13 +273,12 @@ impl PgVectorStorage {
             .filter(|ids| !ids.is_empty())
             .map(|ids| ids.to_vec());
 
-        let sql = match (workspace_uuid.is_some(), document_ids.is_some()) {
-            (true, true) => TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE_AND_DOCUMENTS,
-            (true, false) => TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE,
-            (false, true) => TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS,
-            (false, false) => TYPED_CHUNKS_FTS_SQL,
-        };
-        let rows = sqlx::query(sql)
+        let sql = typed_chunks_fts_sql(
+            workspace_uuid.is_some(),
+            document_ids.is_some(),
+            modalities.is_some(),
+        );
+        let rows = sqlx::query(&sql)
             .bind(query_text)
             .bind(workspace_uuid)
             .bind(workspace_text)
@@ -424,6 +450,12 @@ mod tests {
             assert!(sql.contains("c.document_id = ANY($4)"));
             assert!(!sql.contains("$4::uuid[] IS NULL"));
         }
+        let chart = typed_chunks_fts_sql(true, false, true);
+        assert!(chart.contains(MODALITY_PREDICATE_REQUIRED));
+        assert!(!chart.contains("$6::text[] IS NULL"));
+        assert!(chart.contains("c.workspace_id = $2 OR c.workspace_id IS NULL"));
+        let open = typed_chunks_fts_sql(false, false, false);
+        assert!(open.contains(MODALITY_PREDICATE_OPTIONAL));
     }
 
     #[test]

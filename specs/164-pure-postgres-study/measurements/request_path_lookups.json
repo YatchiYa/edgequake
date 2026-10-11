@@ -375,6 +375,13 @@
       "before_plan": "Generic plan. User title GIN bitmap, then filter is_archived. Rows removed 9950, 464 buffers",
       "after_ms": 0.158,
       "after_plan": "Generic plan. Bitmap of idx_conversations_tenant_user_flags_title_fts on is_archived, 50 rows, 25 buffers. Same index as pinned search"
+    },
+    {
+      "name": "workspace chunk search limited to chart modality, 2000 term matches and 20 chart rows",
+      "before_ms": 2.908,
+      "before_plan": "Generic plan. Content GIN bitmap of 10060 entries, then filter modality. Rows removed 1980, 621 buffers",
+      "after_ms": 0.225,
+      "after_plan": "Generic plan. Index scan of idx_chunks_modality for the required modality predicate, 20 rows, 87 buffers"
     }
   ]
 }
