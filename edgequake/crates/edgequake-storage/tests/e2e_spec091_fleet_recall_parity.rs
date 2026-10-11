@@ -118,3 +118,115 @@ async fn e2e_spec091_fleet_recall_parity_entity_typed_vs_exact() {
 
     w3::cleanup_workspace(&pool, ws).await;
 }
+
+#[tokio::test]
+async fn e2e_spec091_fleet_entity_search_by_id_and_document() {
+    let Some(cfg) = require_or_skip_postgres("spec091_iw2_fleet_id") else {
+        return;
+    };
+    let _g = w3::w3_lock().lock().await;
+    let pool = contract_pg_pool(&cfg).await;
+    let ws = w3::seed_workspace(&pool, "fleet-id").await;
+    let tenant = w3::workspace_tenant(&pool, ws).await;
+    let doc_a = Uuid::new_v4();
+    let doc_b = Uuid::new_v4();
+    let index = edgequake_storage::PgFleetEmbeddingIndex::new(pool.clone(), "iw2-id-model");
+
+    let mut ids = Vec::new();
+    for (i, doc) in [(0u32, doc_a), (1, doc_b)] {
+        let name = format!("FLEET_ID_{i}");
+        let eid: Uuid = sqlx::query_scalar(
+            "INSERT INTO entities (name, entity_type, workspace_id, tenant_id, source_ids) \
+             VALUES ($1, 'concept', $2, $3, $4) RETURNING id",
+        )
+        .bind(&name)
+        .bind(ws)
+        .bind(tenant)
+        .bind(vec![doc])
+        .fetch_one(&pool)
+        .await
+        .expect("seed entity");
+        ids.push((eid, name));
+    }
+    let rows: Vec<FleetEmbeddingRow> = ids
+        .iter()
+        .enumerate()
+        .map(|(i, (eid, name))| FleetEmbeddingRow {
+            key: FleetEmbeddingKey::Entity(*eid),
+            workspace_id: WorkspaceId::new(ws),
+            dimensions: 768,
+            embedding: w3::make_embedding(768, 40 + i as u32),
+            legacy_vector_id: Some(format!("entity:{name}")),
+        })
+        .collect();
+    index
+        .upsert_batch(EmbeddingFamily::Entity, ModelId(Uuid::nil()), &rows)
+        .await
+        .expect("upsert");
+
+    let base = VectorQuery {
+        model_id: ModelId(Uuid::nil()),
+        model_revision: "test-current".into(),
+        workspace_id: Some(WorkspaceId::new(ws)),
+        document_ids: None,
+        tenant_id: None,
+        modalities: None,
+        filter_ids: None,
+        vector_type: Some("entity".into()),
+        embedding: w3::make_embedding(768, 40),
+        limit: 5,
+    };
+    let by_uuid = index
+        .search(
+            EmbeddingFamily::Entity,
+            &VectorQuery {
+                filter_ids: Some(vec![ids[0].0.to_string()]),
+                ..base.clone()
+            },
+        )
+        .await
+        .expect("uuid search");
+    assert_eq!(by_uuid.len(), 1);
+    assert_eq!(by_uuid[0].legacy_id, format!("entity:{}", ids[0].1));
+
+    let by_name = index
+        .search(
+            EmbeddingFamily::Entity,
+            &VectorQuery {
+                filter_ids: Some(vec![format!("entity:{}", ids[1].1)]),
+                ..base.clone()
+            },
+        )
+        .await
+        .expect("name search");
+    assert_eq!(by_name.len(), 1);
+    assert_eq!(by_name[0].legacy_id, format!("entity:{}", ids[1].1));
+
+    let by_document = index
+        .search(
+            EmbeddingFamily::Entity,
+            &VectorQuery {
+                document_ids: Some(vec![doc_a]),
+                ..base.clone()
+            },
+        )
+        .await
+        .expect("document search");
+    assert_eq!(by_document.len(), 1);
+    assert_eq!(by_document[0].legacy_id, format!("entity:{}", ids[0].1));
+
+    let excluded = index
+        .search(
+            EmbeddingFamily::Entity,
+            &VectorQuery {
+                document_ids: Some(vec![doc_a]),
+                filter_ids: Some(vec![ids[1].0.to_string()]),
+                ..base
+            },
+        )
+        .await
+        .expect("id outside the document");
+    assert!(excluded.is_empty());
+
+    w3::cleanup_workspace(&pool, ws).await;
+}

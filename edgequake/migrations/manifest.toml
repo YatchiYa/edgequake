@@ -4,7 +4,7 @@
 
 schema_version = 1
 compat_serve_min = 149
-compat_serve_max = 194
+compat_serve_max = 195
 irreversible_drop = [125, 126, 131, 171]
 legacy_cutover_assert = 142
 
@@ -1409,6 +1409,13 @@ lock_class = "ddl_access_exclusive"
 [[migration]]
 version = 194
 file = "194_task_claim_runnable_indexes.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 195
+file = "195_entity_source_ids_gin.sql"
 phase = "expand"
 no_transaction = false
 lock_class = "ddl_access_exclusive"

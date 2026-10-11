@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 194, "HEAD schema train must end at 194");
-    for v in 160..=194 {
+    assert_eq!(max, 195, "HEAD schema train must end at 195");
+    for v in 160..=195 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "194");
+    assert_eq!(digits, "195");
 }
 
 #[test]
@@ -271,6 +271,27 @@ fn migration_194_indexes_runnable_task_claims() {
     assert!(tasks.contains("JOIN LATERAL"));
     assert!(!tasks.contains("fairness_hold_until IS NULL OR fairness_hold_until"));
     assert!(!tasks.contains("lease_expires_at IS NULL OR lease_expires_at"));
+}
+
+#[test]
+fn migration_195_indexes_entity_source_ids() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v195 = manifest
+        .split("version = 195")
+        .nth(1)
+        .expect("migration 195");
+    assert!(v195.contains("phase = \"expand\""));
+    assert!(!v195.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/195_entity_source_ids_gin.sql");
+    assert!(sql.contains("idx_entities_source_ids"));
+    assert!(sql.contains("USING gin (source_ids)"));
+    let fleet =
+        include_str!("../../edgequake-storage/src/adapters/postgres/fleet_embedding_index.rs");
+    assert!(fleet.contains("entity_search_sql_in_ids"));
+    assert!(fleet.contains("OFFSET 0"));
+    assert!(fleet.contains("e.name = wanted.name"));
+    assert!(fleet.contains("ENTITY_SOURCE_REQUIRED"));
+    assert!(!fleet.contains("e.id::text = ANY($7)"));
 }
 
 #[test]
@@ -593,8 +614,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=194 => \"v0.35.0\""),
-        "release_for_schema must map 170–194 to v0.35.0"
+        src.contains("170..=195 => \"v0.35.0\""),
+        "release_for_schema must map 170–195 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

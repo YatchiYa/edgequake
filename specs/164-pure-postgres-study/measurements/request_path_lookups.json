@@ -508,6 +508,20 @@
       "before_plan": "Generic plan. Same optional statement as the document filter: parallel seq scan, 20000 rows removed per worker, 2760 buffers. The custom plan already uses idx_chunks_modality (0.186 ms, 82 buffers)",
       "after_ms": 0.478,
       "after_plan": "Generic plan. Index scan of idx_chunks_modality, 20 rows, 85 buffers. No new index"
+    },
+    {
+      "name": "entity ANN filtered by one id, 40000 embeddings",
+      "before_ms": 9.778,
+      "before_plan": "Custom plan. Parallel seq scan of entities, filter id::text = ANY OR entity:name. Rows removed 20000 per worker, 1494 buffers",
+      "after_ms": 0.076,
+      "after_plan": "Custom plan. Index only scan of entities_pkey, then entity_embeddings_pkey. 1 row, 10 buffers. A legacy entity:name uses idx_entities_name (0.061 ms, 8 buffers). No new index"
+    },
+    {
+      "name": "entity ANN for one document, 20 entities carry it and 39980 do not",
+      "before_ms": 7.363,
+      "before_plan": "Generic plan. Parallel seq scan, filter the optional source_ids overlap. Rows removed 19990 per worker, 1721 buffers. Requiring the predicate without an index still seq-scans (6.850 ms)",
+      "after_ms": 0.279,
+      "after_plan": "Generic plan. Bitmap index scan of idx_entities_source_ids, 20 rows, 83 buffers. Custom plan is 0.103 ms on the same index"
     }
   ]
 }

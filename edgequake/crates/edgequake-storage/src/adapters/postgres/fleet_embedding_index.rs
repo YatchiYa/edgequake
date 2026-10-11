@@ -85,6 +85,85 @@ impl PgFleetEmbeddingIndex {
         s.push(']');
         s
     }
+
+    /// `$4 IS NULL OR source_ids && $4` hides the document from a generic plan.
+    /// When the caller passes documents, the statement requires the overlap so
+    /// `idx_entities_source_ids` can start at those entities.
+    const ENTITY_SOURCE_OPTIONAL: &'static str = "AND ($4::uuid[] IS NULL OR e.source_ids && $4)";
+    const ENTITY_SOURCE_REQUIRED: &'static str = "AND e.source_ids && $4";
+
+    fn apply_entity_source(sql: String, documents: bool) -> String {
+        if documents {
+            sql.replace(Self::ENTITY_SOURCE_OPTIONAL, Self::ENTITY_SOURCE_REQUIRED)
+        } else {
+            sql
+        }
+    }
+
+    /// Split `filter_ids` into entity names and UUIDs. A generic plan cannot
+    /// use `id::text = ANY` or `('entity:' || name) = ANY` as an index
+    /// condition, so those values are looked up on `entities_pkey` and
+    /// `idx_entities_name`.
+    fn entity_id_keys(ids: Option<&[String]>) -> (Vec<String>, Vec<Uuid>) {
+        let mut names = Vec::new();
+        let mut uuids = Vec::new();
+        for id in ids.unwrap_or(&[]) {
+            if let Ok(parsed) = Uuid::parse_str(id) {
+                uuids.push(parsed);
+            } else if let Some(name) = entity_name_from_legacy_id(id) {
+                names.push(name.to_string());
+            }
+        }
+        (names, uuids)
+    }
+
+    fn entity_search_sql(dim: i32, cast: &str, documents: bool) -> String {
+        let sql = format!(
+            "SELECT ('entity:' || e.name) AS legacy_id, \
+                    1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
+             FROM entity_embeddings fe \
+             JOIN entities e ON e.id = fe.entity_id \
+             WHERE fe.model_id = $2 AND fe.dimensions = {dim} \
+               AND ($3::uuid IS NULL OR fe.workspace_id = $3) \
+               AND ($4::uuid[] IS NULL OR e.source_ids && $4) \
+               AND ($5::uuid IS NULL OR e.tenant_id = $5) \
+               AND ($6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)) \
+             ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $7"
+        );
+        Self::apply_entity_source(sql, documents)
+    }
+
+    /// Id-filtered entity ANN. Each requested id is looked up before the
+    /// distance order. `OFFSET 0` keeps that lookup from being pulled into
+    /// the HNSW index.
+    fn entity_search_sql_in_ids(dim: i32, cast: &str, documents: bool) -> String {
+        let sql = format!(
+            "SELECT ('entity:' || e.name) AS legacy_id, \
+                    1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
+             FROM ( \
+                SELECT e.id \
+                FROM unnest($7::text[]) AS wanted(name) \
+                JOIN LATERAL ( \
+                    SELECT e.id FROM entities e WHERE e.name = wanted.name OFFSET 0 \
+                ) e ON true \
+                UNION \
+                SELECT e.id \
+                FROM unnest($8::uuid[]) AS wanted(id) \
+                JOIN LATERAL ( \
+                    SELECT e.id FROM entities e WHERE e.id = wanted.id OFFSET 0 \
+                ) e ON true \
+             ) hit \
+             JOIN entity_embeddings fe \
+               ON fe.entity_id = hit.id AND fe.model_id = $2 AND fe.dimensions = {dim} \
+             JOIN entities e ON e.id = hit.id \
+             WHERE ($3::uuid IS NULL OR fe.workspace_id = $3) \
+               AND ($4::uuid[] IS NULL OR e.source_ids && $4) \
+               AND ($5::uuid IS NULL OR e.tenant_id = $5) \
+               AND ($6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)) \
+             ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $9"
+        );
+        Self::apply_entity_source(sql, documents)
+    }
 }
 
 #[async_trait]
@@ -236,21 +315,14 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
         let vector = Self::format_vector(&req.embedding);
         let cast = format!("halfvec({dim})");
 
+        let documents = req.document_ids.as_ref().is_some();
+        let in_ids = req.filter_ids.as_ref().is_some();
+        let (entity_names, entity_ids) = Self::entity_id_keys(req.filter_ids.as_deref());
         let q = match family {
-            EmbeddingFamily::Entity => format!(
-                "SELECT ('entity:' || e.name) AS legacy_id, \
-                        1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
-                 FROM entity_embeddings fe \
-                 JOIN entities e ON e.id = fe.entity_id \
-                 WHERE fe.model_id = $2 AND fe.dimensions = {dim} \
-                   AND ($3::uuid IS NULL OR fe.workspace_id = $3) \
-                   AND ($4::uuid[] IS NULL OR e.source_ids && $4) \
-                   AND ($5::uuid IS NULL OR e.tenant_id = $5) \
-                   AND ($6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)) \
-                   AND ($7::text[] IS NULL OR e.id::text = ANY($7) \
-                        OR ('entity:' || e.name) = ANY($7)) \
-                 ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $8"
-            ),
+            EmbeddingFamily::Entity if in_ids => {
+                Self::entity_search_sql_in_ids(dim, &cast, documents)
+            }
+            EmbeddingFamily::Entity => Self::entity_search_sql(dim, &cast, documents),
             // Resolve document chunks once (an uncorrelated InitPlan), rather than
             // joining chunks for every relationship. The correlated unnest path
             // exceeds the ANN deadline on large workspaces under tenant RLS.
@@ -287,15 +359,26 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
         };
 
         let q = super::typed_ann_search::TypedAnnSearch::ordered_sql(&q, req.limit);
-        let rows = sqlx::query(&q)
+        let query = sqlx::query(&q)
             .bind(&vector)
             .bind(model_id.0)
             .bind(req.workspace_id.map(|id| id.into_uuid()))
             .bind(req.document_ids.as_deref())
             .bind(req.tenant_id.map(|id| id.into_uuid()))
-            .bind(req.modalities.as_deref())
-            .bind(req.filter_ids.as_deref())
-            .bind(candidate_limit as i64)
+            .bind(req.modalities.as_deref());
+        let query = if matches!(family, EmbeddingFamily::Entity) && in_ids {
+            query
+                .bind(&entity_names)
+                .bind(&entity_ids)
+                .bind(candidate_limit as i64)
+        } else if matches!(family, EmbeddingFamily::Entity) {
+            query.bind(candidate_limit as i64)
+        } else {
+            query
+                .bind(req.filter_ids.as_deref())
+                .bind(candidate_limit as i64)
+        };
+        let rows = query
             .fetch_all(tx.as_mut())
             .await
             .map_err(StorageError::from)?;
@@ -437,5 +520,36 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
             report.absorbed_legacy_collisions += ur.absorbed_legacy_collisions;
         }
         Ok(report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PgFleetEmbeddingIndex;
+
+    #[test]
+    fn entity_search_requires_source_ids_when_documents_are_passed() {
+        let open = PgFleetEmbeddingIndex::entity_search_sql(768, "halfvec(768)", false);
+        assert!(open.contains("$4::uuid[] IS NULL OR e.source_ids && $4"));
+        assert!(open.contains("$3::uuid IS NULL OR fe.workspace_id = $3"));
+        assert!(open.contains("$5::uuid IS NULL OR e.tenant_id = $5"));
+        assert!(!open.contains("id::text = ANY"));
+        assert!(open.contains("LIMIT $7"));
+
+        let scoped = PgFleetEmbeddingIndex::entity_search_sql(768, "halfvec(768)", true);
+        assert!(scoped.contains("AND e.source_ids && $4"));
+        assert!(!scoped.contains("$4::uuid[] IS NULL"));
+    }
+
+    #[test]
+    fn entity_search_by_id_looks_up_name_and_uuid() {
+        let sql = PgFleetEmbeddingIndex::entity_search_sql_in_ids(768, "halfvec(768)", true);
+        assert!(sql.contains("OFFSET 0"));
+        assert!(sql.contains("e.name = wanted.name"));
+        assert!(sql.contains("e.id = wanted.id"));
+        assert!(sql.contains("AND e.source_ids && $4"));
+        assert!(!sql.contains("$7::text[] IS NULL"));
+        assert!(!sql.contains("id::text = ANY"));
+        assert!(sql.contains("LIMIT $9"));
     }
 }
