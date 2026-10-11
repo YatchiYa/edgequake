@@ -964,7 +964,7 @@ module EdgeQuake
       assert_equal 3, result["deleted_count"]
       assert_equal :post, mock.last_call[:method]
       assert_includes mock.last_call[:path], "/api/v1/conversations/bulk/delete"
-      assert_equal %w[c1 c2 c3], mock.last_call[:body][:ids]
+      assert_equal %w[c1 c2 c3], mock.last_call[:body][:conversation_ids]
     end
 
     def test_bulk_archive
@@ -982,7 +982,7 @@ module EdgeQuake
       assert_equal 2, result["moved_count"]
       assert_includes mock.last_call[:path], "/api/v1/conversations/bulk/move"
       body = mock.last_call[:body]
-      assert_equal %w[c1 c2], body[:ids]
+      assert_equal %w[c1 c2], body[:conversation_ids]
       assert_equal "f1", body[:folder_id]
     end
 
