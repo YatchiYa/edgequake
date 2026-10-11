@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 177, "HEAD schema train must end at 177");
-    for v in 160..=177 {
+    assert_eq!(max, 178, "HEAD schema train must end at 178");
+    for v in 160..=178 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "177");
+    assert_eq!(digits, "178");
 }
 
 #[test]
@@ -174,6 +174,23 @@ fn migration_177_indexes_task_status_and_type_pages() {
 }
 
 #[test]
+fn migration_178_indexes_task_updated_pages() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v178 = manifest
+        .split("version = 178")
+        .nth(1)
+        .expect("migration 178");
+    assert!(v178.contains("phase = \"expand\""));
+    assert!(!v178.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/178_task_workspace_updated_index.sql");
+    assert!(sql.contains("idx_tasks_tenant_workspace_updated_track"));
+    assert!(sql.contains("(tenant_id, workspace_id, updated_at DESC, track_id DESC)"));
+    let list = include_str!("../../edgequake-tasks/src/postgres.rs");
+    assert!(list.contains("SortField::UpdatedAt => \"updated_at\""));
+    assert!(list.contains("ORDER BY {sort_field} {sort_order}"));
+}
+
+#[test]
 fn fossils_001_and_019_are_registered() {
     let m = edgequake_migrate_manifest::load();
     let m001 = m.migration.iter().find(|e| e.version == 1).expect("m001");
@@ -226,8 +243,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=177 => \"v0.35.0\""),
-        "release_for_schema must map 170–177 to v0.35.0"
+        src.contains("170..=178 => \"v0.35.0\""),
+        "release_for_schema must map 170–178 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

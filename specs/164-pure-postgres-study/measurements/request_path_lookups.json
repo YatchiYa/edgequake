@@ -207,6 +207,13 @@
       "before_plan": "Index Scan idx_tasks_tenant_workspace_created_track, Filter task_type, 80000 rows removed, 2298 buffers",
       "after_ms": 0.056,
       "after_plan": "Index Only Scan idx_tasks_tenant_workspace_type_created_track, stops at 50, 12 buffers"
+    },
+    {
+      "name": "task list ORDER BY updated_at DESC LIMIT 50, 40000 newer foreign-workspace rows",
+      "before_ms": 2.979,
+      "before_plan": "Index Scan idx_tasks_updated, Filter tenant and workspace, 40000 rows removed, 969 buffers",
+      "after_ms": 0.052,
+      "after_plan": "Index Only Scan idx_tasks_tenant_workspace_updated_track, stops at 50, 10 buffers"
     }
   ]
 }
