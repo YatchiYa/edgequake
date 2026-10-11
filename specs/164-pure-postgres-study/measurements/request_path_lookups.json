@@ -340,6 +340,13 @@
       "before_plan": "Generic plan. Bitmap of every content_tsv match (2020 chunks), then 2020 document lookups that discard the other workspace, 8250 buffers. On the live table chunk workspace_id matches the document",
       "after_ms": 1.009,
       "after_plan": "Generic plan. BitmapAnd of idx_chunks_content_tsv and (workspace_id), heap fetch 20 chunks, 170 buffers. The scoped statement is c.workspace_id = $2 OR c.workspace_id IS NULL plus the document predicate"
+    },
+    {
+      "name": "conversation title search LIMIT 50, 10000 matches belong to another user",
+      "before_ms": 1.922,
+      "before_plan": "Generic plan. Bitmap of idx_conversations_title_fts, then filter tenant and user, 10000 rows removed, 577 buffers",
+      "after_ms": 1.259,
+      "after_plan": "Generic plan. Bitmap of idx_conversations_tenant_user_title_fts (tenant_id, user_id, title tsvector), 50 rows, 24 buffers. List SQL unchanged"
     }
   ]
 }
