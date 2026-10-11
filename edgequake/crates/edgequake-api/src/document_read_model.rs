@@ -150,6 +150,178 @@ pub async fn list_relational_document_summaries(
     .documents)
 }
 
+/// Columns the documents page renders. `content` stays out (GH-400).
+#[cfg(feature = "postgres")]
+const DOCUMENT_LIST_PROJECTION: &str = r#"
+            id::text AS id,
+            title,
+            status,
+            chunk_count,
+            entity_count,
+            file_size_bytes,
+            track_id,
+            error_message,
+            created_at,
+            updated_at,
+            -- GH-400: never detoast `content`. Preview + length come from
+            -- metadata / file_size_bytes (idx_documents_workspace_created).
+            LEFT(COALESCE(metadata->>'content_summary', metadata->>'content_preview', ''), 200)
+                AS content_preview,
+            -- file_size_bytes is BIGINT; COALESCE(int, bigint) → INT8. Decode as i64.
+            COALESCE(
+                NULLIF(metadata->>'content_length', '')::bigint,
+                file_size_bytes
+            ) AS content_length,
+            -- WHY: cost/token stats live in the `metadata` JSONB column (written by
+            -- the pipeline alongside KV metadata). Reading them from `metadata`
+            -- avoids depending on migration-041 stat columns (`cost_usd`,
+            -- `input_tokens`, ...) which a stale sqlx prepared-statement cache /
+            -- partially-applied migration can make invisible at runtime, causing
+            -- the "column cost_usd does not exist" backfill failure that turns
+            -- the documents list into "0 documents". `metadata` is a base column
+            -- (migration 001) and always present.
+            (metadata->>'cost_usd')::double precision AS cost_usd,
+            (metadata->>'input_tokens')::bigint AS input_tokens,
+            (metadata->>'output_tokens')::bigint AS output_tokens,
+            (metadata->>'total_tokens')::bigint AS total_tokens,
+            metadata->>'current_stage' AS current_stage
+"#;
+
+#[cfg(feature = "postgres")]
+const DOCUMENT_PAGE_COLUMNS: &str = "id, title, status, chunk_count, entity_count, file_size_bytes, track_id, error_message, created_at, updated_at, metadata";
+
+/// Page of documents for one workspace.
+///
+/// A generic plan cannot treat `$n IS NULL OR tenant_id = $n` as an index
+/// condition, so `ORDER BY created_at` walks the global time index and drops
+/// every newer row that belongs to someone else. When the caller names a
+/// tenant, each arm is an equality the composite index can stop after LIMIT.
+/// `id DESC` is the tie-break that index stores; without it the planner still
+/// prefers the global `created_at` index. Rows with no tenant stay visible.
+#[cfg(feature = "postgres")]
+fn document_list_statement(tenant_scoped: bool) -> String {
+    let projection = DOCUMENT_LIST_PROJECTION;
+    if tenant_scoped {
+        format!(
+            "SELECT {projection}
+             FROM (
+               (
+                 SELECT {page}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND tenant_id = $2
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT $3
+               )
+               UNION ALL
+               (
+                 SELECT {page}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND tenant_id IS NULL
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT $3
+               )
+             ) page
+             ORDER BY created_at DESC, id DESC
+             LIMIT $3",
+            projection = projection,
+            page = DOCUMENT_PAGE_COLUMNS,
+        )
+    } else {
+        format!(
+            "SELECT {projection}
+             FROM public.documents
+             WHERE workspace_id = $1
+             ORDER BY created_at DESC
+             LIMIT $2",
+            projection = projection,
+        )
+    }
+}
+
+/// Status chips for the same scope as the document page.
+///
+/// The count must read every matching row. It must not read other tenants.
+/// `tenant_id = $2 OR tenant_id IS NULL` is a bitmap of two index ranges once
+/// the plan sees the real tenant. A generic plan still guesses half the table
+/// and seq-scans, so this statement is planned with `force_custom_plan`.
+#[cfg(feature = "postgres")]
+fn document_status_statement(tenant_scoped: bool) -> String {
+    let predicate = if tenant_scoped {
+        "WHERE workspace_id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)"
+    } else {
+        "WHERE workspace_id = $1"
+    };
+    format!(
+        "SELECT bucket, COUNT(*)::bigint AS n
+         FROM (
+            SELECT CASE
+                WHEN lower(COALESCE(status, '')) IN ('pending', 'queued')
+                  OR lower(COALESCE(metadata->>'current_stage', '')) = 'queued'
+                    THEN 'pending'
+                WHEN lower(COALESCE(status, '')) IN ('processing', 'deleting')
+                  OR lower(COALESCE(metadata->>'current_stage', '')) IN (
+                        'converting','preprocessing','chunking','extracting','gleaning',
+                        'merging','summarizing','embedding','storing','projecting',
+                        'indexing','deleting'
+                     )
+                    THEN 'processing'
+                WHEN lower(COALESCE(status, '')) IN ('completed', 'indexed')
+                    THEN 'completed'
+                WHEN lower(COALESCE(status, '')) = 'partial_failure'
+                    THEN 'partial_failure'
+                WHEN lower(COALESCE(status, '')) = 'failed'
+                    THEN 'failed'
+                WHEN lower(COALESCE(status, '')) = 'cancelled'
+                    THEN 'cancelled'
+                ELSE 'unknown'
+            END AS bucket
+            FROM public.documents
+            {predicate}
+         ) s
+         GROUP BY bucket"
+    )
+}
+
+/// Workspace wipe. Each arm is an equality so a generic plan can use an index
+/// instead of reading every other tenant in the table.
+#[cfg(feature = "postgres")]
+fn document_workspace_delete_statement(tenant_scoped: bool) -> &'static str {
+    if tenant_scoped {
+        "WITH doomed AS (
+            SELECT id FROM public.documents
+            WHERE workspace_id = $1 AND tenant_id = $2
+            UNION
+            SELECT id FROM public.documents
+            WHERE workspace_id = $1 AND tenant_id IS NULL
+            UNION
+            SELECT id FROM public.documents
+            WHERE workspace_id IS NULL
+              AND metadata->>'workspace_id' = $3
+              AND tenant_id = $2
+            UNION
+            SELECT id FROM public.documents
+            WHERE workspace_id IS NULL
+              AND metadata->>'workspace_id' = $3
+              AND tenant_id IS NULL
+        )
+        DELETE FROM public.documents d
+        USING doomed
+        WHERE d.id = doomed.id"
+    } else {
+        "WITH doomed AS (
+            SELECT id FROM public.documents
+            WHERE workspace_id = $1
+            UNION
+            SELECT id FROM public.documents
+            WHERE workspace_id IS NULL
+              AND metadata->>'workspace_id' = $2
+        )
+        DELETE FROM public.documents d
+        USING doomed
+        WHERE d.id = doomed.id"
+    }
+}
+
 /// Bounded relational list with truncation flag (GH-400).
 #[cfg(feature = "postgres")]
 pub async fn list_relational_document_summaries_limited(
@@ -185,53 +357,20 @@ pub async fn list_relational_document_summaries_limited(
 
     // Fetch one extra row to detect truncation without a second COUNT.
     let fetch_limit = (max_entries as i64).saturating_add(1);
-    let rows = sqlx::query(
-        r#"
-        SELECT
-            id::text AS id,
-            title,
-            status,
-            chunk_count,
-            entity_count,
-            file_size_bytes,
-            track_id,
-            error_message,
-            created_at,
-            updated_at,
-            -- GH-400: never detoast `content`. Preview + length come from
-            -- metadata / file_size_bytes (idx_documents_workspace_created).
-            LEFT(COALESCE(metadata->>'content_summary', metadata->>'content_preview', ''), 200)
-                AS content_preview,
-            -- file_size_bytes is BIGINT; COALESCE(int, bigint) → INT8. Decode as i64.
-            COALESCE(
-                NULLIF(metadata->>'content_length', '')::bigint,
-                file_size_bytes
-            ) AS content_length,
-            -- WHY: cost/token stats live in the `metadata` JSONB column (written by
-            -- the pipeline alongside KV metadata). Reading them from `metadata`
-            -- avoids depending on migration-041 stat columns (`cost_usd`,
-            -- `input_tokens`, ...) which a stale sqlx prepared-statement cache /
-            -- partially-applied migration can make invisible at runtime, causing
-            -- the "column cost_usd does not exist" backfill failure that turns
-            -- the documents list into "0 documents". `metadata` is a base column
-            -- (migration 001) and always present.
-            (metadata->>'cost_usd')::double precision AS cost_usd,
-            (metadata->>'input_tokens')::bigint AS input_tokens,
-            (metadata->>'output_tokens')::bigint AS output_tokens,
-            (metadata->>'total_tokens')::bigint AS total_tokens,
-            metadata->>'current_stage' AS current_stage
-        FROM public.documents
-        WHERE workspace_id = $1
-          AND ($2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2)
-        ORDER BY created_at DESC
-        LIMIT $3
-        "#,
-    )
-    .bind(workspace_id)
-    .bind(tenant_uuid)
-    .bind(fetch_limit)
-    .fetch_all(timed.as_mut())
-    .await
+    let rows = if let Some(tenant_id) = tenant_uuid {
+        sqlx::query(&document_list_statement(true))
+            .bind(workspace_id)
+            .bind(tenant_id)
+            .bind(fetch_limit)
+            .fetch_all(timed.as_mut())
+            .await
+    } else {
+        sqlx::query(&document_list_statement(false))
+            .bind(workspace_id)
+            .bind(fetch_limit)
+            .fetch_all(timed.as_mut())
+            .await
+    }
     .map_err(|e| ApiError::Internal(format!("Failed to list relational documents: {e}")))?;
 
     timed
@@ -342,43 +481,26 @@ pub async fn count_relational_document_statuses(
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to begin status-count TX: {e}")))?;
 
+    // A generic plan prices `tenant_id = $n` as half the table and seq-scans.
+    // Replan with the bound tenant so a small tenant reads only its rows.
+    sqlx::query("SET LOCAL plan_cache_mode = force_custom_plan")
+        .execute(timed.as_mut())
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to set status-count plan mode: {e}")))?;
+
     // Bucket using status + metadata current_stage (parity with list.rs chips).
-    let rows = sqlx::query(
-        r#"
-        SELECT bucket, COUNT(*)::bigint AS n
-        FROM (
-            SELECT CASE
-                WHEN lower(COALESCE(status, '')) IN ('pending', 'queued')
-                  OR lower(COALESCE(metadata->>'current_stage', '')) = 'queued'
-                    THEN 'pending'
-                WHEN lower(COALESCE(status, '')) IN ('processing', 'deleting')
-                  OR lower(COALESCE(metadata->>'current_stage', '')) IN (
-                        'converting','preprocessing','chunking','extracting','gleaning',
-                        'merging','summarizing','embedding','storing','projecting',
-                        'indexing','deleting'
-                     )
-                    THEN 'processing'
-                WHEN lower(COALESCE(status, '')) IN ('completed', 'indexed')
-                    THEN 'completed'
-                WHEN lower(COALESCE(status, '')) = 'partial_failure'
-                    THEN 'partial_failure'
-                WHEN lower(COALESCE(status, '')) = 'failed'
-                    THEN 'failed'
-                WHEN lower(COALESCE(status, '')) = 'cancelled'
-                    THEN 'cancelled'
-                ELSE 'unknown'
-            END AS bucket
-            FROM public.documents
-            WHERE workspace_id = $1
-              AND ($2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2)
-        ) s
-        GROUP BY bucket
-        "#,
-    )
-    .bind(workspace_id)
-    .bind(tenant_uuid)
-    .fetch_all(timed.as_mut())
-    .await
+    let rows = if let Some(tenant_id) = tenant_uuid {
+        sqlx::query(&document_status_statement(true))
+            .bind(workspace_id)
+            .bind(tenant_id)
+            .fetch_all(timed.as_mut())
+            .await
+    } else {
+        sqlx::query(&document_status_statement(false))
+            .bind(workspace_id)
+            .fetch_all(timed.as_mut())
+            .await
+    }
     .map_err(|e| {
         ApiError::Internal(format!("Failed to count relational document statuses: {e}"))
     })?;
@@ -618,32 +740,24 @@ pub async fn delete_relational_documents_for_workspace(
 
     // Wave B3/C + SPEC-091 IW1 (GAP-091-24): shell-written documents may carry
     // the workspace in metadata JSONB while the FK-guarded `workspace_id`
-    // column stays NULL. Two indexed predicates (UNION) beat an OR that
-    // defeats both the `(workspace_id, created_at)` btree and the expression
-    // index on `metadata->>'workspace_id'` (migration 128).
+    // column stays NULL. Each arm is an equality so the planner can use the
+    // workspace btree or the expression index on `metadata->>'workspace_id'`
+    // (migration 128) instead of reading every other tenant.
     let workspace_id_str = tenant_ctx.workspace_id.clone();
-    let result = sqlx::query(
-        r#"
-        WITH doomed AS (
-            SELECT id FROM public.documents
-            WHERE workspace_id = $1
-              AND ($2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2)
-            UNION
-            SELECT id FROM public.documents
-            WHERE workspace_id IS NULL
-              AND metadata->>'workspace_id' = $3
-              AND ($2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2)
-        )
-        DELETE FROM public.documents d
-        USING doomed
-        WHERE d.id = doomed.id
-        "#,
-    )
-    .bind(workspace_id)
-    .bind(tenant_uuid)
-    .bind(workspace_id_str)
-    .execute(pool)
-    .await
+    let result = if let Some(tenant_id) = tenant_uuid {
+        sqlx::query(document_workspace_delete_statement(true))
+            .bind(workspace_id)
+            .bind(tenant_id)
+            .bind(workspace_id_str)
+            .execute(pool)
+            .await
+    } else {
+        sqlx::query(document_workspace_delete_statement(false))
+            .bind(workspace_id)
+            .bind(workspace_id_str)
+            .execute(pool)
+            .await
+    }
     .map_err(|e| ApiError::Internal(format!("Failed to bulk-delete relational documents: {e}")))?;
 
     Ok(result.rows_affected())

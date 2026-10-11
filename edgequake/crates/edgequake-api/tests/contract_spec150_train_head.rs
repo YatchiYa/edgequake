@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 190, "HEAD schema train must end at 190");
-    for v in 160..=190 {
+    assert_eq!(max, 191, "HEAD schema train must end at 191");
+    for v in 160..=191 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "190");
+    assert_eq!(digits, "191");
 }
 
 #[test]
@@ -188,6 +188,33 @@ fn migration_178_indexes_task_updated_pages() {
     let list = include_str!("../../edgequake-tasks/src/postgres.rs");
     assert!(list.contains("SortField::UpdatedAt => \"updated_at\""));
     assert!(list.contains("ORDER BY {sort_field} {sort_order}"));
+}
+
+#[test]
+fn migration_191_indexes_document_list_by_tenant() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v191 = manifest
+        .split("version = 191")
+        .nth(1)
+        .expect("migration 191");
+    assert!(v191.contains("phase = \"expand\""));
+    assert!(!v191.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/191_document_tenant_created_index.sql");
+    assert!(sql.contains("idx_documents_workspace_tenant_created"));
+    assert!(sql.contains("(workspace_id, tenant_id, created_at DESC, id DESC)"));
+    assert!(sql.contains("idx_documents_workspace_null_tenant_created"));
+    assert!(sql.contains("WHERE tenant_id IS NULL"));
+    let list = include_str!("../src/document_read_model.rs");
+    assert!(list.contains("fn document_list_statement"));
+    assert!(list.contains("tenant_id = $2"));
+    assert!(list.contains("tenant_id IS NULL"));
+    assert!(list.contains("ORDER BY created_at DESC, id DESC"));
+    assert!(list.contains("fn document_status_statement"));
+    assert!(list.contains("force_custom_plan"));
+    assert!(
+        !list.contains("$2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2"),
+        "list, status, and workspace delete must require the tenant predicate"
+    );
 }
 
 #[test]
@@ -483,8 +510,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=190 => \"v0.35.0\""),
-        "release_for_schema must map 170–190 to v0.35.0"
+        src.contains("170..=191 => \"v0.35.0\""),
+        "release_for_schema must map 170–191 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

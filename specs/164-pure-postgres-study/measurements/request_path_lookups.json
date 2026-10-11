@@ -396,6 +396,20 @@
       "before_plan": "Generic plan. Seq scan of tasks_history. Rows removed by filter 79500, 1549 buffers",
       "after_ms": 0.161,
       "after_plan": "Generic plan. Index only scan of idx_tasks_tenant_workspace_status for the required tenant and workspace, 500 rows, 14 buffers. No new index"
+    },
+    {
+      "name": "document list LIMIT 50, 79500 newer documents owned by another tenant",
+      "before_ms": 15.106,
+      "before_plan": "Generic plan after VACUUM. Index scan idx_documents_created_at, filter workspace and tenant. Rows removed 79500, 2449 buffers. The same plan returns in 0.055 ms when the caller owns the newest rows",
+      "after_ms": 0.041,
+      "after_plan": "Generic plan. Merge append of idx_documents_workspace_tenant_created and idx_documents_workspace_null_tenant_created, each stopped at LIMIT. 50 rows, 7 buffers. A page for the tenant that owns the newest rows is 0.084 ms, 12 buffers. Point lookup by id still filters one primary-key row"
+    },
+    {
+      "name": "document status buckets, 500 rows for the caller and 79500 for another tenant",
+      "before_ms": 5.193,
+      "before_plan": "Generic plan. Seq scan. Rows removed by filter 79500, 2906 buffers. The count must read every matching row, not the other tenant",
+      "after_ms": 0.345,
+      "after_plan": "Custom plan. BitmapOr of idx_documents_tenant_workspace and the null-tenant index, 500 rows, 19 buffers. force_custom_plan, because a generic plan still seq-scans this OR. Counting the tenant that owns 79500 rows seq-scans and removes the other 480, which is the cost of that answer"
     }
   ]
 }
