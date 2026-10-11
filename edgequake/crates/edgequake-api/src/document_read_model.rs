@@ -145,6 +145,7 @@ pub async fn list_relational_document_summaries(
         pool,
         tenant_ctx,
         crate::read_path::MAX_LIST_METADATA_ENTRIES,
+        None,
     )
     .await?
     .documents)
@@ -190,6 +191,25 @@ const DOCUMENT_LIST_PROJECTION: &str = r#"
 #[cfg(feature = "postgres")]
 const DOCUMENT_PAGE_COLUMNS: &str = "id, title, status, chunk_count, entity_count, file_size_bytes, track_id, error_message, created_at, updated_at, metadata";
 
+/// Statuses the list can require in SQL.
+///
+/// `pending`, `processing`, and `unknown` also match `current_stage`, so the
+/// column predicate would hide those rows. They stay on the open page and the
+/// handler filters them. `completed` is the stored pair `completed` and
+/// `indexed`. Every other passed value is one `status` equality.
+#[cfg(feature = "postgres")]
+fn relational_list_statuses(raw: Option<&str>) -> Vec<String> {
+    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Vec::new();
+    };
+    let raw = raw.to_ascii_lowercase();
+    match raw.as_str() {
+        "all" | "pending" | "processing" | "unknown" => Vec::new(),
+        "completed" => vec!["completed".to_string(), "indexed".to_string()],
+        other => vec![other.to_string()],
+    }
+}
+
 /// Page of documents for one workspace.
 ///
 /// A generic plan cannot treat `$n IS NULL OR tenant_id = $n` as an index
@@ -198,18 +218,32 @@ const DOCUMENT_PAGE_COLUMNS: &str = "id, title, status, chunk_count, entity_coun
 /// tenant, each arm is an equality the composite index can stop after LIMIT.
 /// `id DESC` is the tie-break that index stores; without it the planner still
 /// prefers the global `created_at` index. Rows with no tenant stay visible.
+///
+/// A passed status is required the same way. `status = 'failed'` on the global
+/// time index walks every newer indexed row (8.523 ms, 79,950 removed).
+/// `idx_documents_workspace_status_created` stops at the page (0.021 ms).
+/// `status_count` is 0, 1, or 2.
 #[cfg(feature = "postgres")]
-fn document_list_statement(tenant_scoped: bool) -> String {
+fn document_list_statement(tenant_scoped: bool, status_count: usize) -> String {
     let projection = DOCUMENT_LIST_PROJECTION;
-    if tenant_scoped {
-        format!(
+    let page = DOCUMENT_PAGE_COLUMNS;
+    let order = "ORDER BY created_at DESC, id DESC";
+    match (tenant_scoped, status_count) {
+        (false, 0) => format!(
+            "SELECT {projection}
+             FROM public.documents
+             WHERE workspace_id = $1
+             ORDER BY created_at DESC
+             LIMIT $2"
+        ),
+        (true, 0) => format!(
             "SELECT {projection}
              FROM (
                (
                  SELECT {page}
                  FROM public.documents
                  WHERE workspace_id = $1 AND tenant_id = $2
-                 ORDER BY created_at DESC, id DESC
+                 {order}
                  LIMIT $3
                )
                UNION ALL
@@ -217,24 +251,103 @@ fn document_list_statement(tenant_scoped: bool) -> String {
                  SELECT {page}
                  FROM public.documents
                  WHERE workspace_id = $1 AND tenant_id IS NULL
-                 ORDER BY created_at DESC, id DESC
+                 {order}
                  LIMIT $3
                )
              ) page
-             ORDER BY created_at DESC, id DESC
-             LIMIT $3",
-            projection = projection,
-            page = DOCUMENT_PAGE_COLUMNS,
-        )
-    } else {
-        format!(
+             {order}
+             LIMIT $3"
+        ),
+        (false, 1) => format!(
             "SELECT {projection}
              FROM public.documents
-             WHERE workspace_id = $1
-             ORDER BY created_at DESC
-             LIMIT $2",
-            projection = projection,
-        )
+             WHERE workspace_id = $1 AND status = $2
+             {order}
+             LIMIT $3"
+        ),
+        (false, 2) => format!(
+            "SELECT {projection}
+             FROM (
+               (
+                 SELECT {page}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND status = $2
+                 {order}
+                 LIMIT $4
+               )
+               UNION ALL
+               (
+                 SELECT {page}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND status = $3
+                 {order}
+                 LIMIT $4
+               )
+             ) page
+             {order}
+             LIMIT $4"
+        ),
+        (true, 1) => format!(
+            "SELECT {projection}
+             FROM (
+               (
+                 SELECT {page}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $3
+                 {order}
+                 LIMIT $4
+               )
+               UNION ALL
+               (
+                 SELECT {page}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $3
+                 {order}
+                 LIMIT $4
+               )
+             ) page
+             {order}
+             LIMIT $4"
+        ),
+        (true, 2) => format!(
+            "SELECT {projection}
+             FROM (
+               (
+                 SELECT {page}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $3
+                 {order}
+                 LIMIT $5
+               )
+               UNION ALL
+               (
+                 SELECT {page}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND tenant_id = $2 AND status = $4
+                 {order}
+                 LIMIT $5
+               )
+               UNION ALL
+               (
+                 SELECT {page}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $3
+                 {order}
+                 LIMIT $5
+               )
+               UNION ALL
+               (
+                 SELECT {page}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND tenant_id IS NULL AND status = $4
+                 {order}
+                 LIMIT $5
+               )
+             ) page
+             {order}
+             LIMIT $5"
+        ),
+        _ => document_list_statement(tenant_scoped, 0),
     }
 }
 
@@ -328,6 +441,7 @@ pub async fn list_relational_document_summaries_limited(
     pool: crate::services::OptionalPgPool<'_>,
     tenant_ctx: &TenantContext,
     max_entries: usize,
+    status: Option<&str>,
 ) -> Result<RelationalDocumentList, crate::error::ApiError> {
     use crate::error::ApiError;
     use sqlx::Row;
@@ -357,21 +471,20 @@ pub async fn list_relational_document_summaries_limited(
 
     // Fetch one extra row to detect truncation without a second COUNT.
     let fetch_limit = (max_entries as i64).saturating_add(1);
-    let rows = if let Some(tenant_id) = tenant_uuid {
-        sqlx::query(&document_list_statement(true))
-            .bind(workspace_id)
-            .bind(tenant_id)
-            .bind(fetch_limit)
-            .fetch_all(timed.as_mut())
-            .await
-    } else {
-        sqlx::query(&document_list_statement(false))
-            .bind(workspace_id)
-            .bind(fetch_limit)
-            .fetch_all(timed.as_mut())
-            .await
+    let statuses = relational_list_statuses(status);
+    let sql = document_list_statement(tenant_uuid.is_some(), statuses.len());
+    let mut query = sqlx::query(&sql).bind(workspace_id);
+    if let Some(tenant_id) = tenant_uuid {
+        query = query.bind(tenant_id);
     }
-    .map_err(|e| ApiError::Internal(format!("Failed to list relational documents: {e}")))?;
+    for status_value in &statuses {
+        query = query.bind(status_value);
+    }
+    let rows = query
+        .bind(fetch_limit)
+        .fetch_all(timed.as_mut())
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to list relational documents: {e}")))?;
 
     timed
         .commit()
@@ -1089,6 +1202,42 @@ pub async fn reconcile_entity_counts_with_graph(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn status_page_requires_the_status_column() {
+        assert!(relational_list_statuses(None).is_empty());
+        assert!(relational_list_statuses(Some("pending")).is_empty());
+        assert!(relational_list_statuses(Some("processing")).is_empty());
+        assert_eq!(
+            relational_list_statuses(Some("failed")),
+            vec!["failed".to_string()]
+        );
+        assert_eq!(
+            relational_list_statuses(Some("completed")),
+            vec!["completed".to_string(), "indexed".to_string()]
+        );
+
+        let open = document_list_statement(false, 0);
+        assert!(!open.contains("status ="));
+        assert!(open.contains("ORDER BY created_at DESC"));
+
+        let failed = document_list_statement(false, 1);
+        assert!(failed.contains("workspace_id = $1 AND status = $2"));
+        assert!(failed.contains("ORDER BY created_at DESC, id DESC"));
+        assert!(failed.contains("LIMIT $3"));
+        assert!(!failed.contains("IS NULL OR"));
+
+        let completed = document_list_statement(false, 2);
+        assert!(completed.contains("status = $2"));
+        assert!(completed.contains("status = $3"));
+        assert!(completed.contains("UNION ALL"));
+
+        let tenant = document_list_statement(true, 1);
+        assert!(tenant.contains("tenant_id = $2 AND status = $3"));
+        assert!(tenant.contains("tenant_id IS NULL AND status = $3"));
+        assert!(!tenant.contains("$2::uuid IS NULL"));
+    }
 
     #[test]
     fn merge_document_count_prefers_higher_value() {

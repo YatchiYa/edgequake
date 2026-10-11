@@ -78,7 +78,7 @@ async fn tenant_document_page_keeps_unset_tenant_and_skips_the_other_tenant() {
     insert_doc(&pool, Some(tenant_a), workspace, "own", "3 minutes").await;
 
     let scoped = ctx(Some(tenant_a), workspace);
-    let page = list_relational_document_summaries_limited(Some(&pool), &scoped, 10)
+    let page = list_relational_document_summaries_limited(Some(&pool), &scoped, 10, None)
         .await
         .expect("scoped page");
     let titles: Vec<_> = page
@@ -95,7 +95,7 @@ async fn tenant_document_page_keeps_unset_tenant_and_skips_the_other_tenant() {
     assert_eq!(counts.completed, 2);
 
     let open = ctx(None, workspace);
-    let all = list_relational_document_summaries_limited(Some(&pool), &open, 10)
+    let all = list_relational_document_summaries_limited(Some(&pool), &open, 10, None)
         .await
         .expect("workspace page");
     let all_titles: Vec<_> = all

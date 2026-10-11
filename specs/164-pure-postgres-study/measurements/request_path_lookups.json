@@ -620,6 +620,13 @@
       "before_plan": "Generic plan. Seq scan of workspace_id = $1 removes 80000 rows, 3091 buffers. The same OR is the membership statement",
       "after_ms": 0.01,
       "after_plan": "Custom plan. Index scan of idx_documents_workspace_created and idx_documents_metadata_workspace_expr, 0 rows, 6 buffers. A bounded miss of the page statement is 0.029 ms"
+    },
+    {
+      "name": "document list status=failed LIMIT 50, 50 oldest failed and 79950 newer indexed rows",
+      "before_ms": 8.523,
+      "before_plan": "Generic plan. Index scan of idx_documents_created_at, filter workspace and status. Rows removed 79950, 2558 buffers. The first run was 35.847 ms with 701 buffer reads. The list without the predicate reads the newest 2001 indexed rows in 0.457 ms and then drops them, so those 50 failed documents never appear",
+      "after_ms": 0.021,
+      "after_plan": "Generic plan. Index only scan of idx_documents_workspace_status_created, Index Cond workspace_id and status, stops at 50, 14 buffers. Migration 200. The tenant arm is idx_documents_workspace_tenant_status_created, 0.043 ms, 14 buffers"
     }
   ]
 }

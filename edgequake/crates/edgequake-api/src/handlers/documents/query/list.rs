@@ -472,6 +472,7 @@ pub(crate) async fn list_documents_inner(
             _pg_runtime.pool.as_ref(),
             &tenant_ctx,
             MAX_LIST_METADATA_ENTRIES,
+            params.status.as_deref(),
         )
         .await
         {
@@ -635,6 +636,15 @@ pub(crate) async fn list_documents_inner(
             );
         }
     }
+
+    // The relational page is merged after the first sort. Sort again so a
+    // status page stays newest-first when those rows were not in the KV cap.
+    documents.sort_by(|a, b| {
+        b.created_at
+            .as_deref()
+            .unwrap_or("")
+            .cmp(a.created_at.as_deref().unwrap_or(""))
+    });
 
     // SPEC-057 P4: project display_status / ui_phase SSOT after pagination
     // (only the returned page is serialized). Cancel/task lookup is optional
