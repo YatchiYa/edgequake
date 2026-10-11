@@ -69,7 +69,9 @@ class SyncTransport:
         merged_headers = {**self._config.build_headers(), **(headers or {})}
         last_error: Exception | None = None
 
-        for attempt in range(1 + self._config.max_retries):
+        attempt = 0
+        refreshed = False
+        while attempt <= self._config.max_retries:
             try:
                 response = self._client.request(
                     method,
@@ -82,9 +84,11 @@ class SyncTransport:
                 # WHY: On 401, attempt JWT refresh if callback is set
                 if (
                     response.status_code == 401
+                    and not refreshed
                     and self._config.on_token_refresh
                     and self._config.jwt
                 ):
+                    refreshed = True
                     new_jwt = self._config.on_token_refresh(self._config.jwt)
                     self._config.jwt = new_jwt
                     merged_headers = {**self._config.build_headers(), **(headers or {})}
@@ -104,6 +108,7 @@ class SyncTransport:
                         delay,
                     )
                     time.sleep(delay)
+                    attempt += 1
                     continue
 
                 raise_for_status(response)
@@ -122,6 +127,7 @@ class SyncTransport:
                         exc,
                     )
                     time.sleep(delay)
+                    attempt += 1
                     continue
                 raise EQConnectionError(str(exc)) from exc
 
@@ -333,7 +339,9 @@ class AsyncTransport:
         merged_headers = {**self._config.build_headers(), **(headers or {})}
         last_error: Exception | None = None
 
-        for attempt in range(1 + self._config.max_retries):
+        attempt = 0
+        refreshed = False
+        while attempt <= self._config.max_retries:
             try:
                 response = await self._client.request(
                     method,
@@ -345,9 +353,11 @@ class AsyncTransport:
 
                 if (
                     response.status_code == 401
+                    and not refreshed
                     and self._config.on_token_refresh
                     and self._config.jwt
                 ):
+                    refreshed = True
                     new_jwt = self._config.on_token_refresh(self._config.jwt)
                     self._config.jwt = new_jwt
                     merged_headers = {**self._config.build_headers(), **(headers or {})}
@@ -367,6 +377,7 @@ class AsyncTransport:
                         delay,
                     )
                     await asyncio.sleep(delay)
+                    attempt += 1
                     continue
 
                 raise_for_status(response)
@@ -377,6 +388,7 @@ class AsyncTransport:
                 if attempt < self._config.max_retries:
                     delay = _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]
                     await asyncio.sleep(delay)
+                    attempt += 1
                     continue
                 raise EQConnectionError(str(exc)) from exc
 
