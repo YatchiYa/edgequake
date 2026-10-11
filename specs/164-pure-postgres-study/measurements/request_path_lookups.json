@@ -333,6 +333,13 @@
       "before_plan": "Index Scan (tenant_id, workspace_id, status, updated_at DESC), Filter task_type, 40000 rows removed, 867 buffers",
       "after_ms": 0.050,
       "after_plan": "Index Scan (tenant_id, workspace_id, status, task_type, updated_at DESC), stops at 50, 6 buffers. Generic plan uses this index"
+    },
+    {
+      "name": "workspace chunk FTS LIMIT 20, 2000 foreign chunks share the term",
+      "before_ms": 2.437,
+      "before_plan": "Generic plan. Bitmap of every content_tsv match (2020 chunks), then 2020 document lookups that discard the other workspace, 8250 buffers. On the live table chunk workspace_id matches the document",
+      "after_ms": 1.009,
+      "after_plan": "Generic plan. BitmapAnd of idx_chunks_content_tsv and (workspace_id), heap fetch 20 chunks, 170 buffers. The scoped statement is c.workspace_id = $2 OR c.workspace_id IS NULL plus the document predicate"
     }
   ]
 }

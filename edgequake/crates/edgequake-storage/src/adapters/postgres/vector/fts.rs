@@ -88,6 +88,35 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL: &str = r#"
             LIMIT $8
             "#;
 
+/// Workspace-scoped typed FTS. `$2` is required, so a generic plan can
+/// bitmap-and `idx_chunks_workspace` with the content GIN. Chunks with a
+/// null `workspace_id` still use the document predicate. An unscoped search
+/// keeps [`TYPED_CHUNKS_FTS_SQL`].
+pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE: &str = r#"
+            SELECT coalesce(c.metadata->>'legacy_chunk_key', c.id::text) AS id,
+                   c.metadata,
+                   ts_rank_cd(
+                       c.content_tsv,
+                       websearch_to_tsquery('english', $1)
+                   )::float4 AS score
+            FROM public.chunks c
+            JOIN public.documents d ON d.id = c.document_id
+            WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
+              AND (c.workspace_id = $2 OR c.workspace_id IS NULL)
+              AND (d.workspace_id = $2
+                   OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
+              AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
+              AND ($5::uuid IS NULL OR c.tenant_id = $5)
+              AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+              AND (
+                    $7::text[] IS NULL
+                    OR c.id::text = ANY($7)
+                    OR c.metadata->>'legacy_chunk_key' = ANY($7)
+                  )
+            ORDER BY score DESC
+            LIMIT $8
+            "#;
+
 impl PgVectorStorage {
     pub(crate) async fn chunk_kv_table_exists_cached(&self) -> Result<bool> {
         if let Some(exists) = self.chunk_kv_table_exists.get() {
@@ -162,7 +191,12 @@ impl PgVectorStorage {
             .filter(|ids| !ids.is_empty())
             .map(|ids| ids.to_vec());
 
-        let rows = sqlx::query(TYPED_CHUNKS_FTS_SQL)
+        let sql = if workspace_uuid.is_some() {
+            TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE
+        } else {
+            TYPED_CHUNKS_FTS_SQL
+        };
+        let rows = sqlx::query(sql)
             .bind(query_text)
             .bind(workspace_uuid)
             .bind(workspace_text)
@@ -323,6 +357,10 @@ mod tests {
             !sql.contains("metadata->>'type'"),
             "typed FTS must not filter metadata type=chunk (relational rows omit it)"
         );
+        let scoped = TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE;
+        assert!(scoped.contains("c.workspace_id = $2 OR c.workspace_id IS NULL"));
+        assert!(scoped.contains("d.workspace_id = $2"));
+        assert!(!scoped.contains("$2::uuid IS NULL"));
     }
 
     #[test]
