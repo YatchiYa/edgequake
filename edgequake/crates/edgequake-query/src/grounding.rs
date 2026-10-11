@@ -75,17 +75,17 @@ pub fn strip_gold_citation_artifacts(answer: &str) -> String {
         return text;
     }
     // Drop References section (LR-style or accidental).
-    for marker in [
-        "### References",
-        "## References",
-        "### references",
-        "## references",
-    ] {
-        if let Some(idx) = text.find(marker) {
-            text.truncate(idx);
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        let heading = line.trim();
+        if heading.eq_ignore_ascii_case("### References")
+            || heading.eq_ignore_ascii_case("## References")
+        {
+            text.truncate(offset);
             text = text.trim_end().to_string();
             break;
         }
+        offset += line.len();
     }
     // Remove bracket citation tokens like [1], [16], [N].
     let mut out = String::with_capacity(text.len());
@@ -303,6 +303,24 @@ mod tests {
         assert_eq!(
             grounding_instructions_for(Some("Do NOT append citation markers")),
             grounding_instructions_gold_compat()
+        );
+    }
+
+    #[test]
+    fn strip_gold_citations_preserves_inline_heading_mentions() {
+        assert_eq!(
+            strip_gold_citation_artifacts("Use ### References to name a section."),
+            "Use ### References to name a section."
+        );
+        assert_eq!(
+            strip_gold_citation_artifacts(
+                "Answer.\n## REFERENCES\n[1] first\n### References\n[2] second"
+            ),
+            "Answer."
+        );
+        assert_eq!(
+            strip_gold_citation_artifacts("## References explain the method\nUseful answer."),
+            "## References explain the method Useful answer."
         );
     }
 
