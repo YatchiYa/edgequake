@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 186, "HEAD schema train must end at 186");
-    for v in 160..=186 {
+    assert_eq!(max, 187, "HEAD schema train must end at 187");
+    for v in 160..=187 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "186");
+    assert_eq!(digits, "187");
 }
 
 #[test]
@@ -188,6 +188,23 @@ fn migration_178_indexes_task_updated_pages() {
     let list = include_str!("../../edgequake-tasks/src/postgres.rs");
     assert!(list.contains("SortField::UpdatedAt => \"updated_at\""));
     assert!(list.contains("ORDER BY {sort_field} {sort_order}"));
+}
+
+#[test]
+fn migration_187_indexes_conversation_title_search_in_a_folder() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v187 = manifest
+        .split("version = 187")
+        .nth(1)
+        .expect("migration 187");
+    assert!(v187.contains("phase = \"expand\""));
+    assert!(!v187.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/187_conversation_folder_title_fts.sql");
+    assert!(sql.contains("idx_conversations_tenant_user_folder_title_fts"));
+    assert!(sql.contains("folder_id public.uuid_ops"));
+    let list = include_str!("../../edgequake-storage/src/adapters/postgres/conversation.rs");
+    assert!(list.contains("folder_id = ${}"));
+    assert!(list.contains("to_tsvector('english', title) @@ plainto_tsquery('english'"));
 }
 
 #[test]
@@ -412,8 +429,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=186 => \"v0.35.0\""),
-        "release_for_schema must map 170–186 to v0.35.0"
+        src.contains("170..=187 => \"v0.35.0\""),
+        "release_for_schema must map 170–187 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

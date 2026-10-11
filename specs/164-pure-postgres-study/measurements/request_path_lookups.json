@@ -354,6 +354,13 @@
       "before_plan": "Generic plan. Bitmap of content_tsv, then filter document_id = ANY($4), 1999 rows removed, 291 buffers",
       "after_ms": 0.044,
       "after_plan": "Generic plan. Bitmap of idx_chunks_document for the required array, 1 row, 8 buffers. No new index"
+    },
+    {
+      "name": "conversation title search inside one folder, 10000 title matches and 50 in the folder",
+      "before_ms": 1.159,
+      "before_plan": "Generic plan. BitmapAnd of the user title GIN (10050 index entries) and idx_conversations_folder, heap fetch 50, 26 buffers",
+      "after_ms": 0.169,
+      "after_plan": "Generic plan. Bitmap of idx_conversations_tenant_user_folder_title_fts, 50 index entries, 24 buffers. List SQL unchanged"
     }
   ]
 }
