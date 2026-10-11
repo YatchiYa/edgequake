@@ -690,16 +690,24 @@ RETURNS bigint
 LANGUAGE plpgsql AS $$
 DECLARE n bigint;
 BEGIN
+  -- Product shape: filter Node, hash-aggregate EDGE.eq_source_id (search.rs).
   EXECUTE $q$
     SELECT count(*)::bigint FROM (
-      SELECT v.eq_node_id
-      FROM spec164_age."Node" v
-      LEFT JOIN LATERAL (
-        SELECT count(*)::int AS deg
+      WITH filtered_nodes AS MATERIALIZED (
+        SELECT v.eq_node_id AS node_id
+        FROM spec164_age."Node" v
+      ),
+      edge_counts AS (
+        SELECT e.eq_source_id AS node_id, COUNT(*) AS out_degree
         FROM spec164_age."EDGE" e
-        WHERE e.eq_source_id = v.eq_node_id OR e.eq_target_id = v.eq_node_id
-      ) d ON true
-      ORDER BY d.deg DESC NULLS LAST
+        INNER JOIN filtered_nodes fn ON e.eq_source_id = fn.node_id
+        WHERE e.eq_source_id IS NOT NULL
+        GROUP BY 1
+      )
+      SELECT fn.node_id
+      FROM filtered_nodes fn
+      LEFT JOIN edge_counts ec ON fn.node_id = ec.node_id
+      ORDER BY COALESCE(ec.out_degree, 0) DESC, fn.node_id
       LIMIT $1
     ) s
   $q$ INTO n USING p_limit;
@@ -712,19 +720,26 @@ RETURNS bigint
 LANGUAGE plpgsql AS $$
 DECLARE n bigint;
 BEGIN
+  -- Same shape as product plain popular_nodes: one hash aggregate, not a
+  -- correlated COUNT per node (5.3s at 200k on eq_graph_*).
   EXECUTE format($f$
     SELECT count(*)::bigint FROM (
+      WITH degrees AS MATERIALIZED (
+        SELECT node_id, COUNT(*)::bigint AS degree
+        FROM (
+          SELECT e.source_id AS node_id FROM spec164.edges_%s e
+          UNION ALL
+          SELECT e.target_id FROM spec164.edges_%s e
+        ) ends
+        GROUP BY node_id
+      )
       SELECT v.node_id
       FROM spec164.nodes_%s v
-      LEFT JOIN LATERAL (
-        SELECT count(*)::int AS deg
-        FROM spec164.edges_%s e
-        WHERE e.source_id = v.node_id OR e.target_id = v.node_id
-      ) d ON true
-      ORDER BY d.deg DESC NULLS LAST
+      LEFT JOIN degrees d ON d.node_id = v.node_id
+      ORDER BY COALESCE(d.degree, 0) DESC, v.node_id
       LIMIT $1
     ) s
-  $f$, p_suffix, p_suffix) INTO n USING p_limit;
+  $f$, p_suffix, p_suffix, p_suffix) INTO n USING p_limit;
   RETURN n;
 END;
 $$;
