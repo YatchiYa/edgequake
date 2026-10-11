@@ -263,6 +263,62 @@
       "before_plan": "Index Scan idx_tasks_updated, Filter tenant, workspace, and task_type, 80000 rows removed, 1606 buffers",
       "after_ms": 0.049,
       "after_plan": "Index Scan (tenant_id, workspace_id, task_type, updated_at DESC), task_type is an index condition, stops at 50, 11 buffers"
+    },
+    {
+      "name": "conversation folder page ORDER BY created_at DESC LIMIT 50, 4999 oldest of 15000 filed",
+      "before_ms": 1.123,
+      "before_plan": "Index Scan (tenant_id, user_id, created_at DESC), Filter folder_id, 10001 rows removed, 348 buffers",
+      "after_ms": 0.055,
+      "after_plan": "Index Scan (tenant_id, user_id, folder_id, created_at DESC), folder_id is an index condition, stops at 50, 5 buffers. Generic plan of folder_id = $3 uses this index"
+    },
+    {
+      "name": "conversation folder page ORDER BY title DESC LIMIT 50, 4999 oldest of 15000 filed",
+      "before_ms": 1.124,
+      "before_plan": "Index Scan Backward (tenant_id, user_id, title), Filter folder_id, 10001 rows removed, 422 buffers",
+      "after_ms": 0.029,
+      "after_plan": "Index Scan Backward (tenant_id, user_id, folder_id, title), stops at 50, 5 buffers"
+    },
+    {
+      "name": "conversation pinned page ORDER BY created_at DESC LIMIT 50, 4999 oldest of 15000 pinned",
+      "before_ms": 0.819,
+      "before_plan": "Index Scan (tenant_id, user_id, created_at DESC), Filter is_pinned, 10001 rows removed, 290 buffers",
+      "after_ms": 0.037,
+      "after_plan": "Index Scan (tenant_id, user_id, is_pinned, created_at DESC), stops at 50, 6 buffers. Generic plan of is_pinned = $3 uses this index"
+    },
+    {
+      "name": "conversation pinned page ORDER BY title DESC LIMIT 50, 4999 oldest of 15000 pinned",
+      "before_ms": 0.792,
+      "before_plan": "Index Scan Backward (tenant_id, user_id, title), Filter is_pinned, 10001 rows removed, 324 buffers",
+      "after_ms": 0.033,
+      "after_plan": "Index Scan Backward (tenant_id, user_id, is_pinned, title), stops at 50, 7 buffers"
+    },
+    {
+      "name": "conversation unfiled page ORDER BY created_at DESC LIMIT 50, 10001 newest of 15000 filed",
+      "before_ms": 1.242,
+      "before_plan": "Index Scan (tenant_id, user_id, created_at DESC), Filter folder_id IS NULL, 10001 rows removed, 343 buffers. Measured on a vacuumed copy",
+      "after_ms": 0.032,
+      "after_plan": "Index Scan (tenant_id, user_id, created_at DESC) WHERE folder_id IS NULL, stops at 50, 5 buffers. Generic plan uses the partial index"
+    },
+    {
+      "name": "conversation unfiled page ORDER BY title DESC LIMIT 50, 10001 newest of 15000 filed",
+      "before_ms": 1.128,
+      "before_plan": "Index Scan Backward (tenant_id, user_id, title), Filter folder_id IS NULL, 10001 rows removed, 488 buffers. Measured on a vacuumed copy",
+      "after_ms": 0.050,
+      "after_plan": "Index Scan Backward (tenant_id, user_id, title) WHERE folder_id IS NULL, stops at 50, 5 buffers"
+    },
+    {
+      "name": "conversation archived=false page ORDER BY created_at DESC LIMIT 50, 10001 newest archived",
+      "before_ms": 0.941,
+      "before_plan": "Index Scan (tenant_id, user_id, created_at DESC), Filter NOT is_archived, 10001 rows removed, 344 buffers",
+      "after_ms": 0.052,
+      "after_plan": "Index Scan (tenant_id, user_id, is_archived, created_at DESC), stops at 50, 5 buffers. Generic plan of is_archived = $3 uses this index"
+    },
+    {
+      "name": "conversation archived=false page ORDER BY title DESC LIMIT 50, 10001 newest archived",
+      "before_ms": 2.802,
+      "before_plan": "Index Scan Backward (tenant_id, user_id, title), Filter NOT is_archived, 10001 rows removed, 489 buffers",
+      "after_ms": 0.052,
+      "after_plan": "Index Scan Backward (tenant_id, user_id, is_archived, title), stops at 50, 5 buffers"
     }
   ]
 }
