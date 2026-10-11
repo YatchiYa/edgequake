@@ -24,6 +24,9 @@ impl PostgresAGEGraphStorage {
         source: &str,
         target: &str,
     ) -> Result<Option<GraphEdge>> {
+        if self.plain_reads_ready().await? {
+            return super::plain::read::read::get_edge(self, source, target).await;
+        }
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
@@ -256,6 +259,22 @@ impl PostgresAGEGraphStorage {
         // Public single-edge API: remove ALL rel_types between endpoints.
         if super::native_graph_writes_enabled() {
             let pool = self.pool.get().await?;
+            if !self.pool.graph_extension_available() {
+                let mut tx = pool.begin().await.map_err(|e| {
+                    StorageError::Database(format!("plain edge delete begin failed: {e}"))
+                })?;
+                super::plain::write::write::delete_edges(
+                    &mut tx,
+                    &self.namespace,
+                    &[source.to_string()],
+                    &[target.to_string()],
+                )
+                .await?;
+                tx.commit().await.map_err(|e| {
+                    StorageError::Database(format!("plain edge delete commit failed: {e}"))
+                })?;
+                return Ok(());
+            }
             let mut conn = pool.acquire().await.map_err(|e| {
                 StorageError::Connection(format!("Failed to acquire connection: {}", e))
             })?;
@@ -580,6 +599,15 @@ impl PostgresAGEGraphStorage {
         if node_ids.is_empty() {
             return Ok(Vec::new());
         }
+        if self.plain_reads_ready().await? {
+            return super::plain::read::read::incident_edges(
+                self,
+                node_ids,
+                tenant_id,
+                workspace_id,
+            )
+            .await;
+        }
 
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
@@ -703,6 +731,9 @@ impl PostgresAGEGraphStorage {
     /// ADMIN / dump path (FORBIDDEN on hot HTTP) — native scan (IMP-031-07).
     /// Complexity: O(E) unavoidable; skips AGE Cypher traversal overhead.
     pub(super) async fn pg_get_all_edges(&self) -> Result<Vec<GraphEdge>> {
+        if self.plain_reads_ready().await? {
+            return super::plain::read::read::get_all_edges(self).await;
+        }
         let pool = self.pool.get().await?;
         let sql = format!(
             r#"/* DATA-AGE-GRAPH-GET-ALL-EDGES */
@@ -805,6 +836,17 @@ impl PostgresAGEGraphStorage {
         mode: crate::traits::GraphPropertyWriteMode,
     ) -> Result<u64> {
         let pool = self.pool.get().await?;
+        if !self.pool.graph_extension_available() {
+            let mut tx = pool.begin().await.map_err(|e| {
+                StorageError::Database(format!("plain edge upsert begin failed: {e}"))
+            })?;
+            let n = super::plain::write::write::upsert_edges(&mut tx, &self.namespace, edges, mode)
+                .await?;
+            tx.commit().await.map_err(|e| {
+                StorageError::Database(format!("plain edge upsert commit failed: {e}"))
+            })?;
+            return Ok(n);
+        }
         let graph = &self.graph_name;
 
         let mut source_ids: Vec<String> = Vec::with_capacity(edges.len());
@@ -904,6 +946,36 @@ impl PostgresAGEGraphStorage {
             graph = graph,
             properties_set = properties_set
         );
+
+        let plain = super::plain::tables_present(&pool).await?;
+        if plain {
+            let mut tx = pool.begin().await.map_err(|e| {
+                StorageError::Database(format!("dual edge upsert begin failed: {e}"))
+            })?;
+            let result = sqlx::query(&sql)
+                .bind(&source_ids)
+                .bind(&target_ids)
+                .bind(&rel_types)
+                .bind(&props_json)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| {
+                    StorageError::Database(format!("Native SQL edge batch upsert failed: {e}"))
+                })?;
+            super::plain::write::write::mirror_edges_from_age(
+                &mut tx,
+                graph,
+                &self.namespace,
+                &source_ids,
+                &target_ids,
+                &rel_types,
+            )
+            .await?;
+            tx.commit().await.map_err(|e| {
+                StorageError::Database(format!("dual edge upsert commit failed: {e}"))
+            })?;
+            return Ok(result.rows_affected());
+        }
 
         let result = sqlx::query(&sql)
             .bind(&source_ids)

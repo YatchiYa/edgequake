@@ -157,6 +157,7 @@ pub fn irreversible_drop_plain(version: i64) -> &'static str {
         KV_DROP_MIGRATION => "deletes the old key-value tables (eq_*_kv)",
         VECTOR_DROP_MIGRATION => "deletes old chunk rows from eq_*_vectors",
         FLEET_VECTOR_DROP_MIGRATION => "deletes all remaining eq_*_vectors tables",
+        171 => "drops Apache AGE after the SPEC-164 plain-graph ledger is ready",
         _ => "irreversible drop",
     }
 }
@@ -181,6 +182,7 @@ fn is_irreversible_drop_version(version: i64) -> bool {
     version == KV_DROP_MIGRATION
         || version == VECTOR_DROP_MIGRATION
         || version == FLEET_VECTOR_DROP_MIGRATION
+        || version == 171
 }
 
 /// Class label for pending-migration lines (expandable vs irreversible).
@@ -191,6 +193,8 @@ pub fn migration_class_tag(version: i64) -> &'static str {
         "  [DROP OLD — irreversible chunk vectors]"
     } else if version == FLEET_VECTOR_DROP_MIGRATION {
         "  [DROP OLD — irreversible vector fleet]"
+    } else if version == 171 {
+        "  [DROP OLD — irreversible Apache AGE]"
     } else if version == 142 {
         "  [ASSERT — SPEC-105; after confirm-drop / empty residue]"
     } else if version >= 106 && !is_irreversible_drop_version(version) {

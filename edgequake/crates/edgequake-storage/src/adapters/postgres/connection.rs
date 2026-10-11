@@ -296,7 +296,19 @@ impl PostgresPool {
                 true
             }
             Err(e) => {
-                if Self::allow_no_graph_extension() {
+                // SPEC-164 EC-27: after confirm-drop, ag_catalog is gone. Boot on plain tables.
+                let catalog_present: bool = sqlx::query_scalar(
+                    "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'ag_catalog')",
+                )
+                .fetch_one(pool)
+                .await
+                .unwrap_or(true);
+                if !catalog_present {
+                    tracing::warn!(
+                        "Apache AGE catalog is absent ({e}). Continuing on SPEC-164 plain graph tables."
+                    );
+                    false
+                } else if Self::allow_no_graph_extension() {
                     tracing::warn!(
                         "Apache AGE extension not available: {}. Graph operations will use fallback (EDGEQUAKE_ALLOW_NO_GRAPH=1).",
                         e

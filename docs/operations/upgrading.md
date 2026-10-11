@@ -7,8 +7,8 @@ description: "Plain-English guide to upgrade any published EdgeQuake version saf
 
 This is the canonical guide to database upgrades. It is for operators who run EdgeQuake on their own PostgreSQL. Read it before you start a newer image or binary. Per-release pages (`upgrade-to-0.XX.md`) describe product changes; this page describes the migration process, which works from any published version to HEAD.
 
-> **Schema train today:** migration **169**.
-> The released product is **v0.34.0** (schema 169). From v0.33.0, `edgequake migrate` is a no-op. Roll the images.
+> **Schema train today:** migration **171** (SPEC-164).
+> The released product is **v0.34.0** (schema 169). Migration 170 adds plain graph tables and does not raise the serving floor, so a v0.34 binary can still serve. Migration 171 drops Apache AGE and is refused unless you pass `--confirm-drop` after the cutover ledger is `ready`.
 >
 > **One rule:** the API never changes the database schema. Only `edgequake migrate` (or the Compose service or Helm Job that runs it) writes schema.
 

@@ -58,8 +58,9 @@ NNN_descriptive_name.sql
   descriptive_name: snake_case, describes what changed
 ```
 
-Current max: `169_spec163_provider_connections.sql` (SPEC-163 connections)  
-Next available: `170_*` (converge migrations only if epoch matrix finds schema drift)
+Current max: `171_spec164_drop_age.sql` (SPEC-164 confirm-drop).  
+`170_spec164_plain_graph.sql` is expand-only (no serving_floor) so a v0.34 binary can still serve schema 170.  
+`171` sets `serving_floor = 171` and is irreversible; `edgequake migrate` without `--confirm-drop` stops before it.
 
 Operator guide: [`docs/operations/upgrading.md`](../../docs/operations/upgrading.md).
 

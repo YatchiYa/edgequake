@@ -83,6 +83,9 @@ impl PostgresAGEGraphStorage {
         offset: usize,
         limit: usize,
     ) -> Result<PagedGraphResult<GraphNode>> {
+        if self.plain_reads_ready().await? {
+            return super::plain::scan::scan::list_nodes(self, filter, offset, limit).await;
+        }
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
@@ -132,6 +135,9 @@ impl PostgresAGEGraphStorage {
         offset: usize,
         limit: usize,
     ) -> Result<PagedGraphResult<GraphEdge>> {
+        if self.plain_reads_ready().await? {
+            return super::plain::scan::scan::list_edges(self, filter, offset, limit).await;
+        }
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
@@ -372,6 +378,9 @@ impl PostgresAGEGraphStorage {
     ) -> Result<crate::traits::KeysetPage<GraphNode>> {
         use crate::traits::KeysetPage;
 
+        if self.plain_reads_ready().await? {
+            return super::plain::scan::scan::scan_nodes_after(self, filter, after, limit).await;
+        }
         let limit = limit.max(1);
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
@@ -451,6 +460,9 @@ impl PostgresAGEGraphStorage {
     ) -> Result<crate::traits::KeysetPage<GraphEdge>> {
         use crate::traits::KeysetPage;
 
+        if self.plain_reads_ready().await? {
+            return super::plain::scan::scan::scan_edges_after(self, filter, after, limit).await;
+        }
         let limit = limit.max(1);
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
@@ -586,6 +598,14 @@ impl PostgresAGEGraphStorage {
             return Ok(Vec::new());
         }
         SOURCE_PREFIX_DISCOVERY_CALLS.fetch_add(1, Ordering::Relaxed);
+        if self.plain_reads_ready().await? {
+            return super::plain::scan::scan::find_nodes_by_source_prefixes(
+                self,
+                filter,
+                source_prefixes,
+            )
+            .await;
+        }
 
         let (exact_ids, chunk_prefixes) = Self::source_prefix_probe_sets(source_prefixes);
         if exact_ids.is_empty() {
@@ -704,6 +724,14 @@ impl PostgresAGEGraphStorage {
             return Ok(Vec::new());
         }
         SOURCE_PREFIX_DISCOVERY_CALLS.fetch_add(1, Ordering::Relaxed);
+        if self.plain_reads_ready().await? {
+            return super::plain::scan::scan::find_edges_by_source_prefixes(
+                self,
+                filter,
+                source_prefixes,
+            )
+            .await;
+        }
 
         let (exact_ids, chunk_prefixes) = Self::source_prefix_probe_sets(source_prefixes);
         if exact_ids.is_empty() {
@@ -905,6 +933,14 @@ impl PostgresAGEGraphStorage {
     ) -> Result<Option<GraphEdge>> {
         if relationship_id.is_empty() {
             return Ok(None);
+        }
+        if self.plain_reads_ready().await? {
+            return super::plain::scan::scan::find_edge_by_relationship_id(
+                self,
+                filter,
+                relationship_id,
+            )
+            .await;
         }
 
         let pool = self.pool.get().await?;
