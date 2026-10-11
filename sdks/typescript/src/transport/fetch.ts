@@ -284,7 +284,17 @@ export class FetchTransport implements HttpTransport {
 
     let body: ErrorResponseBody;
     try {
-      body = (await response.json()) as ErrorResponseBody;
+      const parsed: unknown = await response.json();
+      if (
+        parsed === null ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed) ||
+        !("message" in parsed) ||
+        typeof parsed.message !== "string"
+      ) {
+        throw new TypeError("Invalid HTTP error response body");
+      }
+      body = parsed as ErrorResponseBody;
     } catch {
       // WHY: Some error responses may not be valid JSON
       body = {
