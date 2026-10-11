@@ -23,6 +23,7 @@ Exception Tree:
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -165,6 +166,17 @@ STATUS_MAP: dict[int, type[ApiError]] = {
 }
 
 
+def _parse_retry_after(value: str | None) -> float | None:
+    """Return a usable numeric delay, ignoring malformed server values."""
+    if value is None:
+        return None
+    try:
+        delay = float(value)
+    except ValueError:
+        return None
+    return delay if math.isfinite(delay) and delay >= 0 else None
+
+
 def raise_for_status(response: Any) -> None:
     """Parse EdgeQuake error response and raise the appropriate exception.
 
@@ -200,9 +212,6 @@ def raise_for_status(response: Any) -> None:
     }
 
     if error_cls is RateLimitedError:
-        retry_after_header = response.headers.get("retry-after")
-        kwargs["retry_after"] = (
-            float(retry_after_header) if retry_after_header else None
-        )
+        kwargs["retry_after"] = _parse_retry_after(response.headers.get("retry-after"))
 
     raise error_cls(message, **kwargs)

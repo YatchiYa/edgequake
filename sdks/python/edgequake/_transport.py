@@ -21,7 +21,7 @@ import httpx
 from edgequake._config import ClientConfig
 from edgequake._errors import ConnectionError as EQConnectionError
 from edgequake._errors import TimeoutError as EQTimeoutError
-from edgequake._errors import raise_for_status
+from edgequake._errors import _parse_retry_after, raise_for_status
 
 logger = logging.getLogger("edgequake")
 
@@ -565,10 +565,7 @@ def _get_retry_delay(response: httpx.Response, attempt: int) -> float:
     WHY: Respect server's Retry-After header when present (especially for 429).
     Fall back to exponential backoff for other retryable errors.
     """
-    retry_after = response.headers.get("retry-after")
-    if retry_after:
-        try:
-            return float(retry_after)
-        except ValueError:
-            pass
+    retry_after = _parse_retry_after(response.headers.get("retry-after"))
+    if retry_after is not None:
+        return retry_after
     return _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]
