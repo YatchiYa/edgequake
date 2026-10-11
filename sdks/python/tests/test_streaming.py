@@ -29,7 +29,13 @@ class TestSSEStream:
     def _make_response(self, lines: list[str]) -> MagicMock:
         """Create a mock httpx.Response with line iterator."""
         response = MagicMock()
-        response.iter_lines.return_value = iter(lines)
+        # Model actual wire events: each fixture data line is one event.
+        framed = [
+            part
+            for line in lines
+            for part in ([line, ""] if line.strip().startswith("data:") else [line])
+        ]
+        response.iter_lines.return_value = iter(framed)
         response.close = MagicMock()
         return response
 
@@ -189,6 +195,8 @@ class TestAsyncSSEStream:
         async def aiter_lines():
             for line in lines:
                 yield line
+                if line.strip().startswith("data:"):
+                    yield ""
 
         response.aiter_lines.return_value = aiter_lines()
         response.aclose = AsyncMock()
