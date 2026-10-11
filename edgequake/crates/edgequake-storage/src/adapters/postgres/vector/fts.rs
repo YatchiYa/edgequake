@@ -172,6 +172,71 @@ pub(crate) fn typed_chunks_fts_sql(
     }
 }
 
+/// Id-filtered typed FTS. `$7 IS NULL OR id = ANY OR legacy key = ANY` makes a
+/// generic plan score every chunk that matches the words. This statement looks
+/// up each requested id first. `OFFSET 0` keeps that lookup from being pulled
+/// into the term index. Legacy keys use `idx_chunks_legacy_chunk_key`. Values
+/// that parse as UUIDs also use `chunks_pkey`. The other filters then run on
+/// those rows.
+pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_IDS: &str = r#"
+            SELECT id, metadata, score
+            FROM (
+                SELECT coalesce(c.metadata->>'legacy_chunk_key', c.id::text) AS id,
+                       c.metadata,
+                       ts_rank_cd(
+                           c.content_tsv,
+                           websearch_to_tsquery('english', $1)
+                       )::float4 AS score
+                FROM unnest($7::text[]) AS wanted(key)
+                JOIN LATERAL (
+                    SELECT c.id, c.document_id, c.workspace_id, c.tenant_id,
+                           c.metadata, c.content_tsv
+                    FROM public.chunks c
+                    WHERE c.metadata->>'legacy_chunk_key' = wanted.key
+                    OFFSET 0
+                ) c ON true
+                JOIN public.documents d ON d.id = c.document_id
+                WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
+                  AND ($2::uuid IS NULL
+                       OR c.workspace_id = $2
+                       OR c.workspace_id IS NULL)
+                  AND ($2::uuid IS NULL
+                       OR d.workspace_id = $2
+                       OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
+                  AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
+                  AND ($5::uuid IS NULL OR c.tenant_id = $5)
+                  AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+                UNION
+                SELECT coalesce(c.metadata->>'legacy_chunk_key', c.id::text) AS id,
+                       c.metadata,
+                       ts_rank_cd(
+                           c.content_tsv,
+                           websearch_to_tsquery('english', $1)
+                       )::float4 AS score
+                FROM unnest($8::uuid[]) AS wanted(id)
+                JOIN LATERAL (
+                    SELECT c.id, c.document_id, c.workspace_id, c.tenant_id,
+                           c.metadata, c.content_tsv
+                    FROM public.chunks c
+                    WHERE c.id = wanted.id
+                    OFFSET 0
+                ) c ON true
+                JOIN public.documents d ON d.id = c.document_id
+                WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
+                  AND ($2::uuid IS NULL
+                       OR c.workspace_id = $2
+                       OR c.workspace_id IS NULL)
+                  AND ($2::uuid IS NULL
+                       OR d.workspace_id = $2
+                       OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
+                  AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
+                  AND ($5::uuid IS NULL OR c.tenant_id = $5)
+                  AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+            ) hits
+            ORDER BY score DESC
+            LIMIT $9
+            "#;
+
 /// Workspace and document are both required. Same document index start as
 /// [`TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS`], plus the workspace bitmap predicate.
 pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE_AND_DOCUMENTS: &str = r#"
@@ -272,24 +337,44 @@ impl PgVectorStorage {
         let id_filter = filter_ids
             .filter(|ids| !ids.is_empty())
             .map(|ids| ids.to_vec());
+        let uuid_ids: Vec<Uuid> = id_filter
+            .iter()
+            .flatten()
+            .filter_map(|id| Uuid::parse_str(id).ok())
+            .collect();
 
-        let sql = typed_chunks_fts_sql(
-            workspace_uuid.is_some(),
-            document_ids.is_some(),
-            modalities.is_some(),
-        );
-        let rows = sqlx::query(&sql)
-            .bind(query_text)
-            .bind(workspace_uuid)
-            .bind(workspace_text)
-            .bind(document_ids.as_deref())
-            .bind(tenant_id)
-            .bind(modalities.as_deref())
-            .bind(id_filter.as_deref())
-            .bind(top_k as i32)
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("Typed chunk FTS query failed: {e}")))?;
+        let rows = if id_filter.is_some() {
+            sqlx::query(TYPED_CHUNKS_FTS_SQL_IN_IDS)
+                .bind(query_text)
+                .bind(workspace_uuid)
+                .bind(workspace_text)
+                .bind(document_ids.as_deref())
+                .bind(tenant_id)
+                .bind(modalities.as_deref())
+                .bind(id_filter.as_deref())
+                .bind(uuid_ids.as_slice())
+                .bind(top_k as i32)
+                .fetch_all(&pool)
+                .await
+        } else {
+            let sql = typed_chunks_fts_sql(
+                workspace_uuid.is_some(),
+                document_ids.is_some(),
+                modalities.is_some(),
+            );
+            sqlx::query(&sql)
+                .bind(query_text)
+                .bind(workspace_uuid)
+                .bind(workspace_text)
+                .bind(document_ids.as_deref())
+                .bind(tenant_id)
+                .bind(modalities.as_deref())
+                .bind(id_filter.as_deref())
+                .bind(top_k as i32)
+                .fetch_all(&pool)
+                .await
+        }
+        .map_err(|e| StorageError::Database(format!("Typed chunk FTS query failed: {e}")))?;
 
         Ok(rows
             .iter()
@@ -456,6 +541,11 @@ mod tests {
         assert!(chart.contains("c.workspace_id = $2 OR c.workspace_id IS NULL"));
         let open = typed_chunks_fts_sql(false, false, false);
         assert!(open.contains(MODALITY_PREDICATE_OPTIONAL));
+        let by_id = TYPED_CHUNKS_FTS_SQL_IN_IDS;
+        assert!(by_id.contains("OFFSET 0"));
+        assert!(by_id.contains("c.metadata->>'legacy_chunk_key' = wanted.key"));
+        assert!(by_id.contains("c.id = wanted.id"));
+        assert!(!by_id.contains("$7::text[] IS NULL"));
     }
 
     #[test]
