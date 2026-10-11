@@ -47,11 +47,10 @@ pub(in crate::adapters::postgres::graph) mod read {
         }
         let pool = storage.pool.get().await?;
         let rows = sqlx::query(
-            "SELECT id AS node_id, COUNT(e.source_id)::bigint AS degree
+            "SELECT id AS node_id, COALESCE(n.degree, 0)::bigint AS degree
              FROM unnest($2::text[]) AS id
-             LEFT JOIN public.eq_graph_edges e
-               ON e.namespace = $1 AND (e.source_id = id OR e.target_id = id)
-             GROUP BY id",
+             LEFT JOIN public.eq_graph_nodes n
+               ON n.namespace = $1 AND n.node_id = id",
         )
         .bind(&storage.namespace)
         .bind(node_ids)

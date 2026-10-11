@@ -11,24 +11,6 @@ use crate::traits::GraphNode;
 pub(in crate::adapters::postgres::graph) mod search {
     use super::*;
 
-    /// Incident degree for every node in the bound namespace (`$1`).
-    /// Index-only scans on `(namespace, source_id)` and `(namespace, target_id)`.
-    fn incident_degrees_cte() -> &'static str {
-        "degrees AS MATERIALIZED (
-            SELECT node_id, COUNT(*)::bigint AS degree
-            FROM (
-                SELECT e.source_id AS node_id
-                FROM public.eq_graph_edges e
-                WHERE e.namespace = $1
-                UNION ALL
-                SELECT e.target_id
-                FROM public.eq_graph_edges e
-                WHERE e.namespace = $1
-            ) ends
-            GROUP BY node_id
-        )"
-    }
-
     pub(in crate::adapters::postgres::graph) async fn search_nodes(
         storage: &PostgresAGEGraphStorage,
         query: &str,
@@ -48,27 +30,18 @@ pub(in crate::adapters::postgres::graph) mod search {
             })
             .unwrap_or_default();
         let pool = storage.pool.get().await?;
-        // One hash aggregate of the namespace edges, then top-k. A correlated
-        // COUNT per matching node was 1.2s at 200k nodes (LIKE '%1%').
+        // Stored degree + trigram indexes (migration 170). A selective LIKE is a
+        // bitmap of matches; a broad LIKE walks (namespace, degree DESC) and
+        // stops at LIMIT. Aggregating every edge was 625–840ms at 200k/500k.
         let sql = format!(
-            "WITH {degrees},
-             ranked AS (
-                 SELECT n.node_id, COALESCE(d.degree, 0) AS degree
-                 FROM public.eq_graph_nodes n
-                 LEFT JOIN degrees d ON d.node_id = n.node_id
-                 WHERE n.namespace = $1
-                   AND (LOWER(n.node_id) LIKE '%{q}%'
-                        OR LOWER(COALESCE(n.properties->>'description', '')) LIKE '%{q}%')
-                   {scope} {etype}
-                 ORDER BY degree DESC, n.node_id
-                 LIMIT {limit}
-             )
-             SELECT n.node_id, n.properties, ranked.degree
-             FROM ranked
-             JOIN public.eq_graph_nodes n
-               ON n.namespace = $1 AND n.node_id = ranked.node_id
-             ORDER BY ranked.degree DESC, ranked.node_id",
-            degrees = incident_degrees_cte(),
+            "SELECT n.node_id, n.properties, n.degree
+             FROM public.eq_graph_nodes n
+             WHERE n.namespace = $1
+               AND (LOWER(n.node_id) LIKE '%{q}%'
+                    OR LOWER(COALESCE(n.properties->>'description', '')) LIKE '%{q}%')
+               {scope} {etype}
+             ORDER BY n.degree DESC, n.node_id
+             LIMIT {limit}"
         );
         let rows = sqlx::query(&sql)
             .bind(&storage.namespace)
@@ -103,27 +76,17 @@ pub(in crate::adapters::postgres::graph) mod search {
             })
             .unwrap_or_default();
         let min_sql = min_degree
-            .map(|d| format!(" AND COALESCE(d.degree, 0) >= {d}"))
+            .map(|d| format!(" AND n.degree >= {d}"))
             .unwrap_or_default();
         let pool = storage.pool.get().await?;
-        // Hash-aggregate incident edges once. The correlated COUNT was 5.3s
-        // at 200k nodes / 500k edges; the AGE product plan is a hash join (~0.8s).
+        // Index (namespace, degree DESC, node_id) returns LIMIT rows and stops.
+        // Hash-aggregating both ends of every edge was 616ms at 200k/500k.
         let sql = format!(
-            "WITH {degrees},
-             ranked AS (
-                 SELECT n.node_id, COALESCE(d.degree, 0) AS degree
-                 FROM public.eq_graph_nodes n
-                 LEFT JOIN degrees d ON d.node_id = n.node_id
-                 WHERE n.namespace = $1 {scope} {etype} {min_sql}
-                 ORDER BY degree DESC, n.node_id
-                 LIMIT {limit}
-             )
-             SELECT n.node_id, n.properties, ranked.degree
-             FROM ranked
-             JOIN public.eq_graph_nodes n
-               ON n.namespace = $1 AND n.node_id = ranked.node_id
-             ORDER BY ranked.degree DESC, ranked.node_id",
-            degrees = incident_degrees_cte(),
+            "SELECT n.node_id, n.properties, n.degree
+             FROM public.eq_graph_nodes n
+             WHERE n.namespace = $1 {scope} {etype} {min_sql}
+             ORDER BY n.degree DESC, n.node_id
+             LIMIT {limit}"
         );
         let rows = sqlx::query(&sql)
             .bind(&storage.namespace)

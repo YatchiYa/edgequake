@@ -44,6 +44,29 @@ fn graph_read_flag_cannot_force_plain_reads() {
 }
 
 #[test]
+fn plain_search_reads_stored_degree_not_every_edge() {
+    let src = include_str!("../src/adapters/postgres/graph/plain/search.rs");
+    assert!(
+        src.contains("n.degree"),
+        "popular and search must read the stored degree"
+    );
+    assert!(
+        !src.contains("eq_graph_edges"),
+        "search must not aggregate eq_graph_edges on the request path"
+    );
+    let sql = include_str!("../../../migrations/170_spec164_plain_graph.sql");
+    assert!(sql.contains("idx_eq_graph_nodes_degree"));
+    assert!(sql.contains("public.gin_trgm_ops"));
+    assert!(sql.contains("WITH SCHEMA public"));
+    assert!(
+        !sql.contains("search_path = public, ag_catalog"),
+        "trigram indexes must not depend on the AGE schema"
+    );
+    assert!(sql.contains("eq_graph_degree_on_insert"));
+    assert!(sql.contains("eq_graph_recompute_degrees"));
+}
+
+#[test]
 fn migration_170_has_no_serving_floor_and_171_raises_it() {
     let manifest = include_str!("../../../migrations/manifest.toml");
     let v170 = manifest

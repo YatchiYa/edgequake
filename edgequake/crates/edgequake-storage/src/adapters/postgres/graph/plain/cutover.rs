@@ -162,6 +162,16 @@ fn derive_namespace(graph: &str) -> String {
 }
 
 async fn copy_graph(pool: &sqlx::PgPool, graph: &str, namespace: &str) -> Result<(i64, i64, i64)> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| StorageError::Database(format!("backfill begin failed: {e}")))?;
+    // Statement triggers would aggregate this whole copy. One recompute after
+    // the load writes each degree once.
+    sqlx::query("SELECT set_config('eq.skip_graph_degree', 'on', true)")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| StorageError::Database(format!("skip degree maintenance failed: {e}")))?;
     let node_sql = format!(
         r#"INSERT INTO public.eq_graph_nodes
              (namespace, node_id, tenant_id, workspace_id, entity_type, properties)
@@ -187,7 +197,7 @@ async fn copy_graph(pool: &sqlx::PgPool, graph: &str, namespace: &str) -> Result
     );
     let nodes = sqlx::query(&node_sql)
         .bind(namespace)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| StorageError::Database(format!("backfill nodes {graph} failed: {e}")))?
         .rows_affected() as i64;
@@ -206,7 +216,7 @@ async fn copy_graph(pool: &sqlx::PgPool, graph: &str, namespace: &str) -> Result
     );
     let orphans: i64 = sqlx::query_scalar(&orphan_sql)
         .bind(namespace)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await
         .unwrap_or(0);
 
@@ -241,10 +251,18 @@ async fn copy_graph(pool: &sqlx::PgPool, graph: &str, namespace: &str) -> Result
     );
     let edges = sqlx::query(&edge_sql)
         .bind(namespace)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| StorageError::Database(format!("backfill edges {graph} failed: {e}")))?
         .rows_affected() as i64;
+    sqlx::query("SELECT public.eq_graph_recompute_degrees($1)")
+        .bind(namespace)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| StorageError::Database(format!("recompute degrees {graph} failed: {e}")))?;
+    tx.commit()
+        .await
+        .map_err(|e| StorageError::Database(format!("backfill commit failed: {e}")))?;
     Ok((nodes, edges, orphans))
 }
 
@@ -254,7 +272,10 @@ async fn flush_plain_lineage_gin(pool: &sqlx::PgPool) -> Result<()> {
            gin_clean_pending_list('public.idx_eq_graph_nodes_source_ids_gin'::regclass),
            gin_clean_pending_list('public.idx_eq_graph_nodes_source_chunk_ids_gin'::regclass),
            gin_clean_pending_list('public.idx_eq_graph_edges_source_ids_gin'::regclass),
-           gin_clean_pending_list('public.idx_eq_graph_edges_source_chunk_ids_gin'::regclass)",
+           gin_clean_pending_list('public.idx_eq_graph_edges_source_chunk_ids_gin'::regclass),
+           gin_clean_pending_list('public.idx_eq_graph_nodes_id_trgm'::regclass),
+           gin_clean_pending_list('public.idx_eq_graph_nodes_desc_trgm'::regclass),
+           gin_clean_pending_list('public.idx_eq_graph_nodes_type_trgm'::regclass)",
     )
     .execute(pool)
     .await

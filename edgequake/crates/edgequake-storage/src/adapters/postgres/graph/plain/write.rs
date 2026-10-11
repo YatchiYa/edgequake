@@ -281,6 +281,12 @@ pub(in crate::adapters::postgres::graph) mod write {
             .begin()
             .await
             .map_err(|e| StorageError::Database(format!("plain clear begin failed: {e}")))?;
+        // The namespace's nodes are deleted next, so per-edge degree updates
+        // would rewrite rows that are about to disappear.
+        sqlx::query("SELECT set_config('eq.skip_graph_degree', 'on', true)")
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| StorageError::Database(format!("plain clear skip degree failed: {e}")))?;
         sqlx::query("DELETE FROM public.eq_graph_edges WHERE namespace = $1")
             .bind(namespace)
             .execute(&mut *tx)

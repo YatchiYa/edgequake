@@ -720,8 +720,8 @@ RETURNS bigint
 LANGUAGE plpgsql AS $$
 DECLARE n bigint;
 BEGIN
-  -- Same shape as product plain popular_nodes: one hash aggregate, not a
-  -- correlated COUNT per node (5.3s at 200k on eq_graph_*).
+  -- Pre-degree baseline. Product popular_nodes now reads eq_graph_nodes.degree
+  -- (index scan, LIMIT k). This function still hash-aggregates the scratch edges.
   EXECUTE format($f$
     SELECT count(*)::bigint FROM (
       WITH degrees AS MATERIALIZED (

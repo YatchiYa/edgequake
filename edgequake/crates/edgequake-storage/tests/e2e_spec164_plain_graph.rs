@@ -78,6 +78,18 @@ async fn plain_graph_queries_are_proven_and_measured() {
         !age_installed,
         "this e2e proves the no-AGE path; point DATABASE_URL at Postgres with pgvector and without Apache AGE"
     );
+    let trgm_schema: String = sqlx::query_scalar(
+        "SELECT n.nspname::text FROM pg_extension e
+         JOIN pg_namespace n ON n.oid = e.extnamespace
+         WHERE e.extname = 'pg_trgm'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("pg_trgm");
+    assert_eq!(
+        trgm_schema, "public",
+        "pg_trgm must install into public with no AGE catalog"
+    );
 
     let alice = node(
         "ALICE",
@@ -154,6 +166,47 @@ async fn plain_graph_queries_are_proven_and_measured() {
     assert!(storage.has_node("ALICE").await.expect("has"));
     let degree = storage.node_degree("ALICE").await.expect("degree");
     assert_eq!(degree, 1);
+    assert_eq!(storage.node_degree("BOB").await.expect("bob degree"), 2);
+    storage
+        .upsert_edges_batch(&[edge(
+            "ALICE",
+            "BOB",
+            "KNOWS",
+            &tenant_a,
+            &ws_a,
+            "rel-alice-bob",
+        )])
+        .await
+        .expect("reupsert edge");
+    assert_eq!(
+        storage.node_degree("ALICE").await.expect("degree stable"),
+        1,
+        "conflict update must not double-count degree"
+    );
+    storage
+        .upsert_edges_batch(&[edge(
+            "ALICE",
+            "ALICE",
+            "SELF",
+            &tenant_a,
+            &ws_a,
+            "rel-alice-self",
+        )])
+        .await
+        .expect("self loop");
+    assert_eq!(
+        storage
+            .node_degree("ALICE")
+            .await
+            .expect("self loop degree"),
+        3,
+        "a self-loop counts at both ends"
+    );
+    storage
+        .delete_edge("ALICE", "ALICE")
+        .await
+        .expect("drop self loop");
+    assert_eq!(storage.node_degree("ALICE").await.expect("unloop"), 1);
     measure!(measurements, "node_degree", storage.node_degree("ALICE"));
 
     let degrees = storage
@@ -496,6 +549,14 @@ async fn plain_graph_queries_are_proven_and_measured() {
         .unwrap_or(Value::Null);
     assert!(sources.to_string().contains("only-new"));
     assert!(!sources.to_string().contains("doc1-chunk-0"));
+    assert_eq!(
+        storage
+            .node_degree("ALICE")
+            .await
+            .expect("degree after replace"),
+        1,
+        "replacing node properties must not reset degree"
+    );
 
     prove_rls(&pool, &tenant_a, &tenant_b).await;
 
@@ -508,6 +569,10 @@ async fn plain_graph_queries_are_proven_and_measured() {
         .await
         .expect("gone")
         .is_none());
+    assert_eq!(
+        storage.node_degree("BOB").await.expect("bob after delete"),
+        1
+    );
     storage.delete_node("CAROL").await.expect("delete node");
     assert!(!storage.has_node("CAROL").await.expect("has carol"));
     let (n, _e) = storage.clear_workspace(&ws_b).await.expect("clear ws");

@@ -131,6 +131,20 @@ async fn age_cutover_proves_mirror_shadow_ledger_flip_and_confirm_drop() {
         "shadow neighbor sets must match: {report:?}"
     );
     assert!(report.ready, "ledger must be ready when shadow is clean");
+    assert_eq!(storage.node_degree("ALICE").await.expect("alice degree"), 1);
+    assert_eq!(storage.node_degree("BOB").await.expect("bob degree"), 2);
+    storage
+        .upsert_edges_batch(&[edge("ALICE", "BOB", "KNOWS", &tenant, &workspace)])
+        .await
+        .expect("reupsert after cutover");
+    assert_eq!(
+        storage
+            .node_degree("ALICE")
+            .await
+            .expect("degree after reupsert"),
+        1,
+        "mirroring an existing edge must not double-count degree"
+    );
     let shadow_ok: bool =
         sqlx::query_scalar("SELECT shadow_ok FROM public.eq_graph_cutover WHERE id = 1")
             .fetch_one(&pool)
@@ -287,6 +301,28 @@ async fn full_train_through_171_on_fresh_database() {
             .await
             .expect("age");
     assert!(!age_on, "171 leaves no age extension (no_age={no_age})");
+    let trgm_schema: String = sqlx::query_scalar(
+        "SELECT n.nspname::text FROM pg_extension e
+         JOIN pg_namespace n ON n.oid = e.extnamespace
+         WHERE e.extname = 'pg_trgm'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("pg_trgm after 171");
+    assert_eq!(
+        trgm_schema, "public",
+        "dropping AGE must leave pg_trgm in public"
+    );
+    let trgm_idx: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1 FROM pg_indexes
+            WHERE schemaname = 'public' AND indexname = 'idx_eq_graph_nodes_id_trgm'
+         )",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("trgm index");
+    assert!(trgm_idx, "trigram index must survive confirm-drop");
     let ready: String =
         sqlx::query_scalar("SELECT status FROM public.eq_graph_cutover WHERE id = 1")
             .fetch_one(&pool)
@@ -308,6 +344,16 @@ async fn full_train_through_171_on_fresh_database() {
         .await
         .expect("plain write after full train");
     assert!(storage.has_node("N1").await.expect("read"));
+    let tid = tenant.to_string();
+    let wid = workspace.to_string();
+    let found = storage
+        .search_nodes("n1", 5, None, Some(&tid), Some(&wid))
+        .await
+        .expect("search without AGE");
+    assert!(
+        found.iter().any(|(n, _)| n.id == "N1"),
+        "trigram search must run after AGE is gone"
+    );
     let age_after_boot: bool =
         sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
             .fetch_one(&pool)
