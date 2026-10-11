@@ -585,6 +585,13 @@
       "before_plan": "Generic plan. Seq scan of entities, filter the optional modality predicate. Rows removed 39980, 2503 buffers. The first cold run of that statement was 13.999 ms with 1181 buffer reads. Requiring the predicate without an index is the same scan",
       "after_ms": 0.634,
       "after_plan": "Generic plan. Index scan of idx_entities_modality, Index Cond modality = ANY, 20 rows, 83 buffers. A workspace bind stays optional and does not change that start. Migration 198"
+    },
+    {
+      "name": "shared entities for two names, 80000 chunk_entity_links and 800 links each",
+      "before_ms": 1.859,
+      "before_plan": "Generic plan. Bitmap heap scan of idx_cel_entity_workspace, 1600 rows, 817 buffers. The count needs chunk_id, so every match is fetched from the heap. The first cold run was 32.793 ms with 810 buffer reads",
+      "after_ms": 0.763,
+      "after_plan": "Generic plan. Index only scan of idx_cel_entity_workspace_chunk, 1600 rows, 26 buffers, 0 heap fetches. Migration 199"
     }
   ]
 }

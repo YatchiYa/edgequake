@@ -78,6 +78,9 @@ pub async fn load_document_lineage_from_chunk_links(
 
     let entity_names: Vec<String> = entity_rows.iter().map(|(n, _)| n.clone()).collect();
 
+    // `idx_cel_entity_workspace_chunk` covers chunk_id, so this count
+    // is an index-only scan. The heap index stops at the names but
+    // still fetches every link.
     let shared_entities: HashSet<String> = sqlx::query_scalar(
         "SELECT entity_name
          FROM chunk_entity_links
