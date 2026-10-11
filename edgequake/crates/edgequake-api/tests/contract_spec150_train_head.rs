@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 191, "HEAD schema train must end at 191");
-    for v in 160..=191 {
+    assert_eq!(max, 192, "HEAD schema train must end at 192");
+    for v in 160..=192 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "191");
+    assert_eq!(digits, "192");
 }
 
 #[test]
@@ -188,6 +188,30 @@ fn migration_178_indexes_task_updated_pages() {
     let list = include_str!("../../edgequake-tasks/src/postgres.rs");
     assert!(list.contains("SortField::UpdatedAt => \"updated_at\""));
     assert!(list.contains("ORDER BY {sort_field} {sort_order}"));
+}
+
+#[test]
+fn migration_192_indexes_scoped_drain_claims() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v192 = manifest
+        .split("version = 192")
+        .nth(1)
+        .expect("migration 192");
+    assert!(v192.contains("phase = \"expand\""));
+    assert!(!v192.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/192_drain_workspace_claim_index.sql");
+    assert!(sql.contains("idx_outbox_events_workspace_unprocessed"));
+    assert!(sql.contains("(workspace_id, available_at, created_at)"));
+    assert!(sql.contains("idx_compensation_quarantine_due"));
+    assert!(sql.contains("idx_compensation_quarantine_workspace_next"));
+    let outbox = include_str!("../../edgequake-storage/src/outbox_drain.rs");
+    assert!(outbox.contains("OUTBOX_CLAIM_SCOPED"));
+    assert!(outbox.contains("workspace_id = $2"));
+    assert!(!outbox.contains("$2::uuid IS NULL OR workspace_id = $2"));
+    let quarantine = include_str!("../../edgequake-storage/src/compensation_drain.rs");
+    assert!(quarantine.contains("QUARANTINE_CLAIM_OPEN"));
+    assert!(quarantine.contains("QUARANTINE_CLAIM_SCOPED"));
+    assert!(!quarantine.contains("$2::uuid IS NULL OR workspace_id = $2"));
 }
 
 #[test]
@@ -510,8 +534,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=191 => \"v0.35.0\""),
-        "release_for_schema must map 170–191 to v0.35.0"
+        src.contains("170..=192 => \"v0.35.0\""),
+        "release_for_schema must map 170–192 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

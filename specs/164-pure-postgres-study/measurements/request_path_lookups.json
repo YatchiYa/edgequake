@@ -417,6 +417,27 @@
       "before_plan": "Generic plan. Seq scan. Rows removed by filter 79500, 2906 buffers. The count must read every matching row, not the other tenant",
       "after_ms": 0.345,
       "after_plan": "Custom plan. BitmapOr of idx_documents_tenant_workspace and the null-tenant index, 500 rows, 19 buffers. force_custom_plan, because a generic plan still seq-scans this OR. Counting the tenant that owns 79500 rows seq-scans and removes the other 480, which is the cost of that answer"
+    },
+    {
+      "name": "chunk ANN for one tenant, 200 embeddings there and 39800 elsewhere",
+      "before_ms": 1.968,
+      "before_plan": "Custom plan. Search already sets force_custom_plan. Index scan of idx_chunks_tenant_workspace, 200 rows, then chunk_embeddings_pkey. No other-tenant rows removed, 1051 buffers",
+      "after_ms": 1.968,
+      "after_plan": "No SQL change. The custom plan already starts at the tenant. The large tenant still ranks its own embeddings"
+    },
+    {
+      "name": "scoped outbox claim LIMIT 50, 79500 older events in another workspace",
+      "before_ms": 10.054,
+      "before_plan": "Generic plan. Index scan idx_outbox_events_unprocessed, filter workspace. Rows removed 79500, 1369 buffers. A drain with no workspace stops at 50 on that index (0.027 ms, 3 buffers)",
+      "after_ms": 0.042,
+      "after_plan": "Generic plan. Index scan idx_outbox_events_workspace_unprocessed, Index Cond workspace_id and available_at. 50 rows, 4 buffers. The large workspace is the same shape (0.038 ms). No workspace predicate stays on idx_outbox_events_unprocessed"
+    },
+    {
+      "name": "scoped quarantine claim LIMIT 50, 79500 older rows in another workspace",
+      "before_ms": 8.153,
+      "before_plan": "Generic plan. Parallel seq scan. Rows removed by filter 39750 per worker, 1346 buffers. A drain with no workspace also seq-scans every due row (12.133 ms) because (status, next_attempt_at) cannot order pending and failed together",
+      "after_ms": 0.037,
+      "after_plan": "Generic plan. Index scan idx_compensation_quarantine_workspace_next, 50 rows, 4 buffers. The global claim uses idx_compensation_quarantine_due and stops at 50 (0.086 ms, 103 buffers, the lock of those rows)"
     }
   ]
 }
