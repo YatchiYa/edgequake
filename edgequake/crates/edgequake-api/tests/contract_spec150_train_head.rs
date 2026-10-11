@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 193, "HEAD schema train must end at 193");
-    for v in 160..=193 {
+    assert_eq!(max, 194, "HEAD schema train must end at 194");
+    for v in 160..=194 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "193");
+    assert_eq!(digits, "194");
 }
 
 #[test]
@@ -243,6 +243,34 @@ fn migration_193_indexes_scoped_projection_claims() {
         include_str!("../../edgequake-storage/src/adapters/postgres/ingestion_committer.rs");
     assert!(revisions.contains("DOCUMENT_REVISION_PAGE_AFTER"));
     assert!(!revisions.contains("$3::uuid IS NULL OR logical_id > $3"));
+}
+
+#[test]
+fn migration_194_indexes_runnable_task_claims() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v194 = manifest
+        .split("version = 194")
+        .nth(1)
+        .expect("migration 194");
+    assert!(v194.contains("phase = \"expand\""));
+    assert!(!v194.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/194_task_claim_runnable_indexes.sql");
+    for index in [
+        "idx_tasks_pending_unheld_created",
+        "idx_tasks_pending_unheld_workspace",
+        "idx_tasks_processing_unleased_created",
+        "idx_tasks_processing_unleased_workspace",
+        "idx_tasks_processing_expired_unheld",
+        "idx_tasks_processing_expired_unheld_workspace",
+    ] {
+        assert!(sql.contains(index), "missing {index}");
+    }
+    let tasks = include_str!("../../edgequake-tasks/src/postgres.rs");
+    assert!(tasks.contains("FAIR_PENDING_SAMPLE_SQL"));
+    assert!(tasks.contains("FAIR_STALE_SAMPLE_SQL"));
+    assert!(tasks.contains("JOIN LATERAL"));
+    assert!(!tasks.contains("fairness_hold_until IS NULL OR fairness_hold_until"));
+    assert!(!tasks.contains("lease_expires_at IS NULL OR lease_expires_at"));
 }
 
 #[test]
@@ -565,8 +593,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=193 => \"v0.35.0\""),
-        "release_for_schema must map 170–193 to v0.35.0"
+        src.contains("170..=194 => \"v0.35.0\""),
+        "release_for_schema must map 170–194 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

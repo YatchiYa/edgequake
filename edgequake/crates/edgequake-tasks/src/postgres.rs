@@ -161,6 +161,76 @@ fn queue_metrics_statement(has_tenant: bool, has_workspace: bool) -> String {
     format!("{HEAD}{predicate}")
 }
 
+/// Oldest runnable pending tasks. `fairness_hold_until IS NULL OR hold <= now()`
+/// hides the hold from a generic plan, so the sample walks older held rows.
+/// Each arm requires one predicate. `idx_tasks_pending_unheld_created` serves
+/// the null arm. `idx_tasks_fairness_hold_until` serves the due arm.
+#[cfg(feature = "postgres")]
+pub const FAIR_PENDING_SAMPLE_SQL: &str = r#"
+SELECT track_id, tenant_id, workspace_id, task_type, created_at FROM (
+    (SELECT track_id, tenant_id, workspace_id, task_type, created_at
+     FROM tasks
+     WHERE status = 'pending'
+       AND fairness_parked_at IS NULL
+       AND fairness_hold_until IS NULL
+     ORDER BY created_at ASC
+     LIMIT $1)
+    UNION ALL
+    (SELECT track_id, tenant_id, workspace_id, task_type, created_at
+     FROM tasks
+     WHERE status = 'pending'
+       AND fairness_parked_at IS NULL
+       AND fairness_hold_until <= NOW()
+     ORDER BY created_at ASC
+     LIMIT $1)
+) pending_page
+ORDER BY created_at ASC
+LIMIT $1
+"#;
+
+/// Stale processing sample. A null lease and an expired lease are separate
+/// arms, and each arm requires the hold predicate. `idx_tasks_processing_unleased_created`
+/// serves a null lease with no hold. `idx_tasks_processing_expired_unheld`
+/// serves an expired lease with no hold. A due hold uses `idx_tasks_fairness_hold_until`.
+#[cfg(feature = "postgres")]
+pub const FAIR_STALE_SAMPLE_SQL: &str = r#"
+SELECT track_id, tenant_id, workspace_id, task_type, created_at FROM (
+    (SELECT track_id, tenant_id, workspace_id, task_type, created_at
+     FROM tasks
+     WHERE status = 'processing'
+       AND lease_expires_at IS NULL
+       AND fairness_hold_until IS NULL
+     ORDER BY created_at ASC
+     LIMIT $1)
+    UNION ALL
+    (SELECT track_id, tenant_id, workspace_id, task_type, created_at
+     FROM tasks
+     WHERE status = 'processing'
+       AND lease_expires_at IS NULL
+       AND fairness_hold_until <= NOW()
+     ORDER BY created_at ASC
+     LIMIT $1)
+    UNION ALL
+    (SELECT track_id, tenant_id, workspace_id, task_type, created_at
+     FROM tasks
+     WHERE status = 'processing'
+       AND lease_expires_at < NOW()
+       AND fairness_hold_until IS NULL
+     ORDER BY created_at ASC
+     LIMIT $1)
+    UNION ALL
+    (SELECT track_id, tenant_id, workspace_id, task_type, created_at
+     FROM tasks
+     WHERE status = 'processing'
+       AND lease_expires_at < NOW()
+       AND fairness_hold_until <= NOW()
+     ORDER BY created_at ASC
+     LIMIT $1)
+) stale_page
+ORDER BY created_at ASC
+LIMIT $1
+"#;
+
 #[cfg(feature = "postgres")]
 #[async_trait::async_trait]
 impl TaskStorage for PostgresTaskStorage {
@@ -698,7 +768,7 @@ impl TaskStorage for PostgresTaskStorage {
     // @engine      postgres
     // @intent      Hold-aware, tenant-priority, workspace-fair claim (SKIP LOCKED).
     // @tables      tasks
-    // @indexes     idx_tasks_claim_pending_workspace_created, idx_tasks_stale_processing_lease, idx_tasks_fairness_hold_until
+    // @indexes     idx_tasks_pending_unheld_created, idx_tasks_pending_unheld_workspace, idx_tasks_processing_unleased_created, idx_tasks_processing_unleased_workspace, idx_tasks_processing_expired_unheld, idx_tasks_processing_expired_unheld_workspace, idx_tasks_fairness_hold_until
     // @complexity  time: O(B + W) bounded sample B≈1000 + ws/tenant load; space: O(1)
     // @limits      Concurrent workers safe via FOR UPDATE SKIP LOCKED (two sargable arms). Lease TTL required; expired processing rows reclaimable. Active fairness_hold_until excludes Pending from claim (SPEC-057 INV-06). fairness_parked_at excluded via state machine CLAIM_PENDING_GUARD_SQL (SPEC-091 R-18). Deadlock risk if other paths lock tasks by track_id inconsistently.
     // @scaling     Cost bounded by sample size, not full backlog depth (SPEC-090 F-090-11)
@@ -782,22 +852,10 @@ impl TaskStorage for PostgresTaskStorage {
             r#"
             /* DATA-PG-TASKS-CLAIM-NEXT-140 — hold-aware + tenant-priority fair pick */
             WITH bounded_pending AS (
-                SELECT track_id, tenant_id, workspace_id, task_type, created_at
-                FROM tasks
-                WHERE status = 'pending'
-                  AND fairness_parked_at IS NULL
-                  AND (fairness_hold_until IS NULL OR fairness_hold_until <= NOW())
-                ORDER BY created_at ASC
-                LIMIT $1
+                {pending_sample}
             ),
             bounded_stale AS (
-                SELECT track_id, tenant_id, workspace_id, task_type, created_at
-                FROM tasks
-                WHERE status = 'processing'
-                  AND (lease_expires_at IS NULL OR lease_expires_at < NOW())
-                  AND (fairness_hold_until IS NULL OR fairness_hold_until <= NOW())
-                ORDER BY created_at ASC
-                LIMIT $1
+                {stale_sample}
             ),
             claimable AS (
                 SELECT * FROM bounded_pending
@@ -847,7 +905,9 @@ impl TaskStorage for PostgresTaskStorage {
             LIMIT 1
             "#,
             tenant_inflight = tenant_inflight_sql,
-            lifecycle = lifecycle
+            lifecycle = lifecycle,
+            pending_sample = FAIR_PENDING_SAMPLE_SQL,
+            stale_sample = FAIR_STALE_SAMPLE_SQL,
         );
 
         let fair_ws: Option<Uuid> = sqlx::query_scalar(&fair_pick_sql)
@@ -863,11 +923,36 @@ impl TaskStorage for PostgresTaskStorage {
             return Ok(None);
         };
 
-        // DRY: pending vs stale arms share the same UPDATE/RETURNING shape.
         // SPEC-091 QW0 (LAW-Q2): guard fragments come from the state machine SSOT
-        // (crate::state_machine); rewriting them as literals breaks the drift test.
-        // Within-workspace: prefer under-cap tenants then FIFO (memory parity).
-        let claim_arm_sql = |candidate_where: &str| {
+        // (`CLAIM_PENDING_GUARD_SQL`, `CLAIM_STALE_GUARD_SQL`). Each arm requires
+        // one predicate so a generic plan can start at that index and stop at
+        // one row. A single `IS NULL OR` walks every older held task.
+        let claim_arm_sql = |arms: &[&str]| {
+            let union = arms
+                .iter()
+                .map(|arm| {
+                    format!(
+                        r#"
+                        (SELECT picked.track_id, picked.at_cap, picked.created_at
+                         FROM (SELECT 1) AS seed
+                         JOIN LATERAL (
+                             SELECT t2.track_id, ({at_cap}) AS at_cap, t2.created_at
+                             FROM tasks t2
+                             LEFT JOIN (
+                                 {tenant_inflight}
+                             ) ti ON ti.tenant_id = t2.tenant_id
+                             WHERE t2.workspace_id = $4
+                               AND {arm}
+                             ORDER BY ({at_cap}) ASC, t2.created_at ASC
+                             FOR UPDATE OF t2 SKIP LOCKED
+                             LIMIT 1
+                         ) picked ON true)"#,
+                        at_cap = at_cap_expr,
+                        tenant_inflight = tenant_inflight_sql,
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" UNION ALL ");
             format!(
                 r#"
                 UPDATE tasks t
@@ -880,29 +965,23 @@ impl TaskStorage for PostgresTaskStorage {
                     updated_at = NOW(),
                     completed_at = NULL
                 FROM (
-                    SELECT t2.track_id
-                    FROM tasks t2
-                    LEFT JOIN (
-                        {tenant_inflight}
-                    ) ti ON ti.tenant_id = t2.tenant_id
-                    WHERE t2.workspace_id = $4
-                      AND {candidate_where}
-                      AND (t2.fairness_hold_until IS NULL OR t2.fairness_hold_until <= NOW())
-                    ORDER BY
-                        ({at_cap}) ASC,
-                        t2.created_at ASC
-                    FOR UPDATE OF t2 SKIP LOCKED
+                    SELECT track_id FROM (
+                        {union}
+                    ) arms
+                    ORDER BY at_cap ASC, created_at ASC
                     LIMIT 1
                 ) candidate
                 WHERE t.track_id = candidate.track_id
                 RETURNING {TASK_RETURNING_COLUMNS_ALIASED}
-                "#,
-                tenant_inflight = tenant_inflight_sql,
-                at_cap = at_cap_expr
+                "#
             )
         };
 
-        let pending_sql = claim_arm_sql(crate::state_machine::CLAIM_PENDING_GUARD_SQL);
+        let pending_guard = crate::state_machine::CLAIM_PENDING_GUARD_SQL;
+        let pending_sql = claim_arm_sql(&[
+            &format!("{pending_guard} AND fairness_hold_until IS NULL"),
+            &format!("{pending_guard} AND fairness_hold_until <= NOW()"),
+        ]);
         let row = match sqlx::query(&pending_sql)
             .bind(worker_id)
             .bind(lease_token)
@@ -923,7 +1002,14 @@ impl TaskStorage for PostgresTaskStorage {
         let row = if row.is_some() {
             row
         } else {
-            let stale_sql = claim_arm_sql(crate::state_machine::CLAIM_STALE_GUARD_SQL);
+            // Arms split `CLAIM_STALE_GUARD_SQL`: a null lease and an expired
+            // lease each require the hold, so neither predicate is an OR.
+            let stale_sql = claim_arm_sql(&[
+                "status = 'processing' AND lease_expires_at IS NULL AND fairness_hold_until IS NULL",
+                "status = 'processing' AND lease_expires_at IS NULL AND fairness_hold_until <= NOW()",
+                "status = 'processing' AND lease_expires_at < NOW() AND fairness_hold_until IS NULL",
+                "status = 'processing' AND lease_expires_at < NOW() AND fairness_hold_until <= NOW()",
+            ]);
             match sqlx::query(&stale_sql)
                 .bind(worker_id)
                 .bind(lease_token)
@@ -1474,5 +1560,18 @@ mod queue_metrics_sql_tests {
         assert!(!tenant.contains("workspace_id"));
         let open = queue_metrics_statement(false, false);
         assert!(open.contains("$1::uuid IS NULL OR tenant_id = $1"));
+    }
+
+    #[test]
+    fn fair_claim_samples_require_each_predicate() {
+        let pending = super::FAIR_PENDING_SAMPLE_SQL;
+        assert!(pending.contains("fairness_hold_until IS NULL"));
+        assert!(pending.contains("fairness_hold_until <= NOW()"));
+        assert!(!pending.contains("fairness_hold_until IS NULL OR"));
+        let stale = super::FAIR_STALE_SAMPLE_SQL;
+        assert!(stale.contains("lease_expires_at IS NULL"));
+        assert!(stale.contains("lease_expires_at < NOW()"));
+        assert!(!stale.contains("lease_expires_at IS NULL OR"));
+        assert!(!stale.contains("fairness_hold_until IS NULL OR"));
     }
 }

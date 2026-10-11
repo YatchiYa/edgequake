@@ -7,8 +7,8 @@ description: "Plain-English guide to upgrade any published EdgeQuake version saf
 
 This is the canonical guide to database upgrades. It is for operators who run EdgeQuake on their own PostgreSQL. Read it before you start a newer image or binary. Per-release pages (`upgrade-to-0.XX.md`) describe product changes; this page describes the migration process, which works from any published version to HEAD.
 
-> **Schema train today:** migration **193** (SPEC-164).
-> The released product is **v0.34.0** (schema 169). Migration 170 adds plain graph tables and does not raise the serving floor, so a v0.34 binary can still serve. Migration 171 drops Apache AGE and is refused unless you pass `--confirm-drop` after the cutover ledger is `ready`. Migrations 172 through 193 add request-path indexes and do not raise the serving floor.
+> **Schema train today:** migration **194** (SPEC-164).
+> The released product is **v0.34.0** (schema 169). Migration 170 adds plain graph tables and does not raise the serving floor, so a v0.34 binary can still serve. Migration 171 drops Apache AGE and is refused unless you pass `--confirm-drop` after the cutover ledger is `ready`. Migrations 172 through 194 add request-path indexes and do not raise the serving floor.
 >
 > **One rule:** the API never changes the database schema. Only `edgequake migrate` (or the Compose service or Helm Job that runs it) writes schema.
 
@@ -33,7 +33,7 @@ flowchart TD
   F -->|Yes| G["Backup, check, migrate. Watch the SPEC-091 guard"]
   F -->|No| H{"Schema 149 to 168?"}
   H -->|Yes| I["Backup, check, migrate. Normal path"]
-  H -->|No| J["Schema 169: apply 170 to 193. 171 needs confirm-drop"]
+  H -->|No| J["Schema 169: apply 170 to 194. 171 needs confirm-drop"]
 %% eq-classes
 classDef eqStore fill:#D1FAE5,stroke:#10B981,color:#064E3B
 class B eqStore
@@ -49,7 +49,7 @@ How to read it: start at the top, answer each question, and stop at the box that
 | 149 | v0.26.x | S to M | Normal path (150 to 169). Leftover drops may still be pending. |
 | 159 to 166 | v0.27 to v0.31 | S | Apply the remaining numbered files. |
 | 168 | v0.32.x | S | Apply 169 (`provider_connections`, expand-only). |
-| 169 | v0.33.0 / v0.34.0 | S | Apply 170 (plain graph). 171 drops AGE and needs `--confirm-drop`. 172 to 193 are expand indexes. |
+| 169 | v0.33.0 / v0.34.0 | S | Apply 170 (plain graph). 171 drops AGE and needs `--confirm-drop`. 172 to 194 are expand indexes. |
 
 Risk assumes a small database. Large graphs take longer (class XL) because some steps rewrite AGE tables or build indexes.
 Proof: `make spec150-matrix` (all epochs) and `make spec150-matrix-quick` (key epochs) replay each epoch to HEAD on PG16, PG17 and PG18.

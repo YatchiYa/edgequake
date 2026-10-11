@@ -466,6 +466,27 @@
       "before_plan": "Generic plan. Index only scan of idx_projection_deliveries_due, then filter the provider. Rows removed 79500, 573 buffers. A claim with no provider stops at 50 on that index (0.037 ms, 4 buffers)",
       "after_ms": 0.178,
       "after_plan": "Generic plan. Nested loop from the binding into idx_projection_deliveries_binding_due. 50 rows, 7 buffers. The unscoped claim stays on idx_projection_deliveries_due"
+    },
+    {
+      "name": "fair pending sample LIMIT 50, 79950 older tasks held and 50 unheld",
+      "before_ms": 14.492,
+      "before_plan": "Generic plan. Index scan tasks_history_created_at_idx, filter the hold OR. Rows removed 79949, 2075 buffers",
+      "after_ms": 0.128,
+      "after_plan": "Generic plan. Merge append. Unheld arm is an index scan of idx_tasks_pending_unheld_created and stops at 50. Due-hold arm uses idx_tasks_fairness_hold_until and returns 0. 6 buffers, no held rows removed"
+    },
+    {
+      "name": "fair pending workspace claim LIMIT 1, same 79950 held rows",
+      "before_ms": 12.184,
+      "before_plan": "Generic plan. Index scan tasks_history_created_at_idx, filter workspace and the hold OR. Rows removed 79949, 2075 buffers",
+      "after_ms": 0.101,
+      "after_plan": "Generic plan. Lateral index scan of idx_tasks_pending_unheld_workspace, Index Cond workspace_id, stops at 1. Due-hold arm uses idx_tasks_fairness_hold_until and returns 0. 7 buffers. The at_cap join reads the claimable rows in that workspace (50) and does not visit the held rows"
+    },
+    {
+      "name": "fair stale sample LIMIT 50, 79950 future leases and 50 expired",
+      "before_ms": 23.737,
+      "before_plan": "Generic plan. Index scan backward idx_tasks_created, filter the lease OR and the hold OR. Rows removed 79950, 160064 buffers",
+      "after_ms": 0.211,
+      "after_plan": "Generic plan. Expired unheld arm is an index only scan of idx_tasks_processing_expired_unheld, Index Cond lease_expires_at < now(), 50 rows, 5 buffers. Null-lease arm uses idx_tasks_processing_unleased_created and returns 0. Future leases are not visited"
     }
   ]
 }
