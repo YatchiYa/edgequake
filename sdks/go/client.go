@@ -340,11 +340,13 @@ func (c *Client) getRaw(ctx context.Context, path string, params url.Values) ([]
 			lastErr = fmt.Errorf("edgequake: request: %w", err)
 			continue
 		}
-		defer resp.Body.Close()
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return io.ReadAll(resp.Body)
+			data, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return data, err
 		}
 		apiErr := parseAPIError(resp)
+		resp.Body.Close()
 		ae, ok := apiErr.(*APIError)
 		if ok && ae.IsRetryable() && attempt < maxAttempts-1 {
 			lastErr = apiErr
