@@ -191,22 +191,71 @@ const DOCUMENT_LIST_PROJECTION: &str = r#"
 #[cfg(feature = "postgres")]
 const DOCUMENT_PAGE_COLUMNS: &str = "id, title, status, chunk_count, entity_count, file_size_bytes, track_id, error_message, created_at, updated_at, metadata";
 
-/// Statuses the list can require in SQL.
-///
-/// `pending`, `processing`, and `unknown` also match `current_stage`, so the
-/// column predicate would hide those rows. They stay on the open page and the
-/// handler filters them. `completed` is the stored pair `completed` and
-/// `indexed`. Every other passed value is one `status` equality.
+/// One required arm of a status chip. Literals come from this list, not from
+/// the request, so the statement can name the index column.
 #[cfg(feature = "postgres")]
-fn relational_list_statuses(raw: Option<&str>) -> Vec<String> {
+#[derive(Debug)]
+enum ChipArm {
+    Status(&'static str),
+    /// `current_stage` equality. Rows whose `status` is already covered by a
+    /// status arm of the same chip are excluded, so a row is returned once.
+    Stage(&'static str),
+}
+
+#[cfg(feature = "postgres")]
+#[derive(Debug)]
+enum RelationalListFilter {
+    Open,
+    /// Bound `status = $n` values. `completed` is two values.
+    Statuses(Vec<String>),
+    /// Fixed chip. Each arm is an equality the index can stop after LIMIT.
+    Chip(&'static [ChipArm]),
+}
+
+#[cfg(feature = "postgres")]
+static PENDING_ARMS: &[ChipArm] = &[
+    ChipArm::Status("pending"),
+    ChipArm::Status("queued"),
+    ChipArm::Stage("queued"),
+];
+
+#[cfg(feature = "postgres")]
+static PROCESSING_ARMS: &[ChipArm] = &[
+    ChipArm::Status("processing"),
+    ChipArm::Stage("converting"),
+    ChipArm::Stage("preprocessing"),
+    ChipArm::Stage("chunking"),
+    ChipArm::Stage("extracting"),
+    ChipArm::Stage("gleaning"),
+    ChipArm::Stage("merging"),
+    ChipArm::Stage("summarizing"),
+    ChipArm::Stage("embedding"),
+    ChipArm::Stage("storing"),
+    ChipArm::Stage("projecting"),
+    ChipArm::Stage("indexing"),
+];
+
+/// How the list requires a passed status.
+///
+/// `unknown` is the complement of every known status, so it stays on the open
+/// page. `pending` and `processing` also match `current_stage`. Each of those
+/// values is its own arm: `current_stage = ANY($n)` hides the stage from a
+/// generic plan and walks every newer row (12.428 ms, 79,950 removed).
+/// `completed` is the stored pair `completed` and `indexed`. Every other
+/// passed value is one `status` equality.
+#[cfg(feature = "postgres")]
+fn relational_list_filter(raw: Option<&str>) -> RelationalListFilter {
     let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
-        return Vec::new();
+        return RelationalListFilter::Open;
     };
-    let raw = raw.to_ascii_lowercase();
-    match raw.as_str() {
-        "all" | "pending" | "processing" | "unknown" => Vec::new(),
-        "completed" => vec!["completed".to_string(), "indexed".to_string()],
-        other => vec![other.to_string()],
+    match raw.to_ascii_lowercase().as_str() {
+        "all" | "unknown" => RelationalListFilter::Open,
+        "pending" => RelationalListFilter::Chip(PENDING_ARMS),
+        "processing" => RelationalListFilter::Chip(PROCESSING_ARMS),
+        "completed" => {
+            RelationalListFilter::Statuses(vec!["completed".to_string(), "indexed".to_string()])
+        }
+        other => RelationalListFilter::Statuses(vec![other.to_string()]),
     }
 }
 
@@ -351,6 +400,86 @@ fn document_list_statement(tenant_scoped: bool, status_count: usize) -> String {
     }
 }
 
+/// `pending` and `processing` also match `current_stage`.
+///
+/// One equality per value, then `UNION ALL`, so each arm stops at LIMIT.
+/// `current_stage = ANY($n)` is not an index condition on a generic plan
+/// (10.739 ms, 79,950 newer rows removed). A stage arm skips rows whose
+/// `status` is already a status arm of the same chip, so a row comes back once.
+#[cfg(feature = "postgres")]
+fn chip_list_statement(tenant_scoped: bool, arms: &[ChipArm]) -> String {
+    let projection = DOCUMENT_LIST_PROJECTION;
+    let page = DOCUMENT_PAGE_COLUMNS;
+    let order = "ORDER BY created_at DESC, id DESC";
+    let limit = if tenant_scoped { "$3" } else { "$2" };
+    let exclusions = chip_status_exclusions(arms);
+    let scopes: Vec<&str> = if tenant_scoped {
+        vec![
+            "workspace_id = $1 AND tenant_id = $2",
+            "workspace_id = $1 AND tenant_id IS NULL",
+        ]
+    } else {
+        vec!["workspace_id = $1"]
+    };
+    let mut unions = Vec::new();
+    for scope in scopes {
+        for arm in arms {
+            let filter = chip_arm_filter(arm, &exclusions);
+            unions.push(format!(
+                "(
+                   SELECT {page}
+                   FROM public.documents
+                   WHERE {scope} AND {filter}
+                   {order}
+                   LIMIT {limit}
+                 )"
+            ));
+        }
+    }
+    let body = unions.join("\n               UNION ALL\n               ");
+    format!(
+        "SELECT {projection}
+         FROM (
+               {body}
+         ) page
+         {order}
+         LIMIT {limit}"
+    )
+}
+
+#[cfg(feature = "postgres")]
+fn chip_status_exclusions(arms: &[ChipArm]) -> String {
+    let mut sql = String::new();
+    for arm in arms {
+        if let ChipArm::Status(status) = arm {
+            sql.push_str(" AND status IS DISTINCT FROM ");
+            sql.push_str(&sql_ident_literal(status));
+        }
+    }
+    sql
+}
+
+#[cfg(feature = "postgres")]
+fn chip_arm_filter(arm: &ChipArm, exclusions: &str) -> String {
+    match arm {
+        ChipArm::Status(status) => format!("status = {}", sql_ident_literal(status)),
+        ChipArm::Stage(stage) => format!(
+            "(metadata->>'current_stage') = {}{exclusions}",
+            sql_ident_literal(stage)
+        ),
+    }
+}
+
+/// Chip literals are a fixed allowlist. They are not the request string.
+#[cfg(feature = "postgres")]
+fn sql_ident_literal(value: &str) -> String {
+    debug_assert!(
+        value.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'),
+        "chip literal must be a lowercase identifier"
+    );
+    format!("'{value}'")
+}
+
 /// Status chips for the same scope as the document page.
 ///
 /// The count must read every matching row. It must not read other tenants.
@@ -471,13 +600,25 @@ pub async fn list_relational_document_summaries_limited(
 
     // Fetch one extra row to detect truncation without a second COUNT.
     let fetch_limit = (max_entries as i64).saturating_add(1);
-    let statuses = relational_list_statuses(status);
-    let sql = document_list_statement(tenant_uuid.is_some(), statuses.len());
+    let filter = relational_list_filter(status);
+    let (sql, status_binds) = match filter {
+        RelationalListFilter::Open => (
+            document_list_statement(tenant_uuid.is_some(), 0),
+            Vec::new(),
+        ),
+        RelationalListFilter::Statuses(values) => {
+            let sql = document_list_statement(tenant_uuid.is_some(), values.len());
+            (sql, values)
+        }
+        RelationalListFilter::Chip(arms) => {
+            (chip_list_statement(tenant_uuid.is_some(), arms), Vec::new())
+        }
+    };
     let mut query = sqlx::query(&sql).bind(workspace_id);
     if let Some(tenant_id) = tenant_uuid {
         query = query.bind(tenant_id);
     }
-    for status_value in &statuses {
+    for status_value in &status_binds {
         query = query.bind(status_value);
     }
     let rows = query
@@ -1206,17 +1347,34 @@ mod tests {
     #[cfg(feature = "postgres")]
     #[test]
     fn status_page_requires_the_status_column() {
-        assert!(relational_list_statuses(None).is_empty());
-        assert!(relational_list_statuses(Some("pending")).is_empty());
-        assert!(relational_list_statuses(Some("processing")).is_empty());
-        assert_eq!(
-            relational_list_statuses(Some("failed")),
-            vec!["failed".to_string()]
-        );
-        assert_eq!(
-            relational_list_statuses(Some("completed")),
-            vec!["completed".to_string(), "indexed".to_string()]
-        );
+        assert!(matches!(
+            relational_list_filter(None),
+            RelationalListFilter::Open
+        ));
+        assert!(matches!(
+            relational_list_filter(Some("unknown")),
+            RelationalListFilter::Open
+        ));
+        match relational_list_filter(Some("pending")) {
+            RelationalListFilter::Chip(arms) => assert!(std::ptr::eq(arms, PENDING_ARMS)),
+            other => panic!("pending must be the pending chip, got {other:?}"),
+        }
+        match relational_list_filter(Some("processing")) {
+            RelationalListFilter::Chip(arms) => assert!(std::ptr::eq(arms, PROCESSING_ARMS)),
+            other => panic!("processing must be the processing chip, got {other:?}"),
+        }
+        match relational_list_filter(Some("failed")) {
+            RelationalListFilter::Statuses(values) => {
+                assert_eq!(values, vec!["failed".to_string()]);
+            }
+            other => panic!("failed must be one status equality, got {other:?}"),
+        }
+        match relational_list_filter(Some("completed")) {
+            RelationalListFilter::Statuses(values) => {
+                assert_eq!(values, vec!["completed".to_string(), "indexed".to_string()]);
+            }
+            other => panic!("completed must be two status equalities, got {other:?}"),
+        }
 
         let open = document_list_statement(false, 0);
         assert!(!open.contains("status ="));
@@ -1237,6 +1395,29 @@ mod tests {
         assert!(tenant.contains("tenant_id = $2 AND status = $3"));
         assert!(tenant.contains("tenant_id IS NULL AND status = $3"));
         assert!(!tenant.contains("$2::uuid IS NULL"));
+
+        let pending = chip_list_statement(false, PENDING_ARMS);
+        assert!(pending.contains("status = 'pending'"));
+        assert!(pending.contains("status = 'queued'"));
+        assert!(pending.contains("(metadata->>'current_stage') = 'queued'"));
+        assert!(pending.contains("status IS DISTINCT FROM 'pending'"));
+        assert!(pending.contains("status IS DISTINCT FROM 'queued'"));
+        assert!(pending.contains("ORDER BY created_at DESC, id DESC"));
+        assert!(pending.contains("LIMIT $2"));
+        assert!(!pending.contains("IS NULL OR"));
+        assert!(!pending.contains("ANY("));
+
+        let processing = chip_list_statement(false, PROCESSING_ARMS);
+        assert!(processing.contains("status = 'processing'"));
+        assert!(processing.contains("(metadata->>'current_stage') = 'extracting'"));
+        assert!(processing.contains("status IS DISTINCT FROM 'processing'"));
+        assert!(!processing.contains("= ANY("));
+
+        let pending_tenant = chip_list_statement(true, PENDING_ARMS);
+        assert!(pending_tenant.contains("tenant_id = $2 AND status = 'pending'"));
+        assert!(pending_tenant
+            .contains("tenant_id IS NULL AND (metadata->>'current_stage') = 'queued'"));
+        assert!(pending_tenant.contains("LIMIT $3"));
     }
 
     #[test]

@@ -627,6 +627,13 @@
       "before_plan": "Generic plan. Index scan of idx_documents_created_at, filter workspace and status. Rows removed 79950, 2558 buffers. The first run was 35.847 ms with 701 buffer reads. The list without the predicate reads the newest 2001 indexed rows in 0.457 ms and then drops them, so those 50 failed documents never appear",
       "after_ms": 0.021,
       "after_plan": "Generic plan. Index only scan of idx_documents_workspace_status_created, Index Cond workspace_id and status, stops at 50, 14 buffers. Migration 200. The tenant arm is idx_documents_workspace_tenant_status_created, 0.043 ms, 14 buffers"
+    },
+    {
+      "name": "document list pending chip LIMIT 50, 50 oldest current_stage=queued and 79950 newer indexed rows",
+      "before_ms": 12.595,
+      "before_plan": "Generic plan. Index scan of idx_documents_created_at with status IN ('pending','queued') OR current_stage = 'queued'. Rows removed 79950, 2558 buffers. The newest 2001 rows include 0 of those queued-stage documents, so the open page drops them. current_stage = ANY($stages) is the same walk: 9.287 ms, 80000 removed",
+      "after_ms": 0.055,
+      "after_plan": "Generic plan. Merge append of one equality per arm. The stage arm is an index scan of idx_documents_workspace_stage_created and stops at 50, 11 buffers. Status arms return 0. Full union 17 buffers, 50 rows. Migration 201. Tenant union 0.048 ms, 25 buffers, on idx_documents_workspace_tenant_stage_created. A common status = 'pending' page is an index-only scan of idx_documents_workspace_status_created and stops at 50 (0.037 ms)"
     }
   ]
 }

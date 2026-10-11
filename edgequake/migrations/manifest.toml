@@ -4,7 +4,7 @@
 
 schema_version = 1
 compat_serve_min = 149
-compat_serve_max = 200
+compat_serve_max = 201
 irreversible_drop = [125, 126, 131, 171]
 legacy_cutover_assert = 142
 
@@ -1451,6 +1451,13 @@ lock_class = "ddl_access_exclusive"
 [[migration]]
 version = 200
 file = "200_document_status_page_index.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 201
+file = "201_document_stage_page_index.sql"
 phase = "expand"
 no_transaction = false
 lock_class = "ddl_access_exclusive"
