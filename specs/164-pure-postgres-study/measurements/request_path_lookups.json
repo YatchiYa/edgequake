@@ -487,6 +487,27 @@
       "before_plan": "Generic plan. Index scan backward idx_tasks_created, filter the lease OR and the hold OR. Rows removed 79950, 160064 buffers",
       "after_ms": 0.211,
       "after_plan": "Generic plan. Expired unheld arm is an index only scan of idx_tasks_processing_expired_unheld, Index Cond lease_expires_at < now(), 50 rows, 5 buffers. Null-lease arm uses idx_tasks_processing_unleased_created and returns 0. Future leases are not visited"
+    },
+    {
+      "name": "chunk ANN filtered by one id, 40000 embeddings",
+      "before_ms": 12.264,
+      "before_plan": "Custom plan. Search sets force_custom_plan. Parallel seq scan of chunks, filter id::text = ANY OR legacy key. Rows removed 20000 per worker, 2765 buffers",
+      "after_ms": 0.078,
+      "after_plan": "Custom plan. Index only scan of chunks_pkey for that id, then chunk_embeddings_pkey. 1 row, 13 buffers. A legacy key uses idx_chunks_legacy_chunk_key (0.051 ms, 6 buffers). No new index"
+    },
+    {
+      "name": "chunk ANN for one document, 40000 embeddings and 1 chunk in that document",
+      "before_ms": 7.995,
+      "before_plan": "Generic plan. Parallel seq scan, filter the optional document predicate. Rows removed 20000 per worker, 2760 buffers. The request path sets force_custom_plan, which already starts at idx_chunks_document (0.147 ms, 11 buffers)",
+      "after_ms": 0.177,
+      "after_plan": "Generic plan. Bitmap index scan of idx_chunks_document, 1 row, 12 buffers. The custom plan stays on that index (0.032 ms). No new index"
+    },
+    {
+      "name": "chunk ANN limited to chart modality, 20 chart rows and 39980 others",
+      "before_ms": 7.995,
+      "before_plan": "Generic plan. Same optional statement as the document filter: parallel seq scan, 20000 rows removed per worker, 2760 buffers. The custom plan already uses idx_chunks_modality (0.186 ms, 82 buffers)",
+      "after_ms": 0.478,
+      "after_plan": "Generic plan. Index scan of idx_chunks_modality, 20 rows, 85 buffers. No new index"
     }
   ]
 }
