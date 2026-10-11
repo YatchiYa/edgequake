@@ -4,7 +4,7 @@
 
 schema_version = 1
 compat_serve_min = 149
-compat_serve_max = 172
+compat_serve_max = 173
 irreversible_drop = [125, 126, 131, 171]
 legacy_cutover_assert = 142
 
@@ -1255,6 +1255,13 @@ serving_floor = 171
 [[migration]]
 version = 172
 file = "172_request_path_lookup_indexes.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 173
+file = "173_injection_list_index.sql"
 phase = "expand"
 no_transaction = false
 lock_class = "ddl_access_exclusive"

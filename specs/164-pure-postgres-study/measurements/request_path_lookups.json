@@ -5,7 +5,8 @@
   "scale": {
     "documents": 80000,
     "pending_tasks": 80000,
-    "chunk_entity_links": 80000
+    "chunk_entity_links": 80000,
+    "chunks": 40000
   },
   "note": "EXPLAIN (ANALYZE, BUFFERS). A top-k or a miss must not read the rest of the table. Exact counts that answer with one number per row of a set still read that set.",
   "queries": [
@@ -66,6 +67,55 @@
       "name": "document status buckets, one workspace of 80000",
       "after_ms": 44.020,
       "after_plan": "Seq Scan. Exact CASE over status and metadata must read the workspace. Not a top-k."
+    },
+    {
+      "name": "injection list LIMIT 20 miss",
+      "before_ms": 17.379,
+      "before_plan": "Index Scan idx_documents_workspace_created, 80000 rows removed by source_type filter",
+      "after_ms": 0.013,
+      "after_plan": "Index Only Scan idx_documents_workspace_injection, 0 rows"
+    },
+    {
+      "name": "injection count miss",
+      "before_ms": 10.051,
+      "before_plan": "Seq Scan, 80000 rows removed",
+      "after_ms": 0.037,
+      "after_plan": "Index Only Scan idx_documents_workspace_injection, 0 rows"
+    },
+    {
+      "name": "chunk FTS rare term uniquezephyr LIMIT 20",
+      "after_ms": 2.686,
+      "after_plan": "Bitmap Index Scan idx_chunks_content_tsv, 40 matches, then rank sort"
+    },
+    {
+      "name": "chunk FTS common term medical LIMIT 20",
+      "after_ms": 25.996,
+      "after_plan": "Parallel Seq Scan. The term matches 39960 of 40000 chunks, so the GIN is not cheaper. Exact ts_rank still scores the matches."
+    },
+    {
+      "name": "workspace membership, metadata-only workspace of 30",
+      "after_ms": 0.041,
+      "after_plan": "BitmapOr of idx_documents_workspace_created and idx_documents_metadata_workspace_expr"
+    },
+    {
+      "name": "staging shell page",
+      "after_ms": 0.203,
+      "after_plan": "Index Only Scan idx_documents_staging_shell"
+    },
+    {
+      "name": "claim pending LIMIT 64",
+      "after_ms": 2.094,
+      "after_plan": "Index Scan tasks_history_created_at_idx, stops at 64"
+    },
+    {
+      "name": "chunks for one document",
+      "after_ms": 0.118,
+      "after_plan": "Index Scan chunks_unique_doc_index"
+    },
+    {
+      "name": "shared entities for 3 names",
+      "after_ms": 0.101,
+      "after_plan": "Index Scan idx_cel_entity_workspace"
     }
   ]
 }
