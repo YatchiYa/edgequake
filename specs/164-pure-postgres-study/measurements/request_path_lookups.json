@@ -389,6 +389,13 @@
       "before_plan": "Generic plan. Content GIN bitmap of 6040 entries, then filter the id. Rows removed 1999, 392 buffers",
       "after_ms": 0.112,
       "after_plan": "Generic plan. Lookup of idx_chunks_legacy_chunk_key for that key, 1 row, 7 buffers. UUID ids use chunks_pkey (0.067 ms, 9 buffers). OFFSET 0 keeps the lookup from starting at the term index"
+    },
+    {
+      "name": "queue metrics for one workspace, 500 tasks there and 79500 elsewhere",
+      "before_ms": 5.162,
+      "before_plan": "Generic plan. Seq scan of tasks_history. Rows removed by filter 79500, 1549 buffers",
+      "after_ms": 0.161,
+      "after_plan": "Generic plan. Index only scan of idx_tasks_tenant_workspace_status for the required tenant and workspace, 500 rows, 14 buffers. No new index"
     }
   ]
 }

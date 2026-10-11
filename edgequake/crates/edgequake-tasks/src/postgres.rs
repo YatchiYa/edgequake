@@ -130,6 +130,37 @@ impl PostgresTaskStorage {
     }
 }
 
+/// `$1 IS NULL OR tenant_id = $1` hides the tenant from a generic plan, so
+/// queue metrics seq-scans every task. When the caller passes a tenant or a
+/// workspace, the predicate is required and `idx_tasks_tenant_workspace_status`
+/// can start at those rows. An unscoped call keeps the open predicate.
+#[cfg(feature = "postgres")]
+fn queue_metrics_statement(has_tenant: bool, has_workspace: bool) -> String {
+    const HEAD: &str = r#"
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'pending') as pending_count,
+                COUNT(*) FILTER (WHERE status = 'processing') as processing_count,
+                CAST(COALESCE(AVG(EXTRACT(EPOCH FROM (started_at - created_at)))
+                    FILTER (WHERE started_at IS NOT NULL), 0) AS DOUBLE PRECISION) as avg_wait_seconds,
+                CAST(COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - created_at)))
+                    FILTER (WHERE status = 'pending'), 0) AS DOUBLE PRECISION) as max_wait_seconds,
+                COUNT(*) FILTER (
+                    WHERE status = 'indexed'
+                    AND completed_at > NOW() - INTERVAL '5 minutes'
+                ) as recent_completed
+            FROM tasks
+            "#;
+    let predicate = match (has_tenant, has_workspace) {
+        (true, true) => "WHERE tenant_id = $1 AND workspace_id = $2",
+        (true, false) => "WHERE tenant_id = $1",
+        (false, true) => "WHERE workspace_id = $1",
+        (false, false) => {
+            "WHERE ($1::uuid IS NULL OR tenant_id = $1) AND ($2::uuid IS NULL OR workspace_id = $2)"
+        }
+    };
+    format!("{HEAD}{predicate}")
+}
+
 #[cfg(feature = "postgres")]
 #[async_trait::async_trait]
 impl TaskStorage for PostgresTaskStorage {
@@ -1126,29 +1157,26 @@ impl TaskStorage for PostgresTaskStorage {
             ))
         })?;
 
-        let row = match sqlx::query(
-            r#"
-            SELECT
-                COUNT(*) FILTER (WHERE status = 'pending') as pending_count,
-                COUNT(*) FILTER (WHERE status = 'processing') as processing_count,
-                CAST(COALESCE(AVG(EXTRACT(EPOCH FROM (started_at - created_at)))
-                    FILTER (WHERE started_at IS NOT NULL), 0) AS DOUBLE PRECISION) as avg_wait_seconds,
-                CAST(COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - created_at)))
-                    FILTER (WHERE status = 'pending'), 0) AS DOUBLE PRECISION) as max_wait_seconds,
-                COUNT(*) FILTER (
-                    WHERE status = 'indexed'
-                    AND completed_at > NOW() - INTERVAL '5 minutes'
-                ) as recent_completed
-            FROM tasks
-            WHERE ($1::uuid IS NULL OR tenant_id = $1)
-              AND ($2::uuid IS NULL OR workspace_id = $2)
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(workspace_id)
-        .fetch_one(&mut *tx)
-        .await
-        {
+        let sql = queue_metrics_statement(tenant_id.is_some(), workspace_id.is_some());
+        let row = match (tenant_id, workspace_id) {
+            (Some(tenant), Some(workspace)) => {
+                sqlx::query(&sql)
+                    .bind(tenant)
+                    .bind(workspace)
+                    .fetch_one(&mut *tx)
+                    .await
+            }
+            (Some(tenant), None) => sqlx::query(&sql).bind(tenant).fetch_one(&mut *tx).await,
+            (None, Some(workspace)) => sqlx::query(&sql).bind(workspace).fetch_one(&mut *tx).await,
+            (None, None) => {
+                sqlx::query(&sql)
+                    .bind(tenant_id)
+                    .bind(workspace_id)
+                    .fetch_one(&mut *tx)
+                    .await
+            }
+        };
+        let row = match row {
             Ok(row) => {
                 tx.commit().await.map_err(|e| {
                     TaskError::StorageError(format!("Failed to commit queue metrics txn: {e}"))
@@ -1429,5 +1457,22 @@ impl std::str::FromStr for crate::types::TaskStatus {
             "cancelled" => Ok(crate::types::TaskStatus::Cancelled),
             _ => Err(format!("Invalid task status: {}", s)),
         }
+    }
+}
+
+#[cfg(all(test, feature = "postgres"))]
+mod queue_metrics_sql_tests {
+    use super::queue_metrics_statement;
+
+    #[test]
+    fn scoped_queue_metrics_require_the_caller_predicate() {
+        let both = queue_metrics_statement(true, true);
+        assert!(both.contains("tenant_id = $1 AND workspace_id = $2"));
+        assert!(!both.contains("IS NULL"));
+        let tenant = queue_metrics_statement(true, false);
+        assert!(tenant.contains("WHERE tenant_id = $1"));
+        assert!(!tenant.contains("workspace_id"));
+        let open = queue_metrics_statement(false, false);
+        assert!(open.contains("$1::uuid IS NULL OR tenant_id = $1"));
     }
 }
