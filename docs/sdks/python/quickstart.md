@@ -10,7 +10,7 @@ This walkthrough uploads a short document, waits for indexing, and asks a questi
 ## 1. Install
 
 ```bash
-pip install edgequake-sdk==0.3.0
+pip install edgequake-sdk==0.4.1
 ```
 
 ## 2. Create a client

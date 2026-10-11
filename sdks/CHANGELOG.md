@@ -2,7 +2,7 @@
 
 All notable changes to the EdgeQuake SDKs directory are tracked here. See the root CHANGELOG.md for workspace-wide changes.
 
-## [Unreleased]
+## [0.4.1] - 2026-10-11
 
 ### Changed
 

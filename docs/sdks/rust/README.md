@@ -1,11 +1,11 @@
 ---
 title: Rust SDK
-description: Install and use the EdgeQuake Rust client crate edgequake-sdk 0.4.0 from crates.io. Async EdgeQuakeClient for documents, query, parse and more.
+description: Install and use the EdgeQuake Rust client crate edgequake-sdk 0.4.1 from crates.io. Async EdgeQuakeClient for documents, query, parse and more.
 ---
 
 # Rust SDK
 
-The Rust client is an async crate built on Tokio. Source is **0.4.1**. crates.io is still **0.4.0**. Use `EdgeQuakeClient` for documents, query, parse and the other resources, and `ClientBuilder` to configure the base URL and API key.
+The Rust client is an async crate built on Tokio. Source and crates.io are **0.4.1**. Use `EdgeQuakeClient` for documents, query, parse and the other resources, and `ClientBuilder` to configure the base URL and API key.
 
 Typed resources are the preferred API. `client.operations()` calls every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
 
@@ -24,7 +24,7 @@ tokio = { version = "1", features = ["full"] }
 
 ## Example
 
-This snippet compiles against `edgequake-sdk` 0.4.0.
+This snippet compiles against `edgequake-sdk` 0.4.1.
 
 ```rust
 use edgequake_sdk::types::query::{QueryMode, QueryRequest};

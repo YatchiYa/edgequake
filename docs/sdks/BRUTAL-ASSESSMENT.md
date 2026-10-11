@@ -38,15 +38,15 @@ Every SDK is a thin client over the same REST routes. Coverage gaps live in the 
 
 ## Version decoupling
 
-The Python, TypeScript, and Rust source is **0.4.1**. The other versioned SDKs are **0.4.0**. The product is **0.33.0**. Public registries lag behind the source: PyPI has **0.3.0**, npm has **0.1.0** and crates.io has **0.4.0**. Java, Kotlin, Go, C#, Ruby, PHP and Swift are not on public registries. See [VERSION-POLICY](VERSION-POLICY.md).
+The Python, TypeScript, and Rust source is **0.4.1**. The other versioned SDKs are **0.4.0**. The product is **0.33.0**. PyPI and crates.io are **0.4.1**. npm is still **0.1.0**. Java, Kotlin, Go, C#, Ruby, PHP and Swift are not on public registries. See [VERSION-POLICY](VERSION-POLICY.md).
 
 ## Status by language
 
 | Language | Source version | Registry (2026-10-10) | Wraps Connections | Known issues |
 |----------|----------------|-----------------------|-------------------|--------------|
-| Python | 0.4.1 | PyPI 0.3.0 | Yes | `top_k` and `rerank` are aliases of `max_results` and `enable_rerank`. `mode` is omitted unless set |
+| Python | 0.4.1 | PyPI 0.4.1 | Yes | `top_k` and `rerank` are aliases of `max_results` and `enable_rerank`. `mode` is omitted unless set |
 | TypeScript | 0.4.1 | npm 0.1.0 | Yes | Package name is `edgequake-sdk` |
-| Rust | 0.4.1 | crates.io 0.4.0 | Yes | The `top_k` field serializes as `max_results`. `QueryMode` default is `Mix` |
+| Rust | 0.4.1 | crates.io 0.4.1 | Yes | The `top_k` field serializes as `max_results`. `QueryMode` default is `Mix` |
 | Go | no version field | Not on Go module proxy | Yes | The documented `go get` path does not resolve |
 | Java | 0.4.0 | Not on Maven Central | Yes | `topK` serializes as `max_results`. Null fields are omitted |
 | Kotlin | 0.4.0 | Not on Maven Central | Yes | Query `mode` is omitted unless set |
@@ -92,7 +92,7 @@ Each generated class has one `call` helper. Operation methods only build the pat
 | # | Where | What remains | Why it stays |
 |---|-------|--------------|--------------|
 | 1 | Go install | `github.com/edgequake/edgequake-go` is not on the module proxy. Install from this checkout. | Publishing the module is a separate release step |
-| 2 | Registries | PyPI is 0.3.0, npm is 0.1.0, crates.io is 0.4.0. Source is newer. | This change does not publish packages |
+| 2 | npm | `edgequake-sdk` on npm is still 0.1.0. Publish goes through `.github/workflows/sdk-publish.yml`. The stored npm token is not allowed to publish that package. | PyPI and crates.io are 0.4.1 |
 | 3 | WebSocket | Generated methods return the socket URL. Python and TypeScript also have stream clients. The other languages do not open the socket | A full client would add a dependency in each language |
 | 4 | SSE | Generated stream methods in every language return the same `data:` lines. Hand-written stream helpers still differ by language | There is no shared typed event model |
 | 5 | Typed models | Large responses still drop optional OpenAPI fields | The contract fields used by callers are present: `max_results`, `page_size`, chat `top_k`, `display_status`, `ui_phase`, `llm_roles` |

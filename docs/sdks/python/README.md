@@ -5,7 +5,7 @@ description: Install and use the EdgeQuake Python client (edgequake-sdk). Sync a
 
 # Python SDK
 
-The Python client wraps the EdgeQuake REST API with a sync client and an async twin. It needs **Python 3.10+**. The source tree is version **0.4.1**, and the latest release on PyPI is **0.3.0**.
+The Python client wraps the EdgeQuake REST API with a sync client and an async twin. It needs **Python 3.10+**. The source tree and the latest release on PyPI are version **0.4.1**.
 
 Typed resources are the preferred API. `client.operations` and `AsyncEdgeQuake.operations` call every other HTTP route from the OpenAPI snapshot. WebSocket upgrades stay out of band. SSE methods return the raw body.
 
@@ -17,7 +17,7 @@ EDGEQUAKE_E2E_URL=http://localhost:8080 python3 -m pytest tests/test_e2e.py
 ## Install
 
 ```bash
-pip install edgequake-sdk==0.3.0   # latest on PyPI
+pip install edgequake-sdk==0.4.1   # latest on PyPI
 pip install ./sdks/python          # source tree, 0.4.1
 ```
 

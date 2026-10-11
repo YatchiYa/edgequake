@@ -34,7 +34,7 @@ Registry checks ran on 2026-10-10. "Published" means the package is on that regi
 
 | Tier | Language | Source | Package id | Source version | Published | Client class |
 |------|----------|--------|------------|----------------|-----------|--------------|
-| 1 | Python | [python](python/README.md) | PyPI `edgequake-sdk` | 0.4.1 | **0.3.0** on PyPI | `EdgeQuake` / `AsyncEdgeQuake` |
+| 1 | Python | [python](python/README.md) | PyPI `edgequake-sdk` | 0.4.1 | **0.4.1** on PyPI | `EdgeQuake` / `AsyncEdgeQuake` |
 | 1 | TypeScript | [typescript](typescript/README.md) | npm `edgequake-sdk` | 0.4.1 | **0.1.0** on npm | `EdgeQuake` |
 | 1 | Rust | [rust](rust/README.md) | crates.io `edgequake-sdk` | 0.4.1 | **0.4.0** on crates.io | `EdgeQuakeClient` |
 | 2 | Go | [go](go/README.md) | `github.com/edgequake/edgequake-go` | no version field (Go 1.21+) | Not on the Go module proxy | `edgequake.NewClient` |
@@ -50,7 +50,7 @@ Install from a registry only when the table says the package is published. Other
 ## Quick start (Python)
 
 ```bash
-pip install edgequake-sdk==0.3.0   # latest on PyPI
+pip install edgequake-sdk==0.4.1   # latest on PyPI
 # or from source: pip install ./sdks/python   (source 0.4.1)
 ```
 
