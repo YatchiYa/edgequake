@@ -72,13 +72,29 @@ BEGIN
   EXECUTE format(
     'CREATE INDEX IF NOT EXISTS idx_edges_%s_tw ON spec164.edges_%s (tenant_id, workspace_id)',
     p_suffix, p_suffix);
-  -- Inventory extension: lineage GIN + search support (OP-164-10..12)
-  EXECUTE format(
-    'CREATE INDEX IF NOT EXISTS idx_nodes_%s_src_gin ON spec164.nodes_%s USING GIN ((properties->''source_ids''))',
-    p_suffix, p_suffix);
+  -- Search support (OP-164-10). Lineage GIN is built after the bulk load.
   EXECUTE format(
     'CREATE INDEX IF NOT EXISTS idx_nodes_%s_nid_lower ON spec164.nodes_%s (lower(node_id) text_pattern_ops)',
     p_suffix, p_suffix);
+END;
+$$;
+
+-- Lineage GIN for OP-164-12. Build this AFTER the node insert.
+-- A GIN created first absorbs the 200k-row load into its pending list, and
+-- `properties->'source_ids' ?|` then scans that list (~5× the AGE index, which
+-- load_scale builds with CREATE INDEX on the finished table). jsonb_ops and
+-- gin_pending_list_limit match the product plain indexes (migration 170).
+CREATE OR REPLACE FUNCTION spec164.ensure_lineage_gin(p_suffix text)
+RETURNS void
+LANGUAGE plpgsql AS $$
+DECLARE
+  idx regclass;
+BEGIN
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS idx_nodes_%s_src_gin ON spec164.nodes_%s USING GIN ((properties->''source_ids'') jsonb_ops) WITH (gin_pending_list_limit = 256)',
+    p_suffix, p_suffix);
+  idx := format('spec164.idx_nodes_%s_src_gin', p_suffix)::regclass;
+  PERFORM gin_clean_pending_list(idx);
 END;
 $$;
 
@@ -157,6 +173,8 @@ BEGIN
            )
     FROM generate_series(1, %s) AS g
   $f$, p_suffix, p_n_nodes);
+
+  PERFORM spec164.ensure_lineage_gin(p_suffix);
 
   -- Plain edges: ring + random long-range (deterministic via hash).
   -- WHY abs(hashtext): PostgreSQL hashtext can be negative; bare %% produced n-1401 orphans.
@@ -589,7 +607,23 @@ RETURNS bigint
 LANGUAGE plpgsql AS $$
 DECLARE n bigint;
 BEGIN
-  -- Product shape: parent _ag_label_edge + agtype property ANY (expand.rs)
+  -- Shipped Q-GRAPH-006 shape: child EDGE + eq_* btree (expand.rs).
+  EXECUTE $q$
+    SELECT count(*)::bigint
+    FROM spec164_age."EDGE" e
+    WHERE e.eq_source_id = ANY($1::text[])
+      AND e.eq_target_id = ANY($1::text[])
+  $q$ INTO n USING p_ids;
+  RETURN n;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION spec164.age_edges_for_node_set_legacy(p_ids text[])
+RETURNS bigint
+LANGUAGE plpgsql AS $$
+DECLARE n bigint;
+BEGIN
+  -- Pre-rewrite shape, kept so a run can still show the parent-table cost.
   EXECUTE $q$
     SELECT count(*)::bigint
     FROM spec164_age."_ag_label_edge" e
@@ -796,5 +830,92 @@ BEGIN
     ) s
   $f$, p_suffix) INTO n USING p_after, p_limit;
   RETURN n;
+END;
+$$;
+
+-- Copy spec164_age into the migration-170 tables and return
+-- eq_graph_shadow_mismatches (50 starts, depth 2, cap 500). Requires 170.
+-- Static SQL stays inside EXECUTE so this function can be created first.
+CREATE OR REPLACE FUNCTION spec164.replay_product_shadow(p_graph text)
+RETURNS integer
+LANGUAGE plpgsql AS $$
+DECLARE
+  mismatches integer;
+  ns text := p_graph;
+BEGIN
+  IF p_graph !~ '^[A-Za-z_][A-Za-z0-9_]*$' THEN
+    RAISE EXCEPTION 'refusing unsafe graph name';
+  END IF;
+  IF to_regclass('public.eq_graph_nodes') IS NULL
+     OR to_regprocedure('public.eq_graph_shadow_mismatches(text,text)') IS NULL THEN
+    RAISE EXCEPTION 'migration 170 is required before shadow replay';
+  END IF;
+
+  EXECUTE 'SELECT public.eq_graph_install_mirror_triggers($1, $2)' USING p_graph, ns;
+  EXECUTE 'DELETE FROM public.eq_graph_edges WHERE namespace = $1' USING ns;
+  EXECUTE 'DELETE FROM public.eq_graph_nodes WHERE namespace = $1' USING ns;
+
+  EXECUTE format($q$
+    INSERT INTO public.eq_graph_nodes
+      (namespace, node_id, tenant_id, workspace_id, entity_type, properties)
+    SELECT $1, d.nid,
+           COALESCE(d.props->>'tenant_id', ''),
+           COALESCE(d.props->>'workspace_id', ''),
+           NULLIF(d.props->>'entity_type', ''),
+           d.props
+    FROM (
+      SELECT DISTINCT ON (nid)
+             COALESCE(n.eq_node_id, ag_catalog.agtype_to_json(n.properties)->>'node_id') AS nid,
+             ag_catalog.agtype_to_json(n.properties)::jsonb AS props
+      FROM %I."Node" n
+      WHERE COALESCE(n.eq_node_id, ag_catalog.agtype_to_json(n.properties)->>'node_id') IS NOT NULL
+      ORDER BY 1, n.ctid DESC
+    ) d
+    ON CONFLICT (namespace, node_id) DO UPDATE SET
+      tenant_id = EXCLUDED.tenant_id,
+      workspace_id = EXCLUDED.workspace_id,
+      entity_type = EXCLUDED.entity_type,
+      properties = public.eq_merge_graph_properties(
+          public.eq_graph_nodes.properties, EXCLUDED.properties)
+  $q$, p_graph) USING ns;
+
+  EXECUTE format($q$
+    INSERT INTO public.eq_graph_edges
+      (namespace, source_id, target_id, rel_type, tenant_id, workspace_id, weight, properties)
+    SELECT $1, d.src, d.tgt, d.rel,
+           COALESCE(d.props->>'tenant_id', ''),
+           COALESCE(d.props->>'workspace_id', ''),
+           CASE WHEN COALESCE(d.props->>'weight', '') ~ '^-?[0-9]+(\.[0-9]+)?$'
+                THEN (d.props->>'weight')::float8 ELSE NULL END,
+           d.props
+    FROM (
+      SELECT DISTINCT ON (src, tgt, rel)
+             COALESCE(e.eq_source_id, ag_catalog.agtype_to_json(e.properties)->>'source_id') AS src,
+             COALESCE(e.eq_target_id, ag_catalog.agtype_to_json(e.properties)->>'target_id') AS tgt,
+             COALESCE(NULLIF(e.eq_rel_type, ''), NULLIF(ag_catalog.agtype_to_json(e.properties)->>'relation_type', ''), '') AS rel,
+             ag_catalog.agtype_to_json(e.properties)::jsonb AS props
+      FROM %I."EDGE" e
+    ) d
+    WHERE EXISTS (
+      SELECT 1 FROM public.eq_graph_nodes n WHERE n.namespace = $1 AND n.node_id = d.src
+    ) AND EXISTS (
+      SELECT 1 FROM public.eq_graph_nodes n WHERE n.namespace = $1 AND n.node_id = d.tgt
+    )
+    ON CONFLICT (namespace, source_id, target_id, rel_type) DO UPDATE SET
+      properties = public.eq_merge_graph_properties(
+          public.eq_graph_edges.properties, EXCLUDED.properties),
+      tenant_id = EXCLUDED.tenant_id,
+      workspace_id = EXCLUDED.workspace_id,
+      weight = EXCLUDED.weight
+  $q$, p_graph) USING ns;
+
+  PERFORM gin_clean_pending_list('public.idx_eq_graph_nodes_source_ids_gin'::regclass);
+  PERFORM gin_clean_pending_list('public.idx_eq_graph_nodes_source_chunk_ids_gin'::regclass);
+  PERFORM gin_clean_pending_list('public.idx_eq_graph_edges_source_ids_gin'::regclass);
+  PERFORM gin_clean_pending_list('public.idx_eq_graph_edges_source_chunk_ids_gin'::regclass);
+
+  EXECUTE 'SELECT public.eq_graph_shadow_mismatches($1, $2)'
+    INTO mismatches USING ns, p_graph;
+  RETURN mismatches;
 END;
 $$;

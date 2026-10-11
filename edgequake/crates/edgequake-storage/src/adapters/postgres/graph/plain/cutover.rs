@@ -79,6 +79,7 @@ pub(in crate::adapters::postgres::graph) async fn run_plain_graph_cutover(
                 })?;
         mismatches += i64::from(graph_mismatches);
         let shadow_ok = graph_mismatches == 0;
+        flush_plain_lineage_gin(&pool).await?;
         sqlx::query(
             "INSERT INTO public.eq_graph_backfill
                 (graph_name, namespace, nodes_copied, edges_copied, orphans_skipped, shadow_ok, finished_at)
@@ -245,6 +246,20 @@ async fn copy_graph(pool: &sqlx::PgPool, graph: &str, namespace: &str) -> Result
         .map_err(|e| StorageError::Database(format!("backfill edges {graph} failed: {e}")))?
         .rows_affected() as i64;
     Ok((nodes, edges, orphans))
+}
+
+async fn flush_plain_lineage_gin(pool: &sqlx::PgPool) -> Result<()> {
+    sqlx::query(
+        "SELECT
+           gin_clean_pending_list('public.idx_eq_graph_nodes_source_ids_gin'::regclass),
+           gin_clean_pending_list('public.idx_eq_graph_nodes_source_chunk_ids_gin'::regclass),
+           gin_clean_pending_list('public.idx_eq_graph_edges_source_ids_gin'::regclass),
+           gin_clean_pending_list('public.idx_eq_graph_edges_source_chunk_ids_gin'::regclass)",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| StorageError::Database(format!("lineage GIN flush failed: {e}")))?;
+    Ok(())
 }
 
 fn safe_ident(name: &str) -> bool {

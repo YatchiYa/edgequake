@@ -41,14 +41,21 @@ CREATE INDEX IF NOT EXISTS idx_eq_graph_nodes_tenant_ws
     ON public.eq_graph_nodes (namespace, tenant_id, workspace_id);
 CREATE INDEX IF NOT EXISTS idx_eq_graph_edges_tenant_ws
     ON public.eq_graph_edges (namespace, tenant_id, workspace_id);
+-- jsonb_ops + 256 kB pending list, same bound as AGE lineage GINs (migration 157).
+-- A default 4 MB pending list makes source-prefix `?|` several times slower
+-- than the AGE index after a bulk load.
 CREATE INDEX IF NOT EXISTS idx_eq_graph_nodes_source_ids_gin
-    ON public.eq_graph_nodes USING gin ((properties -> 'source_ids'));
+    ON public.eq_graph_nodes USING gin ((properties -> 'source_ids') jsonb_ops)
+    WITH (gin_pending_list_limit = 256);
 CREATE INDEX IF NOT EXISTS idx_eq_graph_nodes_source_chunk_ids_gin
-    ON public.eq_graph_nodes USING gin ((properties -> 'source_chunk_ids'));
+    ON public.eq_graph_nodes USING gin ((properties -> 'source_chunk_ids') jsonb_ops)
+    WITH (gin_pending_list_limit = 256);
 CREATE INDEX IF NOT EXISTS idx_eq_graph_edges_source_ids_gin
-    ON public.eq_graph_edges USING gin ((properties -> 'source_ids'));
+    ON public.eq_graph_edges USING gin ((properties -> 'source_ids') jsonb_ops)
+    WITH (gin_pending_list_limit = 256);
 CREATE INDEX IF NOT EXISTS idx_eq_graph_edges_source_chunk_ids_gin
-    ON public.eq_graph_edges USING gin ((properties -> 'source_chunk_ids'));
+    ON public.eq_graph_edges USING gin ((properties -> 'source_chunk_ids') jsonb_ops)
+    WITH (gin_pending_list_limit = 256);
 
 CREATE TABLE IF NOT EXISTS public.eq_graph_cutover (
     id                   smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
