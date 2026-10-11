@@ -571,6 +571,20 @@
       "before_plan": "Generic plan. Index scan of idx_pdf_documents_workspace_created, Index Cond workspace_id, then OFFSET 14950. 15000 rows, 825 buffers. A status page at OFFSET 14000 reads 14050 rows and removes 586 (3.872 ms, 806 buffers). A keyset that only compares the row, with 20000 foreign PDFs just older than the cursor, uses idx_pdf_documents_created and removes 19999 (6.655 ms, 40247 buffers)",
       "after_ms": 0.086,
       "after_plan": "Generic plan. Index scan of idx_pdf_documents_created, Index Cond created_at <= cursor, 49 rows, 1 removed, 6 buffers. The same predicate on the foreign set uses idx_pdf_documents_workspace_created_id and stops at 50 (0.029 ms, 7 buffers). A status keyset uses idx_pdf_documents_workspace_status_created_id (0.047 ms, 4 buffers). The first page stops at 20 (0.033 ms, 3 buffers). An unscoped keyset uses idx_pdf_documents_created_id (0.030 ms, 3 buffers). A page number still uses OFFSET. Migration 197"
+    },
+    {
+      "name": "document lineage for a missing document, 80000 chunk_entity_links",
+      "before_ms": 5.947,
+      "before_plan": "Generic plan. Seq scan of chunk_entity_links, filter chunk_id LIKE prefix and workspace. Rows removed 80000, 988 buffers. A custom plan of the same LIKE uses idx_cel_ws_chunk_pat and stops (2.889 ms cold, 3 buffers)",
+      "after_ms": 0.014,
+      "after_plan": "Generic plan. Index only scan of chunk_entity_links_pkey, Index Cond chunk_id >= prefix and chunk_id < successor and workspace_id. 0 rows, 3 buffers. A document that owns every link still reads those rows. No new index"
+    },
+    {
+      "name": "entity ANN limited to chart modality, 20 chart rows and 39980 text rows",
+      "before_ms": 8.383,
+      "before_plan": "Generic plan. Seq scan of entities, filter the optional modality predicate. Rows removed 39980, 2503 buffers. The first cold run of that statement was 13.999 ms with 1181 buffer reads. Requiring the predicate without an index is the same scan",
+      "after_ms": 0.634,
+      "after_plan": "Generic plan. Index scan of idx_entities_modality, Index Cond modality = ANY, 20 rows, 83 buffers. A workspace bind stays optional and does not change that start. Migration 198"
     }
   ]
 }

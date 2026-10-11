@@ -101,6 +101,25 @@ impl PgFleetEmbeddingIndex {
         }
     }
 
+    /// `$6 IS NULL OR modality = ANY($6)` hides the modality from a generic
+    /// plan, so entity search seq-scans every entity and then keeps one
+    /// modality. When the caller passes modalities, the statement requires
+    /// the predicate and `idx_entities_modality` starts at those rows.
+    const ENTITY_MODALITY_OPTIONAL: &'static str =
+        "AND ($6::text[] IS NULL OR e.metadata->>'modality' = ANY($6))";
+    const ENTITY_MODALITY_REQUIRED: &'static str = "AND e.metadata->>'modality' = ANY($6)";
+
+    fn apply_entity_modality(sql: String, modality: bool) -> String {
+        if modality {
+            sql.replace(
+                Self::ENTITY_MODALITY_OPTIONAL,
+                Self::ENTITY_MODALITY_REQUIRED,
+            )
+        } else {
+            sql
+        }
+    }
+
     /// Split `filter_ids` into entity names and UUIDs. A generic plan cannot
     /// use `id::text = ANY` or `('entity:' || name) = ANY` as an index
     /// condition, so those values are looked up on `entities_pkey` and
@@ -118,7 +137,7 @@ impl PgFleetEmbeddingIndex {
         (names, uuids)
     }
 
-    fn entity_search_sql(dim: i32, cast: &str, documents: bool) -> String {
+    fn entity_search_sql(dim: i32, cast: &str, documents: bool, modality: bool) -> String {
         let sql = format!(
             "SELECT ('entity:' || e.name) AS legacy_id, \
                     1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
@@ -131,13 +150,14 @@ impl PgFleetEmbeddingIndex {
                AND ($6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)) \
              ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $7"
         );
-        Self::apply_entity_source(sql, documents)
+        let sql = Self::apply_entity_source(sql, documents);
+        Self::apply_entity_modality(sql, modality)
     }
 
     /// Id-filtered entity ANN. Each requested id is looked up before the
     /// distance order. `OFFSET 0` keeps that lookup from being pulled into
     /// the HNSW index.
-    fn entity_search_sql_in_ids(dim: i32, cast: &str, documents: bool) -> String {
+    fn entity_search_sql_in_ids(dim: i32, cast: &str, documents: bool, modality: bool) -> String {
         let sql = format!(
             "SELECT ('entity:' || e.name) AS legacy_id, \
                     1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
@@ -163,7 +183,8 @@ impl PgFleetEmbeddingIndex {
                AND ($6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)) \
              ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $9"
         );
-        Self::apply_entity_source(sql, documents)
+        let sql = Self::apply_entity_source(sql, documents);
+        Self::apply_entity_modality(sql, modality)
     }
 
     /// `$4 IS NULL OR source_chunk_ids && (chunks of $4)` hides the document
@@ -451,6 +472,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
         let cast = format!("halfvec({dim})");
 
         let documents = req.document_ids.as_ref().is_some();
+        let modality = req.modalities.as_ref().is_some();
         let in_ids = req.filter_ids.as_ref().is_some();
         let (entity_names, entity_ids) = Self::entity_id_keys(req.filter_ids.as_deref());
         let (rel_uuids, rel_sources, rel_targets, rel_types) =
@@ -461,9 +483,9 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
             };
         let q = match family {
             EmbeddingFamily::Entity if in_ids => {
-                Self::entity_search_sql_in_ids(dim, &cast, documents)
+                Self::entity_search_sql_in_ids(dim, &cast, documents, modality)
             }
-            EmbeddingFamily::Entity => Self::entity_search_sql(dim, &cast, documents),
+            EmbeddingFamily::Entity => Self::entity_search_sql(dim, &cast, documents, modality),
             EmbeddingFamily::Relationship if in_ids => {
                 Self::relationship_search_sql_in_ids(dim, &cast, documents)
             }
@@ -651,21 +673,40 @@ mod tests {
 
     #[test]
     fn entity_search_requires_source_ids_when_documents_are_passed() {
-        let open = PgFleetEmbeddingIndex::entity_search_sql(768, "halfvec(768)", false);
+        let open = PgFleetEmbeddingIndex::entity_search_sql(768, "halfvec(768)", false, false);
         assert!(open.contains("$4::uuid[] IS NULL OR e.source_ids && $4"));
         assert!(open.contains("$3::uuid IS NULL OR fe.workspace_id = $3"));
         assert!(open.contains("$5::uuid IS NULL OR e.tenant_id = $5"));
+        assert!(open.contains("$6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)"));
         assert!(!open.contains("id::text = ANY"));
         assert!(open.contains("LIMIT $7"));
 
-        let scoped = PgFleetEmbeddingIndex::entity_search_sql(768, "halfvec(768)", true);
+        let scoped = PgFleetEmbeddingIndex::entity_search_sql(768, "halfvec(768)", true, false);
         assert!(scoped.contains("AND e.source_ids && $4"));
         assert!(!scoped.contains("$4::uuid[] IS NULL"));
+        assert!(scoped.contains("$6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)"));
+    }
+
+    #[test]
+    fn entity_search_requires_modality_when_passed() {
+        let open = PgFleetEmbeddingIndex::entity_search_sql(768, "halfvec(768)", false, false);
+        assert!(open.contains("$6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)"));
+
+        let scoped = PgFleetEmbeddingIndex::entity_search_sql(768, "halfvec(768)", false, true);
+        assert!(scoped.contains("AND e.metadata->>'modality' = ANY($6)"));
+        assert!(!scoped.contains("$6::text[] IS NULL"));
+        assert!(scoped.contains("$3::uuid IS NULL OR fe.workspace_id = $3"));
+
+        let by_id =
+            PgFleetEmbeddingIndex::entity_search_sql_in_ids(768, "halfvec(768)", false, true);
+        assert!(by_id.contains("AND e.metadata->>'modality' = ANY($6)"));
+        assert!(!by_id.contains("$6::text[] IS NULL"));
+        assert!(by_id.contains("OFFSET 0"));
     }
 
     #[test]
     fn entity_search_by_id_looks_up_name_and_uuid() {
-        let sql = PgFleetEmbeddingIndex::entity_search_sql_in_ids(768, "halfvec(768)", true);
+        let sql = PgFleetEmbeddingIndex::entity_search_sql_in_ids(768, "halfvec(768)", true, false);
         assert!(sql.contains("OFFSET 0"));
         assert!(sql.contains("e.name = wanted.name"));
         assert!(sql.contains("e.id = wanted.id"));

@@ -20,14 +20,14 @@ The API process never auto-applies numbered migrations on start.
 | Epoch coverage | `./scripts/check_epoch_coverage.sh` |
 | Manifest SSOT | `edgequake/migrations/manifest.toml` |
 
-**Train:** HEAD ships through migration **197**
+**Train:** HEAD ships through migration **198**
 (`170_spec164_plain_graph.sql` expand, `171_spec164_drop_age.sql` confirm-drop,
-`172`–`197` request-path indexes).
+`172`–`198` request-path indexes).
 Apply 170 with `edgequake migrate`. Apply 171 only with `--confirm-drop` after
 `PostgresAGEGraphStorage::run_spec164_cutover` marks `eq_graph_cutover` ready.
-Migrations 172 through 197 do not raise the serving floor.
+Migrations 172 through 198 do not raise the serving floor.
 The released product pin stays **v0.34.0** until the version-bump ceremony;
-`release_for_schema` maps 170–197 to v0.35.0.
+`release_for_schema` maps 170–198 to v0.35.0.
 Run `edgequake migrate` before expecting `/ready` 200 when upgrading from an older schema.
 
 ## How Migrations Work
