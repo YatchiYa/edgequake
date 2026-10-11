@@ -634,6 +634,13 @@
       "before_plan": "Generic plan. Index scan of idx_documents_created_at with status IN ('pending','queued') OR current_stage = 'queued'. Rows removed 79950, 2558 buffers. The newest 2001 rows include 0 of those queued-stage documents, so the open page drops them. current_stage = ANY($stages) is the same walk: 9.287 ms, 80000 removed",
       "after_ms": 0.055,
       "after_plan": "Generic plan. Merge append of one equality per arm. The stage arm is an index scan of idx_documents_workspace_stage_created and stops at 50, 11 buffers. Status arms return 0. Full union 17 buffers, 50 rows. Migration 201. Tenant union 0.048 ms, 25 buffers, on idx_documents_workspace_tenant_stage_created. A common status = 'pending' page is an index-only scan of idx_documents_workspace_status_created and stops at 50 (0.037 ms)"
+    },
+    {
+      "name": "document title search LIMIT 50, 50 oldest uniquezephyr titles and 79950 newer rows",
+      "before_ms": 38.139,
+      "before_plan": "Generic plan. Index scan of idx_documents_created_at, filter lower(title) LIKE. Rows removed 79950, 2557 buffers. The newest 2001 rows include 0 of those titles, so the scope picker drops them. A generic plan of the trigram index reads every title when the letter matches all 80000 rows (46.237 ms)",
+      "after_ms": 0.168,
+      "after_plan": "Custom plan. Tenant union. Bitmap index scan of idx_documents_title_trgm stops at 50, 17 buffers. Migration 202. A one-letter query that matches every title stays on idx_documents_created_at and stops at 50 (0.104 ms, 21 buffers). A miss is 0.009 ms"
     }
   ]
 }

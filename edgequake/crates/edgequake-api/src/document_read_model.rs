@@ -700,6 +700,162 @@ pub async fn list_relational_document_summaries_limited(
     })
 }
 
+/// One document whose title contains the scope-picker query.
+#[cfg(feature = "postgres")]
+#[derive(Debug, Clone)]
+pub struct RelationalTitleHit {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub created_at: Option<String>,
+}
+
+/// Escape `\`, `%`, and `_` so a title query is a literal substring.
+#[cfg(feature = "postgres")]
+fn escape_title_like_needle(query: &str) -> String {
+    let mut out = String::with_capacity(query.len());
+    for ch in query.chars() {
+        if matches!(ch, '\\' | '%' | '_') {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// Title search for the scope picker.
+///
+/// The picker used to read the newest 2,001 documents and drop titles in
+/// memory. On 80,000 documents the 50 oldest `uniquezephyr` titles are not
+/// in that page (0 hits). Requiring `lower(title) LIKE` on
+/// `idx_documents_created_at` still removes those 79,950 newer rows
+/// (38.139 ms, 2,557 buffers).
+///
+/// `idx_documents_title_trgm` is a GIN on `lower(title)`. A generic plan
+/// always starts there and, for a one-letter query that matches every row,
+/// reads all 80,000 titles (46.237 ms). This statement is planned with
+/// `force_custom_plan`: a common letter stops on the time index (0.104 ms)
+/// and a rare title stops on the trigram index.
+#[cfg(feature = "postgres")]
+fn document_title_search_statement(tenant_scoped: bool, ready_only: bool) -> String {
+    let status = if ready_only {
+        " AND status IN ('completed', 'indexed')"
+    } else {
+        ""
+    };
+    let order = "ORDER BY created_at DESC, id DESC";
+    let cols = "id::text AS id, title, status, created_at";
+    if tenant_scoped {
+        let like = "lower(title) LIKE '%' || lower($3) || '%' ESCAPE '\\'";
+        format!(
+            "SELECT id, title, status, created_at
+             FROM (
+               (
+                 SELECT {cols}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND tenant_id = $2 AND {like}{status}
+                 {order}
+                 LIMIT $4
+               )
+               UNION ALL
+               (
+                 SELECT {cols}
+                 FROM public.documents
+                 WHERE workspace_id = $1 AND tenant_id IS NULL AND {like}{status}
+                 {order}
+                 LIMIT $4
+               )
+             ) page
+             {order}
+             LIMIT $4"
+        )
+    } else {
+        let like = "lower(title) LIKE '%' || lower($2) || '%' ESCAPE '\\'";
+        format!(
+            "SELECT {cols}
+             FROM public.documents
+             WHERE workspace_id = $1 AND {like}{status}
+             {order}
+             LIMIT $3"
+        )
+    }
+}
+
+/// Documents whose title contains `query`, newest first.
+///
+/// `ready_only` keeps the scope picker's default `completed` bucket
+/// (`completed` and `indexed`). `status=all` passes `ready_only = false`.
+#[cfg(feature = "postgres")]
+pub async fn search_relational_document_titles(
+    pool: crate::services::OptionalPgPool<'_>,
+    tenant_ctx: &TenantContext,
+    query: &str,
+    ready_only: bool,
+    limit: usize,
+) -> Result<Vec<RelationalTitleHit>, crate::error::ApiError> {
+    use crate::error::ApiError;
+    use sqlx::Row;
+
+    let needle = escape_title_like_needle(query.trim());
+    if needle.is_empty() {
+        return Ok(Vec::new());
+    }
+    let pool = pool.ok_or_else(|| ApiError::Internal("PostgreSQL pool not available".into()))?;
+    let limit = (limit.max(1) as i64).min(51);
+
+    let workspace_id = tenant_ctx
+        .workspace_id
+        .as_ref()
+        .and_then(|w| Uuid::parse_str(w).ok())
+        .ok_or_else(|| ApiError::BadRequest("workspace_id required".into()))?;
+    let tenant_uuid = tenant_ctx
+        .tenant_id
+        .as_ref()
+        .and_then(|t| Uuid::parse_str(t).ok());
+
+    let timeout_ms = edgequake_storage::interactive_statement_timeout_ms();
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to acquire PG connection: {e}")))?;
+    let mut timed = edgequake_storage::LocalTimeoutTx::begin(&mut conn, timeout_ms)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to begin title-search TX: {e}")))?;
+    sqlx::query("SET LOCAL plan_cache_mode = force_custom_plan")
+        .execute(timed.as_mut())
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to set title-search plan mode: {e}")))?;
+
+    let sql = document_title_search_statement(tenant_uuid.is_some(), ready_only);
+    let mut q = sqlx::query(&sql).bind(workspace_id);
+    if let Some(tenant_id) = tenant_uuid {
+        q = q.bind(tenant_id);
+    }
+    let rows = q
+        .bind(&needle)
+        .bind(limit)
+        .fetch_all(timed.as_mut())
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to search document titles: {e}")))?;
+    timed
+        .commit()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to commit title-search TX: {e}")))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let created_at: chrono::DateTime<chrono::Utc> = row.get("created_at");
+            RelationalTitleHit {
+                id: row.get("id"),
+                title: row.get("title"),
+                status: row.get("status"),
+                created_at: Some(created_at.to_rfc3339()),
+            }
+        })
+        .collect())
+}
+
 /// Workspace-wide status bucket counts from `documents` (GH-400).
 ///
 /// Cheap aggregate (no row body) so interactive list can report global chips
@@ -1418,6 +1574,23 @@ mod tests {
         assert!(pending_tenant
             .contains("tenant_id IS NULL AND (metadata->>'current_stage') = 'queued'"));
         assert!(pending_tenant.contains("LIMIT $3"));
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn title_search_requires_the_title_predicate() {
+        assert_eq!(escape_title_like_needle("100%_a\\b"), "100\\%\\_a\\\\b");
+        let ready = document_title_search_statement(true, true);
+        assert!(ready.contains("lower(title) LIKE '%' || lower($3) || '%' ESCAPE '\\'"));
+        assert!(ready.contains("tenant_id = $2"));
+        assert!(ready.contains("tenant_id IS NULL"));
+        assert!(ready.contains("status IN ('completed', 'indexed')"));
+        assert!(ready.contains("LIMIT $4"));
+        assert!(!ready.contains("IS NULL OR"));
+        let all = document_title_search_statement(false, false);
+        assert!(all.contains("lower(title) LIKE '%' || lower($2) || '%' ESCAPE '\\'"));
+        assert!(!all.contains("status IN"));
+        assert!(all.contains("LIMIT $3"));
     }
 
     #[test]

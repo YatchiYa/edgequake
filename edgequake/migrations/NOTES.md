@@ -58,10 +58,10 @@ NNN_descriptive_name.sql
   descriptive_name: snake_case, describes what changed
 ```
 
-Current max: `201_document_stage_page_index.sql` (SPEC-164 expand index).  
+Current max: `202_document_title_trgm.sql` (SPEC-164 expand index).  
 `170_spec164_plain_graph.sql` is expand-only (no serving_floor) so a v0.34 binary can still serve schema 170.  
 `171` sets `serving_floor = 171` and is irreversible; `edgequake migrate` without `--confirm-drop` stops before it.  
-`172`–`201` add request-path indexes and do not raise the serving floor.
+`172`–`202` add request-path indexes and do not raise the serving floor.
 
 Operator guide: [`docs/operations/upgrading.md`](../../docs/operations/upgrading.md).
 
