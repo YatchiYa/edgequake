@@ -249,6 +249,20 @@
       "before_plan": "Index Scan on (tenant_id, user_id, updated_at DESC), Filter folder_id IS NULL, 10001 rows removed, 10078 buffers. Measured on a committed copy of the 30000 conversations",
       "after_ms": 0.046,
       "after_plan": "Index Scan idx_conversations_tenant_user_unfiled_updated, folder_id IS NULL is the partial predicate, stops at 50, 53 buffers. SELECT * is 0.028 ms and 53 buffers"
+    },
+    {
+      "name": "task status=failed ORDER BY updated_at DESC LIMIT 50, 80000 newer pending rows",
+      "before_ms": 11.424,
+      "before_plan": "Index Scan on (tenant_id, workspace_id, updated_at DESC, track_id DESC), Filter status, 80000 rows removed, 17340 buffers",
+      "after_ms": 0.054,
+      "after_plan": "Index Scan (tenant_id, workspace_id, status, updated_at DESC), status is an index condition, stops at 50, 11 buffers"
+    },
+    {
+      "name": "task_type=scan ORDER BY updated_at DESC LIMIT 50, 80000 newer insert rows",
+      "before_ms": 6.808,
+      "before_plan": "Index Scan idx_tasks_updated, Filter tenant, workspace, and task_type, 80000 rows removed, 1606 buffers",
+      "after_ms": 0.049,
+      "after_plan": "Index Scan (tenant_id, workspace_id, task_type, updated_at DESC), task_type is an index condition, stops at 50, 11 buffers"
     }
   ]
 }
