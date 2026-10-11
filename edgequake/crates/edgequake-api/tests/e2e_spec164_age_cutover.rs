@@ -288,13 +288,13 @@ async fn full_train_through_171_on_fresh_database() {
     std::env::set_var("EDGEQUAKE_MIGRATE_CLI", "1");
     run_postgres_migrations(&pool)
         .await
-        .unwrap_or_else(|e| panic!("full train through 171 failed (no_age={no_age}): {e}"));
+        .unwrap_or_else(|e| panic!("full train through 172 failed (no_age={no_age}): {e}"));
     let max_version: i64 =
         sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations")
             .fetch_one(&pool)
             .await
             .expect("max");
-    assert_eq!(max_version, 171, "train must include confirm-drop 171");
+    assert_eq!(max_version, 172, "train must include lookup indexes 172");
     let age_on: bool =
         sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
             .fetch_one(&pool)
@@ -323,6 +323,18 @@ async fn full_train_through_171_on_fresh_database() {
     .await
     .expect("trgm index");
     assert!(trgm_idx, "trigram index must survive confirm-drop");
+    let lookup_idx: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pg_indexes
+         WHERE indexname IN (
+             'idx_documents_metadata_track_id',
+             'idx_cel_workspace_chunk_pattern',
+             'idx_crl_workspace_chunk_pattern'
+         )",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("lookup indexes");
+    assert_eq!(lookup_idx, 3, "172 must index track-id and chunk prefixes");
     let ready: String =
         sqlx::query_scalar("SELECT status FROM public.eq_graph_cutover WHERE id = 1")
             .fetch_one(&pool)

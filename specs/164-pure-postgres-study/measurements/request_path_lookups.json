@@ -1,0 +1,71 @@
+{
+  "database": "spec164plans",
+  "postgres": "16.15",
+  "collation": "C.UTF-8",
+  "scale": {
+    "documents": 80000,
+    "pending_tasks": 80000,
+    "chunk_entity_links": 80000
+  },
+  "note": "EXPLAIN (ANALYZE, BUFFERS). A top-k or a miss must not read the rest of the table. Exact counts that answer with one number per row of a set still read that set.",
+  "queries": [
+    {
+      "name": "document track_id miss",
+      "before_ms": 20.470,
+      "before_plan": "Seq Scan, 80000 rows removed. OR cannot use idx_documents_track_id alone",
+      "after_ms": 0.031,
+      "after_plan": "Append of idx_documents_track_id and idx_documents_metadata_track_id, 0 rows"
+    },
+    {
+      "name": "document track_id column hit t80000",
+      "before_ms": 17.633,
+      "before_plan": "Seq Scan, 79959 rows removed",
+      "after_ms": 0.034,
+      "after_plan": "Index Scan idx_documents_track_id, metadata arm never executed"
+    },
+    {
+      "name": "document metadata track_id hit meta-50",
+      "after_ms": 0.020,
+      "after_plan": "Index Scan idx_documents_metadata_track_id after the column arm misses"
+    },
+    {
+      "name": "pending queue rank, 3 ids",
+      "before_ms": 56.960,
+      "before_plan": "WindowAgg over 80000 pending rows, 79997 filtered",
+      "after_ms": 9.808,
+      "after_plan": "Index Only Scan idx_tasks_claimable_pending per id. Ranks match the window: 0, 99, 39999, 78999"
+    },
+    {
+      "name": "chunk entity prefix miss doc-1-chunk-79999%",
+      "before_ms": 15.268,
+      "before_plan": "Seq Scan, 79999 rows removed. Default btree will not range a LIKE under C.UTF-8",
+      "after_ms": 0.047,
+      "after_plan": "Index Scan idx_cel_ws_chunk_pat, Index Cond ~>=~ / ~<~"
+    },
+    {
+      "name": "chunk entity prefix page doc-1-chunk-1%",
+      "after_ms": 3.970,
+      "after_plan": "Bitmap index scan of the pattern index, 11111 matching rows"
+    },
+    {
+      "name": "document list LIMIT 50, skewed newer foreign workspace, after ANALYZE",
+      "after_ms": 0.056,
+      "after_plan": "Index Scan idx_documents_workspace_created, stops at 50"
+    },
+    {
+      "name": "task list LIMIT 50",
+      "after_ms": 0.063,
+      "after_plan": "Index Only Scan Backward tasks_history_created_at_track_id_idx"
+    },
+    {
+      "name": "task list keyset before task-40000",
+      "after_ms": 0.066,
+      "after_plan": "Index Only Scan Backward, row comparison Index Cond"
+    },
+    {
+      "name": "document status buckets, one workspace of 80000",
+      "after_ms": 44.020,
+      "after_plan": "Seq Scan. Exact CASE over status and metadata must read the workspace. Not a top-k."
+    }
+  ]
+}

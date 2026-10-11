@@ -1268,20 +1268,24 @@ impl TaskStorage for PostgresTaskStorage {
         if track_ids.is_empty() {
             return Ok(Vec::new());
         }
-        // One RT: FCFS rank among all pending, filtered to the page's track_ids.
-        // Tie-break on track_id for stable ordering when created_at collides.
+        // Rank is the number of pending rows strictly before this one in
+        // (created_at, track_id) order. Two index-only counts. A window over
+        // every pending row sorts the whole queue to answer a page of ids.
         let rows = sqlx::query_as::<_, (String, i64)>(
             r#"
-            WITH pending AS (
-                SELECT track_id, created_at,
-                       (ROW_NUMBER() OVER (ORDER BY created_at ASC, track_id ASC) - 1)::bigint
-                         AS ahead
-                FROM tasks
-                WHERE status = 'pending'
-            )
-            SELECT track_id, ahead
-            FROM pending
-            WHERE track_id = ANY($1)
+            SELECT t.track_id,
+              (
+                SELECT COUNT(*)::bigint FROM tasks p
+                WHERE p.status = 'pending' AND p.created_at < t.created_at
+              ) + (
+                SELECT COUNT(*)::bigint FROM tasks p
+                WHERE p.status = 'pending'
+                  AND p.created_at = t.created_at
+                  AND p.track_id < t.track_id
+              ) AS ahead
+            FROM tasks t
+            WHERE t.track_id = ANY($1)
+              AND t.status = 'pending'
             "#,
         )
         .bind(track_ids)
