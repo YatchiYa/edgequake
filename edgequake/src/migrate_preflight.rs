@@ -47,13 +47,15 @@ pub async fn run_preflight(pool: &PgPool) -> Result<PreflightReport> {
         name: "postgresql_major",
         ok: pg_ok,
         detail: format!("PostgreSQL {pg_version} (major {pg_major})"),
-        fix: "EdgeQuake supports PostgreSQL 16, 17, and 18 with AGE + pgvector. \
-              Use the GHCR edgequake-postgres image for your major."
+        fix: "EdgeQuake supports PostgreSQL 16, 17, and 18 with pgvector. \
+              Apache AGE is optional from v0.35.0. Use the GHCR edgequake-postgres \
+              image, or any managed Postgres that ships pgvector (RDS / Cloud SQL)."
             .into(),
     });
 
-    // Fresh databases have vector/age available but not yet CREATE EXTENSION'd
+    // Fresh databases have vector available but not yet CREATE EXTENSION'd
     // (migration 001 installs them). Fail only when the server cannot install.
+    // Apache AGE is optional: plain eq_graph_* tables serve GraphRAG without it.
     let vector = probe_extension_status(pool, "vector").await?;
     checks.push(extension_check(
         "extension_vector",
@@ -63,7 +65,7 @@ pub async fn run_preflight(pool: &PgPool) -> Result<PreflightReport> {
     ));
 
     let age = probe_extension_status(pool, "age").await?;
-    checks.push(extension_check("extension_age", "Apache AGE", "age", age));
+    checks.push(age_extension_check(age));
 
     let can_ddl = probe_can_create_temp(pool).await?;
     checks.push(PreflightCheck {
@@ -277,6 +279,34 @@ fn extension_check(
     }
 }
 
+/// Apache AGE is optional from v0.35.0. Missing is a note, not a hard fail.
+fn age_extension_check(status: ExtensionStatus) -> PreflightCheck {
+    match status {
+        ExtensionStatus::Installed(v) => PreflightCheck {
+            name: "extension_age",
+            ok: true,
+            detail: format!("Apache AGE {v}"),
+            fix: String::new(),
+        },
+        ExtensionStatus::Available(v) => PreflightCheck {
+            name: "extension_age",
+            ok: true,
+            detail: format!(
+                "Apache AGE {v} available (optional; migrate installs only if present)"
+            ),
+            fix: String::new(),
+        },
+        ExtensionStatus::Missing => PreflightCheck {
+            name: "extension_age",
+            ok: true,
+            detail: "Apache AGE not on this server — plain eq_graph_* tables will serve GraphRAG \
+                     (RDS / Cloud SQL class). Drop is never required."
+                .into(),
+            fix: String::new(),
+        },
+    }
+}
+
 async fn probe_extension_status(pool: &PgPool, name: &str) -> Result<ExtensionStatus> {
     let installed: Option<String> =
         sqlx::query_scalar("SELECT extversion FROM pg_extension WHERE extname = $1")
@@ -393,14 +423,21 @@ mod tests {
     }
 
     #[test]
-    fn missing_extension_is_hard_fail() {
+    fn missing_vector_is_hard_fail() {
         let c = extension_check(
-            "extension_age",
-            "Apache AGE",
-            "age",
+            "extension_vector",
+            "pgvector",
+            "vector",
             ExtensionStatus::Missing,
         );
         assert!(!c.ok);
         assert!(c.detail.contains("PREFLIGHT_EXTENSION"));
+    }
+
+    #[test]
+    fn missing_age_is_optional_ok() {
+        let c = age_extension_check(ExtensionStatus::Missing);
+        assert!(c.ok);
+        assert!(c.detail.contains("plain eq_graph_"));
     }
 }

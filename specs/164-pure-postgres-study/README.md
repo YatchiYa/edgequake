@@ -22,7 +22,7 @@ docker run -d --name eq-no-age \
 export DATABASE_URL='postgres://edgequake:edgequake@127.0.0.1:54329/edgequake'
 
 # Apply SAFE SCHEMA through 206. Migration 171 (DROP AGE) stays pending.
-# Non-interactive migrate never drops AGE. Answer the question only when you mean to.
+# Preflight treats missing AGE as OK. Non-interactive migrate never drops AGE.
 edgequake migrate
 
 # Serve. Boot skips CREATE EXTENSION age when the cutover ledger marks age_absent
