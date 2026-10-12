@@ -75,7 +75,8 @@ impl QueryContext {
 
     /// Stamp stable [`RetrievedChunk::citation_id`] values before format/API (X-20).
     ///
-    /// Prompt chunks get `1..n`. Dual-list `citation_chunks` reuse the same id for
+    /// Prompt chunks keep existing IDs and receive the smallest unreserved IDs
+    /// for unstamped chunks. Dual-list `citation_chunks` reuse the same id for
     /// overlapping chunk ids, then continue the sequence for Mix-only members.
     pub fn ensure_stable_citation_ids(&mut self) {
         let mut used = self
