@@ -357,25 +357,69 @@ PY
   [[ "$status" == "ok" ]]
 }
 
-# Chaos: concurrent migrate → one exit 75
+# True once some other session holds edgequake.migrate.run.
+# pg_try_advisory_lock returns true when *this* probe acquired it; that
+# session exits and releases, and the probe keeps waiting.
+wait_until_migrate_lock_held() {
+  local url="$1" hold_pid="$2"
+  local i got
+  for i in $(seq 1 40); do
+    if ! kill -0 "$hold_pid" 2>/dev/null; then
+      echo "  → FAIL lock holder exited before the lock was visible"
+      return 1
+    fi
+    got=$(psql "$url" -Atqc "SELECT pg_try_advisory_lock(hashtext('edgequake.migrate.run'))" 2>/dev/null || true)
+    got="${got//[[:space:]]/}"
+    if [[ "$got" == "f" ]]; then
+      echo "  → run lock is held (probe $i)"
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "  → FAIL advisory lock was not held after 10s"
+  return 1
+}
+
+# Chaos: concurrent migrate → one exit 75.
+# The second migrate is the default command (AGE stays). It must still exit 75
+# when only the AGE drop remains, which is the steady state after --confirm-drop.
 chaos_lock() {
   local major=16
-  local port container url bin hold_pid
+  local port container url bin hold_pid rc hold_sql
   port=$(pick_port)
   container=$(start_pg "$major" "$port")
   url=$(db_url "$port")
   bin=$(resolve_head_bin)
   echo "=== chaos: concurrent migrate lock ==="
-  DATABASE_URL="$url" "$bin" migrate --confirm-drop >/dev/null 2>&1 || true
-  # Hold advisory lock on a long-lived session (psql exits release locks).
-  psql "$url" -v ON_ERROR_STOP=1 -c \
-    "SELECT pg_advisory_lock(hashtext('edgequake.migrate.run')); SELECT pg_sleep(60);" \
-    >/dev/null 2>&1 &
+  if ! DATABASE_URL="$url" "$bin" migrate --confirm-drop >/tmp/eq150-chaos-prep.log 2>&1; then
+    echo "  → FAIL preparatory migrate"
+    cat /tmp/eq150-chaos-prep.log
+    docker rm -f "$container" >/dev/null 2>&1 || true
+    return 1
+  fi
+  # One DO block: lock, then sleep, on a session that stays open.
+  hold_sql=$(cat <<'SQL'
+DO $$
+BEGIN
+  PERFORM pg_advisory_lock(hashtext('edgequake.migrate.run'));
+  PERFORM pg_sleep(90);
+END
+$$;
+SQL
+)
+  psql "$url" -v ON_ERROR_STOP=1 -c "$hold_sql" >/tmp/eq150-chaos-holder.log 2>&1 &
   hold_pid=$!
-  sleep 1
+  if ! wait_until_migrate_lock_held "$url" "$hold_pid"; then
+    echo "----- /tmp/eq150-chaos-holder.log -----"
+    cat /tmp/eq150-chaos-holder.log 2>/dev/null || true
+    kill "$hold_pid" 2>/dev/null || true
+    wait "$hold_pid" 2>/dev/null || true
+    docker rm -f "$container" >/dev/null 2>&1 || true
+    return 1
+  fi
   set +e
   EDGEQUAKE_MIGRATE_LOCK_DEADLINE=5 DATABASE_URL="$url" "$bin" migrate >/tmp/eq150-chaos-lock.log 2>&1
-  local rc=$?
+  rc=$?
   set -e
   kill "$hold_pid" 2>/dev/null || true
   wait "$hold_pid" 2>/dev/null || true
@@ -384,7 +428,11 @@ chaos_lock() {
     echo "  → PASS concurrent lock (rc=$rc)"
     return 0
   fi
-  echo "  → FAIL concurrent lock (rc=$rc); see /tmp/eq150-chaos-lock.log"
+  echo "  → FAIL concurrent lock (rc=$rc)"
+  echo "----- /tmp/eq150-chaos-lock.log -----"
+  cat /tmp/eq150-chaos-lock.log 2>/dev/null || true
+  echo "----- /tmp/eq150-chaos-holder.log -----"
+  cat /tmp/eq150-chaos-holder.log 2>/dev/null || true
   return 1
 }
 

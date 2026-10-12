@@ -157,6 +157,7 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
                 Ok(r) => r,
                 Err(e) => {
                     migrate_console::print_failure_hint(&e);
+                    exit_if_migrate_lock_busy(&e);
                     return Err(e).context("partial migrate (expandables) failed");
                 }
             };
@@ -178,11 +179,17 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
                 report.latest_version,
                 report.applied_versions.len(),
             ));
-        } else if defer_142 {
-            println!(
-                "no SAFE SCHEMA to apply this run (SPEC-105 migration 142 deferred while \
-                 durable legacy rows remain)."
-            );
+        } else {
+            if defer_142 {
+                println!(
+                    "no SAFE SCHEMA to apply this run (SPEC-105 migration 142 deferred while \
+                     durable legacy rows remain)."
+                );
+            }
+            // Only DROP OLD is left (Apache AGE stays unless --drop-age).
+            // Take the run lock anyway so a second migrate cannot exit 0
+            // while another migrate still holds edgequake.migrate.run.
+            acquire_migrate_run_lock_or_exit(&bundle.admin).await?;
         }
 
         let remaining =
@@ -250,13 +257,7 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
         Ok(r) => r,
         Err(e) => {
             migrate_console::print_failure_hint(&e);
-            let msg = e.to_string();
-            if msg.contains("MIGRATE_LOCK_BUSY") {
-                eprintln!("{msg}");
-                std::process::exit(
-                    edgequake_api::state::migration_bootstrap::runner::MIGRATE_LOCK_EXIT_CODE,
-                );
-            }
+            exit_if_migrate_lock_busy(&e);
             return Err(e).context("migrate failed");
         }
     };
@@ -293,6 +294,37 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
         report.applied_versions.len(),
     );
     Ok(())
+}
+
+/// Exit 75 when another migrate still holds the run lock.
+#[cfg(feature = "postgres")]
+fn exit_if_migrate_lock_busy(err: &dyn std::fmt::Display) {
+    let msg = err.to_string();
+    if msg.contains("MIGRATE_LOCK_BUSY") {
+        eprintln!("{msg}");
+        std::process::exit(
+            edgequake_api::state::migration_bootstrap::runner::MIGRATE_LOCK_EXIT_CODE,
+        );
+    }
+}
+
+/// Serialize a no-write migrate with any other `edgequake migrate`.
+#[cfg(feature = "postgres")]
+async fn acquire_migrate_run_lock_or_exit(pool: &sqlx::PgPool) -> Result<()> {
+    let cfg = edgequake_api::state::migration_bootstrap::runner::RunnerConfig::from_env();
+    match edgequake_api::state::migration_bootstrap::runner::acquire_migrate_run_lock(pool, &cfg)
+        .await
+    {
+        Ok(guard) => {
+            guard.release().await;
+            Ok(())
+        }
+        Err(e) => {
+            migrate_console::print_failure_hint(&e);
+            exit_if_migrate_lock_busy(&e);
+            Err(e).context("migrate run lock")
+        }
+    }
 }
 
 /// Answer the Apache AGE question. Default is keep.
