@@ -505,11 +505,11 @@ type CostSummary struct {
 }
 
 type CostEntry struct {
-	DocumentCount int     `json:"document_count,omitempty"`
 	Date          string  `json:"date"`
 	CostUSD       float64 `json:"cost_usd"`
 	Tokens        int64   `json:"tokens"`
 	Requests      int     `json:"requests"`
+	DocumentCount int     `json:"document_count,omitempty"`
 }
 
 type BudgetInfo struct {
