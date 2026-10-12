@@ -158,8 +158,10 @@ pub(super) fn split_text_internal(
             chunks.push((chunk_content, current_pos, actual_end));
         }
 
-        // Calculate overlap position, ensuring it's on a char boundary
-        let overlap_pos = actual_end.saturating_sub(overlap);
+        // Bound overlap by half the selected chunk so oversized settings cannot
+        // produce a nearly full-size chunk for every character in the input.
+        let effective_overlap = overlap.min((actual_end - current_pos) / 2);
+        let overlap_pos = actual_end - effective_overlap;
         let next_char = ceil_char_boundary(text, current_pos + 1);
         current_pos = ceil_char_boundary(text, overlap_pos)
             .max(next_char)
@@ -231,15 +233,41 @@ mod progress_tests {
     fn splitting_advances_when_overlap_covers_the_chunk() {
         let (tx, rx) = mpsc::channel();
         let worker = std::thread::spawn(move || {
-            // A high minimum prevents an unbounded output allocation on regression.
-            let result = split_text_internal("abcdefgh", 4, 4, usize::MAX, &[]);
+            let result = split_text_internal("abcdefgh", 4, 4, 1, &[]);
             let _ = tx.send(result);
         });
         let chunks = rx
             .recv_timeout(Duration::from_secs(2))
             .expect("overlap must not prevent progress");
         worker.join().expect("split worker completed");
-        assert!(chunks.len() <= 8);
-        assert_eq!(chunks.last().unwrap().2, 8);
+        assert_eq!(
+            chunks,
+            vec![
+                ("abcd".into(), 0, 4),
+                ("cdef".into(), 2, 6),
+                ("efgh".into(), 4, 8)
+            ]
+        );
+    }
+
+    #[test]
+    fn oversized_overlap_bounds_output_and_preserves_utf8_spans() {
+        for text in ["a".repeat(1000), "é中🙂".repeat(100)] {
+            for overlap in [100, usize::MAX] {
+                let chunks = split_text_internal(&text, 100, overlap, 1, &[]);
+                assert!(chunks.len() <= text.len().div_ceil(50));
+                assert!(chunks.iter().map(|chunk| chunk.0.len()).sum::<usize>() <= 2 * text.len());
+                assert_eq!(chunks.first().unwrap().1, 0);
+                assert_eq!(chunks.last().unwrap().2, text.len());
+                for chunk in &chunks {
+                    assert!(chunk.1 < chunk.2);
+                    assert_eq!(chunk.0, text[chunk.1..chunk.2]);
+                }
+                for pair in chunks.windows(2) {
+                    assert!(pair[1].1 > pair[0].1);
+                    assert!(pair[1].1 <= pair[0].2, "no gaps between chunks");
+                }
+            }
+        }
     }
 }
