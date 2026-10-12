@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.35.0] — 2026-10-12
+
+Minor: plain PostgreSQL graph for GraphRAG (SPEC-164). Apache AGE is optional.
+Schema moves **169 → 206**. Upgrade:
+[`docs/operations/upgrade-to-0.35.0.md`](docs/operations/upgrade-to-0.35.0.md).
+Study and install:
+[`specs/164-pure-postgres-study/README.md`](specs/164-pure-postgres-study/README.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres`, and
+`edgequake-keycloak` on tag `v0.35.0`.
+
+**SPEC-001 Acc:** attested from existing
+[`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run.
+Retrieval was **not** re-scored. This cut changes graph SQL and request-path
+indexes under row security.
+
+### Added
+
+- **SPEC-164 plain graph:** Migrations **170–206**. `eq_graph_nodes` /
+  `eq_graph_edges` are the product adjacency tables. Fresh install works on
+  Postgres with pgvector and without the Apache AGE package (RDS / Cloud SQL
+  class). Measured proof:
+  [`reports/WHY-AGE-IS-OPTIONAL.md`](specs/164-pure-postgres-study/reports/WHY-AGE-IS-OPTIONAL.md).
+- **AGE as a migrate question:** Migration **171** drops AGE only when migrate
+  is answered yes (`--drop-age`). Default is keep. `--confirm-drop` does not
+  answer that question.
+- **RLS-safe query indexes (203–206):** Stored `legacy_chunk_key`, `modality`,
+  and `current_stage`; owner-side label and node search so the tenant role
+  uses index conditions.
+
+### Fixed
+
+- Query companion graph pane no longer throws when Sigma measures a zero-width
+  container (`allowInvalidContainer` + deferred resize).
+- Health reports `graph_available` when the plain cutover ledger is ready, even
+  if AGE is absent.
+
 ## [0.34.0] — 2026-10-11
 
 Minor: a plain-English picture tour of every web screen, taken on the public

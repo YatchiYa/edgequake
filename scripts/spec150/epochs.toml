@@ -1,13 +1,7 @@
 # SPEC-150 epoch table — schema-distinct release points
 #
-# [unreleased] is the working migration set before the next product tag.
-# The epoch matrix does not replay it. When v0.35.0 is tagged, add that
-# tag as an epoch and delete this pin.
-
-[unreleased]
-max = 206
-files = 204
-hash = "b7db3bce689331bc"
+# When the next schema train opens after v0.35.0, pin it under [unreleased]
+# (hash, max, files) until that tag exists.
 
 [[epoch]]
 tag = "v0.2.0"
@@ -306,3 +300,12 @@ key = true
 replay = true
 # max mig 169 (SPEC-163 provider connections)
 # Schema-identical aliases: v0.34.0
+
+[[epoch]]
+tag = "v0.35.0"
+mode = "image"
+pg_majors = [16,17,18]
+key = true
+replay = true
+# max mig 206 (SPEC-164 plain graph + RLS query indexes)
+# hash b7db3bce689331bc (204 numbered migration files; 205 no-ops while AGE remains)

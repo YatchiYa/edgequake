@@ -3,7 +3,7 @@ title: "What's new"
 description: "Per-release highlights moved out of the README."
 ---
 
-This page lists the highlights of each release from v0.34.0 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide.
+This page lists the highlights of each release from v0.35.0 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide.
 
 ## Schema train at a glance
 
@@ -25,15 +25,24 @@ timeline
     v0.32.2 : 168 pinned
     v0.33.0 : 169
     v0.34.0 : 169 pinned
+    v0.35.0 : 206
 ```
 
-The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.34.0.
+The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.35.0.
 
 Run `edgequake migrate` when you move to a release with a higher number. The [upgrading guide](operations/upgrading.md) covers the steps.
 
-### Preparing v0.35.0 (not tagged)
+### What's new in 0.35.0
 
-The product pin is still **v0.34.0** (schema 169). The schema train on this branch runs through **206**. Do not treat 206 as a released image until the version-bump ceremony. Preparation: **[upgrade-to-0.35.0.md](operations/upgrade-to-0.35.0.md)**.
+Minor: plain PostgreSQL graph for GraphRAG (SPEC-164). Apache AGE is optional.
+Schema moves **169 → 206**. Fresh install works on Postgres with pgvector and
+without AGE (RDS / Cloud SQL class). Dropping AGE is a migrate question
+(`--drop-age`); the default is keep. SPEC-001 Acc is attested from the existing
+2026-08-15 medical-mid pack; retrieval was not re-scored.
+
+Upgrade: **[upgrade-to-0.35.0.md](operations/upgrade-to-0.35.0.md)** ·
+study: **[SPEC-164](../specs/164-pure-postgres-study/README.md)** ·
+changelog: [CHANGELOG.md](CHANGELOG.md).
 
 ### What's new in 0.34.0
 

@@ -1,13 +1,18 @@
 ---
-title: "Prepare for EdgeQuake v0.35.0"
-description: "Preparation notes for the untagged v0.35.0 schema train. Product pin stays v0.34.0. Schema moves 169 to 206."
+title: "Upgrade to EdgeQuake v0.35.0"
+description: "Upgrade from v0.34.0 to v0.35.0. Schema moves 169 to 206. Apache AGE is optional."
 ---
 
-# Prepare for EdgeQuake v0.35.0
+# Upgrade to EdgeQuake v0.35.0
 
-> **From:** v0.34.0 (schema **169**) · **Schema train:** **206** · **Tag:** not cut
+> **From:** v0.34.0 (schema **169**) · **To:** v0.35.0 (schema **206**)
 
-This page is the operator plan for the next schema train. **v0.35.0 is not a release.** `VERSION` stays **0.34.0**. Do not retag, and do not point production at an image that does not exist yet. When the version-bump ceremony runs, this page becomes the upgrade guide for that tag.
+**demo.edgequake.com:** this cut installs the 0.35.0 API and WebUI. Non-interactive
+migrate leaves Apache AGE installed (migration 171 stays pending). Password auth
+remains the demo default.
+
+Fresh install on Postgres without AGE:
+[specs/164-pure-postgres-study/README.md](../../specs/164-pure-postgres-study/README.md).
 
 The train is migrations **170** through **206**:
 
