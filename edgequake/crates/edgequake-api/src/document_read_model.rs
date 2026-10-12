@@ -237,10 +237,24 @@ static PROCESSING_ARMS: &[ChipArm] = &[
     ChipArm::Stage("indexing"),
 ];
 
+/// Statuses the list keeps for `status=unknown`. The column is `NOT NULL`,
+/// so a SQL `NULL` arm never matches. `queued` cannot be stored.
+#[cfg(feature = "postgres")]
+static UNKNOWN_ARMS: &[ChipArm] = &[
+    ChipArm::Status("chunking"),
+    ChipArm::Status("extracting"),
+    ChipArm::Status("embedding"),
+    ChipArm::Status("indexing"),
+    ChipArm::Status("deleting"),
+    ChipArm::Status("delete_failed"),
+];
+
 /// How the list requires a passed status.
 ///
-/// `unknown` is the complement of every known status, so it stays on the open
-/// page. `pending` and `processing` also match `current_stage`. Each of those
+/// `unknown` is the complement of the known chips. `NOT IN` seq-scans
+/// (9.568 ms, 79,950 removed). One equality per stored complement value
+/// stops on `idx_documents_workspace_status_created`. `all` stays open.
+/// `pending` and `processing` also match `current_stage`. Each of those
 /// values is its own arm: `current_stage = ANY($n)` hides the stage from a
 /// generic plan and walks every newer row (12.428 ms, 79,950 removed).
 /// `completed` is the stored pair `completed` and `indexed`. Every other
@@ -251,7 +265,8 @@ fn relational_list_filter(raw: Option<&str>) -> RelationalListFilter {
         return RelationalListFilter::Open;
     };
     match raw.to_ascii_lowercase().as_str() {
-        "all" | "unknown" => RelationalListFilter::Open,
+        "all" => RelationalListFilter::Open,
+        "unknown" => RelationalListFilter::Chip(UNKNOWN_ARMS),
         "pending" => RelationalListFilter::Chip(PENDING_ARMS),
         "processing" => RelationalListFilter::Chip(PROCESSING_ARMS),
         "completed" => {
@@ -1781,9 +1796,13 @@ mod tests {
             RelationalListFilter::Open
         ));
         assert!(matches!(
-            relational_list_filter(Some("unknown")),
+            relational_list_filter(Some("all")),
             RelationalListFilter::Open
         ));
+        match relational_list_filter(Some("unknown")) {
+            RelationalListFilter::Chip(arms) => assert!(std::ptr::eq(arms, UNKNOWN_ARMS)),
+            other => panic!("unknown must be the unknown chip, got {other:?}"),
+        }
         match relational_list_filter(Some("pending")) {
             RelationalListFilter::Chip(arms) => assert!(std::ptr::eq(arms, PENDING_ARMS)),
             other => panic!("pending must be the pending chip, got {other:?}"),
@@ -1885,6 +1904,25 @@ mod tests {
         assert!(pending_tenant
             .contains("tenant_id IS NULL AND (metadata->>'current_stage') = 'queued'"));
         assert!(pending_tenant.contains("LIMIT $3"));
+
+        let unknown = chip_list_statement(
+            false,
+            UNKNOWN_ARMS,
+            CreatedAtPredicate::default(),
+            TitlePredicate::default(),
+        );
+        assert!(unknown.contains("status = 'chunking'"));
+        assert!(unknown.contains("status = 'extracting'"));
+        assert!(unknown.contains("status = 'embedding'"));
+        assert!(unknown.contains("status = 'indexing'"));
+        assert!(unknown.contains("status = 'deleting'"));
+        assert!(unknown.contains("status = 'delete_failed'"));
+        assert!(unknown.contains("UNION ALL"));
+        assert!(unknown.contains("ORDER BY created_at DESC, id DESC"));
+        assert!(unknown.contains("LIMIT $2"));
+        assert!(!unknown.contains("NOT IN"));
+        assert!(!unknown.contains("IS NULL OR"));
+        assert!(!unknown.contains("ANY("));
     }
 
     #[cfg(feature = "postgres")]

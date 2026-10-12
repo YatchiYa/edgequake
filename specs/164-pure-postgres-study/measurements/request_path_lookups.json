@@ -683,6 +683,13 @@
       "before_plan": "Generic plan with idx_chunks_workspace present. Bitmap of idx_chunks_content_tsv, then a document primary-key lookup for every hit (39960 loops, 161286 buffers) because ($2 IS NULL OR d.workspace_id = $2) is a filter. The first run was 253.508 ms. Requiring the predicate on a generic plan is still 93.532 ms and the same 39960 lookups",
       "after_ms": 13.693,
       "after_plan": "Custom plan. Parallel scan scores the matching chunks (20 rows removed by the workspace predicate), then the document join stops at 50 (200 buffers, 2991 shared hits). No new index. The unscoped call has no workspace, so it does not join documents and does not keep an IS NULL predicate"
+    },
+    {
+      "name": "document list status=unknown LIMIT 50, 50 oldest deleting rows and 79950 newer indexed rows",
+      "before_ms": 9.568,
+      "before_plan": "Generic plan. Parallel seq scan, filter status <> ALL of the known statuses. Rows removed 26650 per worker, 3189 buffers, 50 deleting rows. The first run was 10.566 ms. The open page on idx_documents_created_at returns the 50 newest indexed rows in 0.022 ms and then the handler drops them, so those deleting documents never appear",
+      "after_ms": 0.052,
+      "after_plan": "Generic plan. Merge append of one status equality per complement value. The deleting arm is an index-only scan of idx_documents_workspace_status_created and stops at 50, 14 buffers. Empty arms return 0 in 3 buffers each. Full union 29 buffers, 50 rows. The first run was 0.092 ms. No new index: migration 200. The column is NOT NULL, so there is no SQL NULL arm. all stays on the open page"
     }
   ]
 }

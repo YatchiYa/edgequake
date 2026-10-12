@@ -230,6 +230,101 @@ async fn document_page_date_to_returns_the_older_row() {
 }
 
 #[tokio::test]
+async fn document_page_unknown_returns_the_older_deleting_row() {
+    let Some(pool) =
+        postgres_access_pool::test_pool_with_acquire_timeout(std::time::Duration::from_secs(10))
+            .await
+    else {
+        return;
+    };
+    let (tenant, workspace) = scope(&pool, "doc unknown page").await;
+    let older = chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let newer = chrono::DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    insert_doc_status(
+        &pool,
+        Some(tenant),
+        workspace,
+        "older-unknown",
+        "deleting",
+        older,
+    )
+    .await;
+    insert_doc_status(
+        &pool,
+        Some(tenant),
+        workspace,
+        "newer-done",
+        "completed",
+        newer,
+    )
+    .await;
+
+    let scoped = ctx(Some(tenant), workspace);
+    let page = list_relational_document_summaries_limited(
+        Some(&pool),
+        &scoped,
+        10,
+        Some("unknown"),
+        RelationalCreatedBounds::default(),
+        &[],
+    )
+    .await
+    .expect("unknown page");
+    let titles: Vec<_> = page
+        .documents
+        .iter()
+        .filter_map(|doc| doc.title.clone())
+        .collect();
+    assert_eq!(titles, vec!["older-unknown".to_string()]);
+    assert_eq!(
+        page.documents[0].status.as_deref(),
+        Some("deleting"),
+        "deleting stays unknown to the list filter"
+    );
+    assert!(!page.truncated);
+
+    let open = list_relational_document_summaries_limited(
+        Some(&pool),
+        &scoped,
+        10,
+        Some("all"),
+        RelationalCreatedBounds::default(),
+        &[],
+    )
+    .await
+    .expect("all page");
+    let open_titles: Vec<_> = open
+        .documents
+        .iter()
+        .filter_map(|doc| doc.title.clone())
+        .collect();
+    assert_eq!(
+        open_titles,
+        vec!["newer-done".to_string(), "older-unknown".to_string()]
+    );
+
+    sqlx::query("DELETE FROM documents WHERE workspace_id = $1")
+        .bind(workspace)
+        .execute(&pool)
+        .await
+        .expect("cleanup documents");
+    sqlx::query("DELETE FROM workspaces WHERE workspace_id = $1")
+        .bind(workspace)
+        .execute(&pool)
+        .await
+        .expect("cleanup workspace");
+    sqlx::query("DELETE FROM tenants WHERE tenant_id = $1")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("cleanup tenant");
+}
+
+#[tokio::test]
 async fn document_page_title_pattern_returns_the_matching_row() {
     let Some(pool) =
         postgres_access_pool::test_pool_with_acquire_timeout(std::time::Duration::from_secs(10))
@@ -343,6 +438,30 @@ async fn query_filter_date_returns_only_the_older_document() {
         .execute(&pool)
         .await
         .expect("cleanup tenant");
+}
+
+async fn insert_doc_status(
+    pool: &sqlx::PgPool,
+    tenant: Option<Uuid>,
+    workspace: Uuid,
+    title: &str,
+    status: &str,
+    created_at: chrono::DateTime<chrono::Utc>,
+) {
+    sqlx::query(
+        "INSERT INTO documents (id, tenant_id, workspace_id, title, content, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, '', $5, $6, $7)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(tenant)
+    .bind(workspace)
+    .bind(title)
+    .bind(status)
+    .bind(created_at)
+    .bind(created_at)
+    .execute(pool)
+    .await
+    .expect("status document");
 }
 
 async fn insert_doc_at(
