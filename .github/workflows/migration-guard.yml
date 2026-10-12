@@ -45,8 +45,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # pull_request_target uses the shared base ref, so scope PR runs by number.
-  group: migration-guard-${{ github.event.pull_request.number || github.ref }}
+  # Keep PRs and event types separate: migration paths trigger both PR events,
+  # and pull_request_target's github.ref is shared by unrelated PRs.
+  group: migration-guard-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
