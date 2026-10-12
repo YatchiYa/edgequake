@@ -512,11 +512,11 @@ type CostEntry struct {
 }
 
 type BudgetInfo struct {
-	AlertThreshold   float64  `json:"alert_threshold,omitempty"`
-	IsOverBudget     bool     `json:"is_over_budget,omitempty"`
 	MonthlyBudgetUSD *float64 `json:"monthly_budget_usd,omitempty"`
 	CurrentSpendUSD  float64  `json:"current_spend_usd"`
 	RemainingUSD     *float64 `json:"remaining_usd,omitempty"`
+	AlertThreshold   float64  `json:"alert_threshold,omitempty"`
+	IsOverBudget     bool     `json:"is_over_budget,omitempty"`
 }
 
 type ChunkDetail struct {
