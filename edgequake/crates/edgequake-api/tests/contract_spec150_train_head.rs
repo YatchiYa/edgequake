@@ -572,6 +572,10 @@ fn migration_185_indexes_workspace_chunk_search() {
     assert!(fts.contains("TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE"));
     assert!(fts.contains("c.workspace_id = $2 OR c.workspace_id IS NULL"));
     assert!(fts.contains("workspace_uuid.is_some()"));
+    assert!(
+        fts.contains("force_custom_plan"),
+        "a common term must replan so the document join stops at the page"
+    );
 }
 
 #[test]

@@ -662,6 +662,13 @@
       "before_plan": "Custom plan of the open membership UNION. Seq scan of workspace_id returns all 80000 ids, 3094 buffers. The query filter then drops dates in memory",
       "after_ms": 0.056,
       "after_plan": "Custom plan. Index scan of idx_documents_created_at, Index Cond created_at <= $3, plus idx_documents_metadata_workspace_expr, 50 rows, 18 buffers. No new index. A generic plan of the same statement is 0.319 ms and also stops at 50"
+    },
+    {
+      "name": "workspace chunk FTS LIMIT 50, term common matches 39960 of 40000 chunks",
+      "before_ms": 117.887,
+      "before_plan": "Generic plan with idx_chunks_workspace present. Bitmap of idx_chunks_content_tsv, then a document primary-key lookup for every hit (39960 loops, 161286 buffers) before LIMIT 50. A 20-row term stays on the content GIN (0.149 ms, 87 buffers)",
+      "after_ms": 18.523,
+      "after_plan": "Custom plan of the same statement. Parallel scan scores the matching chunks, then the document join stops at 50 (200 buffers). The 20-row term stays on idx_chunks_content_tsv (0.094 ms, 87 buffers). No new index. Id-filtered FTS still starts at chunks_pkey; workspace and document are required on that statement when the caller passes them"
     }
   ]
 }

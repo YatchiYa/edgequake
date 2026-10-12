@@ -18,6 +18,9 @@ use uuid::Uuid;
 use super::typed_read::resolve_workspace_uuid;
 use super::PgVectorStorage;
 use crate::adapters::postgres::schema;
+use crate::adapters::postgres::statement_timeout::{
+    vector_query_statement_timeout_ms, LocalTimeoutTx,
+};
 use crate::error::{Result, StorageError};
 use crate::traits::{MetadataFilter, VectorSearchResult};
 
@@ -92,6 +95,11 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL: &str = r#"
 /// bitmap-and `idx_chunks_workspace` with the content GIN. Chunks with a
 /// null `workspace_id` still use the document predicate. An unscoped search
 /// keeps [`TYPED_CHUNKS_FTS_SQL`].
+///
+/// A common term matches every chunk in the workspace. A generic plan still
+/// estimates a few hundred hits, so it looks up every document before `LIMIT`.
+/// The search replans with `force_custom_plan`, which scores the chunks and
+/// then reads only the page of documents.
 pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE: &str = r#"
             SELECT coalesce(c.metadata->>'legacy_chunk_key', c.id::text) AS id,
                    c.metadata,
@@ -162,6 +170,21 @@ const MODALITY_PREDICATE_REQUIRED: &str = "AND c.metadata->>'modality' = ANY($6)
 const TENANT_PREDICATE_OPTIONAL: &str = "AND ($5::uuid IS NULL OR c.tenant_id = $5)";
 const TENANT_PREDICATE_REQUIRED: &str = "AND c.tenant_id = $5";
 
+/// `$2 IS NULL OR workspace` on the id lookup hides the workspace after the
+/// primary key. When the caller passes a workspace, both arms require it.
+/// Null `chunks.workspace_id` rows still match through the document predicate.
+const ID_WORKSPACE_CHUNK_OPTIONAL: &str =
+    "AND ($2::uuid IS NULL OR c.workspace_id = $2 OR c.workspace_id IS NULL)";
+const ID_WORKSPACE_CHUNK_REQUIRED: &str = "AND (c.workspace_id = $2 OR c.workspace_id IS NULL)";
+const ID_WORKSPACE_DOC_OPTIONAL: &str = "AND ($2::uuid IS NULL OR d.workspace_id = $2 OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))";
+const ID_WORKSPACE_DOC_REQUIRED: &str =
+    "AND (d.workspace_id = $2 OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))";
+
+/// `$4 IS NULL OR document_id = ANY($4)` on the id lookup is the same shape.
+/// When the caller passes documents, the predicate is required.
+const ID_DOCUMENT_OPTIONAL: &str = "AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))";
+const ID_DOCUMENT_REQUIRED: &str = "AND c.document_id = ANY($4)";
+
 fn apply_scope_predicates(sql: &str, modality_required: bool, tenant_required: bool) -> String {
     let sql = if modality_required {
         sql.replace(MODALITY_PREDICATE_OPTIONAL, MODALITY_PREDICATE_REQUIRED)
@@ -190,6 +213,25 @@ pub(crate) fn typed_chunks_fts_sql(
     apply_scope_predicates(base, modality_required, tenant_required)
 }
 
+/// Id-filtered statement. Workspace and document stay optional only when the
+/// caller did not pass them. The lookup still starts at the chunk id.
+fn apply_id_scope(
+    workspace_required: bool,
+    documents_required: bool,
+    modality_required: bool,
+    tenant_required: bool,
+) -> String {
+    let mut sql = TYPED_CHUNKS_FTS_SQL_IN_IDS.to_string();
+    if workspace_required {
+        sql = sql.replace(ID_WORKSPACE_CHUNK_OPTIONAL, ID_WORKSPACE_CHUNK_REQUIRED);
+        sql = sql.replace(ID_WORKSPACE_DOC_OPTIONAL, ID_WORKSPACE_DOC_REQUIRED);
+    }
+    if documents_required {
+        sql = sql.replace(ID_DOCUMENT_OPTIONAL, ID_DOCUMENT_REQUIRED);
+    }
+    apply_scope_predicates(&sql, modality_required, tenant_required)
+}
+
 /// Id-filtered typed FTS. `$7 IS NULL OR id = ANY OR legacy key = ANY` makes a
 /// generic plan score every chunk that matches the words. This statement looks
 /// up each requested id first. `OFFSET 0` keeps that lookup from being pulled
@@ -215,12 +257,8 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_IDS: &str = r#"
                 ) c ON true
                 JOIN public.documents d ON d.id = c.document_id
                 WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
-                  AND ($2::uuid IS NULL
-                       OR c.workspace_id = $2
-                       OR c.workspace_id IS NULL)
-                  AND ($2::uuid IS NULL
-                       OR d.workspace_id = $2
-                       OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
+                  AND ($2::uuid IS NULL OR c.workspace_id = $2 OR c.workspace_id IS NULL)
+                  AND ($2::uuid IS NULL OR d.workspace_id = $2 OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
                   AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
                   AND ($5::uuid IS NULL OR c.tenant_id = $5)
                   AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
@@ -241,12 +279,8 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_IDS: &str = r#"
                 ) c ON true
                 JOIN public.documents d ON d.id = c.document_id
                 WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
-                  AND ($2::uuid IS NULL
-                       OR c.workspace_id = $2
-                       OR c.workspace_id IS NULL)
-                  AND ($2::uuid IS NULL
-                       OR d.workspace_id = $2
-                       OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
+                  AND ($2::uuid IS NULL OR c.workspace_id = $2 OR c.workspace_id IS NULL)
+                  AND ($2::uuid IS NULL OR d.workspace_id = $2 OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
                   AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
                   AND ($5::uuid IS NULL OR c.tenant_id = $5)
                   AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
@@ -361,9 +395,28 @@ impl PgVectorStorage {
             .filter_map(|id| Uuid::parse_str(id).ok())
             .collect();
 
+        // A cached generic plan prices `content_tsv @@ $1` as a few hundred
+        // hits. A common word then looks up every matching document before
+        // LIMIT. Replan with the bound term so the document join stops at
+        // the page.
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| StorageError::Database(format!("Typed chunk FTS acquire failed: {e}")))?;
+        let mut timed = LocalTimeoutTx::begin(&mut conn, vector_query_statement_timeout_ms())
+            .await
+            .map_err(|e| StorageError::Database(format!("Typed chunk FTS begin failed: {e}")))?;
+        sqlx::query("SET LOCAL plan_cache_mode = force_custom_plan")
+            .execute(timed.as_mut())
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("Typed chunk FTS plan mode failed: {e}"))
+            })?;
+
         let rows = if id_filter.is_some() {
-            let sql = apply_scope_predicates(
-                TYPED_CHUNKS_FTS_SQL_IN_IDS,
+            let sql = apply_id_scope(
+                workspace_uuid.is_some(),
+                document_ids.is_some(),
                 modalities.is_some(),
                 tenant_id.is_some(),
             );
@@ -377,7 +430,7 @@ impl PgVectorStorage {
                 .bind(id_filter.as_deref())
                 .bind(uuid_ids.as_slice())
                 .bind(top_k as i32)
-                .fetch_all(&pool)
+                .fetch_all(timed.as_mut())
                 .await
         } else {
             let sql = typed_chunks_fts_sql(
@@ -395,10 +448,14 @@ impl PgVectorStorage {
                 .bind(modalities.as_deref())
                 .bind(id_filter.as_deref())
                 .bind(top_k as i32)
-                .fetch_all(&pool)
+                .fetch_all(timed.as_mut())
                 .await
         }
         .map_err(|e| StorageError::Database(format!("Typed chunk FTS query failed: {e}")))?;
+        timed
+            .commit()
+            .await
+            .map_err(|e| StorageError::Database(format!("Typed chunk FTS commit failed: {e}")))?;
 
         Ok(rows
             .iter()
@@ -578,6 +635,15 @@ mod tests {
         assert!(by_id.contains("c.metadata->>'legacy_chunk_key' = wanted.key"));
         assert!(by_id.contains("c.id = wanted.id"));
         assert!(!by_id.contains("$7::text[] IS NULL"));
+        let scoped_ids = apply_id_scope(true, true, false, false);
+        assert!(!scoped_ids.contains("$2::uuid IS NULL"));
+        assert!(!scoped_ids.contains("$4::uuid[] IS NULL"));
+        assert!(scoped_ids.contains("c.workspace_id = $2 OR c.workspace_id IS NULL"));
+        assert!(scoped_ids.contains("c.document_id = ANY($4)"));
+        assert_eq!(scoped_ids.matches("c.document_id = ANY($4)").count(), 2);
+        let open_ids = apply_id_scope(false, false, false, false);
+        assert!(open_ids.contains("$2::uuid IS NULL"));
+        assert!(open_ids.contains("$4::uuid[] IS NULL"));
     }
 
     #[test]
