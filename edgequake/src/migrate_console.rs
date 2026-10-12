@@ -153,13 +153,83 @@ pub fn classify_migrate_abort(msg: &str) -> MigrateAbortClass {
 
 /// Human one-liner for an irreversible drop version.
 pub fn irreversible_drop_plain(version: i64) -> &'static str {
-    match version {
-        KV_DROP_MIGRATION => "deletes the old key-value tables (eq_*_kv)",
-        VECTOR_DROP_MIGRATION => "deletes old chunk rows from eq_*_vectors",
-        FLEET_VECTOR_DROP_MIGRATION => "deletes all remaining eq_*_vectors tables",
-        171 => "drops Apache AGE after the SPEC-164 plain-graph ledger is ready",
-        _ => "irreversible drop",
+    edgequake_api::state::migration_bootstrap::irreversible_drop_plain(version)
+}
+
+/// Compact a version list: `172–174, 202`. Empty is `none`.
+pub fn format_version_span(versions: &[i64]) -> String {
+    if versions.is_empty() {
+        return "none".to_string();
     }
+    let mut sorted = versions.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    let mut parts = Vec::new();
+    let mut start = sorted[0];
+    let mut prev = sorted[0];
+    for &version in &sorted[1..] {
+        if version == prev + 1 {
+            prev = version;
+            continue;
+        }
+        parts.push(span_piece(start, prev));
+        start = version;
+        prev = version;
+    }
+    parts.push(span_piece(start, prev));
+    parts.join(", ")
+}
+
+fn span_piece(start: i64, end: i64) -> String {
+    if start == end {
+        start.to_string()
+    } else {
+        format!("{start}–{end}")
+    }
+}
+
+/// Irreversible versions with their plain-English meaning.
+pub fn format_drop_list(versions: &[i64]) -> String {
+    if versions.is_empty() {
+        return "none".to_string();
+    }
+    let mut sorted = versions.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    sorted
+        .into_iter()
+        .map(|version| format!("{version} ({})", irreversible_drop_plain(version)))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// `202` or `none`. Never `Some(202)`.
+pub fn format_latest_schema(latest: Option<i64>) -> String {
+    match latest {
+        Some(version) => version.to_string(),
+        None => "none".to_string(),
+    }
+}
+
+/// Schema block for `edgequake migrate status`.
+pub fn format_schema_status(
+    db_schema: Option<i64>,
+    binary_schema: i64,
+    pending: usize,
+    drops: &[i64],
+) -> String {
+    let db_shown = format_latest_schema(db_schema);
+    let db_rel =
+        edgequake_api::state::migration_bootstrap::release_for_schema(db_schema.unwrap_or(0));
+    let bin_rel = edgequake_api::state::migration_bootstrap::release_for_schema(binary_schema);
+    let drop_line = if drops.is_empty() {
+        String::new()
+    } else {
+        format!("\n  drop old : {}", format_drop_list(drops))
+    };
+    format!(
+        "schema:\n  database : {db_shown} (≈ {db_rel})\n  binary   : {binary_schema} (≈ {bin_rel})\n  pending  : {pending}{drop_line}"
+    )
 }
 
 /// List pending migrations before apply.
@@ -319,7 +389,7 @@ pub fn print_apply_intent(pending: &[(i64, String)], drop_confirmed: bool) {
         if irreversible.is_empty() {
             String::new()
         } else {
-            format!(" → {irreversible:?}")
+            format!(" → {}", format_drop_list(&irreversible))
         }
     );
     if !irreversible.is_empty() {
@@ -472,8 +542,9 @@ pub fn print_applied_this_run(applied: &[(i64, String)]) {
 
 /// Final one-line summary (machine-friendly).
 pub fn print_summary(pending_before: usize, latest: Option<i64>, applied_count: usize) {
+    let latest = format_latest_schema(latest);
     println!(
-        "migrate ok: pending_before={pending_before} latest={latest:?} applied_this_run={applied_count}"
+        "migrate ok: pending_before={pending_before} latest={latest} applied_this_run={applied_count}"
     );
 }
 
@@ -1057,6 +1128,28 @@ mod first_principles_tests {
             classify_migrate_abort("PREFLIGHT_BINARY_OLDER: binary older than database"),
             MigrateAbortClass::BinaryOlder
         );
+    }
+
+    #[test]
+    fn version_spans_and_schema_status_are_plain_english() {
+        assert_eq!(format_version_span(&[]), "none");
+        assert_eq!(format_version_span(&[202]), "202");
+        assert_eq!(format_version_span(&[202, 170, 171, 170]), "170–171, 202");
+        assert_eq!(format_latest_schema(Some(202)), "202");
+        assert_eq!(format_latest_schema(None), "none");
+        let drops = format_drop_list(&[171, 125]);
+        assert!(drops.starts_with("125 ("), "{drops}");
+        assert!(drops.contains("Apache AGE"), "{drops}");
+        assert!(!drops.contains('['), "{drops}");
+        let status = format_schema_status(Some(169), 202, 33, &[171]);
+        assert!(status.contains("database : 169"), "{status}");
+        assert!(status.contains("binary   : 202"), "{status}");
+        assert!(status.contains("pending  : 33"), "{status}");
+        assert!(status.contains("drops Apache AGE"), "{status}");
+        assert!(!status.contains("Some("), "{status}");
+        let empty = format_schema_status(None, 202, 0, &[]);
+        assert!(empty.contains("database : none"), "{empty}");
+        assert!(!empty.contains("drop old"), "{empty}");
     }
 
     #[test]

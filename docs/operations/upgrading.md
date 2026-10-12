@@ -65,7 +65,7 @@ Ask the running API. If the API is down, ask the migrate CLI (it needs `DATABASE
 curl -sf localhost:8080/health | jq '{version, schema}'
 
 # Without the API running (needs DATABASE_URL)
-edgequake migrate status
+edgequake migrate status    # schema first, then data-engine jobs
 edgequake migrate check
 ```
 
@@ -95,7 +95,8 @@ Schema number to release. The migration matrix in `scripts/spec150/epochs.toml` 
 | 165 | v0.30.0 |
 | 166 | v0.31.0 |
 | 168 | v0.32.0 to v0.32.2 |
-| 169 | v0.33.0 (SPEC-163 `provider_connections`) |
+| 169 | v0.33.0 and v0.34.0 (schema unchanged; SPEC-163 `provider_connections`) |
+| 202 | v0.35.0, not tagged. The product pin stays v0.34.0 until the version-bump ceremony. |
 
 ---
 
@@ -159,23 +160,36 @@ Other `migrate` verbs: `status` (per-job progress), `console [--watch]` (live da
 
 ### What you will see
 
-This output was captured from an empty-database upgrade of schema 149 to 168 on PG16. On HEAD the last step is `169_spec163_provider_connections.sql`.
+`edgequake migrate check` and `edgequake migrate` print the upgrade path in plain English. A published v0.34.0 database (schema 169) moving onto this train looks like this:
 
 ```text
-EdgeQuake migrate v0.32.2
- PREFLIGHT
-  [OK  ] postgresql_major: PostgreSQL 16.x (major 16)
-  [OK  ] extension_vector: pgvector ...
-  [OK  ] extension_age: Apache AGE ...
 UPGRADE PATH
-  database schema : 149 (v0.26.0 to v0.26.10)
-  binary schema   : 168 (v0.32.x)
-  pending steps   : 19
-  irreversible    : none
-[ 1/19] 150 provider access ledger ... applied in 0.1s
-[ 7/19] 156 graph lineage source ids backfill ... [heavy DDL - may take minutes on large graphs]
-[19/19] 168 identity lockout columns ... applied in 0.0s
+  database schema : 169 (≈ v0.33.0)
+  binary schema   : 202 (v0.34.0 ≈ v0.35.0)
+  pending steps   : 33
+  irreversible    : 171 (drops Apache AGE after the SPEC-164 plain-graph ledger is ready)
+
+ APPLY INTENT
+  pending total:              33
+  SAFE SCHEMA (will apply):   32
+  DROP OLD (needs confirm):    1 → 171 (drops Apache AGE after the SPEC-164 plain-graph ledger is ready)
+  consent: NOT given — will apply SAFE SCHEMA only, leave DROP OLD pending
+
+migrate ok: pending_before=32 latest=202 applied_this_run=32
 ```
+
+`latest=202` is the highest applied version. An empty ledger prints `latest=none`. Version lists are spans (`172–202`), not Rust debug dumps. When migration 171 is still waiting for consent, that closing line is followed by `VERDICT: OK TO START THE SERVER`.
+
+Measured on PostgreSQL 16 with 80,000 documents, 40,000 chunks, 30,000 conversations, and 80,000 tasks ([v034_large_upgrade.json](../../specs/164-pure-postgres-study/measurements/v034_large_upgrade.json)):
+
+| Step | Time |
+|------|------|
+| Empty database, migrations 1–169 | 2.008 s |
+| Upgrade 170–202 on that corpus | 3.003 s |
+| Document page `status=failed` | 0.081 ms |
+| Same page with only the workspace status index visible | 0.051 ms |
+
+The slowest index builds on that corpus (196, 184, 200, 194) each finished in under a second. Row counts were unchanged. Apache AGE was gone after migration 171. Migration-guard CI runs this proof as Layer 4.
 
 ---
 
@@ -266,6 +280,7 @@ sudo systemctl start edgequake
 | Exit 75 | Two migrates at once, or a crashed session still holds the lock. | Wait up to `EDGEQUAKE_MIGRATE_LOCK_DEADLINE` (60 s). After a crash make sure no session holds `hashtext('edgequake.migrate.run')`. |
 | `migrate check` fails | Missing `vector` or `age` extension, unsupported PostgreSQL major, binary older than the database, or a dirty ledger. | The command prints a plain-English fix for each. |
 | Need to go back | There are no down-migrations. | Restore from backup. Always take a verified backup before `--confirm-drop`. |
+| `public._sqlx_migrations` is missing versions that exist in `ag_catalog` or `edgequake` | An older migrator wrote the ledger into the first schema on `search_path`. The DDL committed. The row is the proof. | Re-run `edgequake migrate`. It copies those rows into `public._sqlx_migrations`, drops the stray tables, and prints `ledger: copied N migration row(s) into public._sqlx_migrations and removed stray copies`. |
 
 ---
 
@@ -290,7 +305,7 @@ Full list: [env-reference.md](env-reference.md). Defaults are read from code.
 
 - **[#396](https://github.com/raphaelmansuy/edgequake/issues/396):** the SPEC-091 guard can stay red on mid-cutover fleets. Do not use `--confirm-drop` until it is green.
 - **PostgreSQL itself is not upgraded.** Changing the PG major is a separate cluster migration (`scripts/migrate_postgres_major.sh` or an image rebuild).
-- **Large graphs.** Some migrations rewrite graph tables or build indexes (for example 070, 071, 074, 156 and 158, plus HNSW builds). On large graphs they can run for a long time. Plan a maintenance window.
+- **Large graphs.** Some migrations rewrite graph tables or build indexes (for example 070, 071, 074, 156 and 158, plus HNSW builds). On large graphs they can run for a long time. Plan a maintenance window. The 170–202 index steps on an 80,000-document database finished in under a second each; see the measured times in section 3.
 - **`migrations/scripts/reset_migrations.sql`** is for development only. It drops the migration ledger. Never run it in production.
 - **`edgequake/docker/init.sql`** is legacy and not mounted. The numbered migrations are the schema source of truth.
 
@@ -298,7 +313,8 @@ Full list: [env-reference.md](env-reference.md). Defaults are read from code.
 
 ## 10. Related pages
 
-- Per-release notes: [upgrade-to-0.33.0.md](upgrade-to-0.33.0.md), [upgrade-to-0.32.2.md](upgrade-to-0.32.2.md) and earlier.
+- Next schema train (not tagged): [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md). Product pin stays v0.34.0.
+- Per-release notes: [upgrade-to-0.34.0.md](upgrade-to-0.34.0.md), [upgrade-to-0.33.0.md](upgrade-to-0.33.0.md), [upgrade-to-0.32.2.md](upgrade-to-0.32.2.md) and earlier.
 - Release process: [release-and-cd.md](release-and-cd.md).
 - Deployment: [deployment.md](deployment.md), [docker-quickstart.md](docker-quickstart.md).
 - SPEC-150 runbook: [specs/150-reliable-migration-system/11-ops-runbook.md](../../specs/150-reliable-migration-system/11-ops-runbook.md).

@@ -31,6 +31,10 @@ The timeline shows the schema number each release leaves the database at, from v
 
 Run `edgequake migrate` when you move to a release with a higher number. The [upgrading guide](operations/upgrading.md) covers the steps.
 
+### Preparing v0.35.0 (not tagged)
+
+The product pin is still **v0.34.0** (schema 169). The schema train on this branch runs through **202**. Do not treat 202 as a released image until the version-bump ceremony. Preparation: **[upgrade-to-0.35.0.md](operations/upgrade-to-0.35.0.md)**.
+
 ### What's new in 0.34.0
 
 Minor: a plain-English picture tour of the website, [tutorial/README.md](../tutorial/README.md),

@@ -258,6 +258,8 @@ pub(crate) async fn fold_stray_sqlx_ledgers(pool: &PgPool) -> Result<u64, sqlx::
     }
 
     let mut folded = 0u64;
+    let mut dropped_strays = 0u64;
+    let mut moved_from: Option<String> = None;
     let public_exists: bool = sqlx::query_scalar(
         "SELECT EXISTS (
             SELECT 1 FROM pg_class c
@@ -276,6 +278,7 @@ pub(crate) async fn fold_stray_sqlx_ledgers(pool: &PgPool) -> Result<u64, sqlx::
         ))
         .execute(&mut *tx)
         .await?;
+        moved_from = Some(schemas[0].clone());
         tracing::info!(
             target: "edgequake.migration",
             schema = %schemas[0],
@@ -315,6 +318,7 @@ pub(crate) async fn fold_stray_sqlx_ledgers(pool: &PgPool) -> Result<u64, sqlx::
             .execute(&mut *tx)
             .await?;
         folded += inserted;
+        dropped_strays += 1;
         tracing::info!(
             target: "edgequake.migration",
             schema = %schema,
@@ -323,6 +327,15 @@ pub(crate) async fn fold_stray_sqlx_ledgers(pool: &PgPool) -> Result<u64, sqlx::
         );
     }
     tx.commit().await?;
+    // Stdout, not tracing: operators run migrate without RUST_LOG.
+    if let Some(schema) = moved_from {
+        println!("ledger: moved _sqlx_migrations from {schema} into public");
+    }
+    if folded > 0 || dropped_strays > 0 {
+        println!(
+            "ledger: copied {folded} migration row(s) into public._sqlx_migrations and removed stray copies"
+        );
+    }
     Ok(folded)
 }
 

@@ -84,8 +84,9 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
             .collect();
         if !irreversibles.is_empty() {
             println!(
-                "fresh install (no applied migrations): irreversible migration(s) {irreversibles:?} \
-                 cannot destroy data — nothing legacy exists; proceeding without --confirm-drop."
+                "fresh install (no applied migrations): irreversible migration(s) {} \
+                 cannot destroy data — nothing legacy exists; proceeding without --confirm-drop.",
+                migrate_console::format_version_span(&irreversibles)
             );
         }
     }
@@ -112,10 +113,12 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
                     && edgequake_api::state::migration_bootstrap::is_legacy_cutover_assert(*v))
             })
             .collect();
+        let mut expandable_summary: Option<(usize, Option<i64>, usize)> = None;
         if !expandables_to_apply.is_empty() {
             println!(
-                "applying SAFE SCHEMA (expandable) migration(s) {expandables_to_apply:?} \
-                 (DROP OLD deferred until --confirm-drop)…"
+                "applying SAFE SCHEMA (expandable) migration(s) {} \
+                 (DROP OLD deferred until --confirm-drop)…",
+                migrate_console::format_version_span(&expandables_to_apply)
             );
             if defer_142
                 && expandables.iter().any(|v| {
@@ -152,6 +155,11 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
                 .collect();
             migrate_console::print_applied_this_run(&applied);
             migrate_console::print_post_hooks(&bundle.admin).await;
+            expandable_summary = Some((
+                report.pending_before,
+                report.latest_version,
+                report.applied_versions.len(),
+            ));
         } else if defer_142 {
             println!(
                 "no SAFE SCHEMA to apply this run (SPEC-105 migration 142 deferred while \
@@ -165,6 +173,9 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
                 .context("re-list pending after expandable apply")?;
         let remaining_versions: Vec<i64> = remaining.iter().map(|(v, _)| *v).collect();
         if remaining.is_empty() {
+            if let Some((pending_before, latest, applied_count)) = expandable_summary {
+                migrate_console::print_summary(pending_before, latest, applied_count);
+            }
             return Ok(());
         }
         let defer_142_after = edgequake_storage::any_legacy_rows(&bundle.query)
@@ -174,6 +185,9 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
             &remaining_versions,
             defer_142_after,
         ) {
+            if let Some((pending_before, latest, applied_count)) = expandable_summary {
+                migrate_console::print_summary(pending_before, latest, applied_count);
+            }
             match edgequake_storage::migration_engine::advisor::posture(&bundle.query).await {
                 Ok(p) => migrate_console::print_guard(&p, &p.residue),
                 Err(e) => eprintln!("  (readiness guard unavailable: {e})"),

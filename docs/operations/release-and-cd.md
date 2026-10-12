@@ -11,6 +11,8 @@ This runbook covers cutting a product release: the local quality gates, the tag-
 >
 > Upgrade: [upgrade-to-0.34.0.md](upgrade-to-0.34.0.md) (visual tour; schema stays **169**, migrate is a no-op from 0.33.0). Previous: [upgrade-to-0.33.0.md](upgrade-to-0.33.0.md) (SPEC-163 connections; schema **169**). Earlier guides: [0.32.2](upgrade-to-0.32.2.md) and [0.32.0](upgrade-to-0.32.0.md) (schema **168**), [0.31.0](upgrade-to-0.31.0.md) (schema **166**), [0.30.0](upgrade-to-0.30.0.md) (schema **165**), [0.29.0](upgrade-to-0.29.0.md) (schema **163**), [0.28.5](upgrade-to-0.28.5.md) (schema **162**).
 >
+> Next schema train, not tagged: [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md) (schema **202**). Do not bump `VERSION` until the ceremony in section 3.
+>
 > **SPEC-001 Acc (this cut):** attested existing [`publish/latest`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **retrieval not re-scored**. Decision mode is unscored.
 >
 > **Pinned crates.io versions** (`edgequake/Cargo.toml`): `edgequake-llm` 0.10.9, `edgequake-pdf2md` 0.9.11, `edgeparse-core` 0.3.2. The Rust SDK in `sdks/rust` is version 0.4.0.
@@ -103,6 +105,7 @@ done
 - `Release Gates` must be green, or the tag push runs the same preflight inside `release-docker.yml`.
 - `SPEC-046 ACC` must be green when query, storage, or spec paths change.
 - `SPEC-013 PR Proof` and the PostgreSQL integration tests must be green when those paths change.
+- `Migration Guard` Layer 4 must be green before a schema cut. It runs `e2e_spec164_v034_large_upgrade`: a real v0.34.0 database (schema 169, the published checksum of migration 167) with 80,000 documents, upgraded by `edgequake migrate` through 202. Raw `sqlx migrate run` in Layer 2 does not fold a split ledger or repair that checksum.
 - Ignore unrelated external automation failures (for example Dependabot noise) only when all required project gates are green.
 
 **Speed knobs:** a shared Swatinem cache (`shared-key: edgequake-ci`), sparse crates.io index, no incremental builds, `--locked`, cancel-in-progress, and no duplicate workspace lib compile across Quality Gates and Release Gates.

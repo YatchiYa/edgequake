@@ -62,6 +62,7 @@ Current max: `202_document_title_trgm.sql` (SPEC-164 expand index).
 `170_spec164_plain_graph.sql` is expand-only (no serving_floor) so a v0.34 binary can still serve schema 170.  
 `171` sets `serving_floor = 171` and is irreversible; `edgequake migrate` without `--confirm-drop` stops before it.  
 `172`–`202` add request-path indexes and do not raise the serving floor.
+The ledger sqlx reads is `public._sqlx_migrations`. `edgequake migrate` folds stray copies (from `ag_catalog` or schema `edgequake`) back into `public` before it applies anything.
 
 Operator guide: [`docs/operations/upgrading.md`](../../docs/operations/upgrading.md).
 

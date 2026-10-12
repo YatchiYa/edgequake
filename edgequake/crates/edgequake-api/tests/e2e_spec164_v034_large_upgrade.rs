@@ -503,13 +503,13 @@ fn admin_url() -> Option<String> {
     let url = std::env::var("DATABASE_URL")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .or_else(|| std::fs::read_to_string("/tmp/edgequake-db-url").ok())?;
-    let url = url.trim().to_string();
-    if url.is_empty() {
-        None
-    } else {
-        Some(url)
+        .or_else(|| std::fs::read_to_string("/tmp/edgequake-db-url").ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    if url.is_none() && std::env::var("EDGEQUAKE_REQUIRE_POSTGRES_TESTS").as_deref() == Ok("1") {
+        panic!("EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1 but DATABASE_URL is unset");
     }
+    url
 }
 
 fn replace_db(url: &str, db: &str) -> String {

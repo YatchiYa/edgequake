@@ -120,6 +120,18 @@ pub fn format_step_done(
     )
 }
 
+/// Plain-English meaning of an irreversible drop. Shared by the upgrade banner
+/// and `edgequake migrate` so operators never see a bare version list.
+pub fn irreversible_drop_plain(version: i64) -> &'static str {
+    match version {
+        125 => "deletes the old key-value tables (eq_*_kv)",
+        126 => "deletes old chunk rows from eq_*_vectors",
+        131 => "deletes all remaining eq_*_vectors tables",
+        171 => "drops Apache AGE after the SPEC-164 plain-graph ledger is ready",
+        _ => "irreversible drop",
+    }
+}
+
 /// Format the upgrade-path banner printed before apply.
 pub fn format_upgrade_path(
     db_schema: Option<i64>,
@@ -137,9 +149,9 @@ pub fn format_upgrade_path(
     } else {
         irreversible_pending
             .iter()
-            .map(|v| v.to_string())
+            .map(|v| format!("{v} ({})", irreversible_drop_plain(*v)))
             .collect::<Vec<_>>()
-            .join(", ")
+            .join("; ")
     };
     format!(
         "UPGRADE PATH\n\
@@ -224,6 +236,7 @@ mod tests {
         assert!(s.contains("database schema : 149"), "{s}");
         assert!(s.contains("binary schema   : 168"), "{s}");
         assert!(s.contains("irreversible    : 125"), "{s}");
+        assert!(s.contains("key-value tables"), "{s}");
         assert!(s.contains("v0.26.0–v0.26.10"), "{s}");
         assert!(s.contains("v0.32.0–v0.32.2"), "{s}");
     }
