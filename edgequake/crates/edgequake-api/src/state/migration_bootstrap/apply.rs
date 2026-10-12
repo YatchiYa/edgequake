@@ -74,6 +74,7 @@ async fn apply_pending_sequentially(
     pool: &PgPool,
     pending: &[&sqlx::migrate::Migration],
     run_id: Option<uuid::Uuid>,
+    runner_cfg: &runner::RunnerConfig,
 ) -> Result<(), sqlx::Error> {
     let total = pending.len();
     for (idx, migration) in pending.iter().enumerate() {
@@ -95,7 +96,20 @@ async fn apply_pending_sequentially(
             locking: false,
             no_tx: MIGRATOR.no_tx,
         };
-        match one.run(pool).await {
+        // sqlx creates and updates unqualified `_sqlx_migrations`. PostgreSQL
+        // puts `CREATE TABLE IF NOT EXISTS` in the first schema of search_path
+        // even when public already has the table. Migration 013 leaves the
+        // session on `ag_catalog, "$user", public`, and the next pool checkout
+        // then records the version outside public. Pin this checkout to public
+        // before sqlx looks up the ledger, and pin it again before the
+        // connection returns to the pool.
+        let mut conn = pool.acquire().await?;
+        pin_public_ledger(&mut conn).await?;
+        runner::apply_session_timeouts_on(&mut conn, runner_cfg, "ddl_access_exclusive").await?;
+        let applied = one.run_direct(&mut *conn).await;
+        let _ = pin_public_ledger(&mut conn).await;
+        drop(conn);
+        match applied {
             Ok(()) => {
                 let elapsed = started.elapsed();
                 progress::print_step_done(n, total, migration.version, desc, elapsed);
@@ -143,6 +157,13 @@ async fn apply_pending_sequentially(
     Ok(())
 }
 
+async fn pin_public_ledger(conn: &mut sqlx::PgConnection) -> Result<(), sqlx::Error> {
+    sqlx::query("SET search_path TO public")
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
+
 async fn run_postgres_migrations_inner(
     pool: &PgPool,
     mode: MigrationApplyMode,
@@ -186,6 +207,17 @@ async fn run_postgres_migrations_inner_locked(
         "Database migration bootstrap starting"
     );
 
+    if migrate_cli_mode() {
+        let folded = super::ledger::fold_stray_sqlx_ledgers(pool).await?;
+        if folded > 0 {
+            info!(
+                target: "edgequake.migration",
+                step = "fold_stray_ledgers",
+                folded,
+                "Copied stray _sqlx_migrations rows into public before pending detection"
+            );
+        }
+    }
     let applied_before = fetch_applied_versions(pool).await?;
     let defer_legacy_cutover_assert = edgequake_storage::any_legacy_rows(pool)
         .await
@@ -346,7 +378,7 @@ async fn run_postgres_migrations_inner_locked(
         // Apply each pending migration individually so operators see progress.
         // Outer SPEC-150 advisory lock is held; disable sqlx's nested lock.
         // ignore_missing: already-applied versions are absent from this slice.
-        apply_pending_sequentially(pool, &pending, run_id).await?;
+        apply_pending_sequentially(pool, &pending, run_id, runner_cfg).await?;
         info!(
             target: "edgequake.migration",
             step = "sqlx_complete",

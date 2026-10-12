@@ -788,7 +788,18 @@ fn sequential_apply_is_restartable_by_design() {
     // + ledger row. Re-running `edgequake migrate` after a crash resumes at the
     // first unapplied version (sqlx skips applied checksums).
     let src = include_str!("../src/state/migration_bootstrap/apply.rs");
-    assert!(src.contains("one.run(pool)"));
+    assert!(
+        src.contains("one.run_direct(&mut *conn)"),
+        "each step must run on one checkout whose search_path is public"
+    );
+    assert!(
+        src.contains("SET search_path TO public"),
+        "sqlx writes unqualified _sqlx_migrations; the checkout must resolve that name to public"
+    );
+    assert!(
+        src.contains("fold_stray_sqlx_ledgers"),
+        "rows already recorded outside public must be folded back before pending detection"
+    );
     assert!(src.contains("locking: false"));
     assert!(
         src.contains("finish_migration_run(pool, run_id, \"error\""),
