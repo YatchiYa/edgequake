@@ -23,7 +23,9 @@ pub mod runner;
 pub use support_sql::*;
 
 pub use apply::{
-    run_postgres_expandable_migrations, run_postgres_migrations, run_postgres_migrations_through,
+    run_postgres_expandable_migrations, run_postgres_migrations,
+    run_postgres_migrations_except_age, run_postgres_migrations_expandable_and_age,
+    run_postgres_migrations_through,
 };
 pub use ledger::{
     boot_gate_downgrade_message, boot_gate_pending_message, expandable_apply_versions,

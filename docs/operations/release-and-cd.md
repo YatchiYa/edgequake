@@ -11,7 +11,7 @@ This runbook covers cutting a product release: the local quality gates, the tag-
 >
 > Upgrade: [upgrade-to-0.34.0.md](upgrade-to-0.34.0.md) (visual tour; schema stays **169**, migrate is a no-op from 0.33.0). Previous: [upgrade-to-0.33.0.md](upgrade-to-0.33.0.md) (SPEC-163 connections; schema **169**). Earlier guides: [0.32.2](upgrade-to-0.32.2.md) and [0.32.0](upgrade-to-0.32.0.md) (schema **168**), [0.31.0](upgrade-to-0.31.0.md) (schema **166**), [0.30.0](upgrade-to-0.30.0.md) (schema **165**), [0.29.0](upgrade-to-0.29.0.md) (schema **163**), [0.28.5](upgrade-to-0.28.5.md) (schema **162**).
 >
-> Next schema train, not tagged: [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md) (schema **202**). Do not bump `VERSION` until the ceremony in section 3.
+> Next schema train, not tagged: [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md) (schema **206**). Do not bump `VERSION` until the ceremony in section 3.
 >
 > **SPEC-001 Acc (this cut):** attested existing [`publish/latest`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **retrieval not re-scored**. Decision mode is unscored.
 >

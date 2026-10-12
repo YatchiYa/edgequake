@@ -1,23 +1,27 @@
 ---
 title: "Prepare for EdgeQuake v0.35.0"
-description: "Preparation notes for the untagged v0.35.0 schema train. Product pin stays v0.34.0. Schema moves 169 to 202."
+description: "Preparation notes for the untagged v0.35.0 schema train. Product pin stays v0.34.0. Schema moves 169 to 206."
 ---
 
 # Prepare for EdgeQuake v0.35.0
 
-> **From:** v0.34.0 (schema **169**) · **Schema train:** **202** · **Tag:** not cut
+> **From:** v0.34.0 (schema **169**) · **Schema train:** **206** · **Tag:** not cut
 
 This page is the operator plan for the next schema train. **v0.35.0 is not a release.** `VERSION` stays **0.34.0**. Do not retag, and do not point production at an image that does not exist yet. When the version-bump ceremony runs, this page becomes the upgrade guide for that tag.
 
-The train is migrations **170** through **202**:
+The train is migrations **170** through **206**:
 
 | Migration | What it does | Consent |
 |-----------|--------------|---------|
 | 170 | Plain graph tables. Does not raise the serving floor, so a v0.34 binary can still serve. | `edgequake migrate` |
-| 171 | Drops Apache AGE after the cutover ledger is `ready`. | `edgequake migrate --confirm-drop` |
+| 171 | Drops Apache AGE after the cutover ledger is `ready`. Default is to leave AGE. | `edgequake migrate --drop-age` (or answer yes) |
 | 172–202 | Request-path indexes. Do not raise the serving floor. | `edgequake migrate` (applied even when 171 is still pending) |
+| 203 | Stored `chunks.legacy_chunk_key` so id lookup is an index condition under row security. | `edgequake migrate` |
+| 204 | Label search runs as the table owner so `LIKE` can use the trigram index under row security. | `edgequake migrate` |
+| 205 | Drops the empty `ag_catalog` schema left behind after Apache AGE is gone. Refuses if the cutover is not ready or a leftover table has rows. | `edgequake migrate` |
+| 206 | Stored `modality` and `current_stage` columns, plus owner-side node search, so those predicates are index conditions under row security. | `edgequake migrate` |
 
-`release_for_schema` maps 170–202 to v0.35.0. Schema 169 stays the published v0.33.0 / v0.34.0 point.
+`release_for_schema` maps 170–206 to v0.35.0. Schema 169 stays the published v0.33.0 / v0.34.0 point.
 
 ## What was proved
 
@@ -31,7 +35,7 @@ Measured on that corpus ([v034_large_upgrade.json](../../specs/164-pure-postgres
 | Upgrade 170–202 | 3.003 s |
 | Row counts | unchanged |
 | Ledger | `public._sqlx_migrations` only, head 202 |
-| Apache AGE | dropped at migration 171 |
+| Apache AGE | left installed unless migrate is answered yes (`--drop-age`) |
 | `status=failed` page | 0.081 ms, no sequential scan |
 
 The same test folds a stray ledger: if versions 15 and 16 were recorded outside `public`, the next `edgequake migrate` copies them back and drops the stray table.
@@ -55,16 +59,16 @@ edgequake migrate status
 ```text
 schema:
   database : 169 (≈ v0.33.0)
-  binary   : 202 (≈ v0.35.0)
-  pending  : 33
+  binary   : 206 (≈ v0.35.0)
+  pending  : 36
   drop old : 171 (drops Apache AGE after the SPEC-164 plain-graph ledger is ready)
 ```
 
-After a successful apply the closing line is `migrate ok: pending_before=… latest=202 applied_this_run=…`. An empty database prints `latest=none`. Lists of versions are spans (`172–202`), and drop steps name what they delete.
+After a successful apply the closing line is `migrate ok: pending_before=… latest=206 applied_this_run=…`. An empty database prints `latest=none`. Lists of versions are spans (`172–206`), and drop steps name what they delete.
 
 ## What this command will not do
 
 - It will not apply schema from the API process. Only `edgequake migrate` writes numbered migrations.
-- It will not skip migration 171. sqlx applies in order. Without `--confirm-drop`, safe schema on both sides of 171 is applied and 171 stays pending.
+- It will not drop Apache AGE unless you answer yes. `--confirm-drop` still gates the other DROP OLD steps. Without `--drop-age`, safe schema on both sides of 171 is applied and 171 stays pending.
 - It will not repair an unknown checksum. The published v0.34.0 hash of migration 167 is a known fossil and is rewritten to the current file hash before sqlx runs. Any other mismatch stops.
 - It will not write a second `_sqlx_migrations` table. Each step pins `search_path` to `public`.

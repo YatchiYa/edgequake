@@ -20,20 +20,22 @@ The API process never auto-applies numbered migrations on start.
 | Epoch coverage | `./scripts/check_epoch_coverage.sh` |
 | Manifest SSOT | `edgequake/migrations/manifest.toml` |
 
-**Train:** HEAD ships through migration **202**
+**Train:** HEAD ships through migration **206**
 (`170_spec164_plain_graph.sql` expand, `171_spec164_drop_age.sql` confirm-drop,
-`172`–`202` request-path indexes).
+`172`–`202` request-path indexes, `203` chunk legacy-key index,
+`204` graph label search, `205` drops empty `ag_catalog`,
+`206` leakproof modality, stage, and node search).
 Apply 170 with `edgequake migrate`. Apply 171 only with `--confirm-drop` after
 `PostgresAGEGraphStorage::run_spec164_cutover` marks `eq_graph_cutover` ready.
-Migrations 172 through 202 do not raise the serving floor.
+Migrations 172 through 206 do not raise the serving floor.
 The released product pin stays **v0.34.0** until the version-bump ceremony;
-`release_for_schema` maps 170–202 to v0.35.0.
+`release_for_schema` maps 170–206 to v0.35.0.
 Preparation notes: [`docs/operations/upgrade-to-0.35.0.md`](../../docs/operations/upgrade-to-0.35.0.md).
 Run `edgequake migrate` before expecting `/ready` 200 when upgrading from an older schema.
 
 The ledger sqlx trusts is `public._sqlx_migrations`. Each step runs on one connection with `search_path` set to `public`, because `CREATE TABLE IF NOT EXISTS _sqlx_migrations` lands in the first schema of `search_path`. If an older run left copies in `ag_catalog` or `edgequake`, `edgequake migrate` copies the missing rows into `public` and drops the stray tables before it decides what is pending. Serving never does that write.
 
-`edgequake migrate status` prints the database schema, the binary schema, and the pending count before it lists data-engine jobs. `edgequake migrate` prints version spans (`172–202`) and `latest=202` (or `latest=none`).
+`edgequake migrate status` prints the database schema, the binary schema, and the pending count before it lists data-engine jobs. `edgequake migrate` prints version spans (`172–206`) and `latest=206` (or `latest=none`).
 
 Migration-guard CI Layer 4 replays a real v0.34.0 database (schema 169, published checksum of migration 167) with 80,000 documents through 202. That is the release proof. Raw `sqlx migrate run` is not: it does not fold a split ledger, repair the published 167 checksum, or honor `--confirm-drop`.
 

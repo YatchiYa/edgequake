@@ -39,6 +39,31 @@ pub async fn run_postgres_expandable_migrations(
     run_postgres_migrations_inner(pool, MigrationApplyMode::ExpandableOnly).await
 }
 
+/// Apply every pending migration except 171. `--confirm-drop` does not drop AGE.
+pub async fn run_postgres_migrations_except_age(
+    pool: &PgPool,
+) -> Result<MigrationBootstrapReport, sqlx::Error> {
+    if !migrate_cli_mode() {
+        return Err(sqlx::Error::Protocol(
+            "run_postgres_migrations_except_age is CLI-only (EDGEQUAKE_MIGRATE_CLI=1)".into(),
+        ));
+    }
+    run_postgres_migrations_inner(pool, MigrationApplyMode::ExceptAge).await
+}
+
+/// Apply SAFE SCHEMA plus migration 171 only. Other DROP OLD steps stay pending.
+pub async fn run_postgres_migrations_expandable_and_age(
+    pool: &PgPool,
+) -> Result<MigrationBootstrapReport, sqlx::Error> {
+    if !migrate_cli_mode() {
+        return Err(sqlx::Error::Protocol(
+            "run_postgres_migrations_expandable_and_age is CLI-only (EDGEQUAKE_MIGRATE_CLI=1)"
+                .into(),
+        ));
+    }
+    run_postgres_migrations_inner(pool, MigrationApplyMode::ExpandableAndAge).await
+}
+
 /// Apply embedded migrations **through** `max_version` inclusive (CLI only).
 ///
 /// Used when an irreversible drop is pending without `--confirm-drop`: apply
@@ -63,6 +88,10 @@ enum MigrationApplyMode {
     Through(i64),
     /// Apply every pending expandable; omit irreversible drop versions.
     ExpandableOnly,
+    /// Apply every pending migration except Apache AGE drop (171).
+    ExceptAge,
+    /// SAFE SCHEMA plus migration 171. Other irreversible drops stay pending.
+    ExpandableAndAge,
 }
 
 /// Apply each pending migration with stdout progress + `migration_run_step` telemetry.
@@ -195,7 +224,10 @@ async fn run_postgres_migrations_inner_locked(
     };
     let max_version = match mode {
         MigrationApplyMode::Through(v) => Some(v),
-        MigrationApplyMode::All | MigrationApplyMode::ExpandableOnly => None,
+        MigrationApplyMode::All
+        | MigrationApplyMode::ExpandableOnly
+        | MigrationApplyMode::ExceptAge
+        | MigrationApplyMode::ExpandableAndAge => None,
     };
     info!(
         target: "edgequake.migration",
@@ -231,6 +263,11 @@ async fn run_postgres_migrations_inner_locked(
             MigrationApplyMode::Through(cap) => m.version <= cap,
             MigrationApplyMode::ExpandableOnly => {
                 include_in_expandable_apply(m.version, defer_legacy_cutover_assert)
+            }
+            MigrationApplyMode::ExceptAge => m.version != 171,
+            MigrationApplyMode::ExpandableAndAge => {
+                m.version == 171
+                    || include_in_expandable_apply(m.version, defer_legacy_cutover_assert)
             }
         })
         .collect();

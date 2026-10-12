@@ -19,32 +19,17 @@ pub(in crate::adapters::postgres::graph) mod search {
         tenant_id: Option<&str>,
         workspace_id: Option<&str>,
     ) -> Result<Vec<(GraphNode, usize)>> {
-        let q = lit(&query.to_lowercase());
-        let scope = tenant_and("n", tenant_id, workspace_id, TenantMode::Strict);
-        let etype = entity_type
-            .map(|t| {
-                format!(
-                    " AND UPPER(COALESCE(n.entity_type, '')) = UPPER('{}')",
-                    lit(t)
-                )
-            })
-            .unwrap_or_default();
         let pool = storage.pool.get().await?;
-        // Stored degree + trigram indexes (migration 170). A selective LIKE is a
-        // bitmap of matches; a broad LIKE walks (namespace, degree DESC) and
-        // stops at LIMIT. Aggregating every edge was 625–840ms at 200k/500k.
-        let sql = format!(
-            "SELECT n.node_id, n.properties, n.degree
-             FROM public.eq_graph_nodes n
-             WHERE n.namespace = $1
-               AND (LOWER(n.node_id) LIKE '%{q}%'
-                    OR LOWER(COALESCE(n.properties->>'description', '')) LIKE '%{q}%')
-               {scope} {etype}
-             ORDER BY n.degree DESC, n.node_id
-             LIMIT {limit}"
-        );
-        let rows = sqlx::query(&sql)
+        // Migration 206. LIKE is not leakproof, so the tenant role cannot use
+        // the trigram indexes. The owner function applies the session tenant
+        // and keeps ORDER BY degree DESC, node_id.
+        let rows = sqlx::query(SEARCH_NODES_SQL)
             .bind(&storage.namespace)
+            .bind(query.to_lowercase())
+            .bind(i32::try_from(limit.max(1)).unwrap_or(i32::MAX))
+            .bind(entity_type)
+            .bind(tenant_id)
+            .bind(workspace_id)
             .fetch_all(&pool)
             .await
             .map_err(|e| StorageError::Database(format!("plain search_nodes failed: {e}")))?;
@@ -103,6 +88,16 @@ pub(in crate::adapters::postgres::graph) mod search {
             .collect())
     }
 
+    /// Migration 206. `LIKE` stays inside `eq_graph_search_nodes`.
+    const SEARCH_NODES_SQL: &str = "SELECT node_id, properties, degree \
+         FROM public.eq_graph_search_nodes($1, $2, $3, $4, $5, $6)";
+
+    /// Migration 204. `LIKE` stays inside `eq_graph_search_labels`, which
+    /// runs as the table owner so the trigram index is usable under forced
+    /// row security.
+    const SEARCH_LABELS_SQL: &str =
+        "SELECT label FROM public.eq_graph_search_labels($1, $2, $3, $4, $5)";
+
     pub(in crate::adapters::postgres::graph) async fn search_labels(
         storage: &PostgresAGEGraphStorage,
         query: &str,
@@ -110,25 +105,17 @@ pub(in crate::adapters::postgres::graph) mod search {
         tenant_id: Option<&str>,
         workspace_id: Option<&str>,
     ) -> Result<Vec<String>> {
-        let q = lit(&query.to_lowercase());
-        let scope = tenant_and("n", tenant_id, workspace_id, TenantMode::Strict);
         let pool = storage.pool.get().await?;
-        let sql = format!(
-            "SELECT DISTINCT label FROM (
-                SELECT n.node_id AS label FROM public.eq_graph_nodes n
-                 WHERE n.namespace = $1 {scope} AND LOWER(n.node_id) LIKE '%{q}%'
-                UNION
-                SELECT n.entity_type FROM public.eq_graph_nodes n
-                 WHERE n.namespace = $1 {scope}
-                   AND n.entity_type IS NOT NULL
-                   AND LOWER(n.entity_type) LIKE '%{q}%'
-             ) s
-             WHERE label IS NOT NULL AND label <> ''
-             ORDER BY label
-             LIMIT {limit}"
-        );
-        let rows = sqlx::query_scalar::<_, String>(&sql)
+        // Migration 204. `LIKE` is not leakproof, so the tenant role cannot
+        // use the trigram indexes. The function runs as the table owner and
+        // keeps the session tenant.
+        let limit = i32::try_from(limit).unwrap_or(i32::MAX);
+        let rows = sqlx::query_scalar::<_, String>(SEARCH_LABELS_SQL)
             .bind(&storage.namespace)
+            .bind(query.to_lowercase())
+            .bind(limit)
+            .bind(tenant_id)
+            .bind(workspace_id)
             .fetch_all(&pool)
             .await
             .map_err(|e| StorageError::Database(format!("plain search_labels failed: {e}")))?;
@@ -157,5 +144,22 @@ pub(in crate::adapters::postgres::graph) mod search {
             .await
             .map_err(|e| StorageError::Database(format!("plain popular_labels failed: {e}")))?;
         Ok(rows)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{SEARCH_LABELS_SQL, SEARCH_NODES_SQL};
+
+        #[test]
+        fn search_labels_goes_through_the_owner_function() {
+            assert!(SEARCH_LABELS_SQL.contains("eq_graph_search_labels"));
+            assert!(!SEARCH_LABELS_SQL.contains("LIKE"));
+        }
+
+        #[test]
+        fn search_nodes_goes_through_the_owner_function() {
+            assert!(SEARCH_NODES_SQL.contains("eq_graph_search_nodes"));
+            assert!(!SEARCH_NODES_SQL.contains("LIKE"));
+        }
     }
 }

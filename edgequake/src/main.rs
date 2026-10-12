@@ -768,7 +768,10 @@ async fn run_migrate_status_cli() -> Result<()> {
 
 /// SPEC-091 Migration Console (doc 15 §7) — usage for the `migrate` verb family.
 const MIGRATE_USAGE: &str = "usage:
-  edgequake migrate [--confirm-drop|--drop-confirm]  apply schema migrations (+ reconcile)
+  edgequake migrate [--confirm-drop|--drop-confirm] [--drop-age|--keep-age]
+                                        apply schema migrations (+ reconcile)
+                                        Apache AGE stays unless you pass --drop-age
+                                        or answer yes to the question
   edgequake migrate check                       preflight environment (no writes)
   edgequake migrate dry-run                     preview pending + posture (no writes)
   edgequake migrate drain [--timeout <secs>]    foreground data-engine drain (SPEC-150)

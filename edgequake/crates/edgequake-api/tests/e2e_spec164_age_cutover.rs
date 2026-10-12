@@ -1,13 +1,14 @@
 //! SPEC-164 gates that need Apache AGE: full migration train, mirror trigger,
 //! shadow equality, ledger flip back to AGE, then confirm-drop (171).
 //!
-//! Greenfield without the extension is `EDGEQUAKE_SPEC164_NO_AGE=1` on a
-//! server where `CREATE EXTENSION age` fails.
+//! Greenfield without the extension is `fresh_install_serves_on_postgres_without_age`
+//! on a server where `age` is missing from `pg_available_extensions`.
+//! `EDGEQUAKE_SPEC164_NO_AGE=1` skips the mirror proof that needs the extension.
 
 use std::time::Instant;
 
 use edgequake_api::state::migration_bootstrap::{
-    run_postgres_expandable_migrations, run_postgres_migrations,
+    run_postgres_expandable_migrations, run_postgres_migrations, run_postgres_migrations_except_age,
 };
 use edgequake_storage::{
     GraphStorage, GraphStorageAnalyticsOps, GraphStorageMutateOps, GraphStorageReadOps,
@@ -458,6 +459,120 @@ async fn full_train_through_171_on_fresh_database() {
             .await
             .expect("age after boot");
     assert!(!age_after_boot);
+
+    pool.close().await;
+    drop_db(&admin, &db).await;
+}
+
+/// Fresh install on a server that cannot load Apache AGE (RDS-shaped:
+/// pgvector, pg_trgm, btree_gin, uuid-ossp; `age` absent from
+/// `pg_available_extensions`). Default migrate leaves 171 pending.
+#[tokio::test]
+async fn fresh_install_serves_on_postgres_without_age() {
+    let Some(admin) = admin_url() else {
+        eprintln!("SKIP fresh install without AGE: set DATABASE_URL");
+        return;
+    };
+    let admin_pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&admin)
+        .await
+        .expect("admin");
+    let age_available: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'age')",
+    )
+    .fetch_one(&admin_pool)
+    .await
+    .expect("available extensions");
+    admin_pool.close().await;
+    if age_available {
+        eprintln!("SKIP fresh install without AGE: this server can still CREATE EXTENSION age");
+        return;
+    }
+
+    let db = format!("spec164rds_{}", &Uuid::new_v4().simple().to_string()[..12]);
+    let url = provision(&admin, &db).await;
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&url)
+        .await
+        .expect("db connect");
+    std::env::set_var("EDGEQUAKE_MIGRATE_CLI", "1");
+    run_postgres_migrations_except_age(&pool)
+        .await
+        .unwrap_or_else(|e| panic!("fresh train without AGE failed: {e}"));
+
+    let age_on: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
+            .fetch_one(&pool)
+            .await
+            .expect("installed age");
+    assert!(!age_on, "fresh install must not install Apache AGE");
+    let dropped: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM _sqlx_migrations WHERE version = 171)")
+            .fetch_one(&pool)
+            .await
+            .expect("171 row");
+    assert!(
+        !dropped,
+        "default fresh install leaves migration 171 pending"
+    );
+    let head: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations")
+        .fetch_one(&pool)
+        .await
+        .expect("head");
+    assert!(head >= 206, "plain-graph train must reach 206, got {head}");
+    let ready: (String, bool) =
+        sqlx::query_as("SELECT status, age_absent FROM public.eq_graph_cutover WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .expect("ledger");
+    assert_eq!(ready.0, "ready");
+    assert!(
+        ready.1,
+        "greenfield without AGE marks the ledger age_absent"
+    );
+
+    let (host, port, user, password) = parse_url(&url);
+    let storage = PostgresAGEGraphStorage::new(
+        PostgresConfig::new(host, port, &db, user, password)
+            .with_namespace("rds")
+            .with_max_connections(2),
+    );
+    storage
+        .initialize()
+        .await
+        .expect("boot must not require Apache AGE");
+    let tenant = Uuid::new_v4();
+    let workspace = Uuid::new_v4();
+    storage
+        .upsert_nodes_batch(&[
+            node("RDS_NODE", &tenant, &workspace, "served without age"),
+            node("RDS_OTHER", &tenant, &workspace, "neighbor"),
+        ])
+        .await
+        .expect("plain node write");
+    storage
+        .upsert_edges_batch(&[edge("RDS_NODE", "RDS_OTHER", "LINKS", &tenant, &workspace)])
+        .await
+        .expect("plain edge write");
+    assert!(storage.has_node("RDS_NODE").await.expect("read"));
+    let tid = tenant.to_string();
+    let wid = workspace.to_string();
+    let found = storage
+        .search_nodes("rds_node", 5, None, Some(&tid), Some(&wid))
+        .await
+        .expect("search without AGE");
+    assert!(
+        found.iter().any(|(n, _)| n.id == "RDS_NODE"),
+        "label search must run on plain tables"
+    );
+    let still_absent: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
+            .fetch_one(&pool)
+            .await
+            .expect("age after boot");
+    assert!(!still_absent, "boot must not create the AGE extension");
 
     pool.close().await;
     drop_db(&admin, &db).await;

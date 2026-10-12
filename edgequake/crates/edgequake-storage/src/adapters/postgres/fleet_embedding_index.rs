@@ -106,8 +106,8 @@ impl PgFleetEmbeddingIndex {
     /// modality. When the caller passes modalities, the statement requires
     /// the predicate and `idx_entities_modality` starts at those rows.
     const ENTITY_MODALITY_OPTIONAL: &'static str =
-        "AND ($6::text[] IS NULL OR e.metadata->>'modality' = ANY($6))";
-    const ENTITY_MODALITY_REQUIRED: &'static str = "AND e.metadata->>'modality' = ANY($6)";
+        "AND ($6::text[] IS NULL OR e.modality = ANY($6))";
+    const ENTITY_MODALITY_REQUIRED: &'static str = "AND e.modality = ANY($6)";
 
     fn apply_entity_modality(sql: String, modality: bool) -> String {
         if modality {
@@ -147,7 +147,7 @@ impl PgFleetEmbeddingIndex {
                AND ($3::uuid IS NULL OR fe.workspace_id = $3) \
                AND ($4::uuid[] IS NULL OR e.source_ids && $4) \
                AND ($5::uuid IS NULL OR e.tenant_id = $5) \
-               AND ($6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)) \
+               AND ($6::text[] IS NULL OR e.modality = ANY($6)) \
              ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $7"
         );
         let sql = Self::apply_entity_source(sql, documents);
@@ -180,7 +180,7 @@ impl PgFleetEmbeddingIndex {
              WHERE ($3::uuid IS NULL OR fe.workspace_id = $3) \
                AND ($4::uuid[] IS NULL OR e.source_ids && $4) \
                AND ($5::uuid IS NULL OR e.tenant_id = $5) \
-               AND ($6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)) \
+               AND ($6::text[] IS NULL OR e.modality = ANY($6)) \
              ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $9"
         );
         let sql = Self::apply_entity_source(sql, documents);
@@ -677,29 +677,29 @@ mod tests {
         assert!(open.contains("$4::uuid[] IS NULL OR e.source_ids && $4"));
         assert!(open.contains("$3::uuid IS NULL OR fe.workspace_id = $3"));
         assert!(open.contains("$5::uuid IS NULL OR e.tenant_id = $5"));
-        assert!(open.contains("$6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)"));
+        assert!(open.contains("$6::text[] IS NULL OR e.modality = ANY($6)"));
         assert!(!open.contains("id::text = ANY"));
         assert!(open.contains("LIMIT $7"));
 
         let scoped = PgFleetEmbeddingIndex::entity_search_sql(768, "halfvec(768)", true, false);
         assert!(scoped.contains("AND e.source_ids && $4"));
         assert!(!scoped.contains("$4::uuid[] IS NULL"));
-        assert!(scoped.contains("$6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)"));
+        assert!(scoped.contains("$6::text[] IS NULL OR e.modality = ANY($6)"));
     }
 
     #[test]
     fn entity_search_requires_modality_when_passed() {
         let open = PgFleetEmbeddingIndex::entity_search_sql(768, "halfvec(768)", false, false);
-        assert!(open.contains("$6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)"));
+        assert!(open.contains("$6::text[] IS NULL OR e.modality = ANY($6)"));
 
         let scoped = PgFleetEmbeddingIndex::entity_search_sql(768, "halfvec(768)", false, true);
-        assert!(scoped.contains("AND e.metadata->>'modality' = ANY($6)"));
+        assert!(scoped.contains("AND e.modality = ANY($6)"));
         assert!(!scoped.contains("$6::text[] IS NULL"));
         assert!(scoped.contains("$3::uuid IS NULL OR fe.workspace_id = $3"));
 
         let by_id =
             PgFleetEmbeddingIndex::entity_search_sql_in_ids(768, "halfvec(768)", false, true);
-        assert!(by_id.contains("AND e.metadata->>'modality' = ANY($6)"));
+        assert!(by_id.contains("AND e.modality = ANY($6)"));
         assert!(!by_id.contains("$6::text[] IS NULL"));
         assert!(by_id.contains("OFFSET 0"));
     }

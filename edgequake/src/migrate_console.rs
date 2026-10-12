@@ -30,6 +30,8 @@ pub fn print_first_principles() {
     println!(
         "                   NEVER automatic. Needs {CANONICAL_CONFIRM_DROP_FLAG} + GREEN readiness."
     );
+    println!("  4. APACHE AGE   — left installed. Removing it is a separate question.");
+    println!("                   Default is keep. Drop only with --drop-age (or answer yes).");
     println!("  Server start never applies migrations; it only refuses when SAFE SCHEMA");
     println!("  is still missing. Optional DROP OLD may stay pending while you serve.");
     println!();
@@ -50,6 +52,12 @@ pub const CANONICAL_CONFIRM_DROP_FLAG: &str = "--confirm-drop";
 /// Consent tokens recognized on `edgequake migrate` apply path (LAW-137-1).
 pub const CONFIRM_DROP_FLAGS: &[&str] = &["--confirm-drop", "--drop-confirm"];
 
+/// Migration 171. Not part of `--confirm-drop`. The migrate question decides it.
+pub const AGE_DROP_MIGRATION: i64 = 171;
+
+/// `--drop-age` removes Apache AGE. `--keep-age` leaves it (the default).
+pub const AGE_DROP_FLAGS: &[&str] = &["--drop-age", "--keep-age"];
+
 /// True when `arg` is a DROP OLD consent flag (canonical or alias).
 pub fn is_confirm_drop_flag(arg: &str) -> bool {
     CONFIRM_DROP_FLAGS.contains(&arg)
@@ -60,11 +68,33 @@ pub fn drop_consent_from_args(args: &[String]) -> bool {
     args.iter().any(|a| is_confirm_drop_flag(a))
 }
 
+/// True when `arg` answers the Apache AGE question.
+pub fn is_age_drop_flag(arg: &str) -> bool {
+    AGE_DROP_FLAGS.contains(&arg)
+}
+
+/// `Some(true)` drops AGE, `Some(false)` keeps it, `None` means the operator
+/// has not answered yet. `--confirm-drop` does not answer this question.
+pub fn age_drop_choice_from_args(args: &[String]) -> Result<Option<bool>, &'static str> {
+    let drop_age = args.iter().any(|a| a == "--drop-age");
+    let keep_age = args.iter().any(|a| a == "--keep-age");
+    if drop_age && keep_age {
+        return Err("pass only one of --drop-age and --keep-age");
+    }
+    if drop_age {
+        return Ok(Some(true));
+    }
+    if keep_age {
+        return Ok(Some(false));
+    }
+    Ok(None)
+}
+
 /// First unknown `--flag` on the apply path (not a consent token).
 pub fn first_unknown_migrate_apply_flag(args: &[String]) -> Option<&str> {
     args.iter()
         .map(String::as_str)
-        .find(|a| a.starts_with("--") && !is_confirm_drop_flag(a))
+        .find(|a| a.starts_with("--") && !is_confirm_drop_flag(a) && !is_age_drop_flag(a))
 }
 
 /// Operator message when an apply-path flag is not a consent token (LAW-137-2).
@@ -73,13 +103,14 @@ pub fn unknown_migrate_apply_flag_message(flag: &str) -> String {
         format!(
             "unknown migrate flag '{flag}'. \
              Irreversible DROP OLD consent is `{CANONICAL_CONFIRM_DROP_FLAG}` \
-             (alias `--drop-confirm`)."
+             (alias `--drop-confirm`). Apache AGE is a separate question: \
+             `--drop-age` or `--keep-age`."
         )
     } else {
         format!(
             "unknown migrate flag '{flag}'. \
-             Apply path accepts only `{CANONICAL_CONFIRM_DROP_FLAG}` \
-             (alias `--drop-confirm`)."
+             Apply path accepts `{CANONICAL_CONFIRM_DROP_FLAG}` \
+             (alias `--drop-confirm`), plus `--drop-age` or `--keep-age`."
         )
     }
 }
@@ -332,6 +363,11 @@ pub fn print_irreversible_pending_soft_exit(remaining: &[(i64, String)]) {
     eprintln!("    1. Take a backup");
     eprintln!("    2. edgequake migrate {CANONICAL_CONFIRM_DROP_FLAG}");
     eprintln!("    3. edgequake migrate            # applies deferred 142 assert");
+    if remaining.iter().any(|(v, _)| *v == AGE_DROP_MIGRATION) {
+        eprintln!(" Apache AGE stays installed. Dropping it is optional.");
+        eprintln!("    Question: edgequake migrate --drop-age");
+        eprintln!("    Keep it explicit: edgequake migrate --keep-age");
+    }
     eprintln!(" Preview anytime: edgequake migrate dry-run");
     eprintln!(" Rollback after a drop = restore from backup (no undo SQL).");
     eprintln!("══════════════════════════════════════════════════════════════════");
@@ -405,6 +441,16 @@ pub fn print_apply_intent(pending: &[(i64, String)], drop_confirmed: bool) {
         }
     }
     println!();
+}
+
+/// Printed when migration 171 is still pending. Default is to leave Apache AGE.
+pub fn print_age_decision(drop_age: bool) {
+    if drop_age {
+        println!("  Apache AGE: DROP. You answered yes to the migrate question.");
+    } else {
+        println!("  Apache AGE: KEEP. The extension stays installed.");
+        println!("  Drop it later only if you mean to: edgequake migrate --drop-age");
+    }
 }
 
 /// Operator checklist printed at the end of dry-run (and useful before apply).
@@ -1067,6 +1113,21 @@ mod first_principles_tests {
             Some("--confirm-drp")
         );
         assert!(first_unknown_migrate_apply_flag(&["--confirm-drop".into()]).is_none());
+        assert!(first_unknown_migrate_apply_flag(&["--drop-age".into()]).is_none());
+        assert!(first_unknown_migrate_apply_flag(&["--keep-age".into()]).is_none());
+        assert_eq!(
+            age_drop_choice_from_args(&["--drop-age".into()]).unwrap(),
+            Some(true)
+        );
+        assert_eq!(
+            age_drop_choice_from_args(&["--keep-age".into()]).unwrap(),
+            Some(false)
+        );
+        assert_eq!(
+            age_drop_choice_from_args(&["--confirm-drop".into()]).unwrap(),
+            None
+        );
+        assert!(age_drop_choice_from_args(&["--drop-age".into(), "--keep-age".into()]).is_err());
         let msg = unknown_migrate_apply_flag_message("--confirm-drp");
         assert!(msg.contains(CANONICAL_CONFIRM_DROP_FLAG));
         assert!(msg.contains("--drop-confirm"));

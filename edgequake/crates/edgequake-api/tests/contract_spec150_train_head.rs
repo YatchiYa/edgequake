@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 202, "HEAD schema train must end at 202");
-    for v in 160..=202 {
+    assert_eq!(max, 206, "HEAD schema train must end at 206");
+    for v in 160..=206 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "202");
+    assert_eq!(digits, "206");
 }
 
 #[test]
@@ -357,8 +357,8 @@ fn migration_198_indexes_entity_modality() {
     assert!(sql.contains("WHERE (metadata->>'modality') IS NOT NULL"));
     let search =
         include_str!("../../edgequake-storage/src/adapters/postgres/fleet_embedding_index.rs");
-    assert!(search.contains("AND e.metadata->>'modality' = ANY($6)"));
-    assert!(search.contains("$6::text[] IS NULL OR e.metadata->>'modality' = ANY($6)"));
+    assert!(search.contains("AND e.modality = ANY($6)"));
+    assert!(search.contains("$6::text[] IS NULL OR e.modality = ANY($6)"));
 }
 
 #[test]
@@ -416,9 +416,47 @@ fn migration_201_indexes_document_stage_pages() {
     assert!(sql.contains("WHERE tenant_id IS NULL"));
     let list = include_str!("../src/document_read_model.rs");
     assert!(list.contains("fn chip_list_statement"));
-    assert!(list.contains("(metadata->>'current_stage') ="));
+    assert!(list.contains("current_stage ="));
     assert!(list.contains("status IS DISTINCT FROM"));
-    assert!(!list.contains("current_stage') = ANY"));
+    assert!(!list.contains("(metadata->>'current_stage') ="));
+}
+
+#[test]
+fn migration_205_drops_empty_ag_catalog_after_cutover() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v205 = manifest
+        .split("version = 205")
+        .nth(1)
+        .expect("migration 205");
+    assert!(v205.contains("phase = \"expand\""));
+    assert!(!v205.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/205_drop_ag_catalog_leftovers.sql");
+    assert!(sql.contains("DROP SCHEMA ag_catalog CASCADE"));
+    assert!(sql.contains("age_absent IS TRUE"));
+    assert!(sql.contains("refusing to drop ag_catalog"));
+    assert!(sql.contains("is not empty"));
+}
+
+#[test]
+fn migration_206_stores_leakproof_predicates() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v206 = manifest
+        .split("version = 206")
+        .nth(1)
+        .expect("migration 206");
+    assert!(v206.contains("phase = \"expand\""));
+    assert!(!v206.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/206_rls_leakproof_predicates.sql");
+    assert!(sql.contains("idx_chunks_tenant_modality"));
+    assert!(sql.contains("idx_entities_tenant_modality"));
+    assert!(sql.contains("idx_documents_ws_tenant_stage_col"));
+    assert!(sql.contains("eq_graph_search_nodes"));
+    assert!(sql.contains("SECURITY DEFINER"));
+    let search =
+        include_str!("../../edgequake-storage/src/adapters/postgres/graph/plain/search.rs");
+    assert!(search.contains("eq_graph_search_nodes"));
+    let list = include_str!("../src/document_read_model.rs");
+    assert!(list.contains("current_stage ="));
 }
 
 #[test]
@@ -499,7 +537,7 @@ fn migration_189_indexes_chunk_search_by_modality() {
     assert!(sql.contains("(metadata->>'modality') IS NOT NULL"));
     let fts = include_str!("../../edgequake-storage/src/adapters/postgres/vector/fts.rs");
     assert!(fts.contains("modalities.is_some()"));
-    assert!(fts.contains("AND c.metadata->>'modality' = ANY($6)"));
+    assert!(fts.contains("AND c.modality = ANY($6)"));
 }
 
 #[test]
@@ -769,8 +807,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=202 => \"v0.35.0\""),
-        "release_for_schema must map 170–202 to v0.35.0"
+        src.contains("170..=206 => \"v0.35.0\""),
+        "release_for_schema must map 170–206 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

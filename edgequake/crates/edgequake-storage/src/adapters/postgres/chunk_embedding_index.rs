@@ -93,8 +93,8 @@ impl PgChunkEmbeddingIndex {
     /// plan. When the caller passes modalities, the statement requires the
     /// predicate and `idx_chunks_modality` starts at those rows.
     const MODALITY_PREDICATE_OPTIONAL: &'static str =
-        "AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))";
-    const MODALITY_PREDICATE_REQUIRED: &'static str = "AND c.metadata->>'modality' = ANY($6)";
+        "AND ($6::text[] IS NULL OR c.modality = ANY($6))";
+    const MODALITY_PREDICATE_REQUIRED: &'static str = "AND c.modality = ANY($6)";
 
     fn apply_selective_predicates(sql: String, documents: bool, modality: bool) -> String {
         let sql = if documents {
@@ -132,7 +132,7 @@ impl PgChunkEmbeddingIndex {
               AND ($3::uuid IS NULL OR ce.workspace_id = $3)
               AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
               AND ($5::uuid IS NULL OR c.tenant_id = $5)
-              AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+              AND ($6::text[] IS NULL OR c.modality = ANY($6))
               AND ($7::text IS NULL OR lower($7) = 'chunk')
             ORDER BY (ce.embedding::{cast}) <=> $1::{cast}
             LIMIT $8
@@ -144,9 +144,12 @@ impl PgChunkEmbeddingIndex {
     /// Id-filtered chunk ANN. `$7 IS NULL OR id::text = ANY($7)` cannot use
     /// `chunks_pkey`, so the plan seq-scans every chunk and keeps the
     /// requested id. This statement looks each id up first. `OFFSET 0` keeps
-    /// that lookup from being pulled into the distance index. Legacy keys use
-    /// `idx_chunks_legacy_chunk_key`. Values that parse as UUIDs use
-    /// `chunks_pkey`.
+    /// that lookup from being pulled into the distance index. Legacy keys
+    /// compare the stored `legacy_chunk_key` column (migration 203). Equality
+    /// on that text column is leakproof, so forced row security can use
+    /// `idx_chunks_tenant_legacy_key`. `metadata->>'legacy_chunk_key'` is not
+    /// leakproof and makes each key re-read the tenant's chunks. Values that
+    /// parse as UUIDs use `chunks_pkey`.
     fn search_sql_in_ids(dim: i32, cast: &str, documents: bool, modality: bool) -> String {
         let sql = format!(
             r#"
@@ -158,7 +161,7 @@ impl PgChunkEmbeddingIndex {
                 JOIN LATERAL (
                     SELECT c.id
                     FROM chunks c
-                    WHERE c.metadata->>'legacy_chunk_key' = wanted.key
+                    WHERE c.legacy_chunk_key = wanted.key
                     OFFSET 0
                 ) c ON true
                 UNION
@@ -179,7 +182,7 @@ impl PgChunkEmbeddingIndex {
             WHERE ($3::uuid IS NULL OR ce.workspace_id = $3)
               AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
               AND ($5::uuid IS NULL OR c.tenant_id = $5)
-              AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+              AND ($6::text[] IS NULL OR c.modality = ANY($6))
               AND ($9::text IS NULL OR lower($9) = 'chunk')
             ORDER BY (ce.embedding::{cast}) <=> $1::{cast}
             LIMIT $10
@@ -380,7 +383,7 @@ mod tests {
     fn typed_search_requires_a_passed_document_or_modality() {
         let open = PgChunkEmbeddingIndex::search_sql(1536, "halfvec(1536)", false, false);
         assert!(open.contains("$4::uuid[] IS NULL OR c.document_id = ANY($4)"));
-        assert!(open.contains("$6::text[] IS NULL OR c.metadata->>'modality' = ANY($6)"));
+        assert!(open.contains("$6::text[] IS NULL OR c.modality = ANY($6)"));
         assert!(open.contains("$3::uuid IS NULL OR ce.workspace_id = $3"));
         assert!(open.contains("$5::uuid IS NULL OR c.tenant_id = $5"));
         assert!(!open.contains("id::text = ANY"));
@@ -391,7 +394,7 @@ mod tests {
         assert!(documents.contains("$5::uuid IS NULL OR c.tenant_id = $5"));
 
         let modality = PgChunkEmbeddingIndex::search_sql(1536, "halfvec(1536)", false, true);
-        assert!(modality.contains("AND c.metadata->>'modality' = ANY($6)"));
+        assert!(modality.contains("AND c.modality = ANY($6)"));
         assert!(!modality.contains("$6::text[] IS NULL"));
     }
 
@@ -399,7 +402,8 @@ mod tests {
     fn typed_search_by_id_looks_up_each_id() {
         let sql = PgChunkEmbeddingIndex::search_sql_in_ids(1536, "halfvec(1536)", false, false);
         assert!(sql.contains("OFFSET 0"));
-        assert!(sql.contains("c.metadata->>'legacy_chunk_key' = wanted.key"));
+        assert!(sql.contains("c.legacy_chunk_key = wanted.key"));
+        assert!(!sql.contains("metadata->>'legacy_chunk_key'"));
         assert!(sql.contains("c.id = wanted.id"));
         assert!(!sql.contains("$7::text[] IS NULL"));
         assert!(!sql.contains("id::text = ANY"));
@@ -408,7 +412,7 @@ mod tests {
         let scoped = PgChunkEmbeddingIndex::search_sql_in_ids(1536, "halfvec(1536)", true, true);
         assert!(scoped.contains("AND c.document_id = ANY($4)"));
         assert!(!scoped.contains("$4::uuid[] IS NULL"));
-        assert!(scoped.contains("AND c.metadata->>'modality' = ANY($6)"));
+        assert!(scoped.contains("AND c.modality = ANY($6)"));
         assert!(!scoped.contains("$6::text[] IS NULL"));
         assert!(scoped.contains("OFFSET 0"));
     }

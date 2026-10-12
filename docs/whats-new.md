@@ -33,7 +33,7 @@ Run `edgequake migrate` when you move to a release with a higher number. The [up
 
 ### Preparing v0.35.0 (not tagged)
 
-The product pin is still **v0.34.0** (schema 169). The schema train on this branch runs through **202**. Do not treat 202 as a released image until the version-bump ceremony. Preparation: **[upgrade-to-0.35.0.md](operations/upgrade-to-0.35.0.md)**.
+The product pin is still **v0.34.0** (schema 169). The schema train on this branch runs through **206**. Do not treat 206 as a released image until the version-bump ceremony. Preparation: **[upgrade-to-0.35.0.md](operations/upgrade-to-0.35.0.md)**.
 
 ### What's new in 0.34.0
 

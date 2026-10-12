@@ -1326,6 +1326,7 @@ VISIBLE_MIGRATE_STEP = \
 	if ( cd $(BACKEND_DIR) && \
 		DATABASE_URL="$$_EFF_DB_URL" \
 		EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
+		EDGEQUAKE_MIGRATE_DROP_AGE="$${EDGEQUAKE_MIGRATE_DROP_AGE:-}" \
 		cargo run -- migrate ) 2>&1 | tee "$$_mig_log"; then \
 		rm -f "$$_mig_log"; \
 	else \
@@ -1357,6 +1358,7 @@ migrate: db-start db-wait ## Update the database schema only (does not start the
 	@echo "  It does not start the API or the website."
 	@echo ""
 	@$(LOAD_EFF_DB_URL); \
+	export EDGEQUAKE_MIGRATE_DROP_AGE=ask; \
 	$(VISIBLE_MIGRATE_STEP); \
 	echo ""; \
 	echo "$(GREEN)✓ Database schema is up to date.$(RESET)"; \

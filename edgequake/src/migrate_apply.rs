@@ -59,6 +59,10 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
             }
         };
     migrate_console::print_preflight(&pending);
+    let age_pending = pending
+        .iter()
+        .any(|(v, _)| *v == migrate_console::AGE_DROP_MIGRATION);
+    let drop_age = resolve_age_drop(args, age_pending)?;
     let confirmed = drop_confirmed(args);
 
     // SPEC-091 Doc 17 (LAW-C5 scope): consent for irreversible drops is
@@ -91,6 +95,9 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
         }
     }
     migrate_console::print_apply_intent(&pending, drop_gate_open);
+    if age_pending {
+        migrate_console::print_age_decision(drop_age);
+    }
 
     // First principles (LD-07 / LAW-C5): consent gates *destroy-data* steps only.
     // When an irreversible drop is pending without confirm, still apply ALL
@@ -114,12 +121,17 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
             })
             .collect();
         let mut expandable_summary: Option<(usize, Option<i64>, usize)> = None;
-        if !expandables_to_apply.is_empty() {
-            println!(
-                "applying SAFE SCHEMA (expandable) migration(s) {} \
-                 (DROP OLD deferred until --confirm-drop)…",
-                migrate_console::format_version_span(&expandables_to_apply)
-            );
+        if !expandables_to_apply.is_empty() || drop_age {
+            if !expandables_to_apply.is_empty() {
+                println!(
+                    "applying SAFE SCHEMA (expandable) migration(s) {} \
+                     (DROP OLD deferred until --confirm-drop)…",
+                    migrate_console::format_version_span(&expandables_to_apply)
+                );
+            }
+            if drop_age {
+                println!("applying Apache AGE drop (migration 171)…");
+            }
             if defer_142
                 && expandables.iter().any(|v| {
                     edgequake_api::state::migration_bootstrap::is_legacy_cutover_assert(*v)
@@ -130,18 +142,24 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
                      finish --confirm-drop (125/126/131) first."
                 );
             }
-            let report =
-                match edgequake_api::state::migration_bootstrap::run_postgres_expandable_migrations(
+            let apply_expandable = if drop_age {
+                edgequake_api::state::migration_bootstrap::run_postgres_migrations_expandable_and_age(
                     &bundle.admin,
                 )
                 .await
-                {
-                    Ok(r) => r,
-                    Err(e) => {
-                        migrate_console::print_failure_hint(&e);
-                        return Err(e).context("partial migrate (expandables) failed");
-                    }
-                };
+            } else {
+                edgequake_api::state::migration_bootstrap::run_postgres_expandable_migrations(
+                    &bundle.admin,
+                )
+                .await
+            };
+            let report = match apply_expandable {
+                Ok(r) => r,
+                Err(e) => {
+                    migrate_console::print_failure_hint(&e);
+                    return Err(e).context("partial migrate (expandables) failed");
+                }
+            };
             let applied: Vec<(i64, String)> = report
                 .applied_versions
                 .iter()
@@ -222,23 +240,26 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
         println!("applying migrations + support reconcile on admin pool…");
     }
 
-    let report =
-        match edgequake_api::state::migration_bootstrap::run_postgres_migrations(&bundle.admin)
+    let apply_all = if drop_age {
+        edgequake_api::state::migration_bootstrap::run_postgres_migrations(&bundle.admin).await
+    } else {
+        edgequake_api::state::migration_bootstrap::run_postgres_migrations_except_age(&bundle.admin)
             .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                migrate_console::print_failure_hint(&e);
-                let msg = e.to_string();
-                if msg.contains("MIGRATE_LOCK_BUSY") {
-                    eprintln!("{msg}");
-                    std::process::exit(
-                        edgequake_api::state::migration_bootstrap::runner::MIGRATE_LOCK_EXIT_CODE,
-                    );
-                }
-                return Err(e).context("migrate failed");
+    };
+    let report = match apply_all {
+        Ok(r) => r,
+        Err(e) => {
+            migrate_console::print_failure_hint(&e);
+            let msg = e.to_string();
+            if msg.contains("MIGRATE_LOCK_BUSY") {
+                eprintln!("{msg}");
+                std::process::exit(
+                    edgequake_api::state::migration_bootstrap::runner::MIGRATE_LOCK_EXIT_CODE,
+                );
             }
-        };
+            return Err(e).context("migrate failed");
+        }
+    };
 
     let applied: Vec<(i64, String)> = report
         .applied_versions
@@ -272,6 +293,57 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
         report.applied_versions.len(),
     );
     Ok(())
+}
+
+/// Answer the Apache AGE question. Default is keep.
+///
+/// `--drop-age` / `--keep-age` win. `EDGEQUAKE_MIGRATE_DROP_AGE=yes|no` wins
+/// over the prompt. `ask`, or a direct terminal with no env, reads one line.
+/// `make dev` pipes stdout and does not set `ask`, so it leaves AGE installed.
+#[cfg(feature = "postgres")]
+fn resolve_age_drop(args: &[String], age_pending: bool) -> Result<bool> {
+    if !age_pending {
+        return Ok(false);
+    }
+    if let Some(choice) =
+        migrate_console::age_drop_choice_from_args(args).map_err(|e| anyhow::anyhow!(e))?
+    {
+        return Ok(choice);
+    }
+    if let Ok(raw) = std::env::var("EDGEQUAKE_MIGRATE_DROP_AGE") {
+        let value = raw.trim().to_ascii_lowercase();
+        if value == "ask" {
+            return Ok(ask_age_drop());
+        }
+        if !value.is_empty() {
+            return Ok(matches!(value.as_str(), "1" | "true" | "yes" | "on"));
+        }
+    }
+    let interactive = std::io::IsTerminal::is_terminal(&std::io::stdin())
+        && std::io::IsTerminal::is_terminal(&std::io::stdout());
+    if interactive {
+        return Ok(ask_age_drop());
+    }
+    eprintln!(
+        "Apache AGE left installed. This migrate is not a terminal, so the \
+         question defaults to no. To remove it: edgequake migrate --drop-age"
+    );
+    Ok(false)
+}
+
+#[cfg(feature = "postgres")]
+fn ask_age_drop() -> bool {
+    eprintln!();
+    eprintln!("Apache AGE is still installed.");
+    eprintln!("Queries keep working with it. Removing the extension is optional.");
+    eprint!("Drop Apache AGE? [y/N] ");
+    let _ = std::io::Write::flush(&mut std::io::stderr());
+    let mut line = String::new();
+    if std::io::stdin().read_line(&mut line).is_err() {
+        eprintln!("Apache AGE left installed (no answer).");
+        return false;
+    }
+    matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
 /// SPEC-091 C3: was the irreversible drop explicitly confirmed? Via the

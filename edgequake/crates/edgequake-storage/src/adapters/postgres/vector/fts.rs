@@ -81,7 +81,7 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL: &str = r#"
                    OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
               AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
               AND ($5::uuid IS NULL OR c.tenant_id = $5)
-              AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+              AND ($6::text[] IS NULL OR c.modality = ANY($6))
               AND (
                     $7::text[] IS NULL
                     OR c.id::text = ANY($7)
@@ -99,7 +99,9 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL: &str = r#"
 /// A common term matches every chunk in the workspace. A generic plan still
 /// estimates a few hundred hits, so it looks up every document before `LIMIT`.
 /// The search replans with `force_custom_plan`, which scores the chunks and
-/// then reads only the page of documents.
+/// then reads only the page of documents. `OFFSET 0` applies the workspace
+/// and tenant predicates before `@@`. `@@` is not leakproof, so without that
+/// fence the tenant role repeats the tenant bitmap once per text hit.
 pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE: &str = r#"
             SELECT coalesce(c.metadata->>'legacy_chunk_key', c.id::text) AS id,
                    c.metadata,
@@ -107,7 +109,13 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE: &str = r#"
                        c.content_tsv,
                        websearch_to_tsquery('english', $1)
                    )::float4 AS score
-            FROM public.chunks c
+            FROM (
+                SELECT *
+                FROM public.chunks c
+                WHERE (c.workspace_id = $2 OR c.workspace_id IS NULL)
+                  AND ($5::uuid IS NULL OR c.tenant_id = $5)
+                OFFSET 0
+            ) c
             JOIN public.documents d ON d.id = c.document_id
             WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
               AND (c.workspace_id = $2 OR c.workspace_id IS NULL)
@@ -115,7 +123,7 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE: &str = r#"
                    OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
               AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
               AND ($5::uuid IS NULL OR c.tenant_id = $5)
-              AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+              AND ($6::text[] IS NULL OR c.modality = ANY($6))
               AND (
                     $7::text[] IS NULL
                     OR c.id::text = ANY($7)
@@ -143,7 +151,7 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS: &str = r#"
                    OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
               AND c.document_id = ANY($4)
               AND ($5::uuid IS NULL OR c.tenant_id = $5)
-              AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+              AND ($6::text[] IS NULL OR c.modality = ANY($6))
               AND (
                     $7::text[] IS NULL
                     OR c.id::text = ANY($7)
@@ -158,9 +166,8 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_DOCUMENTS: &str = r#"
 /// and throws away the other modalities. When the caller passes modalities,
 /// the statement requires `metadata->>'modality' = ANY($6)` so
 /// `idx_chunks_modality` can start at those rows.
-const MODALITY_PREDICATE_OPTIONAL: &str =
-    "AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))";
-const MODALITY_PREDICATE_REQUIRED: &str = "AND c.metadata->>'modality' = ANY($6)";
+const MODALITY_PREDICATE_OPTIONAL: &str = "AND ($6::text[] IS NULL OR c.modality = ANY($6))";
+const MODALITY_PREDICATE_REQUIRED: &str = "AND c.modality = ANY($6)";
 
 /// `$5 IS NULL OR tenant_id = $5` hides the tenant from a generic plan.
 /// Search then scores every chunk that matches the words and throws away the
@@ -235,9 +242,11 @@ fn apply_id_scope(
 /// Id-filtered typed FTS. `$7 IS NULL OR id = ANY OR legacy key = ANY` makes a
 /// generic plan score every chunk that matches the words. This statement looks
 /// up each requested id first. `OFFSET 0` keeps that lookup from being pulled
-/// into the term index. Legacy keys use `idx_chunks_legacy_chunk_key`. Values
-/// that parse as UUIDs also use `chunks_pkey`. The other filters then run on
-/// those rows.
+/// into the term index. Legacy keys compare the stored `legacy_chunk_key`
+/// column (migration 203) so forced row security can use
+/// `idx_chunks_tenant_legacy_key`. `metadata->>'legacy_chunk_key'` is not
+/// leakproof and cannot be that index condition. Values that parse as UUIDs
+/// also use `chunks_pkey`. The other filters then run on those rows.
 pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_IDS: &str = r#"
             SELECT id, metadata, score
             FROM (
@@ -252,7 +261,7 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_IDS: &str = r#"
                     SELECT c.id, c.document_id, c.workspace_id, c.tenant_id,
                            c.metadata, c.content_tsv
                     FROM public.chunks c
-                    WHERE c.metadata->>'legacy_chunk_key' = wanted.key
+                    WHERE c.legacy_chunk_key = wanted.key
                     OFFSET 0
                 ) c ON true
                 JOIN public.documents d ON d.id = c.document_id
@@ -261,7 +270,7 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_IDS: &str = r#"
                   AND ($2::uuid IS NULL OR d.workspace_id = $2 OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
                   AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
                   AND ($5::uuid IS NULL OR c.tenant_id = $5)
-                  AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+                  AND ($6::text[] IS NULL OR c.modality = ANY($6))
                 UNION
                 SELECT coalesce(c.metadata->>'legacy_chunk_key', c.id::text) AS id,
                        c.metadata,
@@ -283,7 +292,7 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_IDS: &str = r#"
                   AND ($2::uuid IS NULL OR d.workspace_id = $2 OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
                   AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
                   AND ($5::uuid IS NULL OR c.tenant_id = $5)
-                  AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+                  AND ($6::text[] IS NULL OR c.modality = ANY($6))
             ) hits
             ORDER BY score DESC
             LIMIT $9
@@ -306,7 +315,7 @@ pub(crate) const TYPED_CHUNKS_FTS_SQL_IN_WORKSPACE_AND_DOCUMENTS: &str = r#"
                    OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
               AND c.document_id = ANY($4)
               AND ($5::uuid IS NULL OR c.tenant_id = $5)
-              AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+              AND ($6::text[] IS NULL OR c.modality = ANY($6))
               AND (
                     $7::text[] IS NULL
                     OR c.id::text = ANY($7)
@@ -632,7 +641,7 @@ mod tests {
         assert_eq!(by_id_tenant.matches("c.tenant_id = $5").count(), 2);
         let by_id = TYPED_CHUNKS_FTS_SQL_IN_IDS;
         assert!(by_id.contains("OFFSET 0"));
-        assert!(by_id.contains("c.metadata->>'legacy_chunk_key' = wanted.key"));
+        assert!(by_id.contains("c.legacy_chunk_key = wanted.key"));
         assert!(by_id.contains("c.id = wanted.id"));
         assert!(!by_id.contains("$7::text[] IS NULL"));
         let scoped_ids = apply_id_scope(true, true, false, false);

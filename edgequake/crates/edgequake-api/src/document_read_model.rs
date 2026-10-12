@@ -720,10 +720,9 @@ fn chip_status_exclusions(arms: &[ChipArm]) -> String {
 fn chip_arm_filter(arm: &ChipArm, exclusions: &str) -> String {
     match arm {
         ChipArm::Status(status) => format!("status = {}", sql_ident_literal(status)),
-        ChipArm::Stage(stage) => format!(
-            "(metadata->>'current_stage') = {}{exclusions}",
-            sql_ident_literal(stage)
-        ),
+        ChipArm::Stage(stage) => {
+            format!("current_stage = {}{exclusions}", sql_ident_literal(stage))
+        }
     }
 }
 
@@ -1875,7 +1874,7 @@ mod tests {
         );
         assert!(pending.contains("status = 'pending'"));
         assert!(pending.contains("status = 'queued'"));
-        assert!(pending.contains("(metadata->>'current_stage') = 'queued'"));
+        assert!(pending.contains("current_stage = 'queued'"));
         assert!(pending.contains("status IS DISTINCT FROM 'pending'"));
         assert!(pending.contains("status IS DISTINCT FROM 'queued'"));
         assert!(pending.contains("ORDER BY created_at DESC, id DESC"));
@@ -1890,7 +1889,7 @@ mod tests {
             TitlePredicate::default(),
         );
         assert!(processing.contains("status = 'processing'"));
-        assert!(processing.contains("(metadata->>'current_stage') = 'extracting'"));
+        assert!(processing.contains("current_stage = 'extracting'"));
         assert!(processing.contains("status IS DISTINCT FROM 'processing'"));
         assert!(!processing.contains("= ANY("));
 
@@ -1901,8 +1900,7 @@ mod tests {
             TitlePredicate::default(),
         );
         assert!(pending_tenant.contains("tenant_id = $2 AND status = 'pending'"));
-        assert!(pending_tenant
-            .contains("tenant_id IS NULL AND (metadata->>'current_stage') = 'queued'"));
+        assert!(pending_tenant.contains("tenant_id IS NULL AND current_stage = 'queued'"));
         assert!(pending_tenant.contains("LIMIT $3"));
 
         let unknown = chip_list_statement(
@@ -1970,7 +1968,7 @@ mod tests {
         );
         assert!(pending.contains("status = 'pending' AND created_at >= $2"));
         assert!(pending.contains(
-            "(metadata->>'current_stage') = 'queued' AND status IS DISTINCT FROM 'pending' AND status IS DISTINCT FROM 'queued' AND created_at >= $2"
+            "current_stage = 'queued' AND status IS DISTINCT FROM 'pending' AND status IS DISTINCT FROM 'queued' AND created_at >= $2"
         ));
         assert!(pending.contains("LIMIT $3"));
         assert!(!pending.contains("IS NULL"));
