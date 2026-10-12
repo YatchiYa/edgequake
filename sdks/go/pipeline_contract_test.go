@@ -31,9 +31,14 @@ func TestPipelineServerResponseContracts(t *testing.T) {
 		if got.ActiveTasks != 2 || got.QueuedTasks != 6 || got.CompletedTasks != 4 || got.FailedTasks != 1 {
 			t.Fatalf("lost task counts: %+v", got)
 		}
-		data, _ := json.Marshal(got)
+		data, err := json.Marshal(got)
+		if err != nil {
+			t.Fatal(err)
+		}
 		var fields map[string]any
-		json.Unmarshal(data, &fields)
+		if err := json.Unmarshal(data, &fields); err != nil {
+			t.Fatal(err)
+		}
 		if fields["is_busy"] != true || fields["processed_documents"] != float64(4) || fields["latest_message"] != "extracting" {
 			t.Fatalf("lost progress: %s", data)
 		}
@@ -50,9 +55,14 @@ func TestPipelineServerResponseContracts(t *testing.T) {
 		if got.QueueDepth != 6 || got.Processing != 2 {
 			t.Fatalf("lost queue counts: %+v", got)
 		}
-		data, _ := json.Marshal(got)
+		data, err := json.Marshal(got)
+		if err != nil {
+			t.Fatal(err)
+		}
 		var fields map[string]any
-		json.Unmarshal(data, &fields)
+		if err := json.Unmarshal(data, &fields); err != nil {
+			t.Fatal(err)
+		}
 		if fields["active_workers"] != float64(2) || fields["max_workers"] != float64(4) || fields["worker_utilization"] != float64(50) || fields["avg_wait_time_seconds"] != 1.5 || fields["pressure"] != "elevated" || fields["rate_limited"] != true {
 			t.Fatalf("lost capacity: %s", data)
 		}

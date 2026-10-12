@@ -486,6 +486,11 @@ type PipelineMessage struct {
 }
 
 type PipelineStatus struct {
+	Status                string            `json:"status"`
+	ActiveTasks           int               `json:"active_tasks"`
+	QueuedTasks           int               `json:"queued_tasks"`
+	CompletedTasks        int               `json:"completed_tasks"`
+	FailedTasks           int               `json:"failed_tasks"`
 	IsBusy                bool              `json:"is_busy"`
 	JobName               *string           `json:"job_name,omitempty"`
 	JobStart              *string           `json:"job_start,omitempty"`
@@ -496,14 +501,14 @@ type PipelineStatus struct {
 	LatestMessage         *string           `json:"latest_message,omitempty"`
 	HistoryMessages       []PipelineMessage `json:"history_messages,omitempty"`
 	CancellationRequested bool              `json:"cancellation_requested"`
-	Status                string            `json:"status"`
-	ActiveTasks           int               `json:"active_tasks"`
-	QueuedTasks           int               `json:"queued_tasks"`
-	CompletedTasks        int               `json:"completed_tasks"`
-	FailedTasks           int               `json:"failed_tasks"`
 }
 
 type QueueMetrics struct {
+	QueueDepth                int      `json:"queue_depth"`
+	Processing                int      `json:"processing"`
+	CompletedLastHour         int      `json:"completed_last_hour"`
+	FailedLastHour            int      `json:"failed_last_hour"`
+	AvgProcessingMs           *float64 `json:"avg_processing_time_ms,omitempty"`
 	ActiveWorkers             int      `json:"active_workers"`
 	MaxWorkers                int      `json:"max_workers"`
 	WorkerUtilization         int      `json:"worker_utilization"`
@@ -517,11 +522,6 @@ type QueueMetrics struct {
 	PendingWarnThreshold      uint64   `json:"pending_warn_threshold"`
 	PendingCriticalThreshold  uint64   `json:"pending_critical_threshold"`
 	OperatorAction            *string  `json:"operator_action,omitempty"`
-	QueueDepth                int      `json:"queue_depth"`
-	Processing                int      `json:"processing"`
-	CompletedLastHour         int      `json:"completed_last_hour"`
-	FailedLastHour            int      `json:"failed_last_hour"`
-	AvgProcessingMs           *float64 `json:"avg_processing_time_ms,omitempty"`
 }
 
 type CostSummary struct {
