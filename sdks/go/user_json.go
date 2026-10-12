@@ -1,6 +1,9 @@
 package edgequake
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 // UnmarshalJSON accepts the server user_id field and the user envelopes returned
 // by auth/me and user creation, while retaining legacy bare id responses.
@@ -11,7 +14,7 @@ func (u *UserInfo) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return err
 	}
-	if len(envelope.User) > 0 {
+	if len(envelope.User) > 0 && !bytes.Equal(bytes.TrimSpace(envelope.User), []byte("null")) {
 		data = envelope.User
 	}
 	type plain UserInfo
