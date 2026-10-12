@@ -68,7 +68,7 @@ pub fn grounding_instructions_gold_compat() -> &'static str {
   - Grounded arithmetic (W3-arith): if the question asks how many / a headcount / a count of people and the Context explicitly states BOTH (a) a percentage/rate and (b) a sample size N (e.g. "1,503 adults", "n=710") that together determine that count, you MUST compute count = round(percentage/100 × N), answer with that short integer (not the percentage). Worked example: Context has "Not good" = 36% and sample "1,503 adults" → answer 541 (not 36 or 36%). Do NOT invent missing percentages or sample sizes. Do NOT refuse merely because the count is not printed as a literal integer when both operands are present."#
 }
 
-/// Strip trailing `### References` blocks and inline `[N]` markers for Acc gold F1.
+/// Strip trailing References heading blocks and inline `[N]` markers for Acc gold F1.
 pub fn strip_gold_citation_artifacts(answer: &str) -> String {
     let mut text = answer.trim().to_string();
     if text.is_empty() {
@@ -78,8 +78,12 @@ pub fn strip_gold_citation_artifacts(answer: &str) -> String {
     let mut offset = 0;
     for line in text.split_inclusive('\n') {
         let heading = line.trim();
-        if heading.eq_ignore_ascii_case("### References")
-            || heading.eq_ignore_ascii_case("## References")
+        let title = heading.trim_start_matches('#');
+        let level = heading.len() - title.len();
+        let title_without_colon = title.trim().strip_suffix(':').unwrap_or(title.trim());
+        if (2..=4).contains(&level)
+            && title.starts_with(char::is_whitespace)
+            && title_without_colon.eq_ignore_ascii_case("References")
         {
             text.truncate(offset);
             text = text.trim_end().to_string();
@@ -322,6 +326,34 @@ mod tests {
             strip_gold_citation_artifacts("## References explain the method\nUseful answer."),
             "## References explain the method Useful answer."
         );
+    }
+
+    #[test]
+    fn strip_gold_citations_accepts_reference_heading_variants() {
+        for heading in [
+            "## References",
+            "### References:",
+            "#### References",
+            "  #### REFERENCES:  ",
+        ] {
+            assert_eq!(
+                strip_gold_citation_artifacts(&format!("Answer [1].\n{heading}\n[1] Doc")),
+                "Answer .",
+                "reference heading: {heading}"
+            );
+        }
+        for heading in [
+            "# References:",
+            "##### References:",
+            "###References:",
+            "### References: explain the method",
+        ] {
+            assert_eq!(
+                strip_gold_citation_artifacts(&format!("{heading}\nUseful answer.")),
+                format!("{heading} Useful answer."),
+                "content must remain: {heading}"
+            );
+        }
     }
 
     #[test]
