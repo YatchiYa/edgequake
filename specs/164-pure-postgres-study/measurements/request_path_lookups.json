@@ -655,6 +655,13 @@
       "before_plan": "Generic plan without the trigram index. Index scan of idx_documents_created_at, filter lower(title) LIKE. Rows removed 79950, 2558 buffers. The newest 2001 rows include 0 of those titles (open page 0.663 ms, 78 buffers). A generic plan that always starts at idx_documents_title_trgm reads all 80000 titles when the letter matches every row (42.622 ms, 1511 buffers)",
       "after_ms": 0.067,
       "after_plan": "Custom plan. Bitmap index scan of idx_documents_title_trgm stops at 50, 23 buffers. Migration 202, no new index. A one-letter query stays on idx_documents_created_at and stops at 50 (0.033 ms, 18 buffers)"
+    },
+    {
+      "name": "query document filter date_to, 50 oldest ids and 79950 newer rows",
+      "before_ms": 37.104,
+      "before_plan": "Custom plan of the open membership UNION. Seq scan of workspace_id returns all 80000 ids, 3094 buffers. The query filter then drops dates in memory",
+      "after_ms": 0.056,
+      "after_plan": "Custom plan. Index scan of idx_documents_created_at, Index Cond created_at <= $3, plus idx_documents_metadata_workspace_expr, 50 rows, 18 buffers. No new index. A generic plan of the same statement is 0.319 ms and also stops at 50"
     }
   ]
 }

@@ -8,7 +8,8 @@ mod postgres_access_pool;
 
 use edgequake_api::document_read_model::{
     count_relational_document_statuses, delete_relational_documents_for_workspace,
-    list_relational_document_summaries_limited, RelationalCreatedBounds,
+    filter_relational_document_candidates, list_relational_document_summaries_limited,
+    RelationalCreatedBounds,
 };
 use edgequake_api::middleware::TenantContext;
 use uuid::Uuid;
@@ -263,6 +264,68 @@ async fn document_page_title_pattern_returns_the_matching_row() {
         .iter()
         .filter_map(|doc| doc.title.clone())
         .collect();
+    assert_eq!(titles, vec!["uniquezephyr".to_string()]);
+
+    sqlx::query("DELETE FROM documents WHERE workspace_id = $1")
+        .bind(workspace)
+        .execute(&pool)
+        .await
+        .expect("cleanup documents");
+    sqlx::query("DELETE FROM workspaces WHERE workspace_id = $1")
+        .bind(workspace)
+        .execute(&pool)
+        .await
+        .expect("cleanup workspace");
+    sqlx::query("DELETE FROM tenants WHERE tenant_id = $1")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("cleanup tenant");
+}
+
+#[tokio::test]
+async fn query_filter_date_returns_only_the_older_document() {
+    let Some(pool) =
+        postgres_access_pool::test_pool_with_acquire_timeout(std::time::Duration::from_secs(10))
+            .await
+    else {
+        return;
+    };
+    let (tenant, workspace) = scope(&pool, "query filter date").await;
+    let older = chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let newer = chrono::DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    insert_doc_at(&pool, Some(tenant), workspace, "uniquezephyr", older).await;
+    insert_doc_at(&pool, Some(tenant), workspace, "plain", newer).await;
+
+    let dated = filter_relational_document_candidates(
+        &pool,
+        workspace,
+        RelationalCreatedBounds {
+            from: None,
+            to: Some(older),
+        },
+        &[],
+        &[],
+    )
+    .await
+    .expect("dated ids");
+    let titles: Vec<_> = dated.into_iter().map(|hit| hit.title).collect();
+    assert_eq!(titles, vec!["uniquezephyr".to_string()]);
+
+    let patterned = filter_relational_document_candidates(
+        &pool,
+        workspace,
+        RelationalCreatedBounds::default(),
+        &["uniquezephyr".to_string()],
+        &[],
+    )
+    .await
+    .expect("pattern ids");
+    let titles: Vec<_> = patterned.into_iter().map(|hit| hit.title).collect();
     assert_eq!(titles, vec!["uniquezephyr".to_string()]);
 
     sqlx::query("DELETE FROM documents WHERE workspace_id = $1")
