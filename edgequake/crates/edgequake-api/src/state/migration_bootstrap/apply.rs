@@ -880,6 +880,23 @@ async fn run_postgres_migrations_inner_locked(
         }
     }
 
+    // 205 records a no-op while Apache AGE is still installed, because 206
+    // cannot land until 205 is in the ledger. After a later `--drop-age`,
+    // 171 has removed the extension and 205 will not run again, so repeat
+    // the cleanup here. Missing the function means this database has not
+    // reached 205 yet.
+    if migrate_cli_mode() {
+        if let Err(e) = sqlx::query("SELECT public.eq_drop_empty_ag_catalog()")
+            .execute(pool)
+            .await
+        {
+            let msg = e.to_string();
+            if !msg.contains("does not exist") {
+                return Err(e);
+            }
+        }
+    }
+
     info!(
         target: "edgequake.migration",
         step = "bootstrap_complete",

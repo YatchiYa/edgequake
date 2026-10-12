@@ -58,10 +58,11 @@ NNN_descriptive_name.sql
   descriptive_name: snake_case, describes what changed
 ```
 
-Current max: `202_document_title_trgm.sql` (SPEC-164 expand index).  
+Current max: `206_rls_leakproof_predicates.sql` (tenant query indexes).  
 `170_spec164_plain_graph.sql` is expand-only (no serving_floor) so a v0.34 binary can still serve schema 170.  
-`171` sets `serving_floor = 171` and is irreversible; `edgequake migrate` without `--confirm-drop` stops before it.  
-`172`–`202` add request-path indexes and do not raise the serving floor.
+`171` drops Apache AGE only when `edgequake migrate --drop-age` is passed. A migrate that is not told to drop it leaves the extension installed.  
+`172`–`204` and `206` add request-path indexes and do not raise the serving floor.  
+`205` drops empty `ag_catalog` after the extension is gone. While Apache AGE is installed it records a no-op so `206` can still apply.
 The ledger sqlx reads is `public._sqlx_migrations`. `edgequake migrate` folds stray copies (from `ag_catalog` or schema `edgequake`) back into `public` before it applies anything.
 
 Operator guide: [`docs/operations/upgrading.md`](../../docs/operations/upgrading.md).

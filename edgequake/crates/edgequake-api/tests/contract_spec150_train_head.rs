@@ -435,6 +435,11 @@ fn migration_205_drops_empty_ag_catalog_after_cutover() {
     assert!(sql.contains("age_absent IS TRUE"));
     assert!(sql.contains("refusing to drop ag_catalog"));
     assert!(sql.contains("is not empty"));
+    assert!(sql.contains("extname = 'age'"));
+    assert!(
+        !sql.contains("Apache AGE is installed"),
+        "205 must not fail the train while the extension is still installed"
+    );
 }
 
 #[test]

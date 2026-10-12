@@ -23,10 +23,12 @@ The API process never auto-applies numbered migrations on start.
 **Train:** HEAD ships through migration **206**
 (`170_spec164_plain_graph.sql` expand, `171_spec164_drop_age.sql` confirm-drop,
 `172`–`202` request-path indexes, `203` chunk legacy-key index,
-`204` graph label search, `205` drops empty `ag_catalog`,
+`204` graph label search, `205` drops empty `ag_catalog` only after the
+extension is gone (a no-op while Apache AGE stays installed),
 `206` leakproof modality, stage, and node search).
-Apply 170 with `edgequake migrate`. Apply 171 only with `--confirm-drop` after
+Apply 170 with `edgequake migrate`. Apply 171 only with `--drop-age` after
 `PostgresAGEGraphStorage::run_spec164_cutover` marks `eq_graph_cutover` ready.
+`--confirm-drop` does not drop Apache AGE.
 Migrations 172 through 206 do not raise the serving floor.
 The released product pin stays **v0.34.0** until the version-bump ceremony;
 `release_for_schema` maps 170–206 to v0.35.0.

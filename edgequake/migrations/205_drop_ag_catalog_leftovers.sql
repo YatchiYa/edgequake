@@ -1,16 +1,18 @@
 -- Older migrations created EdgeQuake tables and functions in ag_catalog
 -- because that schema was first on search_path while Apache AGE was
--- installed. Migration 171 drops the extension and the public copies.
--- The empty tables, indexes, and helper functions in ag_catalog stay.
--- Nothing outside the schema depends on them.
+-- installed. Migration 171 drops the extension. The empty tables, indexes,
+-- and helper functions in ag_catalog stay until this cleanup runs.
 --
--- This step runs only after 171. 171 raises until the cutover ledger is
--- ready and then drops the extension, so a database that reaches 205 has
--- no AGE and a ready plain graph. Refuse if that is no longer true, or if
--- any leftover table has rows. A database that never had the schema is a
--- no-op.
+-- Apache AGE stays installed unless `edgequake migrate --drop-age` applies
+-- 171. sqlx cannot skip this version to reach 206, so while the extension
+-- is still installed the function returns and the version is recorded.
+-- The same function runs again at the end of a later `--drop-age`, after
+-- 171 has removed the extension.
 
-DO $$
+CREATE OR REPLACE FUNCTION public.eq_drop_empty_ag_catalog()
+RETURNS void
+LANGUAGE plpgsql
+AS $$
 DECLARE
     rel text;
     has_row boolean;
@@ -19,9 +21,9 @@ BEGIN
         RETURN;
     END IF;
 
+    -- Keep the extension. A later --drop-age calls this function again.
     IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age') THEN
-        RAISE EXCEPTION
-            '205: ag_catalog still exists and Apache AGE is installed';
+        RETURN;
     END IF;
 
     IF to_regclass('public.eq_graph_cutover') IS NULL
@@ -53,3 +55,5 @@ BEGIN
 
     DROP SCHEMA ag_catalog CASCADE;
 END $$;
+
+SELECT public.eq_drop_empty_ag_catalog();
