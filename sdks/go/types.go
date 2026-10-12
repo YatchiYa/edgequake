@@ -14,9 +14,6 @@ type HealthResponse struct {
 }
 
 type Document struct {
-	CurrentStage  string   `json:"current_stage,omitempty"`
-	StageProgress *float64 `json:"stage_progress,omitempty"`
-	StageMessage  string   `json:"stage_message,omitempty"`
 	ID            UUID     `json:"id"`
 	FileName      string   `json:"file_name,omitempty"`
 	Title         string   `json:"title,omitempty"`
@@ -29,6 +26,9 @@ type Document struct {
 	UpdatedAt     string   `json:"updated_at,omitempty"`
 	DisplayStatus string   `json:"display_status,omitempty"`
 	UIPhase       string   `json:"ui_phase,omitempty"`
+	CurrentStage  string   `json:"current_stage,omitempty"`
+	StageProgress *float64 `json:"stage_progress,omitempty"`
+	StageMessage  string   `json:"stage_message,omitempty"`
 }
 
 type UploadResponse struct {
@@ -102,6 +102,11 @@ type DocumentStatusCounts struct {
 }
 
 type TrackStatus struct {
+	TrackID         string               `json:"track_id"`
+	Status          string               `json:"status"`
+	Progress        *float64             `json:"progress,omitempty"`
+	Message         string               `json:"message,omitempty"`
+	DocumentID      string               `json:"document_id,omitempty"`
 	CreatedAt       *string              `json:"created_at,omitempty"`
 	Documents       []Document           `json:"documents,omitempty"`
 	TotalCount      int                  `json:"total_count"`
@@ -110,11 +115,6 @@ type TrackStatus struct {
 	ExpectedCount   *int                 `json:"expected_count,omitempty"`
 	RegisteredCount int                  `json:"registered_count"`
 	LatestMessage   *string              `json:"latest_message,omitempty"`
-	TrackID         string               `json:"track_id"`
-	Status          string               `json:"status"`
-	Progress        *float64             `json:"progress,omitempty"`
-	Message         string               `json:"message,omitempty"`
-	DocumentID      string               `json:"document_id,omitempty"`
 }
 
 type ScanRequest struct {
