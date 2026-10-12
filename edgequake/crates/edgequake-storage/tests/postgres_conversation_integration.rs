@@ -58,6 +58,114 @@ fn create_test_ids() -> (Uuid, Uuid, Option<Uuid>) {
 // ============================================================================
 
 #[tokio::test]
+async fn title_search_returns_only_the_matching_conversation() {
+    let config = require_postgres!();
+    let pool = create_test_pool(&config).await;
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let slug = format!("ts{}", &tenant_id.simple().to_string()[..10]);
+
+    sqlx::query("INSERT INTO tenants (tenant_id, name, slug) VALUES ($1, 'Title Search', $2)")
+        .bind(tenant_id)
+        .bind(&slug)
+        .execute(&pool)
+        .await
+        .expect("insert tenant");
+    let user_result = sqlx::query(
+        "INSERT INTO users (user_id, tenant_id, email, username) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(format!("{slug}@example.com"))
+    .bind(&slug)
+    .execute(&pool)
+    .await;
+    if let Err(error) = user_result {
+        let _ = sqlx::query("DELETE FROM tenants WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .execute(&pool)
+            .await;
+        panic!("insert user: {error}");
+    }
+
+    let storage = PostgresConversationStorage::new(pool.clone());
+    let pinned = storage
+        .create_conversation(
+            tenant_id,
+            user_id,
+            None,
+            "Pinned Conversation".to_string(),
+            "hybrid".to_string(),
+            None,
+        )
+        .await
+        .expect("create pinned conversation");
+    storage
+        .create_conversation(
+            tenant_id,
+            user_id,
+            None,
+            "Active Conversation".to_string(),
+            "hybrid".to_string(),
+            None,
+        )
+        .await
+        .expect("create active conversation");
+
+    let (matched, matched_total) = storage
+        .list_conversations(
+            tenant_id,
+            user_id,
+            None,
+            None,
+            None,
+            None,
+            Some("Pinned"),
+            "updated_at",
+            true,
+            10,
+            ListWindow::Offset(0),
+        )
+        .await
+        .expect("search titles");
+    let (missed, missed_total) = storage
+        .list_conversations(
+            tenant_id,
+            user_id,
+            None,
+            None,
+            None,
+            None,
+            Some("nomatchzephyr"),
+            "updated_at",
+            true,
+            10,
+            ListWindow::Offset(0),
+        )
+        .await
+        .expect("search a missing title");
+
+    let _ = sqlx::query("DELETE FROM conversations WHERE tenant_id = $1")
+        .bind(tenant_id)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM users WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM tenants WHERE tenant_id = $1")
+        .bind(tenant_id)
+        .execute(&pool)
+        .await;
+
+    assert_eq!(matched_total, 1);
+    assert_eq!(matched.len(), 1);
+    assert_eq!(matched[0].conversation_id, pinned.conversation_id);
+    assert_eq!(missed_total, 0);
+    assert!(missed.is_empty());
+}
+
+#[tokio::test]
 async fn test_create_conversation() {
     let config = require_postgres!();
     let pool = create_test_pool(&config).await;
@@ -952,6 +1060,44 @@ mod full_workflow_tests {
             .expect("Failed to list archived");
         assert_eq!(archived_total, 1);
         assert_eq!(archived[0].title, "Archived Conversation");
+
+        let (matched, matched_total) = storage
+            .list_conversations(
+                tenant_id,
+                user_id,
+                None,
+                None,
+                None,
+                None,
+                Some("Pinned"),
+                "updated_at",
+                true,
+                10,
+                ListWindow::Offset(0),
+            )
+            .await
+            .expect("Failed to search titles");
+        assert_eq!(matched_total, 1);
+        assert_eq!(matched[0].title, "Pinned Conversation");
+
+        let (missed, missed_total) = storage
+            .list_conversations(
+                tenant_id,
+                user_id,
+                None,
+                None,
+                None,
+                None,
+                Some("nomatchzephyr"),
+                "updated_at",
+                true,
+                10,
+                ListWindow::Offset(0),
+            )
+            .await
+            .expect("Failed to search a missing title");
+        assert_eq!(missed_total, 0);
+        assert!(missed.is_empty());
 
         // Cleanup
         let _ = storage

@@ -554,6 +554,10 @@ fn migration_186_indexes_conversation_title_search_by_user() {
     assert!(sql.contains("public.uuid_ops"));
     let list = include_str!("../../edgequake-storage/src/adapters/postgres/conversation.rs");
     assert!(list.contains("to_tsvector('english', title) @@ plainto_tsquery('english'"));
+    assert!(
+        list.contains("force_custom_plan"),
+        "a common title must replan so the user index stops at the page"
+    );
 }
 
 #[test]

@@ -669,6 +669,13 @@
       "before_plan": "Generic plan with idx_chunks_workspace present. Bitmap of idx_chunks_content_tsv, then a document primary-key lookup for every hit (39960 loops, 161286 buffers) before LIMIT 50. A 20-row term stays on the content GIN (0.149 ms, 87 buffers)",
       "after_ms": 18.523,
       "after_plan": "Custom plan of the same statement. Parallel scan scores the matching chunks, then the document join stops at 50 (200 buffers). The 20-row term stays on idx_chunks_content_tsv (0.094 ms, 87 buffers). No new index. Id-filtered FTS still starts at chunks_pkey; workspace and document are required on that statement when the caller passes them"
+    },
+    {
+      "name": "conversation title search LIMIT 50, term medical matches 14940 of one user's 15000 conversations",
+      "before_ms": 4.114,
+      "before_plan": "Generic plan with idx_conversations_tenant_user_title_fts. Bitmap of that GIN returns 14940 rows, 312 buffers, then top-N sort. The index was created inside the measurement transaction because the study schema is at 170 and migration 186 is the product index",
+      "after_ms": 0.161,
+      "after_plan": "Custom plan. Index scan of idx_conversations_tenant_user_updated_id stops at 50, 53 buffers. A rare title uniquezephyr uses idx_conversations_tenant_user_title_fts and returns the matches in 0.214 ms, 82 buffers. No new index"
     }
   ]
 }

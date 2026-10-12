@@ -361,6 +361,11 @@ impl PostgresConversationStorage {
         }
         if search.is_some() {
             param_count += 1;
+            // The title predicate is required. A generic plan still prices
+            // `@@ $n` as a few dozen hits, so a common word reads every
+            // matching title and then sorts. The search replans with the
+            // bound term: a common word stops on the user time index, and a
+            // rare word uses the title GIN.
             where_clauses.push(format!(
                 "to_tsvector('english', title) @@ plainto_tsquery('english', ${})",
                 param_count
@@ -415,6 +420,16 @@ impl PostgresConversationStorage {
         // SPEC-083 S-03: GUC must live inside BEGIN…COMMIT (with_rls_transaction).
         with_rls_transaction(&self.pool, tenant_id, None, Some(user_id), move |conn| {
             Box::pin(async move {
+                if search_owned.is_some() {
+                    sqlx::query("SET LOCAL plan_cache_mode = force_custom_plan")
+                        .execute(&mut *conn)
+                        .await
+                        .map_err(|e| {
+                            StorageError::Database(format!(
+                                "Failed to set conversation search plan mode: {e}"
+                            ))
+                        })?;
+                }
                 let mut query_builder = sqlx::query_as::<_, ConversationRow>(&query)
                     .bind(tenant_id)
                     .bind(user_id);
