@@ -676,6 +676,13 @@
       "before_plan": "Generic plan with idx_conversations_tenant_user_title_fts. Bitmap of that GIN returns 14940 rows, 312 buffers, then top-N sort. The index was created inside the measurement transaction because the study schema is at 170 and migration 186 is the product index",
       "after_ms": 0.161,
       "after_plan": "Custom plan. Index scan of idx_conversations_tenant_user_updated_id stops at 50, 53 buffers. A rare title uniquezephyr uses idx_conversations_tenant_user_title_fts and returns the matches in 0.214 ms, 82 buffers. No new index"
+    },
+    {
+      "name": "chunk FTS search_chunks_fts LIMIT 50, term common matches 39960 of 40000 chunks in the passed workspace",
+      "before_ms": 93.346,
+      "before_plan": "Generic plan with idx_chunks_workspace present. Bitmap of idx_chunks_content_tsv, then a document primary-key lookup for every hit (39960 loops, 161286 buffers) because ($2 IS NULL OR d.workspace_id = $2) is a filter. The first run was 253.508 ms. Requiring the predicate on a generic plan is still 93.532 ms and the same 39960 lookups",
+      "after_ms": 13.693,
+      "after_plan": "Custom plan. Parallel scan scores the matching chunks (20 rows removed by the workspace predicate), then the document join stops at 50 (200 buffers, 2991 shared hits). No new index. The unscoped call has no workspace, so it does not join documents and does not keep an IS NULL predicate"
     }
   ]
 }
