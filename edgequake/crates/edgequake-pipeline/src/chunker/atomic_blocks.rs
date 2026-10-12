@@ -307,6 +307,20 @@ mod tests {
     }
 
     #[test]
+    fn unclosed_long_fence_keeps_remaining_content_atomic() {
+        let md = "Before\n\n````rust\ncode\n```\n\n# heading inside fence\nAfter";
+        let regions = split_preserving_atomic_regions(md);
+        assert_eq!(regions.len(), 2);
+        assert_eq!(regions[0].atomic, None);
+        let code = &regions[1];
+        assert_eq!(code.atomic, Some(AtomicKind::FencedCode));
+        assert_eq!(code.start, md.find("````").unwrap());
+        assert_eq!(code.end, md.len());
+        assert_eq!(code.text, md[code.start..code.end]);
+        assert!(code.text.ends_with("After"));
+    }
+
+    #[test]
     fn fence_like_content_with_suffix_does_not_close_code() {
         let md = "```rust\n```not a closer\nstill code\n````  \nAfter";
         let regions = split_preserving_atomic_regions(md);
