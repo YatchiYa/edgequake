@@ -1,4 +1,13 @@
 # SPEC-150 epoch table — schema-distinct release points
+#
+# [unreleased] is the working migration set before the next product tag.
+# The epoch matrix does not replay it. When v0.35.0 is tagged, add that
+# tag as an epoch and delete this pin.
+
+[unreleased]
+max = 202
+files = 200
+hash = "3ad66aaf1950a855"
 
 [[epoch]]
 tag = "v0.2.0"

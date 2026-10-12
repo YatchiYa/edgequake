@@ -73,7 +73,7 @@ Every upgrade guide and CHANGELOG entry must answer these questions:
 | Question | Where to record |
 |----------|-----------------|
 | New numbered migration(s)? | Highest `NNN_*.sql`; `manifest.toml` `compat_serve_max` |
-| Epoch coverage? | Add `[[epoch]]` to `scripts/spec150/epochs.toml` if the migration set is new |
+| Epoch coverage? | Add `[[epoch]]` to `scripts/spec150/epochs.toml` when the tag exists. Until then, pin the working set under `[unreleased]` (hash, max, file count). |
 | Operator steps? | Link [upgrading.md](upgrading.md); note if migrate is a no-op |
 | Acc re-score needed? | Honest residual in the cut notes |
 
