@@ -46,7 +46,7 @@ fn normalize_type_token_one(raw: &str) -> String {
 /// Rules:
 /// - Trim whitespace
 /// - Convert to UPPERCASE
-/// - Replace spaces/hyphens with underscores
+/// - Replace spaces/hyphens with underscores and trim surrounding underscores
 /// - Skip empty strings
 /// - Deduplicate (preserving first occurrence order)
 /// - Cap at [`MAX_TYPE_LIST`]
@@ -55,7 +55,7 @@ pub fn normalize_type_list(types: &[String]) -> Vec<String> {
     types
         .iter()
         .filter_map(|t| {
-            let normalized = t.trim().to_uppercase().replace([' ', '-'], "_");
+            let normalized = normalize_type_token_one(t);
             if normalized.is_empty() {
                 None
             } else {
@@ -244,6 +244,26 @@ mod tests {
         ];
         let out = normalize_type_list(&input);
         assert_eq!(out, vec!["PERSON".to_string(), "ORG_UNIT".to_string()]);
+    }
+
+    #[test]
+    fn normalize_type_list_discards_separator_tokens_before_capping() {
+        let mut input: Vec<String> = (1..=MAX_TYPE_LIST).map(|n| "-".repeat(n)).collect();
+        input.push("PERSON".into());
+        assert_eq!(normalize_type_list(&input), vec!["PERSON"]);
+    }
+
+    #[test]
+    fn normalize_type_list_matches_typed_edge_tokens() {
+        let input = vec![" -person- ".into(), "PERSON".into(), "_org-unit_".into()];
+        assert_eq!(normalize_type_list(&input), vec!["PERSON", "ORG_UNIT"]);
+        let edge = RelationEdge {
+            source: input[0].clone(),
+            relation: " -works-at- ".into(),
+            target: input[2].clone(),
+        }
+        .normalize_tokens();
+        assert_eq!(normalize_type_list(&input), vec![edge.source, edge.target]);
     }
 
     #[test]
