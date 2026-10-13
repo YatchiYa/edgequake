@@ -145,7 +145,7 @@ class DocumentsResource(SyncResource):
 
         POST /api/v1/documents/upload
         """
-        meta = metadata or {}
+        meta = dict(metadata or {})
         if title:
             meta["title"] = title
         response = self._transport.upload(
@@ -547,7 +547,7 @@ class AsyncDocumentsResource(AsyncResource):
         title: str | None = None,
         metadata: dict[str, str] | None = None,
     ) -> UploadDocumentResponse:
-        meta = metadata or {}
+        meta = dict(metadata or {})
         if title:
             meta["title"] = title
         response = await self._transport.upload(
