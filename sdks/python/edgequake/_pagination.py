@@ -79,8 +79,9 @@ class SyncPaginator(Generic[T]):
 
     def _load_next_page(self) -> None:
         """Fetch the next page of results."""
-        self._current_page += 1
-        response = self._fetch_page(self._current_page, self._page_size)
+        next_page = self._current_page + 1
+        response = self._fetch_page(next_page, self._page_size)
+        self._current_page = next_page
         self._items.extend(response.items)
         if not response.items or len(response.items) < self._page_size:
             self._exhausted = True
@@ -142,8 +143,9 @@ class AsyncPaginator(Generic[T]):
 
     async def _load_next_page(self) -> None:
         """Fetch the next page of results."""
-        self._current_page += 1
-        response = await self._fetch_page(self._current_page, self._page_size)
+        next_page = self._current_page + 1
+        response = await self._fetch_page(next_page, self._page_size)
+        self._current_page = next_page
         self._items.extend(response.items)
         if not response.items or len(response.items) < self._page_size:
             self._exhausted = True
