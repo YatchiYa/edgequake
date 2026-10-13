@@ -17,6 +17,24 @@ module EdgeQuake
     def delete(path, body = nil) = parse(request_raw(:delete, path, body))
     def get_raw(path) = request_raw(:get, path)
     def call_raw(method, path, body = nil) = request_raw(method.to_sym, path, body)
+    # Enumerates decoded SSE data payloads after the HTTP response is read.
+    def post_events(path, body = nil)
+      Enumerator.new do |output|
+        raw = request_raw(:post, path, body).dup.force_encoding(Encoding::UTF_8).sub(/\A\uFEFF/, "").gsub(/\r\n?/, "\n")
+        raw.split("\n\n").each do |frame|
+          data = frame.lines.filter_map do |line|
+            next unless line.start_with?("data:")
+
+            line.delete_prefix("data:").delete_prefix(" ").chomp
+          end.join("\n")
+          next if data.empty?
+          break if data == "[DONE]"
+
+          output << JSON.parse(data)
+        end
+      end
+    end
+
     def base_url = @config.base_url
 
     private
