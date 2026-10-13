@@ -1385,7 +1385,7 @@ module EdgeQuake
       result = svc.login(email: "test@test.com", password: "pass123")
       assert_equal "jwt-token", result["token"]
       assert_equal :post, mock.last_call[:method]
-      assert_equal "test@test.com", mock.last_call[:body][:email]
+      assert_equal "test@test.com", mock.last_call[:body][:username]
       assert_equal "pass123", mock.last_call[:body][:password]
     end
 
