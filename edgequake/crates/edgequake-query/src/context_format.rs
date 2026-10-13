@@ -122,9 +122,22 @@ pub fn format_chunk_meta(chunk: &RetrievedChunk) -> String {
 ///
 /// Never renumber after format — callers must stamp before prompt/API emit.
 pub fn assign_stable_citation_ids(chunks: &mut [RetrievedChunk]) {
-    for (i, chunk) in chunks.iter_mut().enumerate() {
+    let mut used = chunks.iter().filter_map(|c| c.citation_id).collect();
+    assign_stable_citation_ids_avoiding(chunks, &mut used);
+}
+
+pub(crate) fn assign_stable_citation_ids_avoiding(
+    chunks: &mut [RetrievedChunk],
+    used: &mut std::collections::HashSet<usize>,
+) {
+    let mut next = 1;
+    for chunk in chunks.iter_mut() {
         if chunk.citation_id.is_none() {
-            chunk.citation_id = Some(i + 1);
+            while used.contains(&next) {
+                next += 1;
+            }
+            chunk.citation_id = Some(next);
+            used.insert(next);
         }
     }
 }
@@ -515,6 +528,65 @@ mod tests {
         assert!(line.contains("Future of work"), "got {line}");
         assert!(line.contains("AI Next Conference"), "got {line}");
         assert!(!line.contains("84B69E27"), "must not embed UUID: {line}");
+    }
+
+    #[test]
+    fn citation_assignment_avoids_preserved_ids() {
+        let mut chunks = vec![
+            RetrievedChunk::new("a", "first", 0.9).with_citation_id(2),
+            RetrievedChunk::new("b", "second", 0.8),
+            RetrievedChunk::new("c", "third", 0.7).with_citation_id(usize::MAX),
+        ];
+        assign_stable_citation_ids(&mut chunks);
+        assert_eq!(chunks[0].citation_id, Some(2));
+        assert_eq!(chunks[1].citation_id, Some(1));
+        assert_eq!(chunks[2].citation_id, Some(usize::MAX));
+    }
+
+    #[test]
+    fn dual_citation_assignment_reserves_existing_and_reuses_chunk_ids() {
+        let mut ctx = crate::context::QueryContext::new();
+        ctx.chunks = vec![RetrievedChunk::new("a", "prompt", 0.9)];
+        ctx.citation_chunks = Some(vec![
+            RetrievedChunk::new("b", "citation", 0.8).with_citation_id(1),
+            RetrievedChunk::new("c", "citation", 0.7),
+            RetrievedChunk::new("c", "citation", 0.7),
+            RetrievedChunk::new("a", "prompt", 0.9),
+        ]);
+        ctx.ensure_stable_citation_ids();
+        assert_eq!(ctx.chunks[0].citation_id, Some(2));
+        let stamped = ctx
+            .citation_chunks
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|c| c.citation_id)
+            .collect::<Vec<_>>();
+        ctx.ensure_stable_citation_ids();
+        assert_eq!(
+            ctx.citation_chunks
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|c| c.citation_id)
+                .collect::<Vec<_>>(),
+            stamped
+        );
+        let citations = ctx.citation_chunks.unwrap();
+        assert_eq!(
+            citations.iter().map(|c| c.citation_id).collect::<Vec<_>>(),
+            vec![Some(1), Some(3), Some(3), Some(2)]
+        );
+    }
+
+    #[test]
+    fn dual_citation_assignment_handles_maximum_preserved_id() {
+        let mut ctx = crate::context::QueryContext::new();
+        ctx.chunks = vec![RetrievedChunk::new("a", "prompt", 0.9).with_citation_id(usize::MAX)];
+        ctx.citation_chunks = Some(vec![RetrievedChunk::new("b", "citation", 0.8)]);
+        ctx.ensure_stable_citation_ids();
+        assert_eq!(ctx.chunks[0].citation_id, Some(usize::MAX));
+        assert_eq!(ctx.citation_chunks.unwrap()[0].citation_id, Some(1));
     }
 
     /// SPEC-083 X-20: prompt [N] follows citation_id, not list position after reorder.
