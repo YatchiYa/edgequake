@@ -194,7 +194,13 @@ func (c *Client) raw(ctx context.Context, method, path string, body any) (string
 		return "", err
 	}
 	if resp.StatusCode >= 300 {
-		return "", &APIError{StatusCode: resp.StatusCode, ErrorCode: http.StatusText(resp.StatusCode), Message: string(payload)}
+		errorResponse := *resp
+		errorResponse.Body = io.NopCloser(bytes.NewReader(payload))
+		apiErr := parseAPIError(&errorResponse)
+		if details, ok := apiErr.(*APIError); ok && details.Message == "" {
+			details.Message = string(payload)
+		}
+		return "", apiErr
 	}
 	return string(payload), nil
 }
