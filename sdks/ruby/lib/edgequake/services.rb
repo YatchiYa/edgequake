@@ -150,7 +150,7 @@ module EdgeQuake
     def list = @http.get(BASE)
     def get(id:) = @http.get("#{BASE}/#{encode(id)}")
     def create(email:, name: nil, role: "user") = @http.post(BASE, { email: email, name: name, role: role }.compact)
-    def update(id:, name: nil, role: nil) = @http.patch("#{BASE}/#{encode(id)}", { name: name, role: role }.compact)
+    def update(id:, name: nil, role: nil) = @http.patch("#{BASE}/#{encode(id)}", { display_name: name, role: role }.compact)
     def delete(id:) = @http.delete("#{BASE}/#{encode(id)}")
   end
 
