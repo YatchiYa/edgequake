@@ -5,6 +5,12 @@ All notable changes to the EdgeQuake Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- JWT refresh receives one retry independently of `max_retries`. A repeated 401 after refresh now raises `UnauthorizedError` instead of `ConnectionError`; callers catching the latter should handle `UnauthorizedError` for invalid credentials.
+
 ## [1.0.0] - 2026-02-12
 
 ### Added
