@@ -24,44 +24,60 @@ export async function* parseSSEStream<T>(
   parser: (raw: string) => T | null,
   signal?: AbortSignal,
 ): AsyncGenerator<T> {
+  for await (const data of parseSSEData(response, signal)) {
+    const parsed = parser(data);
+    if (parsed !== null) yield parsed;
+  }
+}
+
+/** Read complete SSE data events for both typed and raw transport consumers. */
+export async function* parseSSEData(
+  response: Response,
+  signal?: AbortSignal,
+): AsyncGenerator<string> {
   if (!response.body) {
     throw new Error("Response body is null — SSE streaming unavailable");
   }
-
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-
+  let cursor = 0;
+  let dataLines: string[] = [];
   try {
     while (true) {
-      if (signal?.aborted) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      // WHY: SSE events are separated by double newlines
-      while (true) {
-        const eventEnd = buffer.indexOf("\n\n");
-        if (eventEnd === -1) break;
-
-        const eventText = buffer.slice(0, eventEnd);
-        buffer = buffer.slice(eventEnd + 2);
-
-        for (const line of eventText.split("\n")) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      while (cursor < buffer.length) {
+        const char = buffer[cursor];
+        if (char !== "\r" && char !== "\n") {
+          cursor++;
+          continue;
+        }
+        // A CRLF delimiter can arrive in separate network chunks.
+        if (char === "\r" && cursor + 1 === buffer.length && !done) break;
+        const line = buffer.slice(0, cursor);
+        const delimiterLength = char === "\r" && buffer[cursor + 1] === "\n" ? 2 : 1;
+        buffer = buffer.slice(cursor + delimiterLength);
+        cursor = 0;
+        if (line === "") {
+          if (dataLines.length) {
+            const data = dataLines.join("\n");
+            dataLines = [];
             if (data === "[DONE]") return;
-
-            const parsed = parser(data);
-            if (parsed !== null) yield parsed;
+            yield data;
           }
-          // WHY: Lines starting with ":" are SSE comments — ignore
+        } else {
+          const colon = line.indexOf(":");
+          const field = colon < 0 ? line : line.slice(0, colon);
+          if (field === "data") {
+            let data = colon < 0 ? "" : line.slice(colon + 1);
+            if (data.startsWith(" ")) data = data.slice(1);
+            dataLines.push(data);
+          }
         }
       }
+      if (done) break;
     }
   } finally {
     reader.releaseLock();

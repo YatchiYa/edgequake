@@ -7,6 +7,7 @@
  * @module transport/fetch
  */
 
+import { parseSSEData } from "../streaming/sse.js";
 import {
   NetworkError,
   TimeoutError,
@@ -65,37 +66,7 @@ export class FetchTransport implements HttpTransport {
       throw new NetworkError("Response body is null — streaming unavailable");
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // WHY: SSE events are separated by double newline
-        while (true) {
-          const eventEnd = buffer.indexOf("\n\n");
-          if (eventEnd === -1) break;
-
-          const eventText = buffer.slice(0, eventEnd);
-          buffer = buffer.slice(eventEnd + 2);
-
-          for (const line of eventText.split("\n")) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") return;
-              yield data;
-            }
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
+    yield* parseSSEData(response);
   }
 
   /** File upload via multipart/form-data. */
