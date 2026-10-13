@@ -24,6 +24,57 @@ from edgequake._errors import StreamError
 T = TypeVar("T", bound=BaseModel)
 
 
+class _SSEEventBuffer:
+    """Collect data fields until the event's blank-line delimiter."""
+
+    def __init__(self) -> None:
+        self._data: list[str] = []
+        self._first_line = True
+
+    def feed(self, line: str) -> str | None:
+        if self._first_line:
+            line = line.removeprefix("\ufeff")
+            self._first_line = False
+        # Retain the SDK's existing tolerance for surrounding whitespace.
+        line = line.strip()
+        if not line:
+            return self.finish()
+        field, _, value = line.partition(":")
+        if field == "data":
+            self._data.append(value.removeprefix(" "))
+        return None
+
+    def finish(self) -> str | None:
+        if not self._data:
+            return None
+        data = "\n".join(self._data)
+        self._data.clear()
+        return data
+
+
+def _iter_sse_data(lines: Iterator[str]) -> Iterator[str]:
+    buffer = _SSEEventBuffer()
+    for line in lines:
+        data = buffer.feed(line)
+        if data is not None:
+            yield data
+    # Preserve the SDK's legacy handling of a final event without a blank line.
+    data = buffer.finish()
+    if data is not None:
+        yield data
+
+
+async def _aiter_sse_data(lines: AsyncIterator[str]) -> AsyncIterator[str]:
+    buffer = _SSEEventBuffer()
+    async for line in lines:
+        data = buffer.feed(line)
+        if data is not None:
+            yield data
+    data = buffer.finish()
+    if data is not None:
+        yield data
+
+
 class SSEStream(Generic[T]):
     """Synchronous SSE stream parser.
 
@@ -50,24 +101,17 @@ class SSEStream(Generic[T]):
             raise StopIteration
 
         if self._lines is None:
-            self._lines = self._response.iter_lines()
+            self._lines = _iter_sse_data(self._response.iter_lines())
 
         try:
-            for line in self._lines:
-                line = line.strip()
-                if not line or line.startswith(":"):
-                    # WHY: Empty lines are SSE heartbeats; lines starting with ':'
-                    # are comments per the SSE spec. Skip both.
-                    continue
-                if line.startswith("data: "):
-                    data = line[6:]
-                    if data == "[DONE]":
-                        self.close()
-                        raise StopIteration
-                    try:
-                        return self._event_type.model_validate_json(data)
-                    except Exception as exc:
-                        raise StreamError(f"Failed to parse SSE data: {exc}") from exc
+            for data in self._lines:
+                if data == "[DONE]":
+                    self.close()
+                    raise StopIteration
+                try:
+                    return self._event_type.model_validate_json(data)
+                except Exception as exc:
+                    raise StreamError(f"Failed to parse SSE data: {exc}") from exc
         except StopIteration:
             raise
         except Exception as exc:
@@ -127,22 +171,17 @@ class AsyncSSEStream(Generic[T]):
             raise StopAsyncIteration
 
         if self._lines is None:
-            self._lines = self._response.aiter_lines()
+            self._lines = _aiter_sse_data(self._response.aiter_lines())
 
         try:
-            async for line in self._lines:
-                line = line.strip()
-                if not line or line.startswith(":"):
-                    continue
-                if line.startswith("data: "):
-                    data = line[6:]
-                    if data == "[DONE]":
-                        await self.aclose()
-                        raise StopAsyncIteration
-                    try:
-                        return self._event_type.model_validate_json(data)
-                    except Exception as exc:
-                        raise StreamError(f"Failed to parse SSE data: {exc}") from exc
+            async for data in self._lines:
+                if data == "[DONE]":
+                    await self.aclose()
+                    raise StopAsyncIteration
+                try:
+                    return self._event_type.model_validate_json(data)
+                except Exception as exc:
+                    raise StreamError(f"Failed to parse SSE data: {exc}") from exc
         except StopAsyncIteration:
             raise
         except Exception as exc:
