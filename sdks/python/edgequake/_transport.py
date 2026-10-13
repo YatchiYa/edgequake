@@ -159,7 +159,12 @@ class SyncTransport:
                 ),
                 stream=True,
             )
-            raise_for_status(response)
+            if not response.is_success:
+                try:
+                    response.read()
+                    raise_for_status(response)
+                finally:
+                    response.close()
             return response
         except httpx.ConnectError as exc:
             raise EQConnectionError(str(exc)) from exc
@@ -409,7 +414,12 @@ class AsyncTransport:
                 ),
                 stream=True,
             )
-            raise_for_status(response)
+            if not response.is_success:
+                try:
+                    await response.aread()
+                    raise_for_status(response)
+                finally:
+                    await response.aclose()
             return response
         except httpx.ConnectError as exc:
             raise EQConnectionError(str(exc)) from exc
