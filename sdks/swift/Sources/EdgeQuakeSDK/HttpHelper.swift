@@ -86,7 +86,7 @@ final class HttpHelper: @unchecked Sendable {
             fieldName: fieldName,
             extraFields: extraFields
         )
-        var request = buildRequest(path: path, method: "POST")
+        var request = try buildRequest(path: path, method: "POST")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
         return try await execute(request)
@@ -103,7 +103,7 @@ final class HttpHelper: @unchecked Sendable {
     // MARK: - Internals
 
     private func buildRequest(path: String, method: String, body: (any Encodable)? = nil)
-        -> URLRequest
+        throws -> URLRequest
     {
         let url = URL(string: "\(config.baseUrl)\(path)")!
         var request = URLRequest(url: url)
@@ -120,7 +120,7 @@ final class HttpHelper: @unchecked Sendable {
         }
 
         if let body = body {
-            request.httpBody = try? encoder.encode(AnyEncodable(body))
+            request.httpBody = try encoder.encode(AnyEncodable(body))
         } else if method == "POST" || method == "PUT" || method == "PATCH" {
             request.httpBody = "{}".data(using: .utf8)
         }
