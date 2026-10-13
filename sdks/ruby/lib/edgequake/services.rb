@@ -59,7 +59,7 @@ module EdgeQuake
 
     def delete(name:) = @http.delete("#{BASE}/#{encode(name)}?confirm=true")
     def exists?(name:) = @http.get("#{BASE}/exists?#{query(entity_name: name)}")
-    def merge(source_name:, target_name:) = @http.post("#{BASE}/merge", { source_name: source_name, target_name: target_name })
+    def merge(source_name:, target_name:) = @http.post("#{BASE}/merge", { source_entity: source_name, target_entity: target_name })
     def neighborhood(name:, depth: 1) = @http.get("#{BASE}/#{encode(name)}/neighborhood?#{query(depth: depth)}")
   end
 

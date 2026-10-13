@@ -325,8 +325,8 @@ module EdgeQuake
       result = svc.merge(source_name: "ALICIA", target_name: "ALICE")
       assert_equal "merged", result["status"]
       assert_equal :post, mock.last_call[:method]
-      assert_equal "ALICIA", mock.last_call[:body][:source_name]
-      assert_equal "ALICE", mock.last_call[:body][:target_name]
+      assert_equal "ALICIA", mock.last_call[:body][:source_entity]
+      assert_equal "ALICE", mock.last_call[:body][:target_entity]
     end
 
     def test_neighborhood
