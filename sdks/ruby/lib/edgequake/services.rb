@@ -211,9 +211,9 @@ module EdgeQuake
 
     def share(id:) = @http.post("#{BASE}/#{encode(id)}/share")
     def unshare(id:) = @http.delete("#{BASE}/#{encode(id)}/share")
-    def bulk_delete(ids:) = @http.post("#{BASE}/bulk/delete", { ids: ids })
-    def bulk_archive(ids:) = @http.post("#{BASE}/bulk/archive", { ids: ids })
-    def bulk_move(ids:, folder_id:) = @http.post("#{BASE}/bulk/move", { ids: ids, folder_id: folder_id })
+    def bulk_delete(ids:) = @http.post("#{BASE}/bulk/delete", { conversation_ids: ids })
+    def bulk_archive(ids:, archive: true) = @http.post("#{BASE}/bulk/archive", { conversation_ids: ids, archive: archive })
+    def bulk_move(ids:, folder_id:) = @http.post("#{BASE}/bulk/move", { conversation_ids: ids, folder_id: folder_id })
     def import_conversation(data:) = @http.post("#{BASE}/import", data)
   end
 
