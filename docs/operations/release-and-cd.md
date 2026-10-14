@@ -9,7 +9,7 @@ This runbook covers cutting a product release: the local quality gates, the tag-
 
 > **Product: v0.35.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 >
-> Upgrade: [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md) (SPEC-164 plain graph; schema **206**; Apache AGE optional). Previous: [upgrade-to-0.34.0.md](upgrade-to-0.34.0.md) (visual tour; schema **169**), [upgrade-to-0.33.0.md](upgrade-to-0.33.0.md) (SPEC-163; schema **169**). Earlier guides: [0.32.2](upgrade-to-0.32.2.md) and [0.32.0](upgrade-to-0.32.0.md) (schema **168**), [0.31.0](upgrade-to-0.31.0.md) (schema **166**), [0.30.0](upgrade-to-0.30.0.md) (schema **165**), [0.29.0](upgrade-to-0.29.0.md) (schema **163**), [0.28.5](upgrade-to-0.28.5.md) (schema **162**).
+> Upgrade: [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md) (SPEC-164 plain graph; schema **207**; Apache AGE optional). Previous: [upgrade-to-0.34.0.md](upgrade-to-0.34.0.md) (visual tour; schema **169**), [upgrade-to-0.33.0.md](upgrade-to-0.33.0.md) (SPEC-163; schema **169**). Earlier guides: [0.32.2](upgrade-to-0.32.2.md) and [0.32.0](upgrade-to-0.32.0.md) (schema **168**), [0.31.0](upgrade-to-0.31.0.md) (schema **166**), [0.30.0](upgrade-to-0.30.0.md) (schema **165**), [0.29.0](upgrade-to-0.29.0.md) (schema **163**), [0.28.5](upgrade-to-0.28.5.md) (schema **162**).
 >
 > **SPEC-001 Acc (this cut):** attested existing [`publish/latest`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **retrieval not re-scored**. Decision mode is unscored.
 >
