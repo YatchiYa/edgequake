@@ -58,7 +58,7 @@ NNN_descriptive_name.sql
   descriptive_name: snake_case, describes what changed
 ```
 
-Current max: `207_age_lineage_discovery_rls.sql` (AGE lineage lookup under row security).  
+Current max: `207_age_lineage_discovery_rls.sql` (AGE lineage lookup under row security). 
 `170_spec164_plain_graph.sql` is expand-only (no serving_floor) so a v0.34 binary can still serve schema 170.  
 `171` drops Apache AGE only when `edgequake migrate --drop-age` is passed. A migrate that is not told to drop it leaves the extension installed.  
 `172`–`204`, `206`, and `207` add request-path indexes or lookups and do not raise the serving floor.  
