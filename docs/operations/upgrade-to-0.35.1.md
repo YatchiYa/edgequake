@@ -17,7 +17,7 @@ v0.35.0 already shipped the plain-graph train through migration **206**. This pa
 
 ## What else changed
 
-- After migrate marks `eq_graph_cutover` ready, graph reads and writes stay on `eq_graph_nodes` and `eq_graph_edges`. Set `EDGEQUAKE_GRAPH_READ=age` only when you still want AGE label tables.
+- After migrate marks `eq_graph_cutover` ready, graph reads and writes stay on `eq_graph_nodes` and `eq_graph_edges`. `EDGEQUAKE_GRAPH_READ=age` has no effect in that state: it does not create AGE label tables and it does not route graph IO back to Apache AGE. Before the ledger is `ready`, the in-progress upgrade path is unchanged.
 - Credentialed browser clients on another origin receive their own `Origin` echoed back, with `Access-Control-Allow-Credentials: true`. The API does not send `Access-Control-Allow-Origin: *`.
 - `GET /api/v1/lineage/documents/{id}` uses the migration 207 lookup instead of scanning every node in the tenant.
 

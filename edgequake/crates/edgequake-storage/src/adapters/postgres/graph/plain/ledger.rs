@@ -7,7 +7,8 @@ use crate::error::{Result, StorageError};
 use super::super::{native_graph_writes_enabled, PostgresAGEGraphStorage};
 
 impl PostgresAGEGraphStorage {
-    /// Plain reads when the cutover ledger is `ready`. `EDGEQUAKE_GRAPH_READ=age` pins AGE.
+    /// Plain reads when the cutover ledger is `ready`.
+    /// `EDGEQUAKE_GRAPH_READ` does not reopen Apache AGE in that state.
     pub(in crate::adapters::postgres::graph) async fn plain_reads_ready(&self) -> Result<bool> {
         let pool = self.pool.get().await?;
         reads_ready(&pool).await
@@ -32,18 +33,6 @@ impl PostgresAGEGraphStorage {
     }
 }
 
-/// `EDGEQUAKE_GRAPH_READ=age` keeps AGE reads before confirm-drop (EC-02).
-pub(in crate::adapters::postgres::graph) fn graph_read_forced_age() -> bool {
-    matches!(
-        std::env::var("EDGEQUAKE_GRAPH_READ")
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase()
-            .as_str(),
-        "age"
-    )
-}
-
 pub(in crate::adapters::postgres::graph) async fn tables_present(pool: &PgPool) -> Result<bool> {
     let present: bool = sqlx::query_scalar(
         "SELECT to_regclass('public.eq_graph_nodes') IS NOT NULL
@@ -55,11 +44,12 @@ pub(in crate::adapters::postgres::graph) async fn tables_present(pool: &PgPool) 
     Ok(present)
 }
 
-/// True only when the ledger row is `ready` and the operator has not pinned AGE.
+/// True only when the ledger row is `ready`.
+///
+/// A finished cutover ignores `EDGEQUAKE_GRAPH_READ`. Before the ledger is
+/// `ready`, this stays false, so the in-progress upgrade path is unchanged.
+/// No flag selects plain reads while the status is still `age` or `backfilling`.
 pub(in crate::adapters::postgres::graph) async fn reads_ready(pool: &PgPool) -> Result<bool> {
-    if graph_read_forced_age() {
-        return Ok(false);
-    }
     if !tables_present(pool).await? {
         return Ok(false);
     }

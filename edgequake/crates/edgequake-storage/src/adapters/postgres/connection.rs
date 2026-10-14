@@ -27,17 +27,6 @@ use sqlx::Row;
 use super::config::{db_pool_role_from_env, resolve_pool_max_connections, PostgresConfig};
 use crate::error::{Result, StorageError};
 
-fn graph_read_pinned_age() -> bool {
-    matches!(
-        std::env::var("EDGEQUAKE_GRAPH_READ")
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase()
-            .as_str(),
-        "age"
-    )
-}
-
 /// True when migration 170's ledger says graph IO is on the plain tables.
 async fn cutover_status_ready(pool: &PgPool) -> bool {
     let table_exists: bool =
@@ -239,8 +228,8 @@ impl PostgresPool {
     ///
     /// The extension can remain installed after migrate. Once
     /// `eq_graph_cutover.status` is `ready`, reads and writes stay on the plain
-    /// tables, so this returns false (GitHub #477). `EDGEQUAKE_GRAPH_READ=age`
-    /// is the only pin that keeps the AGE path.
+    /// tables, so this returns false (GitHub #477). `EDGEQUAKE_GRAPH_READ`
+    /// does not reopen AGE label tables.
     pub async fn probe_graph_extension_available(&self) -> Result<bool> {
         let pool = self.get().await?;
         let installed: bool =
@@ -248,7 +237,7 @@ impl PostgresPool {
                 .fetch_one(&pool)
                 .await
                 .map_err(|e| StorageError::Database(format!("AGE extension probe failed: {e}")))?;
-        let use_age = installed && (graph_read_pinned_age() || !cutover_status_ready(&pool).await);
+        let use_age = installed && !cutover_status_ready(&pool).await;
         self.graph_extension_available
             .store(use_age, Ordering::Relaxed);
         Ok(use_age)
@@ -327,11 +316,12 @@ impl PostgresPool {
         // Enable Apache AGE extension (fail-closed unless opt-out — SPEC-090 F-090-19).
         // SPEC-164 G11: after 171 the ledger records age_absent. Do not recreate the
         // extension on a server that still has the package installed.
-        // A finished migrate (ledger `ready`) stays on the plain tables. The only
-        // way back onto AGE label tables is `EDGEQUAKE_GRAPH_READ=age`.
+        // A finished migrate (ledger `ready`) stays on the plain tables.
+        // `EDGEQUAKE_GRAPH_READ` does not create the extension or label tables.
+        // Before the ledger is ready, an installed AGE extension is still used.
         let age_absent = cutover_marks_age_absent(pool).await;
         let plain_ready = cutover_status_ready(pool).await;
-        if age_absent || (plain_ready && !graph_read_pinned_age()) {
+        if age_absent || plain_ready {
             tracing::info!(age_absent, plain_ready, "graph IO will not use Apache AGE");
             self.graph_extension_available
                 .store(false, Ordering::Relaxed);
@@ -476,7 +466,7 @@ mod tests {
                 .await
                 .expect("pg_extension lookup");
         let ready = cutover_status_ready(&raw).await;
-        let expected = installed && (graph_read_pinned_age() || !ready);
+        let expected = installed && !ready;
         assert_eq!(probed, expected);
         assert_eq!(wrapped.graph_extension_available(), expected);
     }
