@@ -391,6 +391,44 @@ impl PostgresPool {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `from_existing` must not claim AGE until probed (GitHub #477).
+    #[tokio::test]
+    async fn from_existing_probe_matches_pg_extension() {
+        let url = std::env::var("DATABASE_URL")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let Some(url) = url else {
+            eprintln!("SKIP: no DATABASE_URL for AGE probe check");
+            return;
+        };
+        let Ok(raw) = sqlx::PgPool::connect(&url).await else {
+            eprintln!("SKIP: cannot connect for AGE probe check");
+            return;
+        };
+        let wrapped = PostgresPool::from_existing(raw.clone(), PostgresConfig::default());
+        assert!(
+            !wrapped.graph_extension_available(),
+            "from_existing starts with graph_extension_available false"
+        );
+        let probed = wrapped
+            .probe_graph_extension_available()
+            .await
+            .expect("AGE probe");
+        let expected: bool =
+            sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
+                .fetch_one(&raw)
+                .await
+                .expect("pg_extension lookup");
+        assert_eq!(probed, expected);
+        assert_eq!(wrapped.graph_extension_available(), expected);
+    }
+}
+
 impl std::fmt::Debug for PostgresPool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PostgresPool")

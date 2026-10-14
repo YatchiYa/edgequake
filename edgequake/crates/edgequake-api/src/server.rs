@@ -31,7 +31,7 @@ use tokio_util::sync::CancellationToken;
 use tower_http::{
     compression::predicate::DefaultPredicate,
     compression::CompressionLayer,
-    cors::{AllowOrigin, Any, CorsLayer},
+    cors::{AllowHeaders, AllowMethods, AllowOrigin, Any, CorsLayer},
 };
 use tracing::{info, warn};
 use utoipa::OpenApi;
@@ -121,23 +121,55 @@ impl Default for ServerConfig {
     }
 }
 
+/// Credentialed browser requests reject `Access-Control-Allow-Origin: *`.
+/// Echo the request origin and allow credentials (GitHub #479).
+///
+/// `allow_credentials(true)` cannot be combined with wildcard methods or headers.
+fn open_credentialed_cors() -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::mirror_request())
+        .allow_methods(AllowMethods::mirror_request())
+        .allow_headers(AllowHeaders::mirror_request())
+        .allow_credentials(true)
+        .expose_headers(cors_exposed_headers())
+}
+
 /// Build CORS layer from security config — SPEC-027 IMP-007 / GitHub #277 / SPEC-083 S-10.
 ///
 /// When `cors_fail_closed` is true:
 /// - `AllowOrigin::Any` is unreachable
 /// - methods/headers use explicit allow-lists (never `Any`)
+///
+/// Open/dev mode (GitHub #479) mirrors the request `Origin` and sets
+/// `Access-Control-Allow-Credentials: true`. The WebUI sends `credentials: "include"`
+/// on every API call; a wildcard origin makes the browser drop those responses.
 pub fn build_cors_layer(security: &ApiSecurityConfig) -> CorsLayer {
     if let Some(origins) = &security.cors_origins {
-        let allowed: Result<Vec<HeaderValue>, _> =
-            origins.iter().map(|o| HeaderValue::from_str(o)).collect();
-        match allowed {
-            Ok(list) if !list.is_empty() => {
-                return apply_cors_methods_headers(
-                    CorsLayer::new().allow_origin(AllowOrigin::list(list)),
-                    security.cors_fail_closed,
-                );
+        let concrete: Vec<&str> = origins
+            .iter()
+            .map(String::as_str)
+            .filter(|origin| *origin != "*")
+            .collect();
+        let allowed: Result<Vec<HeaderValue>, _> = concrete
+            .iter()
+            .map(|origin| HeaderValue::from_str(origin))
+            .collect();
+        if let Ok(list) = allowed {
+            if !list.is_empty() {
+                let layer = CorsLayer::new()
+                    .allow_origin(AllowOrigin::list(list))
+                    .allow_credentials(true);
+                return if security.cors_fail_closed {
+                    apply_cors_methods_headers(layer, true)
+                } else {
+                    // Explicit origins in open mode still need mirrored headers:
+                    // credentials cannot combine with `Access-Control-Allow-*: *`.
+                    layer
+                        .allow_methods(AllowMethods::mirror_request())
+                        .allow_headers(AllowHeaders::mirror_request())
+                        .expose_headers(cors_exposed_headers())
+                };
             }
-            _ => {}
         }
     }
 
@@ -149,12 +181,8 @@ pub fn build_cors_layer(security: &ApiSecurityConfig) -> CorsLayer {
             true,
         )
     } else {
-        // Dev / open mode only.
-        CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any)
-            .expose_headers(cors_exposed_headers())
+        // Dev / open mode. Wildcard `*` is illegal once the browser sends credentials.
+        open_credentialed_cors()
     }
 }
 

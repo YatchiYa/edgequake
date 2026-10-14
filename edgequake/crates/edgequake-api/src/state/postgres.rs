@@ -388,13 +388,23 @@ impl AppState {
         );
 
         // SPEC-090: ingest pool for writes; query pool for QueryEngine reads.
+        // `from_existing` skips extension setup and leaves `graph_extension_available`
+        // false. Graph upserts then write only the plain tables while reads stay on
+        // AGE until the cutover ledger is `ready` (GitHub #477).
         use edgequake_storage::adapters::postgres::PostgresPool;
         let ingest_pool = PostgresPool::from_existing(pool.clone(), pg_config.clone());
+        let ingest_age = ingest_pool.probe_graph_extension_available().await?;
         let query_pg = {
             let mut c = pg_config.clone();
             c.max_connections = pool_bundle.query_max;
             PostgresPool::from_existing(query_pool.clone(), c)
         };
+        let query_age = query_pg.probe_graph_extension_available().await?;
+        tracing::info!(
+            ingest_age,
+            query_age,
+            "probed Apache AGE on wrapped pools (GitHub #477)"
+        );
         let auth_enabled = std::env::var("EDGEQUAKE_AUTH_ENABLED")
             .map(|v| {
                 !matches!(
