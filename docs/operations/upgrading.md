@@ -7,8 +7,8 @@ description: "Plain-English guide to upgrade any published EdgeQuake version saf
 
 This is the canonical guide to database upgrades. It is for operators who run EdgeQuake on their own PostgreSQL. Read it before you start a newer image or binary. Per-release pages (`upgrade-to-0.XX.md`) describe product changes; this page describes the migration process, which works from any published version to HEAD.
 
-> **Schema train today:** migration **206** (SPEC-164).
-> The released product is **v0.35.0** (schema 206). Migration 170 adds plain graph tables. Migration 171 drops Apache AGE only when `edgequake migrate` asks and you answer yes (`--drop-age`). The default is to leave the extension installed. `--confirm-drop` does not answer that question. Migrations 172 through 206 are expand.
+> **Schema train today:** migration **207** (`207_age_lineage_discovery_rls.sql`, AGE lineage discovery, GitHub #478). The published v0.35.0 tag stops at **206**.
+> The released product is **v0.35.0** (schema 206). Migration 170 adds plain graph tables. Migration 171 drops Apache AGE only when `edgequake migrate` asks and you answer yes (`--drop-age`). The default is to leave the extension installed. `--confirm-drop` does not answer that question. Migrations 172 through 207 are expand.
 >
 > **One rule:** the API never changes the database schema. Only `edgequake migrate` (or the Compose service or Helm Job that runs it) writes schema.
 
@@ -49,7 +49,7 @@ How to read it: start at the top, answer each question, and stop at the box that
 | 149 | v0.26.x | S to M | Normal path (150 to 169). Leftover drops may still be pending. |
 | 159 to 166 | v0.27 to v0.31 | S | Apply the remaining numbered files. |
 | 168 | v0.32.x | S | Apply 169 (`provider_connections`, expand-only). |
-| 169 | v0.33.0 / v0.34.0 | S | Apply 170 (plain graph). 171 drops AGE only if you answer yes (`--drop-age`). 172 to 206 are expand. |
+| 169 | v0.33.0 / v0.34.0 | S | Apply 170 (plain graph). 171 drops AGE only if you answer yes (`--drop-age`). 172 to 207 are expand. |
 
 Risk assumes a small database. Large graphs take longer (class XL) because some steps rewrite AGE tables or build indexes.
 Proof: `make spec150-matrix` (all epochs) and `make spec150-matrix-quick` (key epochs) replay each epoch to HEAD on PG16, PG17 and PG18.
@@ -96,7 +96,7 @@ Schema number to release. The migration matrix in `scripts/spec150/epochs.toml` 
 | 166 | v0.31.0 |
 | 168 | v0.32.0 to v0.32.2 |
 | 169 | v0.33.0 and v0.34.0 (schema unchanged; SPEC-163 `provider_connections`) |
-| 206 | v0.35.0, not tagged. The product pin stays v0.34.0 until the version-bump ceremony. |
+| 207 | v0.35.0, not tagged. The product pin stays v0.34.0 until the version-bump ceremony. |
 
 ---
 
@@ -165,20 +165,20 @@ Other `migrate` verbs: `status` (per-job progress), `console [--watch]` (live da
 ```text
 UPGRADE PATH
   database schema : 169 (≈ v0.33.0)
-  binary schema   : 206 (v0.34.0 ≈ v0.35.0)
-  pending steps   : 37
+  binary schema   : 207 (v0.34.0 ≈ v0.35.0)
+  pending steps   : 38
   irreversible    : 171 (drops Apache AGE after the SPEC-164 plain-graph ledger is ready)
 
  APPLY INTENT
-  pending total:              37
-  SAFE SCHEMA (will apply):   36
+  pending total:              38
+  SAFE SCHEMA (will apply):   37
   DROP OLD (needs confirm):    1 → 171 (drops Apache AGE after the SPEC-164 plain-graph ledger is ready)
   consent: NOT given — will apply SAFE SCHEMA only, leave DROP OLD pending
 
-migrate ok: pending_before=36 latest=206 applied_this_run=36
+migrate ok: pending_before=37 latest=207 applied_this_run=37
 ```
 
-`latest=206` is the highest applied version. An empty ledger prints `latest=none`. Version lists are spans (`172–206`), not Rust debug dumps. When migration 171 is still waiting for consent, that closing line is followed by `VERDICT: OK TO START THE SERVER`.
+`latest=207` is the highest applied version. An empty ledger prints `latest=none`. Version lists are spans (`172–207`), not Rust debug dumps. When migration 171 is still waiting for consent, that closing line is followed by `VERDICT: OK TO START THE SERVER`.
 
 Measured on PostgreSQL 16 with 80,000 documents, 40,000 chunks, 30,000 conversations, and 80,000 tasks ([v034_large_upgrade.json](../../specs/164-pure-postgres-study/measurements/v034_large_upgrade.json)):
 

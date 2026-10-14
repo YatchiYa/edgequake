@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 206, "HEAD schema train must end at 206");
-    for v in 160..=206 {
+    assert_eq!(max, 207, "HEAD schema train must end at 207");
+    for v in 160..=207 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "206");
+    assert_eq!(digits, "207");
 }
 
 #[test]
@@ -465,6 +465,27 @@ fn migration_206_stores_leakproof_predicates() {
 }
 
 #[test]
+fn migration_207_looks_up_age_lineage_as_bypass_owner() {
+    let manifest = include_str!("../../../migrations/manifest.toml");
+    let v207 = manifest
+        .split("version = 207")
+        .nth(1)
+        .expect("migration 207");
+    assert!(v207.contains("phase = \"expand\""));
+    assert!(!v207.contains("serving_floor"));
+    let sql = include_str!("../../../migrations/207_age_lineage_discovery_rls.sql");
+    assert!(sql.contains("eq_age_lineage_discover_nodes"));
+    assert!(sql.contains("eq_age_lineage_discover_edges_singular"));
+    assert!(sql.contains("SECURITY DEFINER"));
+    assert!(sql.contains("OFFSET 0"));
+    assert!(sql.contains("edgequake_tenant_access"));
+    let scan = include_str!("../../edgequake-storage/src/adapters/postgres/graph/scan_ops.rs");
+    assert!(scan.contains("eq_age_lineage_discover_nodes"));
+    assert!(scan.contains("eq_age_lineage_discover_edges"));
+    assert!(scan.contains("eq_age_lineage_discover_edges_singular"));
+}
+
+#[test]
 fn migration_202_indexes_document_title_search() {
     let manifest = include_str!("../../../migrations/manifest.toml");
     let v202 = manifest
@@ -812,8 +833,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 169 to v0.33.0"
     );
     assert!(
-        src.contains("170..=206 => \"v0.35.0\""),
-        "release_for_schema must map 170–206 to v0.35.0"
+        src.contains("170..=207 => \"v0.35.0\""),
+        "release_for_schema must map 170–207 to v0.35.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),
