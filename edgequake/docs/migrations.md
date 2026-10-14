@@ -31,9 +31,9 @@ Apply 170 with `edgequake migrate`. Apply 171 only with `--drop-age` after
 `PostgresAGEGraphStorage::run_spec164_cutover` marks `eq_graph_cutover` ready.
 `--confirm-drop` does not drop Apache AGE.
 Migrations 172 through 207 do not raise the serving floor.
-The released product pin stays **v0.34.0** until the version-bump ceremony;
-`release_for_schema` maps 170–207 to v0.35.0.
-Preparation notes: [`docs/operations/upgrade-to-0.35.0.md`](../../docs/operations/upgrade-to-0.35.0.md).
+The released product pin is **v0.35.1** (schema 207). Tag v0.35.0 stops at 206.
+`release_for_schema` maps 170–206 to v0.35.0 and 207 to v0.35.1.
+Preparation notes: [`docs/operations/upgrade-to-0.35.1.md`](../../docs/operations/upgrade-to-0.35.1.md).
 Run `edgequake migrate` before expecting `/ready` 200 when upgrading from an older schema.
 
 The ledger sqlx trusts is `public._sqlx_migrations`. Each step runs on one connection with `search_path` set to `public`, because `CREATE TABLE IF NOT EXISTS _sqlx_migrations` lands in the first schema of `search_path`. If an older run left copies in `ag_catalog` or `edgequake`, `edgequake migrate` copies the missing rows into `public` and drops the stray tables before it decides what is pending. Serving never does that write.

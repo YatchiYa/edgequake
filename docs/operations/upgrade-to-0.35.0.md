@@ -1,11 +1,11 @@
 ---
 title: "Upgrade to EdgeQuake v0.35.0"
-description: "Upgrade from v0.34.0 to v0.35.0. Schema moves 169 to 207. Apache AGE is optional."
+description: "Upgrade from v0.34.0 to v0.35.0. Schema moves 169 to 206. Apache AGE is optional."
 ---
 
 # Upgrade to EdgeQuake v0.35.0
 
-> **From:** v0.34.0 (schema **169**) · **To:** v0.35.0 (schema **207**)
+> **From:** v0.34.0 (schema **169**) · **To:** v0.35.0 (schema **206**)
 
 **demo.edgequake.com:** this cut installs the 0.35.0 API and WebUI. Non-interactive
 migrate leaves Apache AGE installed (migration 171 stays pending). Password auth
@@ -14,7 +14,7 @@ remains the demo default.
 Fresh install on Postgres without AGE:
 [specs/164-pure-postgres-study/README.md](../../specs/164-pure-postgres-study/README.md).
 
-The train is migrations **170** through **207**:
+The train is migrations **170** through **206**:
 
 | Migration | What it does | Consent |
 |-----------|--------------|---------|
@@ -25,9 +25,8 @@ The train is migrations **170** through **207**:
 | 204 | Label search runs as the table owner so `LIKE` can use the trigram index under row security. | `edgequake migrate` |
 | 205 | Drops the empty `ag_catalog` schema left behind after Apache AGE is gone. Refuses if the cutover is not ready or a leftover table has rows. | `edgequake migrate` |
 | 206 | Stored `modality` and `current_stage` columns, plus owner-side node search, so those predicates are index conditions under row security. | `edgequake migrate` |
-| 207 | Document lineage lookup runs as the bypass owner so the tenant role can use the lineage indexes under forced AGE row security. | `edgequake migrate` |
 
-`release_for_schema` maps 170–207 to v0.35.0. Schema 169 stays the published v0.33.0 / v0.34.0 point.
+`release_for_schema` maps 170–206 to v0.35.0. Migration **207** ships in [v0.35.1](upgrade-to-0.35.1.md). Schema 169 stays the published v0.33.0 / v0.34.0 point.
 
 ## What was proved
 
@@ -65,12 +64,12 @@ edgequake migrate status
 ```text
 schema:
   database : 169 (≈ v0.33.0)
-  binary   : 207 (≈ v0.35.0)
-  pending  : 37
+  binary   : 206 (≈ v0.35.0)
+  pending  : 36
   drop old : 171 (drops Apache AGE after the SPEC-164 plain-graph ledger is ready)
 ```
 
-After a successful apply the closing line is `migrate ok: pending_before=… latest=207 applied_this_run=…`. An empty database prints `latest=none`. Lists of versions are spans (`172–207`), and drop steps name what they delete.
+After a successful apply the closing line is `migrate ok: pending_before=… latest=206 applied_this_run=…`. An empty database prints `latest=none`. Lists of versions are spans (`172–206`), and drop steps name what they delete.
 
 ## What this command will not do
 

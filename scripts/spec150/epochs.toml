@@ -1,12 +1,9 @@
 # SPEC-150 epoch table — schema-distinct release points
 #
-# When the next schema train opens after v0.35.0, pin it under [unreleased]
+# v0.35.1 owns schema 207. Pin the next train under [unreleased]
 # (hash, max, files) until that tag exists.
 
 [unreleased]
-hash = "6c9f5db14719d62f"
-max = 207
-files = 205
 
 [[epoch]]
 tag = "v0.2.0"
@@ -314,3 +311,12 @@ key = true
 replay = true
 # max mig 206 (SPEC-164 plain graph + RLS query indexes)
 # hash b7db3bce689331bc (204 numbered migration files; 205 no-ops while AGE remains)
+
+[[epoch]]
+tag = "v0.35.1"
+mode = "image"
+pg_majors = [16,17,18]
+key = true
+replay = true
+# max mig 207 (AGE lineage discovery under row security, GitHub #478)
+# hash 6c9f5db14719d62f (205 numbered migration files)
