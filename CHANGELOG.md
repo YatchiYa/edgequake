@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ## [0.35.0] — 2026-10-12
 
 Minor: plain PostgreSQL graph for GraphRAG (SPEC-164). Apache AGE is optional.
-Schema moves **169 → 206**. Upgrade:
+Schema moves **169 → 207**. Upgrade:
 [`docs/operations/upgrade-to-0.35.0.md`](docs/operations/upgrade-to-0.35.0.md).
 Study and install:
 [`specs/164-pure-postgres-study/README.md`](specs/164-pure-postgres-study/README.md).
@@ -23,7 +23,7 @@ indexes under row security.
 
 ### Added
 
-- **SPEC-164 plain graph:** Migrations **170–206**. `eq_graph_nodes` /
+- **SPEC-164 plain graph:** Migrations **170–207**. `eq_graph_nodes` /
   `eq_graph_edges` are the product adjacency tables. Fresh install works on
   Postgres with pgvector and without the Apache AGE package (RDS / Cloud SQL
   class). Measured proof:
@@ -37,6 +37,7 @@ indexes under row security.
 
 ### Fixed
 
+- **Document lineage on large AGE graphs (#478):** `GET /api/v1/lineage/documents/{id}` no longer scans every node in the tenant. Migration 207 looks up source prefixes as the bypass owner and applies the session tenant inside the indexed plan.
 - Query companion graph pane no longer throws when Sigma measures a zero-width
   container (`allowInvalidContainer` + deferred resize).
 - Health reports `graph_available` when the plain cutover ledger is ready, even

@@ -25,7 +25,7 @@ timeline
     v0.32.2 : 168 pinned
     v0.33.0 : 169
     v0.34.0 : 169 pinned
-    v0.35.0 : 206
+    v0.35.0 : 207
 ```
 
 The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.35.0.
@@ -35,7 +35,7 @@ Run `edgequake migrate` when you move to a release with a higher number. The [up
 ### What's new in 0.35.0
 
 Minor: plain PostgreSQL graph for GraphRAG (SPEC-164). Apache AGE is optional.
-Schema moves **169 → 206**. Fresh install works on Postgres with pgvector and
+Schema moves **169 → 207**. Fresh install works on Postgres with pgvector and
 without AGE (RDS / Cloud SQL class). Dropping AGE is a migrate question
 (`--drop-age`); the default is keep. SPEC-001 Acc is attested from the existing
 2026-08-15 medical-mid pack; retrieval was not re-scored.

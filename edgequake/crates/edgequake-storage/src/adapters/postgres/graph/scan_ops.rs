@@ -589,16 +589,6 @@ impl PostgresAGEGraphStorage {
         (exact, chunk_prefixes)
     }
 
-    /// GitHub #478: owner-side discovery so forced AGE row security does not
-    /// hide the lineage GIN indexes. Absent until migration 207.
-    async fn lineage_definer_ready(conn: &mut sqlx::PgConnection, signature: &str) -> bool {
-        sqlx::query_scalar("SELECT to_regprocedure($1::text) IS NOT NULL")
-            .bind(signature)
-            .fetch_one(&mut *conn)
-            .await
-            .unwrap_or(false)
-    }
-
     pub(super) async fn pg_find_nodes_by_source_prefixes(
         &self,
         filter: &NodeListFilter,
@@ -630,12 +620,10 @@ impl PostgresAGEGraphStorage {
         let tenant_where_v = Self::build_node_where_clause_for_discovery(filter);
         let props_expr = "ag_catalog.agtype_to_json(v.properties)";
         let probe_limit = super::helpers::SOURCE_CHUNK_PROBE_LIMIT as i32;
-        let modern_sql = super::helpers::lineage_discovery_sql(
-            &format!("{props_expr} AS props"),
-            &format!(r#"{}."Node" v"#, self.graph_name),
-            props_expr,
-            &tenant_where_v,
-        );
+        // Issue #478: the tenant role cannot use lineage GIN indexes while the
+        // AGE guard calls agtype_to_json. Migration 207 looks up as the bypass
+        // owner and applies the session tenant inside the indexed plan.
+        let modern_sql = "SELECT props FROM public.eq_age_lineage_discover_nodes($1, $2, $3, $4)";
 
         // SPEC-089 Wave 3 / F-336-08 / LAW-H2: kill discovery CROSS JOIN probes.
         let timeout_ms = super::helpers::SOURCE_DISCOVERY_STATEMENT_TIMEOUT_MS;
@@ -664,28 +652,14 @@ impl PostgresAGEGraphStorage {
         )
         .await?;
         let mut by_id: HashMap<String, GraphNode> = HashMap::new();
-        let use_definer = tenant_where_v == "TRUE"
-            && Self::lineage_definer_ready(
-                timed.as_mut(),
-                "public.eq_age_discover_nodes(text,text[],text[],integer)",
-            )
-            .await;
-        let modern_rows = match if use_definer {
-            sqlx::query("SELECT props FROM public.eq_age_discover_nodes($1, $2, $3, $4)")
-                .bind(&self.graph_name)
-                .bind(&exact_ids)
-                .bind(&chunk_prefixes)
-                .bind(probe_limit)
-                .fetch_all(timed.as_mut())
-                .await
-        } else {
-            sqlx::query(&modern_sql)
-                .bind(&exact_ids)
-                .bind(&chunk_prefixes)
-                .bind(probe_limit)
-                .fetch_all(timed.as_mut())
-                .await
-        } {
+        let modern_rows = match sqlx::query(modern_sql)
+            .bind(&self.graph_name)
+            .bind(&exact_ids)
+            .bind(&chunk_prefixes)
+            .bind(probe_limit)
+            .fetch_all(timed.as_mut())
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 let _ = timed.rollback().await;
@@ -787,12 +761,10 @@ impl PostgresAGEGraphStorage {
             super::helpers::prop_only_endpoint("e", "target")
         };
 
-        let modern_sql = super::helpers::lineage_discovery_sql(
-            &format!("{props_expr} AS props, {src_expr} AS source_id, {tgt_expr} AS target_id"),
-            &format!(r#"{}."EDGE" e"#, self.graph_name),
-            props_expr,
-            &format!("({tenant_where_e}) AND {src_expr} IS NOT NULL AND {tgt_expr} IS NOT NULL"),
-        );
+        // Issue #478: same security-definer lookup as node discovery. Endpoint
+        // expressions (eq_* or properties) are chosen inside the function.
+        let modern_sql = "SELECT props, source_id, target_id \
+             FROM public.eq_age_lineage_discover_edges($1, $2, $3, $4)";
 
         let timeout_ms = super::helpers::SOURCE_DISCOVERY_STATEMENT_TIMEOUT_MS;
         let legacy_sql = if Self::source_prefix_legacy_enabled() {
@@ -828,30 +800,14 @@ impl PostgresAGEGraphStorage {
         .await?;
         // SPEC-098 D-30 / Symptom F: collapse on (src, tgt, rel), not (src, tgt).
         let mut by_key: HashMap<(String, String, String), GraphEdge> = HashMap::new();
-        let use_definer = tenant_where_e == "TRUE"
-            && Self::lineage_definer_ready(
-                timed.as_mut(),
-                "public.eq_age_discover_edges(text,text[],text[],integer)",
-            )
-            .await;
-        let modern_rows = match if use_definer {
-            sqlx::query(
-                "SELECT props, source_id, target_id FROM public.eq_age_discover_edges($1, $2, $3, $4)",
-            )
+        let modern_rows = match sqlx::query(modern_sql)
             .bind(&self.graph_name)
             .bind(&exact_ids)
             .bind(&chunk_prefixes)
             .bind(probe_limit)
             .fetch_all(timed.as_mut())
             .await
-        } else {
-            sqlx::query(&modern_sql)
-                .bind(&exact_ids)
-                .bind(&chunk_prefixes)
-                .bind(probe_limit)
-                .fetch_all(timed.as_mut())
-                .await
-        } {
+        {
             Ok(r) => r,
             Err(e) => {
                 let _ = timed.rollback().await;
@@ -879,42 +835,14 @@ impl PostgresAGEGraphStorage {
             }
         }
 
-        // SPEC-098 Symptom F: poisoned source_ids leave singular source_chunk_id /
-        // source_document_id as the only citation. Bounded exact probes (no SeqScan
-        // unnest of source_chunk_ids arrays — SPEC-071).
-        let singular_sql = format!(
-            r#"
-            WITH probes AS (
-              SELECT unnest($1::text[]) AS probe_id
-              UNION ALL
-              SELECT pref || gs.i::text
-              FROM unnest($2::text[]) AS pref
-              CROSS JOIN generate_series(0, $3::int - 1) AS gs(i)
-            )
-            SELECT
-                ag_catalog.agtype_to_json(e.properties) AS props,
-                {src} AS source_id,
-                {tgt} AS target_id
-            FROM {graph}."EDGE" e
-            WHERE {tenant_where}
-              AND {src} IS NOT NULL
-              AND {tgt} IS NOT NULL
-              AND (
-                -- SPEC-119 / LAW-119-2: btree expression must match (no ::jsonb on ->>).
-                -- ::jsonb cast defeats idx_edge_source_chunk_id / idx_edge_source_document_id
-                -- (same class as GH-362). Modern GIN path above keeps ::jsonb -> 'source_ids'.
-                {props}->>'source_chunk_id' IN (SELECT probe_id FROM probes)
-                OR {props}->>'source_document_id' IN (SELECT probe_id FROM probes)
-              )
-            LIMIT 5000
-            "#,
-            props = props_expr,
-            graph = self.graph_name,
-            tenant_where = tenant_where_e,
-            src = src_expr,
-            tgt = tgt_expr,
-        );
-        let singular_rows = match sqlx::query(&singular_sql)
+        // SPEC-098 Symptom F / issue #478: singular citations go through the
+        // same security-definer lookup. LATERAL equality + OFFSET 0 inside the
+        // function keeps idx_edge_source_chunk_id / idx_edge_source_document_id
+        // under FORCE RLS (a hashed IN (SELECT probe) seq-scans).
+        let singular_sql = "SELECT props, source_id, target_id \
+            FROM public.eq_age_lineage_discover_edges_singular($1, $2, $3, $4)";
+        let singular_rows = match sqlx::query(singular_sql)
+            .bind(&self.graph_name)
             .bind(&exact_ids)
             .bind(&chunk_prefixes)
             .bind(probe_limit)

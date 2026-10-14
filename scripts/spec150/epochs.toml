@@ -307,5 +307,5 @@ mode = "image"
 pg_majors = [16,17,18]
 key = true
 replay = true
-# max mig 206 (SPEC-164 plain graph + RLS query indexes)
+# max mig 207 (SPEC-164 plain graph + RLS query indexes + lineage lookup)
 # hash b7db3bce689331bc (204 numbered migration files; 205 no-ops while AGE remains)
