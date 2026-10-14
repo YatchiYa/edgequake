@@ -327,10 +327,12 @@ impl PostgresPool {
         // Enable Apache AGE extension (fail-closed unless opt-out — SPEC-090 F-090-19).
         // SPEC-164 G11: after 171 the ledger records age_absent. Do not recreate the
         // extension on a server that still has the package installed.
-        if cutover_marks_age_absent(pool).await || cutover_status_ready(pool).await {
-            tracing::info!(
-                "plain graph ledger is ready or AGE is absent; graph IO will not use Apache AGE"
-            );
+        // A finished migrate (ledger `ready`) stays on the plain tables. The only
+        // way back onto AGE label tables is `EDGEQUAKE_GRAPH_READ=age`.
+        let age_absent = cutover_marks_age_absent(pool).await;
+        let plain_ready = cutover_status_ready(pool).await;
+        if age_absent || (plain_ready && !graph_read_pinned_age()) {
+            tracing::info!(age_absent, plain_ready, "graph IO will not use Apache AGE");
             self.graph_extension_available
                 .store(false, Ordering::Relaxed);
             return Ok(());
