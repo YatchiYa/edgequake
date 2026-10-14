@@ -388,6 +388,7 @@ async fn seed_scope(pool: &sqlx::PgPool, tenant: Uuid, workspace: Uuid, prefix: 
     .expect("seed workspace");
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn insert_nodes(
     conn: &mut sqlx::PgConnection,
     graph: &str,
@@ -649,7 +650,7 @@ fn execution_ms(plan: &str) -> f64 {
         .filter_map(|line| line.trim().strip_prefix("Execution Time:"))
         .filter_map(|rest| rest.trim().strip_suffix("ms"))
         .filter_map(|number| number.trim().parse::<f64>().ok())
-        .last()
+        .next_back()
         .unwrap_or_else(|| panic!("plan has no execution time:\n{plan}"))
 }
 

@@ -427,6 +427,18 @@ impl PostgresPool {
     }
 }
 
+impl std::fmt::Debug for PostgresPool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PostgresPool")
+            .field("config", &self.config)
+            .field(
+                "connected",
+                &self.pool.try_read().map(|g| g.is_some()).unwrap_or(false),
+            )
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -465,17 +477,5 @@ mod tests {
         let expected = installed && (graph_read_pinned_age() || !ready);
         assert_eq!(probed, expected);
         assert_eq!(wrapped.graph_extension_available(), expected);
-    }
-}
-
-impl std::fmt::Debug for PostgresPool {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PostgresPool")
-            .field("config", &self.config)
-            .field(
-                "connected",
-                &self.pool.try_read().map(|g| g.is_some()).unwrap_or(false),
-            )
-            .finish()
     }
 }
