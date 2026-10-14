@@ -589,6 +589,16 @@ impl PostgresAGEGraphStorage {
         (exact, chunk_prefixes)
     }
 
+    /// GitHub #478: owner-side discovery so forced AGE row security does not
+    /// hide the lineage GIN indexes. Absent until migration 207.
+    async fn lineage_definer_ready(conn: &mut sqlx::PgConnection, signature: &str) -> bool {
+        sqlx::query_scalar("SELECT to_regprocedure($1::text) IS NOT NULL")
+            .bind(signature)
+            .fetch_one(&mut *conn)
+            .await
+            .unwrap_or(false)
+    }
+
     pub(super) async fn pg_find_nodes_by_source_prefixes(
         &self,
         filter: &NodeListFilter,
@@ -654,13 +664,28 @@ impl PostgresAGEGraphStorage {
         )
         .await?;
         let mut by_id: HashMap<String, GraphNode> = HashMap::new();
-        let modern_rows = match sqlx::query(&modern_sql)
-            .bind(&exact_ids)
-            .bind(&chunk_prefixes)
-            .bind(probe_limit)
-            .fetch_all(timed.as_mut())
-            .await
-        {
+        let use_definer = tenant_where_v == "TRUE"
+            && Self::lineage_definer_ready(
+                timed.as_mut(),
+                "public.eq_age_discover_nodes(text,text[],text[],integer)",
+            )
+            .await;
+        let modern_rows = match if use_definer {
+            sqlx::query("SELECT props FROM public.eq_age_discover_nodes($1, $2, $3, $4)")
+                .bind(&self.graph_name)
+                .bind(&exact_ids)
+                .bind(&chunk_prefixes)
+                .bind(probe_limit)
+                .fetch_all(timed.as_mut())
+                .await
+        } else {
+            sqlx::query(&modern_sql)
+                .bind(&exact_ids)
+                .bind(&chunk_prefixes)
+                .bind(probe_limit)
+                .fetch_all(timed.as_mut())
+                .await
+        } {
             Ok(r) => r,
             Err(e) => {
                 let _ = timed.rollback().await;
@@ -803,13 +828,30 @@ impl PostgresAGEGraphStorage {
         .await?;
         // SPEC-098 D-30 / Symptom F: collapse on (src, tgt, rel), not (src, tgt).
         let mut by_key: HashMap<(String, String, String), GraphEdge> = HashMap::new();
-        let modern_rows = match sqlx::query(&modern_sql)
+        let use_definer = tenant_where_e == "TRUE"
+            && Self::lineage_definer_ready(
+                timed.as_mut(),
+                "public.eq_age_discover_edges(text,text[],text[],integer)",
+            )
+            .await;
+        let modern_rows = match if use_definer {
+            sqlx::query(
+                "SELECT props, source_id, target_id FROM public.eq_age_discover_edges($1, $2, $3, $4)",
+            )
+            .bind(&self.graph_name)
             .bind(&exact_ids)
             .bind(&chunk_prefixes)
             .bind(probe_limit)
             .fetch_all(timed.as_mut())
             .await
-        {
+        } else {
+            sqlx::query(&modern_sql)
+                .bind(&exact_ids)
+                .bind(&chunk_prefixes)
+                .bind(probe_limit)
+                .fetch_all(timed.as_mut())
+                .await
+        } {
             Ok(r) => r,
             Err(e) => {
                 let _ = timed.rollback().await;

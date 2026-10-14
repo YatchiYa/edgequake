@@ -98,6 +98,67 @@ async fn issue_479_dev_get_echoes_origin_and_allows_credentials() {
     );
 }
 
+/// Real TCP preflight, the same bytes a browser sends. `tower` oneshot does
+/// not go through a socket.
+#[tokio::test]
+async fn issue_479_tcp_curl_preflight_echoes_origin_and_credentials() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = dev_split_origin_app();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    // `std::process::Command` blocks a runtime worker. On a small pool that
+    // stalls the server task, so curl never gets a response.
+    let mut output = String::new();
+    for _ in 0..20 {
+        let result = tokio::process::Command::new("curl")
+            .args([
+                "-sS",
+                "--max-time",
+                "2",
+                "--connect-timeout",
+                "1",
+                "-D",
+                "-",
+                "-o",
+                "/dev/null",
+                "-X",
+                "OPTIONS",
+                &format!("http://{addr}/health"),
+                "-H",
+                &format!("Origin: {UI_ORIGIN}"),
+                "-H",
+                "Access-Control-Request-Method: GET",
+                "-H",
+                "Access-Control-Request-Headers: content-type,x-tenant-id,x-workspace-id",
+            ])
+            .output()
+            .await
+            .expect("curl");
+        output = String::from_utf8_lossy(&result.stdout).to_string();
+        if result.status.success() && !output.is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    println!("CURL_PREFLIGHT\n{output}");
+    let lower = output.to_ascii_lowercase();
+    assert!(
+        lower.contains("access-control-allow-origin: http://lan-host:3000"),
+        "curl preflight must echo the UI origin:\n{output}"
+    );
+    assert!(
+        lower.contains("access-control-allow-credentials: true"),
+        "curl preflight must allow credentials:\n{output}"
+    );
+    assert!(
+        !lower.contains("access-control-allow-origin: *"),
+        "wildcard origin is illegal on a credentialed request:\n{output}"
+    );
+}
+
 #[test]
 fn issue_477_server_pools_probe_age_after_from_existing() {
     let src = include_str!("../src/state/postgres.rs");

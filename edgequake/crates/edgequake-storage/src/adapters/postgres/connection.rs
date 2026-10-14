@@ -419,6 +419,7 @@ mod tests {
             .probe_graph_extension_available()
             .await
             .expect("AGE probe");
+        eprintln!("AGE_PROBE available={probed}");
         let expected: bool =
             sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
                 .fetch_one(&raw)
