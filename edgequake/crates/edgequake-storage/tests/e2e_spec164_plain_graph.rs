@@ -18,6 +18,8 @@ use uuid::Uuid;
 const M090: &str = include_str!("../../../migrations/090_eq_merge_graph_properties.sql");
 const M170: &str = include_str!("../../../migrations/170_spec164_plain_graph.sql");
 const M171: &str = include_str!("../../../migrations/171_spec164_drop_age.sql");
+const M204: &str = include_str!("../../../migrations/204_graph_label_search_rls.sql");
+const M206: &str = include_str!("../../../migrations/206_rls_leakproof_predicates.sql");
 
 macro_rules! measure {
     ($out:ident, $name:expr, $fut:expr) => {{
@@ -58,6 +60,19 @@ async fn plain_graph_queries_are_proven_and_measured() {
         .expect("tenant stubs");
     sqlx::raw_sql(M090).execute(&pool).await.expect("090");
     sqlx::raw_sql(M170).execute(&pool).await.expect("170");
+    // search_labels and search_nodes call the owner functions from 204 and 206.
+    // 206 also alters chunks, entities, and documents, which this graph fixture
+    // does not create, so only the search function is applied.
+    sqlx::raw_sql(M204).execute(&pool).await.expect("204");
+    let marker = "CREATE OR REPLACE FUNCTION public.eq_graph_search_nodes";
+    let search_fn = M206
+        .split_once(marker)
+        .map(|(_, rest)| format!("{marker}{rest}"))
+        .expect("206 search function");
+    sqlx::raw_sql(&search_fn)
+        .execute(&pool)
+        .await
+        .expect("206 search function");
 
     let (host, port, user, password) = parse_url(&url);
     let tenant_a = Uuid::new_v4();

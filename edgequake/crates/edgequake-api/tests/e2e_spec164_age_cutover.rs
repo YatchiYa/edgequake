@@ -56,6 +56,19 @@ async fn age_cutover_proves_mirror_shadow_ledger_flip_and_confirm_drop() {
             .await
             .expect("age probe");
     assert!(age_on, "AGE must still be installed before confirm-drop");
+    // Migration 170 marks an empty database ready. A ready ledger does not
+    // create AGE label tables (GitHub #477). This proof is the v0.34 writer,
+    // so hold the ledger on AGE until initialize builds the graph and the
+    // mirror triggers. run_spec164_cutover below flips it back to ready.
+    sqlx::query(
+        "UPDATE public.eq_graph_cutover
+         SET status = 'age', age_absent = false, shadow_ok = false,
+             backfill_complete = false, updated_at = now()
+         WHERE id = 1",
+    )
+    .execute(&pool)
+    .await
+    .expect("hold the ledger on AGE for the v0.34-shaped writer");
 
     let (host, port, user, password) = parse_url(&url);
     let tenant = Uuid::new_v4();
@@ -287,17 +300,22 @@ async fn full_train_through_171_on_fresh_database() {
         .await
         .expect("db connect");
     std::env::set_var("EDGEQUAKE_MIGRATE_CLI", "1");
-    run_postgres_migrations(&pool)
+    let report = run_postgres_migrations(&pool)
         .await
-        .unwrap_or_else(|e| panic!("full train through 202 failed (no_age={no_age}): {e}"));
+        .unwrap_or_else(|e| panic!("full train failed (no_age={no_age}): {e}"));
     let max_version: i64 =
         sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations")
             .fetch_one(&pool)
             .await
             .expect("max");
+    let head = report.latest_version.expect("applied head");
+    assert!(
+        max_version >= 202,
+        "train must include the document title trigram index 202, got {max_version}"
+    );
     assert_eq!(
-        max_version, 202,
-        "train must include the document title trigram index 202"
+        max_version, head,
+        "ledger must match the binary head, including migrations after 202"
     );
     let age_on: bool =
         sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
