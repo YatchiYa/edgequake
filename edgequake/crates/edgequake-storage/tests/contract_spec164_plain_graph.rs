@@ -34,12 +34,33 @@ fn native_writes_opt_out_is_refused_when_plain_tables_exist() {
 }
 
 #[test]
-fn graph_read_flag_cannot_force_plain_reads() {
-    let src = include_str!("../src/adapters/postgres/graph/plain/ledger.rs");
-    assert!(src.contains("fn graph_read_forced_age"));
+fn ready_ledger_ignores_graph_read_age() {
+    let ledger = include_str!("../src/adapters/postgres/graph/plain/ledger.rs");
     assert!(
-        src.contains("if graph_read_forced_age()"),
-        "EDGEQUAKE_GRAPH_READ=age pins AGE; no flag selects plain before the ledger is ready"
+        ledger.contains("status.as_deref() == Some(\"ready\")"),
+        "plain reads follow the cutover ledger"
+    );
+    assert!(
+        !ledger.contains("fn graph_read_forced_age")
+            && !ledger.contains("if graph_read_forced_age()"),
+        "EDGEQUAKE_GRAPH_READ=age must not override a ready ledger"
+    );
+    assert!(
+        ledger.contains("ignores `EDGEQUAKE_GRAPH_READ`"),
+        "a finished cutover ignores the age pin"
+    );
+    let conn = include_str!("../src/adapters/postgres/connection.rs");
+    assert!(
+        !conn.contains("graph_read_pinned_age"),
+        "pool setup must not reopen AGE because of EDGEQUAKE_GRAPH_READ"
+    );
+    assert!(
+        conn.contains("age_absent || plain_ready"),
+        "a ready ledger skips Apache AGE setup even when the variable is set"
+    );
+    assert!(
+        conn.contains("installed && !cutover_status_ready"),
+        "AGE IO stays available only while the ledger is not ready"
     );
 }
 

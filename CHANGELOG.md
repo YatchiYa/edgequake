@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Ready cutover ignores `EDGEQUAKE_GRAPH_READ=age`:** once `eq_graph_cutover.status` is `ready`, the variable does not create Apache AGE label tables and does not route graph reads or writes to AGE. `eq_graph_nodes` and `eq_graph_edges` stay the only graph IO. Before the ledger is `ready`, the in-progress upgrade path is unchanged.
+
 ## [0.35.1] — 2026-10-14
 
 Patch: ship the v0.35 fixes that were not in tag `v0.35.0` (schema **206**).
@@ -22,7 +26,7 @@ and credentialed CORS.
 
 ### Fixed
 
-- **Plain graph after migrate (#477, #484):** once `eq_graph_cutover` is `ready`, reads and writes use `eq_graph_nodes` / `eq_graph_edges` only. `EDGEQUAKE_GRAPH_READ=age` is the explicit pin back onto AGE label tables.
+- **Plain graph after migrate (#477, #484):** once `eq_graph_cutover` is `ready`, reads and writes use `eq_graph_nodes` / `eq_graph_edges` only. `EDGEQUAKE_GRAPH_READ=age` does not reopen AGE label tables after that ledger row is `ready`.
 - **Document lineage on large AGE graphs (#478):** `GET /api/v1/lineage/documents/{id}` no longer scans every node in the tenant. Migration 207 looks up source prefixes as the bypass owner and applies the session tenant inside the indexed plan.
 - **Split-origin credentialed CORS (#479):** open CORS echoes the request `Origin` and sends `Access-Control-Allow-Credentials: true`. It never sends `*`.
 

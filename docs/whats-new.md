@@ -35,7 +35,7 @@ Run `edgequake migrate` when you move to a release with a higher number. The [up
 
 ### What's new in 0.35.1
 
-Patch on v0.35.0. Schema moves **206 → 207**. After migrate, graph IO stays on the plain tables unless `EDGEQUAKE_GRAPH_READ=age`. Lineage lookup uses migration 207. Credentialed CORS echoes the request origin. SPEC-001 Acc is attested from the existing 2026-08-15 medical-mid pack; the key available for this cut returned HTTP 401, so retrieval was not re-scored.
+Patch on v0.35.0. Schema moves **206 → 207**. After migrate, graph IO stays on the plain tables. `EDGEQUAKE_GRAPH_READ=age` does not move a ready cutover back onto Apache AGE. Lineage lookup uses migration 207. Credentialed CORS echoes the request origin. SPEC-001 Acc is attested from the existing 2026-08-15 medical-mid pack; the key available for this cut returned HTTP 401, so retrieval was not re-scored.
 
 Upgrade: **[upgrade-to-0.35.1.md](operations/upgrade-to-0.35.1.md)** ·
 changelog: [CHANGELOG.md](CHANGELOG.md).

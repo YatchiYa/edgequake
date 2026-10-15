@@ -245,11 +245,29 @@ async fn build_fixture() -> Option<Fixture> {
     }
     provision_age_database().await;
     std::env::set_var("EDGEQUAKE_TEST_DATABASE", AGE_DATABASE);
+    // Migration 170 marks a graph-less database `ready`. A ready ledger ignores
+    // this variable, so the scratch database stays on the in-progress ledger.
+    // That is not a finished cutover: migration 171 is recorded and not applied.
     std::env::set_var("EDGEQUAKE_GRAPH_READ", "age");
     let cfg = require_or_skip_postgres("issue478")?;
     let graph = cfg.age_graph_name();
     assert_safe_ident(&graph);
     let pool = contract_pg_pool(&cfg).await;
+    sqlx::query(
+        "UPDATE public.eq_graph_cutover
+            SET status = 'age',
+                age_absent = false,
+                shadow_ok = false,
+                backfill_complete = false,
+                updated_at = now(),
+                detail = jsonb_build_object('reason', 'issue478_scratch_not_ready')
+          WHERE id = 1",
+    )
+    .execute(&pool)
+    .await
+    .expect(
+        "issue478 ledger must stay off ready so EDGEQUAKE_GRAPH_READ=age creates the AGE graph",
+    );
     let storage = PostgresAGEGraphStorage::new(cfg);
     storage
         .initialize()
