@@ -4,9 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.35.2] — 2026-10-15
+
+Patch: an ingest fix that restores entity and relationship vectors, plus the user-journey fixes that were not in tag `v0.35.1`. Schema stays **207**.
+Upgrade from 0.35.1 is a no-op:
+[`docs/operations/upgrade-to-0.35.2.md`](docs/operations/upgrade-to-0.35.2.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres`, and
+`edgequake-keycloak` on tag `v0.35.2`.
+
+**SPEC-001 Acc:** scored on this cut, medical-mid n=200, Mistral pins, scorecard
+[`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`).
+EdgeQuake **0.7525**, LightRAG **0.7810**, delta **-0.0285** (95% bootstrap CI
+[-0.078, -0.001]). LightRAG is ahead on this run; EdgeQuake does not claim a win.
+The gap is in Fact Retrieval (0.653 vs 0.740); Complex Reasoning, Contextual
+Summarize, and Creative Generation are within 0.015. This is one run; the
+August 2026 runs (before the durable commit path) had EdgeQuake at 0.768 to 0.794.
+
 ### Fixed
 
-- **Ready cutover ignores `EDGEQUAKE_GRAPH_READ=age`:** once `eq_graph_cutover.status` is `ready`, the variable does not create Apache AGE label tables and does not route graph reads or writes to AGE. `eq_graph_nodes` and `eq_graph_edges` stay the only graph IO. Before the ledger is `ready`, the in-progress upgrade path is unchanged.
+- **Entity and relationship vectors on the default ingest path:** the durable commit path wrote chunks, graph facts, and chunk embeddings, then returned before the merge step. Entity and relationship embeddings were computed and dropped, so `entities`, `relationships`, `entity_embeddings`, and `relationship_embeddings` stayed empty for every document ingested that way, and the Local and Global vector arms had nothing to search. The commit path now writes the relational spine and the fleet vectors after the commit. On the n=200 corpus the index went from 0 to 4,272 entity vectors and 4,683 relationship vectors, matching the graph.
+- **Ready cutover ignores `EDGEQUAKE_GRAPH_READ=age` (#477):** once `eq_graph_cutover.status` is `ready`, the variable does not create Apache AGE label tables and does not route graph reads or writes to AGE. `eq_graph_nodes` and `eq_graph_edges` stay the only graph IO. Before the ledger is `ready`, the in-progress upgrade path is unchanged.
+- **Document lineage GET:** the page reads the lineage row that finalize wrote, instead of an empty store.
+- **Knowledge injection list:** an injection row keeps the workspace tenant, and the workspace list reads that row.
+- **Query thread:** the question stays on screen until the saved answer is present.
+
+### Confirmed
+
+- **#479** split-origin credentialed CORS, **#478** lineage on a 160k-node AGE graph, **#477** AGE cutover, and **#399** workspaces past the first page of 20. Re-proved on this tag. No new schema.
 
 ## [0.35.1] — 2026-10-14
 

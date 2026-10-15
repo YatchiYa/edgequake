@@ -1,7 +1,7 @@
 # SPEC-150 epoch table — schema-distinct release points
 #
-# v0.35.1 owns schema 207. Pin the next train under [unreleased]
-# (hash, max, files) until that tag exists.
+# v0.35.1 owns schema 207. v0.35.2 serves the same migration set.
+# Pin the next train under [unreleased] (hash, max, files) until that tag exists.
 
 [unreleased]
 

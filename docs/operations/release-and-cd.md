@@ -7,9 +7,9 @@ description: "Release and continuous-delivery runbook."
 
 This runbook covers cutting a product release: the local quality gates, the tag-triggered Docker publish, and the checks after publish. Workspace crates are **not** published to crates.io. Product delivery is GHCR Docker images, built when you push a `vX.Y.Z` tag.
 
-> **Product: v0.35.1** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.35.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 >
-> Upgrade: [upgrade-to-0.35.1.md](upgrade-to-0.35.1.md) (lineage indexes, plain-graph reads, credentialed CORS; schema **207**). Previous: [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md) (SPEC-164 plain graph; schema **206**), [upgrade-to-0.34.0.md](upgrade-to-0.34.0.md) (visual tour; schema **169**), [upgrade-to-0.33.0.md](upgrade-to-0.33.0.md) (SPEC-163; schema **169**). Earlier guides: [0.32.2](upgrade-to-0.32.2.md) and [0.32.0](upgrade-to-0.32.0.md) (schema **168**), [0.31.0](upgrade-to-0.31.0.md) (schema **166**), [0.30.0](upgrade-to-0.30.0.md) (schema **165**), [0.29.0](upgrade-to-0.29.0.md) (schema **163**), [0.28.5](upgrade-to-0.28.5.md) (schema **162**).
+> Upgrade: [upgrade-to-0.35.2.md](upgrade-to-0.35.2.md) (lineage read, injection list, query thread; schema **207**, no new migration). Previous: [upgrade-to-0.35.1.md](upgrade-to-0.35.1.md) (lineage indexes, plain-graph reads, credentialed CORS; schema **207**), [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md) (SPEC-164 plain graph; schema **206**), [upgrade-to-0.34.0.md](upgrade-to-0.34.0.md) (visual tour; schema **169**). Earlier guides: [0.33.0](upgrade-to-0.33.0.md) (schema **169**), [0.32.2](upgrade-to-0.32.2.md) and [0.32.0](upgrade-to-0.32.0.md) (schema **168**), [0.31.0](upgrade-to-0.31.0.md) (schema **166**), [0.30.0](upgrade-to-0.30.0.md) (schema **165**), [0.29.0](upgrade-to-0.29.0.md) (schema **163**), [0.28.5](upgrade-to-0.28.5.md) (schema **162**).
 >
 > **SPEC-001 Acc (this cut):** attested existing [`publish/latest`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run. The cut environment's `MISTRAL_API_KEY` is rejected with HTTP 401. **Retrieval not re-scored.** Decision mode is unscored.
 >
