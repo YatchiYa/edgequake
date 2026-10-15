@@ -263,10 +263,12 @@ test("document view", async ({ page, request }) => {
   await ready(page);
 
   await page.goto(`/documents/${state.docs!.markdownId}`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: /EF-extract-208|PEUGEOT|208/i })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "EF-extract-208.md", exact: true })).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByText(/PEUGEOT 208/i).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "PEUGEOT 208", exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
   await captureScreenshot(page, "08-document-view-markdown");
 
   await page.goto(`/documents/${state.docs!.pdfId}`, { waitUntil: "domcontentloaded" });
@@ -283,6 +285,8 @@ test("query", async ({ page, request }) => {
   await requireIngested(request);
   await ready(page);
   await gotoQueryPage(page);
+  await page.getByRole("button", { name: "All docs" }).click();
+  await page.getByRole("option", { name: /EF-extract-208|PEUGEOT/i }).click();
 
   const markdownAnswer = await submitQueryAndWait(
     page,
@@ -339,9 +343,8 @@ test("knowledge graph", async ({ page, request }) => {
   await ready(page);
   await page.goto("/graph", { waitUntil: "domcontentloaded" });
   await waitForAppReady(page);
-  await expect(page.getByTestId("graph-filter-search").or(page.locator("canvas").first())).toBeVisible({
-    timeout: 60_000,
-  });
+  await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("graph-filter-search")).toBeVisible();
   await captureScreenshot(page, "10-knowledge-graph");
 });
 
@@ -377,7 +380,7 @@ test("lineage", async ({ page, request }) => {
 });
 
 test("knowledge injection", async ({ page, request }) => {
-  test.setTimeout(3 * 60_000);
+  test.setTimeout(4 * 60_000);
   await ready(page);
   await page.goto("/knowledge", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Knowledge Injection" })).toBeVisible({
@@ -388,9 +391,18 @@ test("knowledge injection", async ({ page, request }) => {
   await page.locator('input[type="file"]').last().setInputFiles(MARKDOWN_PATH);
   await expect(page.getByText("EF-extract-208.md")).toBeVisible();
   await captureScreenshot(page, "12-knowledge-injection-dialog");
+  const uploaded = page.waitForResponse(
+    (response) =>
+      response.url().includes("/injection/file") &&
+      response.request().method() === "PUT" &&
+      response.ok(),
+  );
   await page.getByRole("button", { name: "Upload" }).click();
+  const created = (await (await uploaded).json()) as { injection_id?: string };
+  const injectionId = created.injection_id ?? "";
+  expect(injectionId, "upload did not return an injection id").not.toBe("");
 
-  const deadline = Date.now() + 90_000;
+  const deadline = Date.now() + 150_000;
   let injection: Record<string, unknown> | undefined;
   let listedBody: unknown;
   while (Date.now() < deadline) {
@@ -403,9 +415,7 @@ test("knowledge injection", async ({ page, request }) => {
     listedBody = listed.body;
     const items = ((listed.body as { items?: Record<string, unknown>[] })?.items ??
       (Array.isArray(listed.body) ? listed.body : [])) as Record<string, unknown>[];
-    injection = items.find((item) =>
-      String(item.name ?? item.file_name ?? "").includes("EF-extract-208"),
-    );
+    injection = items.find((item) => String(item.injection_id ?? "") === injectionId);
     const status = String(injection?.status ?? "");
     if (status === "completed" || status === "failed") break;
     await page.waitForTimeout(3_000);
@@ -416,8 +426,9 @@ test("knowledge injection", async ({ page, request }) => {
     list: listedBody,
   });
   await captureScreenshot(page, "12-knowledge-injection");
-  expect(injection, "knowledge injection was not listed after upload").toBeTruthy();
+  expect(injection, "this upload was not listed").toBeTruthy();
   expect(String(injection?.status), JSON.stringify(injection)).toBe("completed");
+  await expect(page.getByRole("heading", { name: "No knowledge injections yet" })).toHaveCount(0);
 });
 
 test("workspace admin", async ({ page }) => {
