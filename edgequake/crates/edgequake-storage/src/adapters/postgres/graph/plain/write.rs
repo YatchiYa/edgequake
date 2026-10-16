@@ -273,6 +273,115 @@ pub(in crate::adapters::postgres::graph) mod write {
         Ok(())
     }
 
+    /// Delete one multigraph sister per triple. `rel_type` uses the same
+    /// `UPPER(TRIM)` arbiter as the AGE edge trigger. Optional tenant and
+    /// workspace fences compare the plain columns. Degree triggers stay on.
+    pub(in crate::adapters::postgres::graph) async fn delete_edges_by_rel(
+        tx: &mut Transaction<'_, Postgres>,
+        namespace: &str,
+        sources: &[String],
+        targets: &[String],
+        rels: &[String],
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> Result<u64> {
+        if sources.is_empty() {
+            return Ok(0);
+        }
+        let row_rel = crate::graph_batch_dedupe::sql_eq_rel_type_arbiter_expr("e.rel_type");
+        let pair_rel = crate::graph_batch_dedupe::sql_eq_rel_type_arbiter_expr("k.rel");
+        let sql = format!(
+            "DELETE FROM public.eq_graph_edges e
+             USING unnest($2::text[], $3::text[], $4::text[]) AS k(src, tgt, rel)
+             WHERE e.namespace = $1
+               AND e.source_id = k.src
+               AND e.target_id = k.tgt
+               AND {row_rel} = {pair_rel}
+               AND ($5::text IS NULL OR e.tenant_id = $5)
+               AND ($6::text IS NULL OR e.workspace_id = $6)"
+        );
+        let result = sqlx::query(&sql)
+            .bind(namespace)
+            .bind(sources)
+            .bind(targets)
+            .bind(rels)
+            .bind(tenant_id)
+            .bind(workspace_id)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("plain delete edges by rel failed: {e}"))
+            })?;
+        Ok(result.rows_affected())
+    }
+
+    /// Delete every relationship between one pair, optionally inside a tenant fence.
+    pub(in crate::adapters::postgres::graph) async fn delete_edges_between(
+        tx: &mut Transaction<'_, Postgres>,
+        namespace: &str,
+        source: &str,
+        target: &str,
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            "DELETE FROM public.eq_graph_edges
+             WHERE namespace = $1 AND source_id = $2 AND target_id = $3
+               AND ($4::text IS NULL OR tenant_id = $4)
+               AND ($5::text IS NULL OR workspace_id = $5)",
+        )
+        .bind(namespace)
+        .bind(source)
+        .bind(target)
+        .bind(tenant_id)
+        .bind(workspace_id)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| StorageError::Database(format!("plain delete edges between failed: {e}")))?;
+        Ok(result.rows_affected())
+    }
+
+    /// Tenant-scoped node delete. Incident plain edges of the doomed nodes are detached.
+    pub(in crate::adapters::postgres::graph) async fn delete_nodes_scoped(
+        tx: &mut Transaction<'_, Postgres>,
+        namespace: &str,
+        node_ids: &[String],
+        tenant_id: &str,
+        workspace_id: &str,
+    ) -> Result<u64> {
+        if node_ids.is_empty() {
+            return Ok(0);
+        }
+        let rows = sqlx::query(
+            "WITH doomed AS (
+               SELECT node_id FROM public.eq_graph_nodes
+               WHERE namespace = $1 AND node_id = ANY($2::text[])
+                 AND tenant_id = $3 AND workspace_id = $4
+             ),
+             detached AS (
+               DELETE FROM public.eq_graph_edges e
+               WHERE e.namespace = $1
+                 AND (
+                   e.source_id IN (SELECT node_id FROM doomed)
+                   OR e.target_id IN (SELECT node_id FROM doomed)
+                 )
+               RETURNING 1
+             )
+             DELETE FROM public.eq_graph_nodes n
+             WHERE n.namespace = $1
+               AND n.node_id IN (SELECT node_id FROM doomed)
+             RETURNING 1",
+        )
+        .bind(namespace)
+        .bind(node_ids)
+        .bind(tenant_id)
+        .bind(workspace_id)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(|e| StorageError::Database(format!("plain scoped node delete failed: {e}")))?;
+        Ok(rows.len() as u64)
+    }
+
     pub(in crate::adapters::postgres::graph) async fn clear_namespace(
         pool: &PgPool,
         namespace: &str,

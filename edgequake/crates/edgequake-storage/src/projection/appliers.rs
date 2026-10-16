@@ -72,7 +72,16 @@ struct PendingEdgeDelete {
     target_logical: String,
     source: String,
     target: String,
+    rel: String,
     excluding_document: Option<Uuid>,
+}
+
+fn fact_relation_type(payload: &Value) -> String {
+    payload
+        .pointer("/properties/relation_type")
+        .and_then(Value::as_str)
+        .map(crate::graph_batch_dedupe::normalize_relation_type_str)
+        .unwrap_or_else(|| "RELATED_TO".to_string())
 }
 
 impl AgeGraphProjectionApplier {
@@ -364,6 +373,7 @@ impl AgeGraphProjectionApplier {
         let target_logical = required_string(payload, "target")?;
         let source = canonical_graph_node_id(workspace, &source_logical);
         let target = canonical_graph_node_id(workspace, &target_logical);
+        let rel = fact_relation_type(payload);
         pending.push(PendingEdgeDelete {
             tenant,
             workspace,
@@ -373,6 +383,7 @@ impl AgeGraphProjectionApplier {
             target_logical,
             source,
             target,
+            rel,
             excluding_document: excluding_document_id(event, ProjectionOperation::Delete, payload),
         });
         Ok(())
@@ -530,7 +541,7 @@ impl AgeGraphProjectionApplier {
     async fn resolve_edge_deletes(
         &self,
         pending: Vec<PendingEdgeDelete>,
-        edge_deletes: &mut Vec<(String, String, String, String)>,
+        edge_deletes: &mut Vec<(String, String, String, String, String)>,
         edge_retains: &mut Vec<(String, String, HashMap<String, Value>)>,
     ) -> AccessResult<()> {
         use std::collections::HashSet;
@@ -588,17 +599,19 @@ impl AgeGraphProjectionApplier {
                 let Some(excluding) = item.excluding_document else {
                     continue;
                 };
-                let Some(edge) = existing_edges
-                    .iter()
-                    .find(|e| e.source == item.source && e.target == item.target)
-                else {
+                let Some(edge) = existing_edges.iter().find(|e| {
+                    e.source == item.source
+                        && e.target == item.target
+                        && crate::graph_batch_dedupe::normalize_rel_type(&e.properties) == item.rel
+                }) else {
                     continue;
                 };
                 let contrib_docs: HashSet<Uuid> = contribs
                     .iter()
-                    .filter(|(src, tgt, doc, _)| {
+                    .filter(|(src, tgt, doc, payload)| {
                         src == &item.source_logical
                             && tgt == &item.target_logical
+                            && fact_relation_type(payload) == item.rel
                             && *doc != excluding
                     })
                     .map(|(_, _, doc, _)| *doc)
@@ -626,6 +639,7 @@ impl AgeGraphProjectionApplier {
                     edge_deletes.push((
                         item.source.clone(),
                         item.target.clone(),
+                        item.rel.clone(),
                         item.tenant_s.clone(),
                         item.workspace_s.clone(),
                     ));
@@ -633,28 +647,36 @@ impl AgeGraphProjectionApplier {
                 };
                 let others: Vec<(Uuid, Value)> = contribs
                     .iter()
-                    .filter(|(src, tgt, doc, _)| {
+                    .filter(|(src, tgt, doc, payload)| {
                         src == &item.source_logical
                             && tgt == &item.target_logical
+                            && fact_relation_type(payload) == item.rel
                             && *doc != excluding
                     })
                     .map(|(_, _, doc, payload)| (*doc, payload.clone()))
                     .collect();
                 let props = existing_edges
                     .iter()
-                    .find(|e| e.source == item.source && e.target == item.target)
+                    .find(|e| {
+                        e.source == item.source
+                            && e.target == item.target
+                            && crate::graph_batch_dedupe::normalize_rel_type(&e.properties)
+                                == item.rel
+                    })
                     .map(|e| e.properties.clone())
                     .unwrap_or_default();
                 match retained_lineage(&props, excluding, &others, &live_legacy) {
                     Some(kept) => {
                         let mut retained = props;
                         apply_retained_sources(&mut retained, &kept.chunks, &kept.documents);
+                        retained.insert("relation_type".into(), Value::String(item.rel.clone()));
                         edge_retains.push((item.source.clone(), item.target.clone(), retained));
                     }
                     None => {
                         edge_deletes.push((
                             item.source.clone(),
                             item.target.clone(),
+                            item.rel.clone(),
                             item.tenant_s.clone(),
                             item.workspace_s.clone(),
                         ));
@@ -670,7 +692,7 @@ impl AgeGraphProjectionApplier {
         mut node_upserts: HashMap<String, HashMap<String, Value>>,
         mut edge_upserts: HashMap<(String, String, String), HashMap<String, Value>>,
         node_deletes: Vec<(String, String, String)>,
-        edge_deletes: Vec<(String, String, String, String)>,
+        edge_deletes: Vec<(String, String, String, String, String)>,
         node_retains: Vec<(String, HashMap<String, Value>)>,
         edge_retains: Vec<(String, String, HashMap<String, Value>)>,
     ) -> AccessResult<()> {
@@ -757,17 +779,18 @@ impl AgeGraphProjectionApplier {
             }
         }
         if !edge_deletes.is_empty() {
-            let mut by_scope: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
-            for (source, target, tenant_s, workspace_s) in edge_deletes {
+            let mut by_scope: HashMap<(String, String), Vec<(String, String, String)>> =
+                HashMap::new();
+            for (source, target, rel, tenant_s, workspace_s) in edge_deletes {
                 by_scope
                     .entry((tenant_s, workspace_s))
                     .or_default()
-                    .push((source, target));
+                    .push((source, target, rel));
             }
-            for ((tenant_s, workspace_s), pairs) in by_scope {
+            for ((tenant_s, workspace_s), triples) in by_scope {
                 let _ = self
                     .graph
-                    .delete_edges_scoped_batch(&pairs, &tenant_s, &workspace_s)
+                    .delete_edges_scoped_batch(&triples, &tenant_s, &workspace_s)
                     .await
                     .map_err(AccessError::from)?;
                 self.scoped_batch_deletes.fetch_add(1, Ordering::Relaxed);

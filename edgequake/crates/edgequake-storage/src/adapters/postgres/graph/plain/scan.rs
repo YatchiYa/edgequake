@@ -2,7 +2,7 @@
 
 use sqlx::Row;
 
-use super::super::helpers::lineage_discovery_sql;
+use super::super::helpers::{lineage_discovery_singular_sql, lineage_discovery_sql};
 use super::super::PostgresAGEGraphStorage;
 use super::rows::{edge_from_row, lit, node_from_row, tenant_and, TenantMode};
 use crate::error::{Result, StorageError};
@@ -257,7 +257,37 @@ pub(in crate::adapters::postgres::graph) mod scan {
             .fetch_all(&pool)
             .await
             .map_err(|e| StorageError::Database(format!("plain edge lineage failed: {e}")))?;
-        Ok(rows.iter().filter_map(edge_from_row).collect())
+        let singular_sql = lineage_discovery_singular_sql(
+            "e.source_id, e.target_id, e.properties",
+            "public.eq_graph_edges e",
+            "e.properties",
+            &format!("e.namespace = $4 {extra}"),
+        );
+        let singular_rows = sqlx::query(&singular_sql)
+            .bind(&exact)
+            .bind(&chunks)
+            .bind(super::super::super::helpers::SOURCE_CHUNK_PROBE_LIMIT as i32)
+            .bind(&storage.namespace)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("plain singular edge lineage failed: {e}"))
+            })?;
+        let mut by_key: std::collections::HashMap<(String, String, String), GraphEdge> =
+            std::collections::HashMap::new();
+        for row in rows.iter().chain(singular_rows.iter()) {
+            if let Some(edge) = edge_from_row(row) {
+                let rel = crate::graph_batch_dedupe::normalize_rel_type(&edge.properties);
+                by_key.insert((edge.source.clone(), edge.target.clone(), rel), edge);
+            }
+        }
+        let mut out: Vec<GraphEdge> = by_key.into_values().collect();
+        out.sort_by(|a, b| {
+            let ar = crate::graph_batch_dedupe::normalize_rel_type(&a.properties);
+            let br = crate::graph_batch_dedupe::normalize_rel_type(&b.properties);
+            (&a.source, &a.target, ar).cmp(&(&b.source, &b.target, br))
+        });
+        Ok(out)
     }
 
     pub(in crate::adapters::postgres::graph) async fn find_edge_by_relationship_id(

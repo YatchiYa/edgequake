@@ -46,10 +46,8 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
     } else {
         "NULL::text[]"
     };
-    let extra = if kind == "chunk" { ",NULL::text" } else { "" };
-    // EXACT statement cached by the adapter, with fixture bind values. Its SET
-    // LOCAL HNSW settings have ended at commit, so reproduce them only for this
-    // diagnostic execution. No index/seq/bitmap scan switches are changed.
+    // The adapter's prepared statement is the query under test. Its parameter
+    // list is whatever that statement declared, not a reconstructed call.
     let mut conn = pool.acquire().await.unwrap();
     let mut tx = edgequake_storage::adapters::postgres::LocalTimeoutTx::begin(&mut conn, 2_000)
         .await
@@ -82,7 +80,24 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
     ) {
         sqlx::query(&statement).execute(tx.as_mut()).await.unwrap();
     }
-    let sql = format!("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) EXECUTE {name}('{vector}','{model}','{workspace}',{documents},{tenant},{modalities},NULL::text[]{extra},{candidate_limit})");
+    let prepared: (String, Vec<String>) = sqlx::query_as(
+        "SELECT statement, parameter_types::text[] FROM pg_prepared_statements WHERE name = $1",
+    )
+    .bind(&name)
+    .fetch_one(tx.as_mut())
+    .await
+    .unwrap();
+    let sql = explain_prepared(
+        &prepared.0,
+        &prepared.1,
+        &vector,
+        &model.to_string(),
+        &workspace.to_string(),
+        &documents,
+        &tenant,
+        modalities,
+        candidate_limit,
+    );
     let mut generic_samples = Vec::new();
     let mut custom_samples = Vec::new();
     let mut plan = Value::Null;
@@ -153,4 +168,112 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
     );
     tx.commit().await.unwrap();
     plan
+}
+
+/// Bind the prepared statement from the types Postgres recorded, then EXPLAIN
+/// that SQL. `$10` is replaced before `$1`. A cast already written after `$n`
+/// is left in place.
+fn explain_prepared(
+    statement: &str,
+    types: &[String],
+    vector: &str,
+    model: &str,
+    workspace: &str,
+    documents: &str,
+    tenant: &str,
+    modalities: &str,
+    candidate_limit: usize,
+) -> String {
+    let mut uuid_i = 0usize;
+    let mut text_array_i = 0usize;
+    let mut values = Vec::with_capacity(types.len());
+    for ty in types {
+        let normalized = ty.to_ascii_lowercase();
+        let value = if normalized.contains("vector") {
+            format!("'{vector}'")
+        } else if normalized.contains("uuid") && normalized.contains("[]") {
+            documents.to_string()
+        } else if normalized.contains("uuid") {
+            uuid_i += 1;
+            match uuid_i {
+                1 => format!("'{model}'::uuid"),
+                2 => format!("'{workspace}'::uuid"),
+                _ => tenant.to_string(),
+            }
+        } else if normalized.contains("text") && normalized.contains("[]") {
+            text_array_i += 1;
+            if text_array_i == 1 {
+                modalities.to_string()
+            } else {
+                "NULL::text[]".to_string()
+            }
+        } else if normalized.contains("text") {
+            "NULL::text".to_string()
+        } else if normalized.contains("int") {
+            candidate_limit.to_string()
+        } else {
+            format!("NULL::{ty}")
+        };
+        values.push(value);
+    }
+    let mut sql = statement.to_string();
+    for index in (1..=values.len()).rev() {
+        sql = substitute_parameter(&sql, index, &values[index - 1]);
+    }
+    format!("EXPLAIN (FORMAT JSON) {sql}")
+}
+
+fn substitute_parameter(sql: &str, index: usize, value: &str) -> String {
+    let needle = format!("${index}");
+    let mut out = String::with_capacity(sql.len() + value.len());
+    let mut cursor = 0usize;
+    while let Some(found) = sql[cursor..].find(&needle) {
+        let at = cursor + found;
+        let after = at + needle.len();
+        let continues_number = sql[after..]
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_digit());
+        out.push_str(&sql[cursor..at]);
+        if continues_number {
+            out.push_str(&needle);
+            cursor = after;
+            continue;
+        }
+        let casts = sql[after..].trim_start().starts_with("::");
+        out.push_str(if casts {
+            without_trailing_cast(value)
+        } else {
+            value
+        });
+        cursor = after;
+    }
+    out.push_str(&sql[cursor..]);
+    out
+}
+
+fn without_trailing_cast(value: &str) -> &str {
+    let bytes = value.as_bytes();
+    let mut quoted = false;
+    let mut last = None;
+    let mut index = 0usize;
+    while index + 1 < bytes.len() {
+        if bytes[index] == b'\'' {
+            if quoted && index + 1 < bytes.len() && bytes[index + 1] == b'\'' {
+                index += 2;
+                continue;
+            }
+            quoted = !quoted;
+            index += 1;
+            continue;
+        }
+        if !quoted && bytes[index] == b':' && bytes[index + 1] == b':' {
+            last = Some(index);
+        }
+        index += 1;
+    }
+    match last {
+        Some(cut) => &value[..cut],
+        None => value,
+    }
 }

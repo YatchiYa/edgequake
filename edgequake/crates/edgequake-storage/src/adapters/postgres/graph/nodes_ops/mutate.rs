@@ -442,6 +442,23 @@ impl PostgresAGEGraphStorage {
         }
 
         let pool = self.pool.get().await?;
+        if self.plain_writes().await? {
+            let mut tx = pool.begin().await.map_err(|e| {
+                StorageError::Database(format!("plain scoped node delete begin failed: {e}"))
+            })?;
+            let deleted = super::super::plain::write::write::delete_nodes_scoped(
+                &mut tx,
+                &self.namespace,
+                &unique,
+                tenant_id,
+                workspace_id,
+            )
+            .await?;
+            tx.commit().await.map_err(|e| {
+                StorageError::Database(format!("plain scoped node delete commit failed: {e}"))
+            })?;
+            return Ok(deleted as usize);
+        }
         let graph = &self.graph_name;
         let mut conn = pool
             .acquire()

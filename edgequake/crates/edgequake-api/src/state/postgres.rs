@@ -402,8 +402,8 @@ impl AppState {
         );
         if !cutover.ready {
             return Err(format!(
-                "plain graph cutover left the ledger on AGE (mismatches={})",
-                cutover.mismatches
+                "plain graph cutover left the ledger on AGE (mismatches={}, note={})",
+                cutover.mismatches, cutover.note
             )
             .into());
         }

@@ -139,6 +139,37 @@ async fn age_cutover_proves_mirror_shadow_ledger_flip_and_confirm_drop() {
         .await
         .expect("edges");
 
+    // A previous attempt can leave a neighbor Apache AGE does not have.
+    sqlx::query(
+        "INSERT INTO public.eq_graph_nodes (namespace, node_id, properties)
+         VALUES ('spec164', 'STALE_ONLY', '{}'::jsonb)",
+    )
+    .execute(&pool)
+    .await
+    .expect("stale node");
+    sqlx::query(
+        "INSERT INTO public.eq_graph_edges
+            (namespace, source_id, target_id, rel_type, properties)
+         VALUES ('spec164', 'ALICE', 'STALE_ONLY', 'OLD', '{}'::jsonb)",
+    )
+    .execute(&pool)
+    .await
+    .expect("stale edge");
+    // An AGE edge whose far end is not a node is not part of the copied graph.
+    sqlx::query(&format!(
+        r#"INSERT INTO {graph}."EDGE"
+            (id, start_id, end_id, properties, eq_source_id, eq_target_id, eq_rel_type)
+           SELECT public.eq_next_edge_id($1), n.id, n.id,
+                  '{{"source_id":"ALICE","target_id":"GHOST_NO_NODE","relation_type":"DANGLING"}}'::ag_catalog.agtype,
+                  'ALICE', 'GHOST_NO_NODE', 'DANGLING'
+           FROM {graph}."Node" n
+           WHERE n.eq_node_id = 'ALICE'"#
+    ))
+    .bind(&graph)
+    .execute(&pool)
+    .await
+    .expect("dangling AGE edge");
+
     let report = storage.run_spec164_cutover().await.expect("cutover");
     assert_eq!(
         report.mismatches, 0,

@@ -308,13 +308,14 @@ async fn finish_plain_graph(pool: &sqlx::PgPool) -> Result<()> {
         .map_err(|e| anyhow::anyhow!(e))
         .context("plain graph cutover failed")?;
     println!(
-        "plain graph cutover: ready={} graphs={} mismatches={} age_absent={}",
-        report.ready, report.graphs, report.mismatches, report.age_absent
+        "plain graph cutover: ready={} graphs={} mismatches={} age_absent={} note={}",
+        report.ready, report.graphs, report.mismatches, report.age_absent, report.note
     );
     if !report.ready {
         anyhow::bail!(
-            "plain graph cutover left the ledger on AGE (mismatches={})",
-            report.mismatches
+            "plain graph cutover left the ledger on AGE (mismatches={}, note={})",
+            report.mismatches,
+            report.note
         );
     }
     Ok(())
