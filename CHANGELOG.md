@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.35.3] — 2026-10-16
+
+Patch: query retrieval puts the source pages of entities named in the question at the front of the prompt. Schema stays **207**. Upgrade from 0.35.2 is a no-op:
+[`docs/operations/upgrade-to-0.35.3.md`](docs/operations/upgrade-to-0.35.3.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres`, and
+`edgequake-keycloak` on tag `v0.35.3`. Demo install follows the Release Docker
+workflow through [deploy-gcp-edgequake.yml](.github/workflows/deploy-gcp-edgequake.yml).
+
+**SPEC-001 Acc:** scored on this query path, medical-mid n=200, Mistral pins,
+archive [`medical-mid-20261016T002647Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20261016T002647Z/)
+(`valid: true`, `n_paired` 200). EdgeQuake **0.7910**, LightRAG **0.7870**,
+delta **+0.0040** (95% bootstrap CI [-0.0238, +0.0306]). The interval includes 0,
+so this is a statistical tie. EdgeQuake does not claim a win. Evidence recall is
+0.893 versus 0.948, and context relevancy is 0.391 versus 0.490. The promote
+checklist stays blocked. A later filter that required the entity name to appear
+inside the source page scored EdgeQuake 0.7690 versus LightRAG 0.7847 and was
+removed before this tag.
+
+### Changed
+
+- **Named-entity pages lead the prompt:** when the question spells a stored entity, or uses that entity's stored parenthetical abbreviation, the query expands that entity's edges and prepends its source pages. Abbreviation pages stay first. Among the remaining named-entity pages, the best lexical matches to the question lead.
+- **Keyword label lookup:** a keyword is also probed as the stored node id, with spaces written as underscores, so the graph label search can hit the entity the question named.
+
 ## [0.35.2] — 2026-10-15
 
 Patch: an ingest fix that restores entity and relationship vectors, plus the user-journey fixes that were not in tag `v0.35.1`. Schema stays **207**.
