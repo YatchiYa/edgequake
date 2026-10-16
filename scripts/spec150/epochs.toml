@@ -1,4 +1,6 @@
 # SPEC-150 epoch table — schema-distinct release points
+#
+# v0.35.1 owns schema 207. v0.35.2, v0.35.3, and v0.35.4 serve the same migration set.
 
 [[epoch]]
 tag = "v0.2.0"
@@ -297,3 +299,22 @@ key = true
 replay = true
 # max mig 169 (SPEC-163 provider connections)
 # Schema-identical aliases: v0.34.0
+
+[[epoch]]
+tag = "v0.35.0"
+mode = "image"
+pg_majors = [16,17,18]
+key = true
+replay = true
+# max mig 206 (SPEC-164 plain graph + RLS query indexes)
+# hash b7db3bce689331bc (204 numbered migration files; 205 no-ops while AGE remains)
+
+[[epoch]]
+tag = "v0.35.1"
+mode = "image"
+pg_majors = [16,17,18]
+key = true
+replay = true
+# max mig 207 (AGE lineage discovery under row security, GitHub #478)
+# hash 6c9f5db14719d62f (205 numbered migration files)
+# Schema-identical aliases: v0.35.2 v0.35.3 v0.35.4
