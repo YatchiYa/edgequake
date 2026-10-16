@@ -72,6 +72,12 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
     )
     .effective_candidate_k(req.limit as usize)
     .max(req.limit as usize);
+    // At fixture scale a sequential scan is cheaper than HNSW. This probe
+    // turns that scan off so the prepared statement has to use the index.
+    sqlx::query("SET LOCAL enable_seqscan = off")
+        .execute(tx.as_mut())
+        .await
+        .unwrap();
     for statement in edgequake_storage::PgVectorStorage::search_tuning_statements(
         edgequake_storage::adapters::postgres::VectorIndexType::HNSW,
         candidate_limit,
