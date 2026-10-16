@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.35.4] — 2026-10-16
+
+Patch: document delete removes plain-graph edge provenance (#493), and `edgequake migrate` finishes the plain-graph cutover when the role `statement_timeout` is short (#494). Schema stays **207**. Upgrade from 0.35.3 is a no-op:
+[`docs/operations/upgrade-to-0.35.4.md`](docs/operations/upgrade-to-0.35.4.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres`, and
+`edgequake-keycloak` on tag `v0.35.4`.
+
+**SPEC-001 Acc:** scored on this cut, medical-mid n=200, Mistral pins, archive
+[`medical-mid-20261016T111544Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20261016T111544Z/)
+(`valid: true`). EdgeQuake **0.7877**, LightRAG **0.7990**, delta **-0.0113**
+(95% bootstrap CI [-0.0361, +0.0806], n_paired 53). The interval includes 0,
+so this is a statistical tie. EdgeQuake does not claim a win. Evidence recall is
+0.891 versus 0.931, and context relevancy is 0.398 versus 0.495. The gold
+prompt now keeps every supporting clause, so the v0.35.3 score does not cover
+this binary.
+
+### Fixed
+
+- **Plain-graph edge provenance on document delete (#493):** when `eq_graph_cutover.status` is `ready`, an exclusive edge delete writes `eq_graph_edges`. A sister relationship on the same endpoints stays. A scoped delete stays inside the tenant fence. Discovery also matches singular `source_document_id` and `source_chunk_id`. If a projection-owned delete still leaves a discoverable citation, the existing cascade removes it.
+- **Cutover under a role statement timeout (#494):** `edgequake migrate` keeps the plain-graph copy off a role or database `statement_timeout`, so a 10s timeout does not leave `eq_graph_cutover.status` at `backfilling`. A cap that does fire rolls that copy back.
+
+### Changed
+
+- **Gold answers:** the answer states every supporting clause from the context. It does not stop after the first fact.
+
 ## [0.35.3] — 2026-10-16
 
 Patch: query retrieval puts the source pages of entities named in the question at the front of the prompt. Schema stays **207**. Upgrade from 0.35.2 is a no-op:

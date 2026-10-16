@@ -8,7 +8,7 @@ description: "Plain-English guide to upgrade any published EdgeQuake version saf
 This is the canonical guide to database upgrades. It is for operators who run EdgeQuake on their own PostgreSQL. Read it before you start a newer image or binary. Per-release pages (`upgrade-to-0.XX.md`) describe product changes; this page describes the migration process, which works from any published version to HEAD.
 
 > **Schema train today:** migration **207** (`207_age_lineage_discovery_rls.sql`, AGE lineage discovery, GitHub #478).
-> The released product is **v0.35.3** (schema 207, same as v0.35.1). v0.35.0 stopped at **206**. Migration 170 adds plain graph tables. Migration 171 drops Apache AGE only when `edgequake migrate` asks and you answer yes (`--drop-age`). The default is to leave the extension installed. `--confirm-drop` does not answer that question. Migrations 172 through 207 are expand.
+> The released product is **v0.35.4** (schema 207, same as v0.35.1). v0.35.0 stopped at **206**. Migration 170 adds plain graph tables. Migration 171 drops Apache AGE only when `edgequake migrate` asks and you answer yes (`--drop-age`). The default is to leave the extension installed. `--confirm-drop` does not answer that question. Migrations 172 through 207 are expand.
 >
 > **One rule:** the API never changes the database schema. Only `edgequake migrate` (or the Compose service or Helm Job that runs it) writes schema.
 
@@ -97,7 +97,7 @@ Schema number to release. The migration matrix in `scripts/spec150/epochs.toml` 
 | 168 | v0.32.0 to v0.32.2 |
 | 169 | v0.33.0 and v0.34.0 (schema unchanged; SPEC-163 `provider_connections`) |
 | 206 | v0.35.0 (SPEC-164 plain graph + RLS query indexes) |
-| 207 | v0.35.1 through v0.35.3 (AGE lineage discovery under row security; 0.35.2 and 0.35.3 add no migration) |
+| 207 | v0.35.1 through v0.35.4 (AGE lineage discovery under row security; 0.35.2 through 0.35.4 add no migration) |
 
 ---
 
@@ -314,7 +314,7 @@ Full list: [env-reference.md](env-reference.md). Defaults are read from code.
 
 ## 10. Related pages
 
-- This release: [upgrade-to-0.35.3.md](upgrade-to-0.35.3.md). Previous: [upgrade-to-0.35.2.md](upgrade-to-0.35.2.md), [upgrade-to-0.35.1.md](upgrade-to-0.35.1.md), [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md).
+- This release: [upgrade-to-0.35.4.md](upgrade-to-0.35.4.md). Previous: [upgrade-to-0.35.3.md](upgrade-to-0.35.3.md), [upgrade-to-0.35.2.md](upgrade-to-0.35.2.md), [upgrade-to-0.35.1.md](upgrade-to-0.35.1.md), [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md).
 - Per-release notes: [upgrade-to-0.34.0.md](upgrade-to-0.34.0.md), [upgrade-to-0.33.0.md](upgrade-to-0.33.0.md), [upgrade-to-0.32.2.md](upgrade-to-0.32.2.md) and earlier.
 - Release process: [release-and-cd.md](release-and-cd.md).
 - Deployment: [deployment.md](deployment.md), [docker-quickstart.md](docker-quickstart.md).
