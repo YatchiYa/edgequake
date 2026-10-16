@@ -1217,6 +1217,19 @@ impl PgvectorProjectionApplier {
             }
         }
         let mut wrote = false;
+        if self.chunk_index.uses_external_upsert() {
+            let rows: Vec<EmbeddingRow> = chunk_by_model
+                .iter()
+                .flat_map(|(_, by_id)| by_id.values().cloned())
+                .collect();
+            if !rows.is_empty() {
+                self.chunk_index
+                    .upsert_batch(ModelId(Uuid::nil()), &rows)
+                    .await
+                    .map_err(AccessError::from)?;
+                wrote = true;
+            }
+        }
         for (model, by_id) in chunk_by_model {
             let chunk_rows: Vec<EmbeddingRow> = by_id.into_values().collect();
             let index = crate::PgChunkEmbeddingIndex::new(self.pool.clone(), model);
