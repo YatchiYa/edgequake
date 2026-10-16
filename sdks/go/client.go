@@ -194,7 +194,13 @@ func (c *Client) raw(ctx context.Context, method, path string, body any) (string
 		return "", err
 	}
 	if resp.StatusCode >= 300 {
-		return "", &APIError{StatusCode: resp.StatusCode, ErrorCode: http.StatusText(resp.StatusCode), Message: string(payload)}
+		errorResponse := *resp
+		errorResponse.Body = io.NopCloser(bytes.NewReader(payload))
+		apiErr := parseAPIError(&errorResponse)
+		if details, ok := apiErr.(*APIError); ok && details.Message == "" {
+			details.Message = string(payload)
+		}
+		return "", apiErr
 	}
 	return string(payload), nil
 }
@@ -340,11 +346,13 @@ func (c *Client) getRaw(ctx context.Context, path string, params url.Values) ([]
 			lastErr = fmt.Errorf("edgequake: request: %w", err)
 			continue
 		}
-		defer resp.Body.Close()
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return io.ReadAll(resp.Body)
+			data, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return data, err
 		}
 		apiErr := parseAPIError(resp)
+		resp.Body.Close()
 		ae, ok := apiErr.(*APIError)
 		if ok && ae.IsRetryable() && attempt < maxAttempts-1 {
 			lastErr = apiErr

@@ -10,7 +10,7 @@ module EdgeQuake
 
     private
 
-    def encode(value) = URI.encode_www_form_component(value.to_s)
+    def encode(value) = URI.encode_www_form_component(value.to_s).gsub("+", "%20")
     def query(values) = URI.encode_www_form(values.reject { |_, value| value.nil? })
   end
 
@@ -59,7 +59,7 @@ module EdgeQuake
 
     def delete(name:) = @http.delete("#{BASE}/#{encode(name)}?confirm=true")
     def exists?(name:) = @http.get("#{BASE}/exists?#{query(entity_name: name)}")
-    def merge(source_name:, target_name:) = @http.post("#{BASE}/merge", { source_name: source_name, target_name: target_name })
+    def merge(source_name:, target_name:) = @http.post("#{BASE}/merge", { source_entity: source_name, target_entity: target_name })
     def neighborhood(name:, depth: 1) = @http.get("#{BASE}/#{encode(name)}/neighborhood?#{query(depth: depth)}")
   end
 
@@ -109,7 +109,7 @@ module EdgeQuake
     end
 
     def stream(query:, mode: nil)
-      Enumerator.new { |output| output << @http.post("#{BASE}/stream", { query: query, mode: mode }.compact) }
+      @http.post_events("#{BASE}/stream", { query: query, mode: mode }.compact)
     end
   end
 
@@ -130,7 +130,7 @@ module EdgeQuake
     end
 
     def stream(message:, mode: nil)
-      Enumerator.new { |output| output << completions(message: message, mode: mode, stream: true) }
+      @http.post_events("#{BASE}/stream", { message: message, mode: mode }.compact)
     end
   end
 
@@ -150,7 +150,7 @@ module EdgeQuake
     def list = @http.get(BASE)
     def get(id:) = @http.get("#{BASE}/#{encode(id)}")
     def create(email:, name: nil, role: "user") = @http.post(BASE, { email: email, name: name, role: role }.compact)
-    def update(id:, name: nil, role: nil) = @http.patch("#{BASE}/#{encode(id)}", { name: name, role: role }.compact)
+    def update(id:, name: nil, role: nil) = @http.patch("#{BASE}/#{encode(id)}", { display_name: name, role: role }.compact)
     def delete(id:) = @http.delete("#{BASE}/#{encode(id)}")
   end
 
@@ -211,9 +211,9 @@ module EdgeQuake
 
     def share(id:) = @http.post("#{BASE}/#{encode(id)}/share")
     def unshare(id:) = @http.delete("#{BASE}/#{encode(id)}/share")
-    def bulk_delete(ids:) = @http.post("#{BASE}/bulk/delete", { ids: ids })
-    def bulk_archive(ids:) = @http.post("#{BASE}/bulk/archive", { ids: ids })
-    def bulk_move(ids:, folder_id:) = @http.post("#{BASE}/bulk/move", { ids: ids, folder_id: folder_id })
+    def bulk_delete(ids:) = @http.post("#{BASE}/bulk/delete", { conversation_ids: ids })
+    def bulk_archive(ids:, archive: true) = @http.post("#{BASE}/bulk/archive", { conversation_ids: ids, archive: archive })
+    def bulk_move(ids:, folder_id:) = @http.post("#{BASE}/bulk/move", { conversation_ids: ids, folder_id: folder_id })
     def import_conversation(data:) = @http.post("#{BASE}/import", data)
   end
 
@@ -239,7 +239,7 @@ module EdgeQuake
   class AuthService < Service
     BASE = "/api/v1/auth"
 
-    def login(email:, password:) = @http.post("#{BASE}/login", { email: email, password: password })
+    def login(email:, password:) = @http.post("#{BASE}/login", { username: email, password: password })
     def logout = @http.post("#{BASE}/logout")
     def refresh = @http.post("#{BASE}/refresh")
     def current_user = @http.get("#{BASE}/me")

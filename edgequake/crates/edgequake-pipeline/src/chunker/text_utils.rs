@@ -122,6 +122,7 @@ pub(super) fn split_text_internal(
     min_size: usize,
     separators: &[String],
 ) -> Vec<(String, usize, usize)> {
+    let target_size = target_size.max(1);
     if text.len() <= target_size {
         return vec![(text.to_string(), 0, text.len())];
     }
@@ -141,10 +142,13 @@ pub(super) fn split_text_internal(
         }
 
         // Calculate end position, ensuring it's on a char boundary
-        let end_pos = floor_char_boundary(text, current_pos + target_size);
+        let mut end_pos = floor_char_boundary(text, current_pos + target_size);
+        if end_pos == current_pos {
+            end_pos = ceil_char_boundary(text, current_pos + target_size);
+        }
         let chunk_text = &text[current_pos..end_pos.min(text.len())];
 
-        let split_point = find_split_point_internal(chunk_text, target_size, separators);
+        let split_point = find_split_point_internal(chunk_text, chunk_text.len(), separators);
         // Ensure actual_end is on a char boundary
         let actual_end = floor_char_boundary(text, current_pos + split_point);
 
@@ -154,13 +158,14 @@ pub(super) fn split_text_internal(
             chunks.push((chunk_content, current_pos, actual_end));
         }
 
-        // Calculate overlap position, ensuring it's on a char boundary
-        let overlap_pos = actual_end.saturating_sub(overlap);
-        current_pos = ceil_char_boundary(text, overlap_pos);
-
-        if current_pos >= actual_end {
-            current_pos = actual_end;
-        }
+        // Bound overlap by half the selected chunk so oversized settings cannot
+        // produce a nearly full-size chunk for every character in the input.
+        let effective_overlap = overlap.min((actual_end - current_pos) / 2);
+        let overlap_pos = actual_end - effective_overlap;
+        let next_char = ceil_char_boundary(text, current_pos + 1);
+        current_pos = ceil_char_boundary(text, overlap_pos)
+            .max(next_char)
+            .min(actual_end);
     }
 
     chunks
@@ -184,4 +189,85 @@ pub(super) fn find_split_point_internal(text: &str, target: usize, separators: &
     }
 
     floor_char_boundary(text, target.min(text.len()))
+}
+
+#[cfg(test)]
+mod progress_tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn ordinary_splitting_retains_requested_overlap_and_spans() {
+        assert_eq!(
+            split_text_internal("abcdefgh", 4, 1, 1, &[]),
+            vec![
+                ("abcd".into(), 0, 4),
+                ("defg".into(), 3, 7),
+                ("gh".into(), 6, 8)
+            ]
+        );
+    }
+
+    #[test]
+    fn splitting_advances_past_small_utf8_and_zero_targets() {
+        for (text, target) in [("ééé", 1), ("abcdef", 0)] {
+            let (tx, rx) = mpsc::channel();
+            let worker = std::thread::spawn(move || {
+                let result = split_text_internal(text, target, 0, 1, &[]);
+                let _ = tx.send(result);
+            });
+            let chunks = rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("chunk splitting must make progress");
+            worker.join().expect("split worker completed");
+            assert_eq!(
+                chunks.iter().map(|c| c.0.as_str()).collect::<String>(),
+                text
+            );
+            assert!(chunks.iter().all(|c| c.1 < c.2));
+        }
+    }
+
+    #[test]
+    fn splitting_advances_when_overlap_covers_the_chunk() {
+        let (tx, rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let result = split_text_internal("abcdefgh", 4, 4, 1, &[]);
+            let _ = tx.send(result);
+        });
+        let chunks = rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("overlap must not prevent progress");
+        worker.join().expect("split worker completed");
+        assert_eq!(
+            chunks,
+            vec![
+                ("abcd".into(), 0, 4),
+                ("cdef".into(), 2, 6),
+                ("efgh".into(), 4, 8)
+            ]
+        );
+    }
+
+    #[test]
+    fn oversized_overlap_bounds_output_and_preserves_utf8_spans() {
+        for text in ["a".repeat(1000), "é中🙂".repeat(100)] {
+            for overlap in [100, usize::MAX] {
+                let chunks = split_text_internal(&text, 100, overlap, 1, &[]);
+                assert!(chunks.len() <= text.len().div_ceil(50));
+                assert!(chunks.iter().map(|chunk| chunk.0.len()).sum::<usize>() <= 2 * text.len());
+                assert_eq!(chunks.first().unwrap().1, 0);
+                assert_eq!(chunks.last().unwrap().2, text.len());
+                for chunk in &chunks {
+                    assert!(chunk.1 < chunk.2);
+                    assert_eq!(chunk.0, text[chunk.1..chunk.2]);
+                }
+                for pair in chunks.windows(2) {
+                    assert!(pair[1].1 > pair[0].1);
+                    assert!(pair[1].1 <= pair[0].2, "no gaps between chunks");
+                }
+            }
+        }
+    }
 }

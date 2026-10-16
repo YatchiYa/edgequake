@@ -21,7 +21,7 @@ import httpx
 from edgequake._config import ClientConfig
 from edgequake._errors import ConnectionError as EQConnectionError
 from edgequake._errors import TimeoutError as EQTimeoutError
-from edgequake._errors import raise_for_status
+from edgequake._errors import _parse_retry_after, raise_for_status
 
 logger = logging.getLogger("edgequake")
 
@@ -69,7 +69,9 @@ class SyncTransport:
         merged_headers = {**self._config.build_headers(), **(headers or {})}
         last_error: Exception | None = None
 
-        for attempt in range(1 + self._config.max_retries):
+        attempt = 0
+        refreshed = False
+        while attempt <= self._config.max_retries:
             try:
                 response = self._client.request(
                     method,
@@ -82,9 +84,11 @@ class SyncTransport:
                 # WHY: On 401, attempt JWT refresh if callback is set
                 if (
                     response.status_code == 401
+                    and not refreshed
                     and self._config.on_token_refresh
                     and self._config.jwt
                 ):
+                    refreshed = True
                     new_jwt = self._config.on_token_refresh(self._config.jwt)
                     self._config.jwt = new_jwt
                     merged_headers = {**self._config.build_headers(), **(headers or {})}
@@ -104,6 +108,7 @@ class SyncTransport:
                         delay,
                     )
                     time.sleep(delay)
+                    attempt += 1
                     continue
 
                 raise_for_status(response)
@@ -122,6 +127,7 @@ class SyncTransport:
                         exc,
                     )
                     time.sleep(delay)
+                    attempt += 1
                     continue
                 raise EQConnectionError(str(exc)) from exc
 
@@ -159,7 +165,12 @@ class SyncTransport:
                 ),
                 stream=True,
             )
-            raise_for_status(response)
+            if not response.is_success:
+                try:
+                    response.read()
+                    raise_for_status(response)
+                finally:
+                    response.close()
             return response
         except httpx.ConnectError as exc:
             raise EQConnectionError(str(exc)) from exc
@@ -333,7 +344,9 @@ class AsyncTransport:
         merged_headers = {**self._config.build_headers(), **(headers or {})}
         last_error: Exception | None = None
 
-        for attempt in range(1 + self._config.max_retries):
+        attempt = 0
+        refreshed = False
+        while attempt <= self._config.max_retries:
             try:
                 response = await self._client.request(
                     method,
@@ -345,9 +358,11 @@ class AsyncTransport:
 
                 if (
                     response.status_code == 401
+                    and not refreshed
                     and self._config.on_token_refresh
                     and self._config.jwt
                 ):
+                    refreshed = True
                     new_jwt = self._config.on_token_refresh(self._config.jwt)
                     self._config.jwt = new_jwt
                     merged_headers = {**self._config.build_headers(), **(headers or {})}
@@ -367,6 +382,7 @@ class AsyncTransport:
                         delay,
                     )
                     await asyncio.sleep(delay)
+                    attempt += 1
                     continue
 
                 raise_for_status(response)
@@ -377,6 +393,7 @@ class AsyncTransport:
                 if attempt < self._config.max_retries:
                     delay = _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]
                     await asyncio.sleep(delay)
+                    attempt += 1
                     continue
                 raise EQConnectionError(str(exc)) from exc
 
@@ -409,7 +426,12 @@ class AsyncTransport:
                 ),
                 stream=True,
             )
-            raise_for_status(response)
+            if not response.is_success:
+                try:
+                    await response.aread()
+                    raise_for_status(response)
+                finally:
+                    await response.aclose()
             return response
         except httpx.ConnectError as exc:
             raise EQConnectionError(str(exc)) from exc
@@ -565,10 +587,7 @@ def _get_retry_delay(response: httpx.Response, attempt: int) -> float:
     WHY: Respect server's Retry-After header when present (especially for 429).
     Fall back to exponential backoff for other retryable errors.
     """
-    retry_after = response.headers.get("retry-after")
-    if retry_after:
-        try:
-            return float(retry_after)
-        except ValueError:
-            pass
+    retry_after = _parse_retry_after(response.headers.get("retry-after"))
+    if retry_after is not None:
+        return retry_after
     return _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]

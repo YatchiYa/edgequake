@@ -75,29 +75,44 @@ impl QueryContext {
 
     /// Stamp stable [`RetrievedChunk::citation_id`] values before format/API (X-20).
     ///
-    /// Prompt chunks get `1..n`. Dual-list `citation_chunks` reuse the same id for
+    /// Prompt chunks keep existing IDs and receive the smallest unreserved IDs
+    /// for unstamped chunks. Dual-list `citation_chunks` reuse the same id for
     /// overlapping chunk ids, then continue the sequence for Mix-only members.
     pub fn ensure_stable_citation_ids(&mut self) {
-        crate::context_format::assign_stable_citation_ids(&mut self.chunks);
+        let mut used = self
+            .chunks
+            .iter()
+            .filter_map(|c| c.citation_id)
+            .chain(
+                self.citation_chunks
+                    .iter()
+                    .flatten()
+                    .filter_map(|c| c.citation_id),
+            )
+            .collect();
+        crate::context_format::assign_stable_citation_ids_avoiding(&mut self.chunks, &mut used);
         if let Some(ref mut citation) = self.citation_chunks {
-            let by_id: HashMap<String, usize> = self
+            let mut by_id: HashMap<String, usize> = self
                 .chunks
                 .iter()
                 .filter_map(|c| c.citation_id.map(|id| (c.id.clone(), id)))
                 .collect();
-            let mut next = self
-                .chunks
-                .iter()
-                .filter_map(|c| c.citation_id)
-                .max()
-                .unwrap_or(0)
-                + 1;
+            for chunk in citation.iter() {
+                if let Some(id) = chunk.citation_id {
+                    by_id.entry(chunk.id.clone()).or_insert(id);
+                }
+            }
+            let mut next = 1;
             for chunk in citation.iter_mut() {
                 if let Some(&id) = by_id.get(&chunk.id) {
                     chunk.citation_id = Some(id);
-                } else if chunk.citation_id.is_none() {
+                } else {
+                    while used.contains(&next) {
+                        next += 1;
+                    }
                     chunk.citation_id = Some(next);
-                    next += 1;
+                    used.insert(next);
+                    by_id.insert(chunk.id.clone(), next);
                 }
             }
         }

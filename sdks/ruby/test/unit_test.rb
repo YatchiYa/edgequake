@@ -325,8 +325,8 @@ module EdgeQuake
       result = svc.merge(source_name: "ALICIA", target_name: "ALICE")
       assert_equal "merged", result["status"]
       assert_equal :post, mock.last_call[:method]
-      assert_equal "ALICIA", mock.last_call[:body][:source_name]
-      assert_equal "ALICE", mock.last_call[:body][:target_name]
+      assert_equal "ALICIA", mock.last_call[:body][:source_entity]
+      assert_equal "ALICE", mock.last_call[:body][:target_entity]
     end
 
     def test_neighborhood
@@ -964,7 +964,7 @@ module EdgeQuake
       assert_equal 3, result["deleted_count"]
       assert_equal :post, mock.last_call[:method]
       assert_includes mock.last_call[:path], "/api/v1/conversations/bulk/delete"
-      assert_equal %w[c1 c2 c3], mock.last_call[:body][:ids]
+      assert_equal %w[c1 c2 c3], mock.last_call[:body][:conversation_ids]
     end
 
     def test_bulk_archive
@@ -982,7 +982,7 @@ module EdgeQuake
       assert_equal 2, result["moved_count"]
       assert_includes mock.last_call[:path], "/api/v1/conversations/bulk/move"
       body = mock.last_call[:body]
-      assert_equal %w[c1 c2], body[:ids]
+      assert_equal %w[c1 c2], body[:conversation_ids]
       assert_equal "f1", body[:folder_id]
     end
 
@@ -1260,7 +1260,7 @@ module EdgeQuake
       mock = MockHttpHelper.new('{"entity_name":"HELLO WORLD"}')
       svc = LineageService.new(mock)
       svc.entity_lineage(name: "HELLO WORLD")
-      assert_equal "/api/v1/lineage/entities/HELLO+WORLD", mock.last_call[:path]
+      assert_equal "/api/v1/lineage/entities/HELLO%20WORLD", mock.last_call[:path]
     end
 
     def test_entity_lineage_special_chars
@@ -1385,7 +1385,7 @@ module EdgeQuake
       result = svc.login(email: "test@test.com", password: "pass123")
       assert_equal "jwt-token", result["token"]
       assert_equal :post, mock.last_call[:method]
-      assert_equal "test@test.com", mock.last_call[:body][:email]
+      assert_equal "test@test.com", mock.last_call[:body][:username]
       assert_equal "pass123", mock.last_call[:body][:password]
     end
 

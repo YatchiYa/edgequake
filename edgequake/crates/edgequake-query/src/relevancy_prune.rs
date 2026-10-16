@@ -143,19 +143,21 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.is_empty() || b.is_empty() || a.len() != b.len() {
         return 0.0;
     }
-    let mut dot = 0.0f32;
-    let mut na = 0.0f32;
-    let mut nb = 0.0f32;
+    let mut dot = 0.0f64;
+    let mut na = 0.0f64;
+    let mut nb = 0.0f64;
     for (x, y) in a.iter().zip(b.iter()) {
+        let x = f64::from(*x);
+        let y = f64::from(*y);
         dot += x * y;
         na += x * x;
         nb += y * y;
     }
     let denom = na.sqrt() * nb.sqrt();
-    if denom <= f32::EPSILON {
+    if denom == 0.0 {
         0.0
     } else {
-        (dot / denom).clamp(-1.0, 1.0)
+        (dot / denom).clamp(-1.0, 1.0) as f32
     }
 }
 
@@ -554,6 +556,19 @@ mod tests {
         let kept = prune_chunks_by_relevancy(chunks, &cfg);
         // floor drops b,c → only a → below min_keep → restore top min_keep
         assert_eq!(kept.len(), 2);
+    }
+
+    #[test]
+    fn cosine_is_scale_invariant_for_finite_vectors() {
+        for scale in [f32::MAX, f32::MIN_POSITIVE, 1e-10] {
+            let a = [scale, scale];
+            assert!((cosine_similarity(&a, &a) - 1.0).abs() < 1e-5);
+            assert!((cosine_similarity(&a, &[-scale, -scale]) + 1.0).abs() < 1e-5);
+            assert!(cosine_similarity(&a, &[scale, -scale]).abs() < 1e-5);
+        }
+        assert_eq!(cosine_similarity(&[0.0], &[1.0]), 0.0);
+        assert_eq!(cosine_similarity(&[], &[]), 0.0);
+        assert_eq!(cosine_similarity(&[1.0], &[1.0, 2.0]), 0.0);
     }
 
     #[test]

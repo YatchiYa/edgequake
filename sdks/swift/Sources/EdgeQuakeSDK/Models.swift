@@ -678,6 +678,8 @@ public struct AnyCodable: Codable, Sendable {
             value = b
         } else if let i = try? container.decode(Int.self) {
             value = i
+        } else if let u = try? container.decode(UInt64.self) {
+            value = u
         } else if let d = try? container.decode(Double.self) {
             value = d
         } else if let s = try? container.decode(String.self) {
@@ -697,6 +699,16 @@ public struct AnyCodable: Codable, Sendable {
         case is NSNull: try container.encodeNil()
         case let b as Bool: try container.encode(b)
         case let i as Int: try container.encode(i)
+        case let i as Int8: try container.encode(i)
+        case let i as Int16: try container.encode(i)
+        case let i as Int32: try container.encode(i)
+        case let i as Int64: try container.encode(i)
+        case let u as UInt: try container.encode(u)
+        case let u as UInt8: try container.encode(u)
+        case let u as UInt16: try container.encode(u)
+        case let u as UInt32: try container.encode(u)
+        case let u as UInt64: try container.encode(u)
+        case let f as Float: try container.encode(f)
         case let d as Double: try container.encode(d)
         case let s as String: try container.encode(s)
         case let a as [Any]: try container.encode(a.map { AnyCodable($0) })

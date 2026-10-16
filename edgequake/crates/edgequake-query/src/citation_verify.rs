@@ -629,10 +629,10 @@ pub fn build_document_page_url(doc_id: &str, chunk_id: Option<&str>, page: Optio
 
 fn short_doc_fallback(doc_id: &str) -> String {
     let trimmed = doc_id.trim();
-    if trimmed.len() <= 8 {
+    if trimmed.chars().count() <= 8 {
         trimmed.to_string()
     } else {
-        format!("{}…", &trimmed[..8])
+        format!("{}…", trimmed.chars().take(8).collect::<String>())
     }
 }
 
@@ -988,6 +988,17 @@ mod tests {
         );
         assert_eq!(short_document_label("notes.md"), "notes");
         assert_eq!(short_document_label("Report.pdf"), "Report");
+    }
+
+    #[test]
+    fn from_chunks_handles_unicode_fallback_document_names() {
+        let chunk = RetrievedChunk::new("c1", "hello", 0.9)
+            .with_document_id("文档编号甲乙丙丁戊己")
+            .with_citation_id(1);
+        let catalog = CitationCatalog::from_chunks(&[chunk], &HashMap::new());
+        assert_eq!(catalog.get(1).unwrap().document_name, "文档编号甲乙丙丁…");
+        assert_eq!(short_doc_fallback("éééé"), "éééé");
+        assert_eq!(short_doc_fallback("abcdefghi"), "abcdefgh…");
     }
 
     #[test]

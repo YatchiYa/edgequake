@@ -32,11 +32,12 @@ export class EdgeQuakeWebSocket implements AsyncIterable<WebSocketEvent> {
    * WHY: Lazy connection — don't open WebSocket until iteration begins.
    */
   private connect(): void {
-    if (this.wsInstance) return;
+    if (this.closed || this.wsInstance) return;
 
     this.wsInstance = new WebSocket(this.url);
 
     this.wsInstance.onmessage = (event: MessageEvent) => {
+      if (this.closed) return;
       try {
         const parsed = JSON.parse(String(event.data)) as WebSocketEvent;
         if (this.resolve) {
@@ -50,53 +51,47 @@ export class EdgeQuakeWebSocket implements AsyncIterable<WebSocketEvent> {
       }
     };
 
-    this.wsInstance.onclose = () => {
-      this.closed = true;
-      if (this.resolve) {
-        this.resolve({
-          value: undefined as unknown as WebSocketEvent,
-          done: true,
-        });
-      }
-    };
+    this.wsInstance.onclose = () => this.finish();
+    this.wsInstance.onerror = () => this.close();
+  }
 
-    this.wsInstance.onerror = () => {
-      this.closed = true;
-      if (this.resolve) {
-        this.resolve({
-          value: undefined as unknown as WebSocketEvent,
-          done: true,
-        });
-      }
-    };
+  private finish(): void {
+    this.closed = true;
+    this.resolve?.({ value: undefined as unknown as WebSocketEvent, done: true });
+    this.resolve = undefined;
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<WebSocketEvent> {
     this.connect();
 
-    while (!this.closed) {
-      if (this.events.length > 0) {
-        yield this.events.shift()!;
-      } else {
-        const result = await new Promise<IteratorResult<WebSocketEvent>>(
-          (resolve) => {
-            this.resolve = resolve;
-          },
-        );
-        if (result.done) return;
-        yield result.value;
+    try {
+      while (!this.closed) {
+        if (this.events.length > 0) {
+          yield this.events.shift()!;
+        } else {
+          const result = await new Promise<IteratorResult<WebSocketEvent>>(
+            (resolve) => {
+              this.resolve = resolve;
+            },
+          );
+          if (result.done) return;
+          yield result.value;
+        }
       }
-    }
 
-    // WHY: Drain any remaining buffered events
-    while (this.events.length > 0) {
-      yield this.events.shift()!;
+      // WHY: Drain any remaining buffered events
+      while (this.events.length > 0) {
+        yield this.events.shift()!;
+      }
+    } finally {
+      this.close();
     }
   }
 
   /** Close the WebSocket connection. */
   close(): void {
+    if (this.closed) return;
+    this.finish();
     this.wsInstance?.close();
-    this.closed = true;
   }
 }

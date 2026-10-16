@@ -84,10 +84,16 @@ pub fn min_max_normalize_to_fusion_scale(raw: &[f32]) -> Vec<ScaledScore> {
         .fold((f32::INFINITY, f32::NEG_INFINITY), |(mn, mx), &v| {
             (mn.min(v), mx.max(v))
         });
-    let range = max - min;
+    // Widen before subtracting: finite f32 endpoints can have an infinite f32 range.
+    let min = f64::from(min);
+    let range = f64::from(max) - min;
     raw.iter()
         .map(|&v| {
-            let norm = if range <= 0.0 { 1.0 } else { (v - min) / range };
+            let norm = if range <= 0.0 {
+                1.0
+            } else {
+                ((f64::from(v) - min) / range) as f32
+            };
             ScaledScore::new(norm, ScoreScale::MinMax)
         })
         .collect()
@@ -121,6 +127,35 @@ pub fn max_minmax(a: ScaledScore, b: ScaledScore) -> Result<ScaledScore, ScaleMi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn minmax_preserves_extreme_finite_score_order() {
+        let values = [-f32::MAX, 0.0, f32::MAX];
+        let normalized = min_max_normalize_to_fusion_scale(&values);
+        assert_eq!(
+            normalized.iter().map(|s| s.value()).collect::<Vec<_>>(),
+            [0.0, 0.5, 1.0]
+        );
+        assert!(normalized.iter().all(|s| s.value().is_finite()));
+    }
+
+    #[test]
+    fn minmax_preserves_small_finite_ranges() {
+        let values = [0.0, f32::from_bits(1), f32::from_bits(2)];
+        let normalized = min_max_normalize_to_fusion_scale(&values);
+        assert_eq!(
+            normalized.iter().map(|s| s.value()).collect::<Vec<_>>(),
+            [0.0, 0.5, 1.0]
+        );
+        assert_eq!(
+            min_max_normalize_to_fusion_scale(&[7.0, 7.0])
+                .iter()
+                .map(|s| s.value())
+                .collect::<Vec<_>>(),
+            [1.0, 1.0]
+        );
+        assert!(min_max_normalize_to_fusion_scale(&[]).is_empty());
+    }
 
     #[test]
     fn unit_score_scale_no_cross_compare() {

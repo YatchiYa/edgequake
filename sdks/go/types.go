@@ -14,18 +14,21 @@ type HealthResponse struct {
 }
 
 type Document struct {
-	ID            UUID   `json:"id"`
-	FileName      string `json:"file_name,omitempty"`
-	Title         string `json:"title,omitempty"`
-	Status        string `json:"status,omitempty"`
-	FileSize      *int64 `json:"file_size,omitempty"`
-	MimeType      string `json:"mime_type,omitempty"`
-	EntityCount   *int   `json:"entity_count,omitempty"`
-	ChunkCount    *int   `json:"chunk_count,omitempty"`
-	CreatedAt     string `json:"created_at,omitempty"`
-	UpdatedAt     string `json:"updated_at,omitempty"`
-	DisplayStatus string `json:"display_status,omitempty"`
-	UIPhase       string `json:"ui_phase,omitempty"`
+	ID            UUID     `json:"id"`
+	FileName      string   `json:"file_name,omitempty"`
+	Title         string   `json:"title,omitempty"`
+	Status        string   `json:"status,omitempty"`
+	FileSize      *int64   `json:"file_size,omitempty"`
+	MimeType      string   `json:"mime_type,omitempty"`
+	EntityCount   *int     `json:"entity_count,omitempty"`
+	ChunkCount    *int     `json:"chunk_count,omitempty"`
+	CreatedAt     string   `json:"created_at,omitempty"`
+	UpdatedAt     string   `json:"updated_at,omitempty"`
+	DisplayStatus string   `json:"display_status,omitempty"`
+	UIPhase       string   `json:"ui_phase,omitempty"`
+	CurrentStage  string   `json:"current_stage,omitempty"`
+	StageProgress *float64 `json:"stage_progress,omitempty"`
+	StageMessage  string   `json:"stage_message,omitempty"`
 }
 
 type UploadResponse struct {
@@ -87,12 +90,31 @@ type PaginationInfo struct {
 	TotalPages int `json:"total_pages"`
 }
 
+// DocumentStatusCounts preserves the server's batch status buckets.
+type DocumentStatusCounts struct {
+	Pending        int `json:"pending"`
+	Processing     int `json:"processing"`
+	Completed      int `json:"completed"`
+	PartialFailure int `json:"partial_failure"`
+	Failed         int `json:"failed"`
+	Cancelled      int `json:"cancelled"`
+	Unknown        int `json:"unknown"`
+}
+
 type TrackStatus struct {
-	TrackID    string   `json:"track_id"`
-	Status     string   `json:"status"`
-	Progress   *float64 `json:"progress,omitempty"`
-	Message    string   `json:"message,omitempty"`
-	DocumentID string   `json:"document_id,omitempty"`
+	TrackID         string               `json:"track_id"`
+	Status          string               `json:"status"`
+	Progress        *float64             `json:"progress,omitempty"`
+	Message         string               `json:"message,omitempty"`
+	DocumentID      string               `json:"document_id,omitempty"`
+	CreatedAt       *string              `json:"created_at,omitempty"`
+	Documents       []Document           `json:"documents,omitempty"`
+	TotalCount      int                  `json:"total_count"`
+	StatusSummary   DocumentStatusCounts `json:"status_summary"`
+	IsComplete      bool                 `json:"is_complete"`
+	ExpectedCount   *int                 `json:"expected_count,omitempty"`
+	RegisteredCount int                  `json:"registered_count"`
+	LatestMessage   *string              `json:"latest_message,omitempty"`
 }
 
 type ScanRequest struct {
@@ -479,20 +501,49 @@ type TaskListResponse struct {
 	Total int        `json:"total"`
 }
 
+type PipelineMessage struct {
+	Timestamp string `json:"timestamp"`
+	Level     string `json:"level"`
+	Message   string `json:"message"`
+}
+
 type PipelineStatus struct {
-	Status         string `json:"status"`
-	ActiveTasks    int    `json:"active_tasks"`
-	QueuedTasks    int    `json:"queued_tasks"`
-	CompletedTasks int    `json:"completed_tasks"`
-	FailedTasks    int    `json:"failed_tasks"`
+	Status                string            `json:"status"`
+	ActiveTasks           int               `json:"active_tasks"`
+	QueuedTasks           int               `json:"queued_tasks"`
+	CompletedTasks        int               `json:"completed_tasks"`
+	FailedTasks           int               `json:"failed_tasks"`
+	IsBusy                bool              `json:"is_busy"`
+	JobName               *string           `json:"job_name,omitempty"`
+	JobStart              *string           `json:"job_start,omitempty"`
+	TotalDocuments        int               `json:"total_documents"`
+	ProcessedDocuments    int               `json:"processed_documents"`
+	CurrentBatch          int               `json:"current_batch"`
+	TotalBatches          int               `json:"total_batches"`
+	LatestMessage         *string           `json:"latest_message,omitempty"`
+	HistoryMessages       []PipelineMessage `json:"history_messages,omitempty"`
+	CancellationRequested bool              `json:"cancellation_requested"`
 }
 
 type QueueMetrics struct {
-	QueueDepth        int      `json:"queue_depth"`
-	Processing        int      `json:"processing"`
-	CompletedLastHour int      `json:"completed_last_hour"`
-	FailedLastHour    int      `json:"failed_last_hour"`
-	AvgProcessingMs   *float64 `json:"avg_processing_time_ms,omitempty"`
+	QueueDepth                int      `json:"queue_depth"`
+	Processing                int      `json:"processing"`
+	CompletedLastHour         int      `json:"completed_last_hour"`
+	FailedLastHour            int      `json:"failed_last_hour"`
+	AvgProcessingMs           *float64 `json:"avg_processing_time_ms,omitempty"`
+	ActiveWorkers             int      `json:"active_workers"`
+	MaxWorkers                int      `json:"max_workers"`
+	WorkerUtilization         int      `json:"worker_utilization"`
+	AvgWaitTimeSeconds        float64  `json:"avg_wait_time_seconds"`
+	MaxWaitTimeSeconds        float64  `json:"max_wait_time_seconds"`
+	ThroughputPerMinute       float64  `json:"throughput_per_minute"`
+	EstimatedQueueTimeSeconds float64  `json:"estimated_queue_time_seconds"`
+	RateLimited               bool     `json:"rate_limited"`
+	Timestamp                 string   `json:"timestamp"`
+	Pressure                  string   `json:"pressure"`
+	PendingWarnThreshold      uint64   `json:"pending_warn_threshold"`
+	PendingCriticalThreshold  uint64   `json:"pending_critical_threshold"`
+	OperatorAction            *string  `json:"operator_action,omitempty"`
 }
 
 type CostSummary struct {
@@ -505,16 +556,19 @@ type CostSummary struct {
 }
 
 type CostEntry struct {
-	Date     string  `json:"date"`
-	CostUSD  float64 `json:"cost_usd"`
-	Tokens   int64   `json:"tokens"`
-	Requests int     `json:"requests"`
+	Date          string  `json:"date"`
+	CostUSD       float64 `json:"cost_usd"`
+	Tokens        int64   `json:"tokens"`
+	Requests      int     `json:"requests"`
+	DocumentCount int     `json:"document_count,omitempty"`
 }
 
 type BudgetInfo struct {
 	MonthlyBudgetUSD *float64 `json:"monthly_budget_usd,omitempty"`
 	CurrentSpendUSD  float64  `json:"current_spend_usd"`
 	RemainingUSD     *float64 `json:"remaining_usd,omitempty"`
+	AlertThreshold   float64  `json:"alert_threshold,omitempty"`
+	IsOverBudget     bool     `json:"is_over_budget,omitempty"`
 }
 
 type ChunkDetail struct {

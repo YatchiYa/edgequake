@@ -7,6 +7,7 @@ entities, and relationships sub-resources.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from edgequake._streaming import AsyncSSEStream, SSEStream
 from edgequake.resources._base import AsyncResource, SyncResource
@@ -202,7 +203,7 @@ class EntitiesResource(SyncResource):
         GET /api/v1/graph/entities/{entity_name}
         """
         return self._get(
-            f"/api/v1/graph/entities/{entity_name}",
+            f"/api/v1/graph/entities/{quote(entity_name, safe='')}",
             response_type=EntityDetail,
         )
 
@@ -212,7 +213,7 @@ class EntitiesResource(SyncResource):
         PUT /api/v1/graph/entities/{entity_name}
         """
         return self._put(
-            f"/api/v1/graph/entities/{entity_name}",
+            f"/api/v1/graph/entities/{quote(entity_name, safe='')}",
             json=update.model_dump(exclude_none=True),
             response_type=Entity,
         )
@@ -224,7 +225,7 @@ class EntitiesResource(SyncResource):
         """
         # WHY: API requires `confirm` query parameter
         self._delete(
-            f"/api/v1/graph/entities/{entity_name}",
+            f"/api/v1/graph/entities/{quote(entity_name, safe='')}",
             params={"confirm": str(confirm).lower()},
         )
 
@@ -256,7 +257,7 @@ class EntitiesResource(SyncResource):
         GET /api/v1/graph/entities/{entity_name}/neighborhood
         """
         return self._get(
-            f"/api/v1/graph/entities/{entity_name}/neighborhood",
+            f"/api/v1/graph/entities/{quote(entity_name, safe='')}/neighborhood",
             params={"depth": depth},
             response_type=NeighborhoodResponse,
         )
@@ -455,13 +456,13 @@ class AsyncEntitiesResource(AsyncResource):
 
     async def get(self, entity_name: str) -> EntityDetail:
         return await self._get(
-            f"/api/v1/graph/entities/{entity_name}",
+            f"/api/v1/graph/entities/{quote(entity_name, safe='')}",
             response_type=EntityDetail,
         )
 
     async def update(self, entity_name: str, update: EntityUpdate) -> Entity:
         return await self._put(
-            f"/api/v1/graph/entities/{entity_name}",
+            f"/api/v1/graph/entities/{quote(entity_name, safe='')}",
             json=update.model_dump(exclude_none=True),
             response_type=Entity,
         )
@@ -469,7 +470,7 @@ class AsyncEntitiesResource(AsyncResource):
     async def delete(self, entity_name: str, *, confirm: bool = True) -> None:
         # WHY: API requires `confirm` query parameter
         await self._delete(
-            f"/api/v1/graph/entities/{entity_name}",
+            f"/api/v1/graph/entities/{quote(entity_name, safe='')}",
             params={"confirm": str(confirm).lower()},
         )
 
@@ -491,7 +492,7 @@ class AsyncEntitiesResource(AsyncResource):
         self, entity_name: str, *, depth: int = 1
     ) -> NeighborhoodResponse:
         return await self._get(
-            f"/api/v1/graph/entities/{entity_name}/neighborhood",
+            f"/api/v1/graph/entities/{quote(entity_name, safe='')}/neighborhood",
             params={"depth": depth},
             response_type=NeighborhoodResponse,
         )

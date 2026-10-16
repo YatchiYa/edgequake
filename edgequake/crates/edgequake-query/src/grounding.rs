@@ -68,24 +68,28 @@ pub fn grounding_instructions_gold_compat() -> &'static str {
   - Grounded arithmetic (W3-arith): if the question asks how many / a headcount / a count of people and the Context explicitly states BOTH (a) a percentage/rate and (b) a sample size N (e.g. "1,503 adults", "n=710") that together determine that count, you MUST compute count = round(percentage/100 × N), answer with that short integer (not the percentage). Worked example: Context has "Not good" = 36% and sample "1,503 adults" → answer 541 (not 36 or 36%). Do NOT invent missing percentages or sample sizes. Do NOT refuse merely because the count is not printed as a literal integer when both operands are present."#
 }
 
-/// Strip trailing `### References` blocks and inline `[N]` markers for Acc gold F1.
+/// Strip trailing References heading blocks and inline `[N]` markers for Acc gold F1.
 pub fn strip_gold_citation_artifacts(answer: &str) -> String {
     let mut text = answer.trim().to_string();
     if text.is_empty() {
         return text;
     }
     // Drop References section (LR-style or accidental).
-    for marker in [
-        "### References",
-        "## References",
-        "### references",
-        "## references",
-    ] {
-        if let Some(idx) = text.find(marker) {
-            text.truncate(idx);
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        let heading = line.trim();
+        let title = heading.trim_start_matches('#');
+        let level = heading.len() - title.len();
+        let title_without_colon = title.trim().strip_suffix(':').unwrap_or(title.trim());
+        if (2..=4).contains(&level)
+            && title.starts_with(char::is_whitespace)
+            && title_without_colon.eq_ignore_ascii_case("References")
+        {
+            text.truncate(offset);
             text = text.trim_end().to_string();
             break;
         }
+        offset += line.len();
     }
     // Remove bracket citation tokens like [1], [16], [N].
     let mut out = String::with_capacity(text.len());
@@ -129,11 +133,14 @@ pub fn answer_has_context_span(answer: &str, context_corpus: &str) -> bool {
         .collect();
     // Very short answers: treat as grounded if any content token hits corpus.
     if words.len() < 3 {
-        return words.iter().any(|w| corpus.contains(w));
+        return words
+            .iter()
+            .any(|w| corpus.split_whitespace().any(|token| token == *w));
     }
+    let corpus = format!(" {corpus} ");
     words
         .windows(3)
-        .map(|w| w.join(" "))
+        .map(|w| format!(" {} ", w.join(" ")))
         .any(|span| corpus.contains(&span))
 }
 
@@ -152,7 +159,11 @@ pub fn answer_context_token_coverage(answer: &str, context_corpus: &str) -> f32 
     if tokens.is_empty() {
         return 1.0;
     }
-    let hits = tokens.iter().filter(|t| corpus.contains(*t)).count();
+    let corpus_tokens: std::collections::HashSet<&str> = corpus.split_whitespace().collect();
+    let hits = tokens
+        .iter()
+        .filter(|t| corpus_tokens.contains(**t))
+        .count();
     hits as f32 / tokens.len() as f32
 }
 
@@ -253,6 +264,28 @@ mod tests {
     }
 
     #[test]
+    fn grounding_requires_complete_context_tokens() {
+        assert!(!answer_has_context_span("rust", "crust"));
+        assert!(!answer_has_context_span(
+            "alpha beta gamma",
+            "zalpha beta gammax"
+        ));
+        assert_eq!(
+            answer_context_token_coverage("rust alpha", "crust zalpha"),
+            0.0
+        );
+        assert!(needs_groundedness_retry("rust alpha", "crust zalpha"));
+        assert!(answer_has_context_span(
+            "alpha beta gamma",
+            "Prefix: alpha beta gamma. Suffix"
+        ));
+        assert_eq!(
+            answer_context_token_coverage("rust alpha", "RUST, alpha!"),
+            1.0
+        );
+    }
+
+    #[test]
     fn answer_span_detects_shared_trigram() {
         let corpus = "Patients with stage IIIA non-small cell lung cancer received cisplatin.";
         assert!(answer_has_context_span(
@@ -306,6 +339,52 @@ mod tests {
             grounding_instructions_for(Some("Do NOT append citation markers")),
             grounding_instructions_gold_compat()
         );
+    }
+
+    #[test]
+    fn strip_gold_citations_preserves_inline_heading_mentions() {
+        assert_eq!(
+            strip_gold_citation_artifacts("Use ### References to name a section."),
+            "Use ### References to name a section."
+        );
+        assert_eq!(
+            strip_gold_citation_artifacts(
+                "Answer.\n## REFERENCES\n[1] first\n### References\n[2] second"
+            ),
+            "Answer."
+        );
+        assert_eq!(
+            strip_gold_citation_artifacts("## References explain the method\nUseful answer."),
+            "## References explain the method Useful answer."
+        );
+    }
+
+    #[test]
+    fn strip_gold_citations_accepts_reference_heading_variants() {
+        for heading in [
+            "## References",
+            "### References:",
+            "#### References",
+            "  #### REFERENCES:  ",
+        ] {
+            assert_eq!(
+                strip_gold_citation_artifacts(&format!("Answer [1].\n{heading}\n[1] Doc")),
+                "Answer .",
+                "reference heading: {heading}"
+            );
+        }
+        for heading in [
+            "# References:",
+            "##### References:",
+            "###References:",
+            "### References: explain the method",
+        ] {
+            assert_eq!(
+                strip_gold_citation_artifacts(&format!("{heading}\nUseful answer.")),
+                format!("{heading} Useful answer."),
+                "content must remain: {heading}"
+            );
+        }
     }
 
     #[test]

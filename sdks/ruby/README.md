@@ -145,6 +145,12 @@ puts result["answer"]
 
 Modes: `hybrid`, `local`, `global`, `naive`.
 
+`client.query.stream(query: "What is EdgeQuake?")` and
+`client.chat.stream(message: "Hello!")` return lazy enumerators of decoded JSON
+SSE payloads. Iterate them with `each` or `to_a`. The current HTTP helper reads
+and buffers the response before yielding events; these methods do not deliver
+live tokens as the network response arrives.
+
 ### Chat
 
 ```ruby

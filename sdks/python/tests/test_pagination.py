@@ -15,6 +15,55 @@ class Item(BaseModel):
     name: str
 
 
+@pytest.mark.parametrize("failed_page", [1, 2])
+def test_sync_fetch_failure_retries_same_page(failed_page: int) -> None:
+    calls: list[int] = []
+    failed = False
+
+    def fetch(page: int, page_size: int) -> PaginatedResponse[Item]:
+        nonlocal failed
+        calls.append(page)
+        if page == failed_page and not failed:
+            failed = True
+            raise RuntimeError("temporary fetch failure")
+        return PaginatedResponse[Item](
+            items=[Item(id=page, name=str(page))], total=2, page=page, page_size=1
+        )
+
+    paginator = SyncPaginator(fetch, page_size=1)
+    if failed_page == 2:
+        assert next(paginator).id == 1
+    with pytest.raises(RuntimeError, match="temporary fetch failure"):
+        next(paginator)
+    assert next(paginator).id == failed_page
+    assert calls[-2:] == [failed_page, failed_page]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed_page", [1, 2])
+async def test_async_fetch_failure_retries_same_page(failed_page: int) -> None:
+    calls: list[int] = []
+    failed = False
+
+    async def fetch(page: int, page_size: int) -> PaginatedResponse[Item]:
+        nonlocal failed
+        calls.append(page)
+        if page == failed_page and not failed:
+            failed = True
+            raise RuntimeError("temporary fetch failure")
+        return PaginatedResponse[Item](
+            items=[Item(id=page, name=str(page))], total=2, page=page, page_size=1
+        )
+
+    paginator = AsyncPaginator(fetch, page_size=1)
+    if failed_page == 2:
+        assert (await anext(paginator)).id == 1
+    with pytest.raises(RuntimeError, match="temporary fetch failure"):
+        await anext(paginator)
+    assert (await anext(paginator)).id == failed_page
+    assert calls[-2:] == [failed_page, failed_page]
+
+
 class TestPaginatedResponse:
     """Test PaginatedResponse model."""
 
