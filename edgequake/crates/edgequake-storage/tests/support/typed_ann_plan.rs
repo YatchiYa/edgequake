@@ -13,7 +13,7 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
     } else {
         format!("{kind}_embeddings")
     };
-    let name: String=sqlx::query_scalar("SELECT name FROM pg_prepared_statements WHERE statement LIKE $1 AND statement NOT LIKE '%pg_prepared_statements%' ORDER BY prepare_time DESC LIMIT 1")
+    let name: String=sqlx::query_scalar("SELECT name FROM pg_prepared_statements WHERE statement LIKE $1 AND statement NOT LIKE '%pg_prepared_statements%' AND statement !~* '^[[:space:]]*EXPLAIN' ORDER BY prepare_time DESC LIMIT 1")
         .bind(format!("%FROM {table} %")).fetch_one(pool).await.unwrap();
     assert!(name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
     let vector = format!(
@@ -224,7 +224,7 @@ fn explain_prepared(statement: &str, types: &[String], binds: &ExplainBinds<'_>)
     for index in (1..=values.len()).rev() {
         sql = substitute_parameter(&sql, index, &values[index - 1]);
     }
-    format!("EXPLAIN (FORMAT JSON) {sql}")
+    format!("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}")
 }
 
 fn substitute_parameter(sql: &str, index: usize, value: &str) -> String {
