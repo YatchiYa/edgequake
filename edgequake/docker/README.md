@@ -9,11 +9,11 @@ This directory ships two supported Docker flows:
 
 EdgeQuake supports three PostgreSQL major tiers with a **single application binary**:
 
-| Profile | PG | pgvector | AGE | Local build | GHCR tag |
-| ------- | -- | -------- | --- | ----------- | -------- |
-| `pg18` (default) | 18 | 0.8.5 | 1.8.0 | `Dockerfile.postgres.pg18` | `:latest` / `:VERSION` |
-| `pg17` | 17 | 0.8.5 | 1.7.0 | `Dockerfile.postgres.pg17` | `:latest-pg17` |
-| `pg16` (legacy) | 16 | 0.8.5 | 1.6.0 | `Dockerfile.postgres` | `:latest-pg16` |
+| Profile | PG | pgvector | Apache AGE | Local build | GHCR tag |
+| ------- | -- | -------- | ---------- | ----------- | -------- |
+| `pg18` (default) | 18 | 0.8.5 | not included | `Dockerfile.postgres.pg18` | `:latest` / `:VERSION` |
+| `pg17` | 17 | 0.8.5 | not included | `Dockerfile.postgres.pg17` | `:latest-pg17` |
+| `pg16` (legacy) | 16 | 0.8.5 | not included | `Dockerfile.postgres` | `:latest-pg16` |
 
 **SSOT:** `extension-pins.sh` — all Dockerfiles, verify scripts, and Makefile targets source this file.
 

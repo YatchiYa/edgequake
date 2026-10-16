@@ -92,11 +92,18 @@ ensure_pg_image() {
     echo "$tag"
     return
   fi
-  local df="edgequake/docker/Dockerfile.postgres"
-  [[ "$major" == "17" ]] && df="edgequake/docker/Dockerfile.postgres.pg17"
-  [[ "$major" == "18" ]] && df="edgequake/docker/Dockerfile.postgres.pg18"
-  echo "Building $tag from $df (AGE+pgvector)…" >&2
-  docker build -t "$tag" -f "$df" edgequake/docker >&2
+  # v0.32 and v0.33 replay migration 167, which writes ag_catalog. Product
+  # images from v0.35.5 do not ship Apache AGE, so this matrix stays on the
+  # last image that does. Do not build the current Dockerfiles here.
+  local remote="ghcr.io/raphaelmansuy/edgequake-postgres:0.35.4"
+  if [[ "$major" == "16" ]]; then
+    remote="ghcr.io/raphaelmansuy/edgequake-postgres:0.35.4-pg16"
+  elif [[ "$major" == "17" ]]; then
+    remote="ghcr.io/raphaelmansuy/edgequake-postgres:0.35.4-pg17"
+  fi
+  echo "Pulling $remote for epoch replay (Apache AGE required)…" >&2
+  docker pull "$remote" >&2
+  docker tag "$remote" "$tag"
   echo "$tag"
 }
 
