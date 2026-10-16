@@ -8,7 +8,7 @@
 use std::time::Instant;
 
 use edgequake_api::state::migration_bootstrap::{
-    run_postgres_expandable_migrations, run_postgres_migrations, run_postgres_migrations_except_age,
+    run_postgres_expandable_migrations, run_postgres_migrations, schema_drift,
 };
 use edgequake_storage::{
     GraphStorage, GraphStorageAnalyticsOps, GraphStorageMutateOps, GraphStorageReadOps,
@@ -515,7 +515,7 @@ async fn full_train_through_171_on_fresh_database() {
 
 /// Fresh install on a server that cannot load Apache AGE (RDS-shaped:
 /// pgvector, pg_trgm, btree_gin, uuid-ossp; `age` absent from
-/// `pg_available_extensions`). Default migrate leaves 171 pending.
+/// `pg_available_extensions`). Migrate records 171 and leaves nothing pending.
 #[tokio::test]
 async fn fresh_install_serves_on_postgres_without_age() {
     let Some(admin) = admin_url() else {
@@ -547,7 +547,7 @@ async fn fresh_install_serves_on_postgres_without_age() {
         .await
         .expect("db connect");
     std::env::set_var("EDGEQUAKE_MIGRATE_CLI", "1");
-    run_postgres_migrations_except_age(&pool)
+    run_postgres_migrations(&pool)
         .await
         .unwrap_or_else(|e| panic!("fresh train without AGE failed: {e}"));
 
@@ -562,10 +562,9 @@ async fn fresh_install_serves_on_postgres_without_age() {
             .fetch_one(&pool)
             .await
             .expect("171 row");
-    assert!(
-        !dropped,
-        "default fresh install leaves migration 171 pending"
-    );
+    assert!(dropped, "fresh install without AGE records migration 171");
+    let drift = schema_drift(&pool).await.expect("schema drift");
+    assert_eq!(drift.pending_count, 0, "no embedded migration left pending");
     let head: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations")
         .fetch_one(&pool)
         .await

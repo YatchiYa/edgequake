@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.35.5] — 2026-10-16
+
+Patch: the published Postgres images no longer ship Apache AGE. On a server that cannot install the extension, `edgequake migrate` records migration 171 with the safe schema, so `/health` is not left with `pending_count` 1. Schema stays **207**. Upgrade from 0.35.4:
+[`docs/operations/upgrade-to-0.35.5.md`](docs/operations/upgrade-to-0.35.5.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres` (`0.35.5`, `-pg16`, `-pg17`, `-pg18`), and `edgequake-keycloak` on tag `v0.35.5`.
+
+**SPEC-001 Acc:** scored on this cut, medical-mid n=200, Mistral pins, archive
+[`medical-mid-20261016T162456Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20261016T162456Z/)
+(`valid: true`). EdgeQuake **0.8054**, LightRAG **0.7920**, delta **+0.0135**
+(95% bootstrap CI [+0.0056, +0.1506], n_paired 40). The harness marks this as
+not a publishable beat because L2 is incomplete. EdgeQuake does not claim a win.
+Evidence recall is 0.921 versus 0.956, and context relevancy is 0.437 versus
+0.508. The answer prompt is unchanged from v0.35.4.
+
+### Changed
+
+- **Postgres images:** pg16, pg17, and pg18 product images keep pgvector 0.8.5, `pg_trgm`, `btree_gin`, and `uuid-ossp`, and do not compile Apache AGE. A data directory that already loaded AGE cannot open on these images. Drop AGE with `edgequake migrate --drop-age` on the v0.35.4 image before moving that volume. v0.35.4 remains the image for jobs that still `CREATE EXTENSION age`.
+- **Migration 171 on a server without the AGE package:** non-interactive `edgequake migrate` records 171 when `age` is absent from `pg_available_extensions`. The cutover ledger stays `ready` / `age_absent`. When the package is installed, 171 still waits for `--drop-age` or `EDGEQUAKE_MIGRATE_DROP_AGE=yes`.
+
 ## [0.35.4] — 2026-10-16
 
 Patch: document delete removes plain-graph edge provenance (#493), and `edgequake migrate` finishes the plain-graph cutover when the role `statement_timeout` is short (#494). Schema stays **207**. Upgrade from 0.35.3 is a no-op:

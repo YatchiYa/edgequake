@@ -121,7 +121,11 @@ jobs:
         run: |
           PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test << 'EOSQL'
             CREATE EXTENSION IF NOT EXISTS vector;
-            CREATE EXTENSION IF NOT EXISTS age;
+            DO $$ BEGIN
+              CREATE EXTENSION IF NOT EXISTS age;
+            EXCEPTION WHEN OTHERS THEN
+              RAISE NOTICE 'age package absent: %', SQLERRM;
+            END $$;
           EOSQL
 
       - name: Typed CRUD matrix smoke (${{ matrix.profile }})
@@ -194,7 +198,11 @@ jobs:
         run: |
           PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test << 'EOSQL'
             CREATE EXTENSION IF NOT EXISTS vector;
-            CREATE EXTENSION IF NOT EXISTS age;
+            DO $$ BEGIN
+              CREATE EXTENSION IF NOT EXISTS age;
+            EXCEPTION WHEN OTHERS THEN
+              RAISE NOTICE 'age package absent: %', SQLERRM;
+            END $$;
           EOSQL
 
       # Suites provision their own scratch/fixture databases via the embedded
@@ -467,7 +475,11 @@ jobs:
         run: |
           PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test << 'EOSQL'
             CREATE EXTENSION IF NOT EXISTS vector;
-            CREATE EXTENSION IF NOT EXISTS age;
+            DO $$ BEGIN
+              CREATE EXTENSION IF NOT EXISTS age;
+            EXCEPTION WHEN OTHERS THEN
+              RAISE NOTICE 'age package absent: %', SQLERRM;
+            END $$;
           EOSQL
 
       - name: IW5 chaos crash mid-batch + lease fencing

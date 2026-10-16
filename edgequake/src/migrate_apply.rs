@@ -62,7 +62,21 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
     let age_pending = pending
         .iter()
         .any(|(v, _)| *v == migrate_console::AGE_DROP_MIGRATION);
-    let drop_age = resolve_age_drop(args, age_pending)?;
+    // 001 creates the extension later when the package exists. Look at
+    // pg_available_extensions, not the installed row, or a fresh database on an
+    // AGE-capable server would look the same as a server that cannot load it.
+    let age_package_present: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'age')",
+    )
+    .fetch_one(&bundle.admin)
+    .await
+    .unwrap_or(true);
+    let drop_age = if age_pending && !age_package_present {
+        println!("Apache AGE is not installable on this server; recording migration 171.");
+        true
+    } else {
+        resolve_age_drop(args, age_pending)?
+    };
     let confirmed = drop_confirmed(args);
 
     // SPEC-091 Doc 17 (LAW-C5 scope): consent for irreversible drops is

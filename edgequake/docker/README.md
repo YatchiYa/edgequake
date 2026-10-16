@@ -100,7 +100,7 @@ Canonical `EDGEQUAKE_*` variables take precedence when both are set.
 | --- | --- | --- |
 | `edgequake` | `8080` | EdgeQuake API server |
 | `frontend` | `3000` | Next.js web UI |
-| `postgres` | `5432` | PostgreSQL (PG18 default) with `pgvector` 0.8.5, Apache AGE 1.8.0 |
+| `postgres` | `5432` | PostgreSQL (PG18 default) with `pgvector` 0.8.5, no Apache AGE |
 
 ## API image — OCR / ML runtime deps
 

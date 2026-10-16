@@ -21,8 +21,10 @@ docker run -d --name eq-no-age \
 
 export DATABASE_URL='postgres://edgequake:edgequake@127.0.0.1:54329/edgequake'
 
-# Apply SAFE SCHEMA through 206. Migration 171 (DROP AGE) stays pending.
-# Preflight treats missing AGE as OK. Non-interactive migrate never drops AGE.
+# Apply the train through 207, including 171. The package is absent, so
+# migrate records the drop with nothing to destroy. Preflight treats missing
+# AGE as OK. A server that still has the package keeps 171 pending unless
+# you pass --drop-age.
 edgequake migrate
 
 # Serve. Boot skips CREATE EXTENSION age when the cutover ledger marks age_absent
@@ -36,6 +38,7 @@ Pass criteria:
 |-------|--------|
 | `SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'age')` | `false` on that image |
 | `SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')` | `false` after migrate |
+| `SELECT version FROM _sqlx_migrations WHERE version = 171` | one row |
 | `SELECT status, age_absent FROM eq_graph_cutover WHERE id = 1` | `ready`, `true` |
 | `curl -sf "$API/health"` | `status=healthy`, graph storage up |
 | Plain node write + `search_nodes` | succeeds |
@@ -45,9 +48,9 @@ Upgrade from v0.34.0 (schema 169): [docs/operations/upgrade-to-0.35.0.md](../../
 ```mermaid
 flowchart LR
   pg["Postgres + pgvector"] --> m170["migrate 170 plain tables"]
-  m170 --> head["migrate 172–206 indexes"]
+  m170 --> m171["171 recorded when the AGE package is absent"]
+  m171 --> head["migrate 172–207 indexes"]
   head --> serve["serve on eq_graph_*"]
-  m170 -.->|optional| m171["--drop-age only if asked"]
 ```
 
 ## Why AGE is not required (numbers)
@@ -72,7 +75,7 @@ Full write-up: [`reports/WHY-AGE-IS-OPTIONAL.md`](reports/WHY-AGE-IS-OPTIONAL.md
 | Boot | Skips `CREATE EXTENSION age` when the ledger marks AGE absent |
 | Health | `graph_available` when AGE is loaded **or** the plain ledger is ready |
 
-The published `edgequake-postgres` image can still include the AGE library so an existing database can backfill before anyone answers yes to the drop.
+From v0.35.5 the published `edgequake-postgres` image does not include the AGE library. v0.35.4 is the last image that does. An existing data directory that already loaded AGE must run `edgequake migrate --drop-age` on that older image before it can open under v0.35.5.
 
 ## Study archive (reading order)
 

@@ -120,7 +120,7 @@ jobs:
 
           # Install pgvector + AGE extensions (GHCR image ships both; SPEC-091 IW0)
           PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
-          PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test -c "CREATE EXTENSION IF NOT EXISTS age;"
+          PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test -c "DO \$\$ BEGIN CREATE EXTENSION IF NOT EXISTS age; EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'age package absent: %', SQLERRM; END \$\$;"
 
           # Create app_user for RLS testing (non-superuser)
           PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test << 'EOSQL'
@@ -400,8 +400,9 @@ jobs:
 
     services:
       postgres-age:
-        # WHY: storage_backend_contract + migration bootstrap need pgvector + AGE (apache/age has AGE only).
-        image: ghcr.io/raphaelmansuy/edgequake-postgres:latest
+        # Last product image that still contains the Apache AGE library.
+        # v0.35.5 and later do not. Do not point this job at :latest.
+        image: ghcr.io/raphaelmansuy/edgequake-postgres:0.35.4
         env:
           POSTGRES_DB: edgequake_test
           POSTGRES_USER: edgequake_test
@@ -537,7 +538,8 @@ jobs:
 
     services:
       postgres:
-        image: ghcr.io/raphaelmansuy/edgequake-postgres:latest
+        # Coverage still LOADs Apache AGE. Product :latest no longer ships it.
+        image: ghcr.io/raphaelmansuy/edgequake-postgres:0.35.4
         env:
           POSTGRES_DB: edgequake_test
           POSTGRES_USER: edgequake_test
