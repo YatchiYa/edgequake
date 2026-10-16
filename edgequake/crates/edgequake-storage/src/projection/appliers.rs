@@ -30,6 +30,9 @@ use crate::projection_manifest::{
     canonical_graph_node_id, role_completion_proof, EventManifestItem,
 };
 
+type ScopeKey = (String, String);
+type EdgeTriple = (String, String, String);
+
 /// AGE projection applier with authority-payload hydration from PostgreSQL.
 pub struct AgeGraphProjectionApplier {
     pub graph: Arc<dyn GraphStorage>,
@@ -779,8 +782,7 @@ impl AgeGraphProjectionApplier {
             }
         }
         if !edge_deletes.is_empty() {
-            let mut by_scope: HashMap<(String, String), Vec<(String, String, String)>> =
-                HashMap::new();
+            let mut by_scope: HashMap<ScopeKey, Vec<EdgeTriple>> = HashMap::new();
             for (source, target, rel, tenant_s, workspace_s) in edge_deletes {
                 by_scope
                     .entry((tenant_s, workspace_s))

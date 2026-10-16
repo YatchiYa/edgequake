@@ -87,16 +87,20 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
     .fetch_one(tx.as_mut())
     .await
     .unwrap();
+    let model_id = model.to_string();
+    let workspace_id = workspace.to_string();
     let sql = explain_prepared(
         &prepared.0,
         &prepared.1,
-        &vector,
-        &model.to_string(),
-        &workspace.to_string(),
-        &documents,
-        &tenant,
-        modalities,
-        candidate_limit,
+        &ExplainBinds {
+            vector: &vector,
+            model: &model_id,
+            workspace: &workspace_id,
+            documents: &documents,
+            tenant: &tenant,
+            modalities,
+            candidate_limit,
+        },
     );
     let mut generic_samples = Vec::new();
     let mut custom_samples = Vec::new();
@@ -173,44 +177,44 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
 /// Bind the prepared statement from the types Postgres recorded, then EXPLAIN
 /// that SQL. `$10` is replaced before `$1`. A cast already written after `$n`
 /// is left in place.
-fn explain_prepared(
-    statement: &str,
-    types: &[String],
-    vector: &str,
-    model: &str,
-    workspace: &str,
-    documents: &str,
-    tenant: &str,
-    modalities: &str,
+struct ExplainBinds<'a> {
+    vector: &'a str,
+    model: &'a str,
+    workspace: &'a str,
+    documents: &'a str,
+    tenant: &'a str,
+    modalities: &'a str,
     candidate_limit: usize,
-) -> String {
+}
+
+fn explain_prepared(statement: &str, types: &[String], binds: &ExplainBinds<'_>) -> String {
     let mut uuid_i = 0usize;
     let mut text_array_i = 0usize;
     let mut values = Vec::with_capacity(types.len());
     for ty in types {
         let normalized = ty.to_ascii_lowercase();
         let value = if normalized.contains("vector") {
-            format!("'{vector}'")
+            format!("'{}'", binds.vector)
         } else if normalized.contains("uuid") && normalized.contains("[]") {
-            documents.to_string()
+            binds.documents.to_string()
         } else if normalized.contains("uuid") {
             uuid_i += 1;
             match uuid_i {
-                1 => format!("'{model}'::uuid"),
-                2 => format!("'{workspace}'::uuid"),
-                _ => tenant.to_string(),
+                1 => format!("'{}'::uuid", binds.model),
+                2 => format!("'{}'::uuid", binds.workspace),
+                _ => binds.tenant.to_string(),
             }
         } else if normalized.contains("text") && normalized.contains("[]") {
             text_array_i += 1;
             if text_array_i == 1 {
-                modalities.to_string()
+                binds.modalities.to_string()
             } else {
                 "NULL::text[]".to_string()
             }
         } else if normalized.contains("text") {
             "NULL::text".to_string()
         } else if normalized.contains("int") {
-            candidate_limit.to_string()
+            binds.candidate_limit.to_string()
         } else {
             format!("NULL::{ty}")
         };
