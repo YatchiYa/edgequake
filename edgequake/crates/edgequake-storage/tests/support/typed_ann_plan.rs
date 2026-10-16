@@ -72,12 +72,6 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
     )
     .effective_candidate_k(req.limit as usize)
     .max(req.limit as usize);
-    // At fixture scale a sequential scan is cheaper than HNSW. This probe
-    // turns that scan off so the prepared statement has to use the index.
-    sqlx::query("SET LOCAL enable_seqscan = off")
-        .execute(tx.as_mut())
-        .await
-        .unwrap();
     for statement in edgequake_storage::PgVectorStorage::search_tuning_statements(
         edgequake_storage::adapters::postgres::VectorIndexType::HNSW,
         candidate_limit,
@@ -176,6 +170,37 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
             "limits":"paired modes on the same scoped connection/data/probe; includes EXPLAIN planning and execution, not a production SLA"
         })
     );
+    // Natural plans at this row count filter on a btree and sort. A second
+    // explain forbids that sort so the distance order has to use the fixture
+    // HNSW index. The timed samples stay on the natural plan.
+    sqlx::query("SAVEPOINT hnsw_probe")
+        .execute(tx.as_mut())
+        .await
+        .unwrap();
+    sqlx::query("SET LOCAL enable_seqscan = off")
+        .execute(tx.as_mut())
+        .await
+        .unwrap();
+    sqlx::query("SET LOCAL enable_sort = off")
+        .execute(tx.as_mut())
+        .await
+        .unwrap();
+    if let Ok(forced) = sqlx::query_scalar::<_, Value>(&sql)
+        .fetch_one(tx.as_mut())
+        .await
+    {
+        if forced.to_string().contains("fixture_hnsw") {
+            plan = json!([plan, forced]);
+        }
+    }
+    sqlx::query("ROLLBACK TO SAVEPOINT hnsw_probe")
+        .execute(tx.as_mut())
+        .await
+        .unwrap();
+    sqlx::query("RELEASE SAVEPOINT hnsw_probe")
+        .execute(tx.as_mut())
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
     plan
 }
