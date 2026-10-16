@@ -80,8 +80,8 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
     ) {
         sqlx::query(&statement).execute(tx.as_mut()).await.unwrap();
     }
-    let prepared: (String, Vec<String>) = sqlx::query_as(
-        "SELECT statement, parameter_types::text[] FROM pg_prepared_statements WHERE name = $1",
+    let parameter_types: Vec<String> = sqlx::query_scalar(
+        "SELECT parameter_types::text[] FROM pg_prepared_statements WHERE name = $1",
     )
     .bind(&name)
     .fetch_one(tx.as_mut())
@@ -89,9 +89,9 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
     .unwrap();
     let model_id = model.to_string();
     let workspace_id = workspace.to_string();
-    let sql = explain_prepared(
-        &prepared.0,
-        &prepared.1,
+    let sql = explain_execute(
+        &name,
+        &parameter_types,
         &ExplainBinds {
             vector: &vector,
             model: &model_id,
@@ -175,8 +175,8 @@ pub async fn production_plan(pool: &PgPool, kind: &str, req: &VectorQuery, model
 }
 
 /// Bind the prepared statement from the types Postgres recorded, then EXPLAIN
-/// that SQL. `$10` is replaced before `$1`. A cast already written after `$n`
-/// is left in place.
+/// `EXECUTE`. Parameters stay parameters, so a NULL filter is not folded into a
+/// different plan before execution counts are recorded.
 struct ExplainBinds<'a> {
     vector: &'a str,
     model: &'a str,
@@ -187,7 +187,7 @@ struct ExplainBinds<'a> {
     candidate_limit: usize,
 }
 
-fn explain_prepared(statement: &str, types: &[String], binds: &ExplainBinds<'_>) -> String {
+fn explain_execute(name: &str, types: &[String], binds: &ExplainBinds<'_>) -> String {
     let mut uuid_i = 0usize;
     let mut text_array_i = 0usize;
     let mut values = Vec::with_capacity(types.len());
@@ -220,64 +220,8 @@ fn explain_prepared(statement: &str, types: &[String], binds: &ExplainBinds<'_>)
         };
         values.push(value);
     }
-    let mut sql = statement.to_string();
-    for index in (1..=values.len()).rev() {
-        sql = substitute_parameter(&sql, index, &values[index - 1]);
-    }
-    format!("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}")
-}
-
-fn substitute_parameter(sql: &str, index: usize, value: &str) -> String {
-    let needle = format!("${index}");
-    let mut out = String::with_capacity(sql.len() + value.len());
-    let mut cursor = 0usize;
-    while let Some(found) = sql[cursor..].find(&needle) {
-        let at = cursor + found;
-        let after = at + needle.len();
-        let continues_number = sql[after..]
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_digit());
-        out.push_str(&sql[cursor..at]);
-        if continues_number {
-            out.push_str(&needle);
-            cursor = after;
-            continue;
-        }
-        let casts = sql[after..].trim_start().starts_with("::");
-        out.push_str(if casts {
-            without_trailing_cast(value)
-        } else {
-            value
-        });
-        cursor = after;
-    }
-    out.push_str(&sql[cursor..]);
-    out
-}
-
-fn without_trailing_cast(value: &str) -> &str {
-    let bytes = value.as_bytes();
-    let mut quoted = false;
-    let mut last = None;
-    let mut index = 0usize;
-    while index + 1 < bytes.len() {
-        if bytes[index] == b'\'' {
-            if quoted && index + 1 < bytes.len() && bytes[index + 1] == b'\'' {
-                index += 2;
-                continue;
-            }
-            quoted = !quoted;
-            index += 1;
-            continue;
-        }
-        if !quoted && bytes[index] == b':' && bytes[index + 1] == b':' {
-            last = Some(index);
-        }
-        index += 1;
-    }
-    match last {
-        Some(cut) => &value[..cut],
-        None => value,
-    }
+    format!(
+        "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) EXECUTE {name}({})",
+        values.join(",")
+    )
 }
