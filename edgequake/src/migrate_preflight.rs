@@ -220,6 +220,7 @@ pub async fn run_migrate_check_cli() -> Result<()> {
         pending.len(),
         &irreversibles,
     );
+    migration_bootstrap::print_cutover_duration_note(&bundle.admin).await;
     println!("next: edgequake migrate dry-run   # posture / drop readiness");
     println!("      edgequake migrate           # apply SAFE SCHEMA");
     Ok(())

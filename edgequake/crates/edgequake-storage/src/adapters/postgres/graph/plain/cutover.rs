@@ -2,6 +2,7 @@
 
 use super::super::PostgresAGEGraphStorage;
 use super::ledger::tables_present;
+use crate::adapters::postgres::statement_timeout::apply_local_cutover_timeout;
 use crate::error::{Result, StorageError};
 use sqlx::Row;
 
@@ -11,6 +12,8 @@ pub struct CutoverReport {
     pub mismatches: i64,
     pub ready: bool,
     pub age_absent: bool,
+    /// Why a neighborhood differed, when `mismatches` is not zero.
+    pub note: String,
 }
 
 /// Finish migrate on the plain graph.
@@ -24,12 +27,13 @@ pub async fn finish_plain_graph_cutover(pool: &sqlx::PgPool) -> Result<CutoverRe
             mismatches: 0,
             ready: true,
             age_absent: true,
+            note: String::new(),
         });
     }
     let row = sqlx::query("SELECT status, age_absent FROM public.eq_graph_cutover WHERE id = 1")
         .fetch_optional(pool)
         .await
-        .map_err(|e| StorageError::Database(format!("eq_graph_cutover read failed: {e}")))?;
+        .map_err(|e| cutover_err("eq_graph_cutover read", e))?;
     let (status, age_absent) = match row {
         Some(row) => (
             row.try_get::<String, _>("status").unwrap_or_default(),
@@ -43,6 +47,7 @@ pub async fn finish_plain_graph_cutover(pool: &sqlx::PgPool) -> Result<CutoverRe
             mismatches: 0,
             ready: true,
             age_absent,
+            note: String::new(),
         });
     }
     let config = crate::adapters::postgres::PostgresConfig::default().with_namespace("default");
@@ -71,12 +76,13 @@ pub(in crate::adapters::postgres::graph) async fn run_plain_graph_cutover(
         )
         .execute(&pool)
         .await
-        .map_err(|e| StorageError::Database(format!("greenfield ledger update failed: {e}")))?;
+        .map_err(|e| cutover_err("greenfield ledger update", e))?;
         return Ok(CutoverReport {
             graphs: 0,
             mismatches: 0,
             ready: true,
             age_absent: true,
+            note: String::new(),
         });
     }
 
@@ -87,15 +93,16 @@ pub(in crate::adapters::postgres::graph) async fn run_plain_graph_cutover(
     )
     .execute(&pool)
     .await
-    .map_err(|e| StorageError::Database(format!("cutover status update failed: {e}")))?;
+    .map_err(|e| cutover_err("cutover status update", e))?;
 
     let graphs: Vec<String> =
         sqlx::query_scalar("SELECT name::text FROM ag_catalog.ag_graph ORDER BY 1")
             .fetch_all(&pool)
             .await
-            .map_err(|e| StorageError::Database(format!("list ag_graph failed: {e}")))?;
+            .map_err(|e| cutover_err("list ag_graph", e))?;
 
     let mut mismatches = 0i64;
+    let mut notes: Vec<String> = Vec::new();
     for graph in &graphs {
         if !safe_ident(graph) {
             return Err(StorageError::Database(format!(
@@ -109,16 +116,12 @@ pub(in crate::adapters::postgres::graph) async fn run_plain_graph_cutover(
             .execute(&pool)
             .await;
         let (nodes, edges, orphans) = copy_graph(&pool, graph, &namespace).await?;
-        let graph_mismatches: i32 =
-            sqlx::query_scalar("SELECT public.eq_graph_shadow_mismatches($1, $2)")
-                .bind(&namespace)
-                .bind(graph)
-                .fetch_one(&pool)
-                .await
-                .map_err(|e| {
-                    StorageError::Database(format!("shadow compare failed for {graph}: {e}"))
-                })?;
+        let (graph_mismatches, sample) =
+            servable_shadow_mismatches(&pool, graph, &namespace).await?;
         mismatches += i64::from(graph_mismatches);
+        if graph_mismatches > 0 && notes.len() < 5 {
+            notes.push(format!("{graph} orphans_skipped={orphans} {sample}"));
+        }
         let shadow_ok = graph_mismatches == 0;
         flush_plain_lineage_gin(&pool).await?;
         sqlx::query(
@@ -141,7 +144,7 @@ pub(in crate::adapters::postgres::graph) async fn run_plain_graph_cutover(
         .bind(shadow_ok)
         .execute(&pool)
         .await
-        .map_err(|e| StorageError::Database(format!("backfill ledger write failed: {e}")))?;
+        .map_err(|e| cutover_err("backfill ledger write", e))?;
     }
 
     let ready = mismatches == 0;
@@ -156,15 +159,16 @@ pub(in crate::adapters::postgres::graph) async fn run_plain_graph_cutover(
         .bind(graphs.len() as i32)
         .execute(&pool)
         .await
-        .map_err(|e| StorageError::Database(format!("cutover ready update failed: {e}")))?;
+        .map_err(|e| cutover_err("cutover ready update", e))?;
     } else {
         sqlx::query(
             "UPDATE public.eq_graph_cutover
              SET status = 'age', shadow_ok = false, backfill_complete = false, updated_at = now(),
-                 detail = jsonb_build_object('mismatches', $1::bigint)
+                 detail = jsonb_build_object('mismatches', $1::bigint, 'sample', $2::text)
              WHERE id = 1",
         )
         .bind(mismatches)
+        .bind(notes.join("; "))
         .execute(&pool)
         .await
         .ok();
@@ -175,8 +179,146 @@ pub(in crate::adapters::postgres::graph) async fn run_plain_graph_cutover(
         mismatches,
         ready,
         age_absent: false,
+        note: notes.join("; "),
     })
 }
+
+/// Neighbor sets of the copied graph.
+///
+/// The copy keeps an edge only when both ends are rows in `eq_graph_nodes`,
+/// and it replaces that namespace instead of merging with a previous attempt.
+/// The stored `eq_graph_shadow_mismatches` walk still follows dangling AGE
+/// endpoints, so a graph with those edges can never become ready. This walk
+/// uses the same endpoint rule as the copy.
+async fn servable_shadow_mismatches(
+    pool: &sqlx::PgPool,
+    graph: &str,
+    namespace: &str,
+) -> Result<(i32, String)> {
+    let mut tx = begin_cutover_tx(pool, "shadow compare").await?;
+    sqlx::query(AGE_SERVABLE_NEIGHBORS)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| cutover_err("shadow walker", e))?;
+    let rows = sqlx::query(
+        r#"WITH sample AS (
+             SELECT node_id
+             FROM public.eq_graph_nodes
+             WHERE namespace = $1
+             ORDER BY md5(node_id || '164')
+             LIMIT 50
+           ),
+           walked AS (
+             SELECT node_id,
+                    pg_temp.eq_neighbor_ids_age_servable($2, $1, node_id, 2, 500) AS age_ids,
+                    public.eq_graph_neighbor_ids_plain($1, node_id, 2, 500) AS plain_ids
+             FROM sample
+           )
+           SELECT node_id,
+                  ARRAY(SELECT x FROM unnest(age_ids) AS x
+                        EXCEPT SELECT x FROM unnest(plain_ids) AS x) AS age_only,
+                  ARRAY(SELECT x FROM unnest(plain_ids) AS x
+                        EXCEPT SELECT x FROM unnest(age_ids) AS x) AS plain_only
+           FROM walked
+           WHERE age_ids IS DISTINCT FROM plain_ids"#,
+    )
+    .bind(namespace)
+    .bind(graph)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| cutover_err(&format!("shadow compare for {graph}"), e))?;
+    tx.commit()
+        .await
+        .map_err(|e| cutover_err("shadow commit", e))?;
+    let count = i32::try_from(rows.len()).unwrap_or(i32::MAX);
+    let sample = rows
+        .iter()
+        .take(3)
+        .map(|row| {
+            let id: String = row.try_get("node_id").unwrap_or_default();
+            let age_only: Vec<String> = row.try_get("age_only").unwrap_or_default();
+            let plain_only: Vec<String> = row.try_get("plain_only").unwrap_or_default();
+            format!(
+                "{id} age_only={} plain_only={}",
+                preview(&age_only),
+                preview(&plain_only)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    Ok((count, sample))
+}
+
+fn preview(ids: &[String]) -> String {
+    let shown: Vec<&str> = ids.iter().take(4).map(String::as_str).collect();
+    if ids.len() > shown.len() {
+        format!("{shown:?}+{}", ids.len() - shown.len())
+    } else {
+        format!("{shown:?}")
+    }
+}
+
+const AGE_SERVABLE_NEIGHBORS: &str = r#"
+CREATE OR REPLACE FUNCTION pg_temp.eq_neighbor_ids_age_servable(
+    p_graph text,
+    p_namespace text,
+    p_start text,
+    p_depth int,
+    p_cap int
+) RETURNS text[]
+LANGUAGE plpgsql AS $fn$
+DECLARE
+    visited text[] := ARRAY[p_start];
+    frontier text[] := ARRAY[p_start];
+    next_f text[];
+    nbr text;
+    d int;
+BEGIN
+    IF p_graph !~ '^[A-Za-z_][A-Za-z0-9_]*$' THEN
+        RAISE EXCEPTION 'refusing unsafe graph name';
+    END IF;
+    IF p_start IS NULL OR to_regclass(format('%I."EDGE"', p_graph)) IS NULL THEN
+        RETURN ARRAY(SELECT x FROM unnest(visited) AS x ORDER BY x);
+    END IF;
+    FOR d IN 1..LEAST(p_depth, 3) LOOP
+        next_f := ARRAY[]::text[];
+        FOR nbr IN EXECUTE format(
+            $q$
+            SELECT endpoint FROM (
+                SELECT COALESCE(e.eq_target_id, ag_catalog.agtype_to_json(e.properties)->>'target_id') AS endpoint
+                FROM %I."EDGE" e
+                WHERE COALESCE(e.eq_source_id, ag_catalog.agtype_to_json(e.properties)->>'source_id') = ANY($1)
+                  AND EXISTS (
+                    SELECT 1 FROM public.eq_graph_nodes n
+                    WHERE n.namespace = $3
+                      AND n.node_id = COALESCE(e.eq_target_id, ag_catalog.agtype_to_json(e.properties)->>'target_id')
+                  )
+                UNION
+                SELECT COALESCE(e.eq_source_id, ag_catalog.agtype_to_json(e.properties)->>'source_id')
+                FROM %I."EDGE" e
+                WHERE COALESCE(e.eq_target_id, ag_catalog.agtype_to_json(e.properties)->>'target_id') = ANY($1)
+                  AND EXISTS (
+                    SELECT 1 FROM public.eq_graph_nodes n
+                    WHERE n.namespace = $3
+                      AND n.node_id = COALESCE(e.eq_source_id, ag_catalog.agtype_to_json(e.properties)->>'source_id')
+                  )
+            ) s
+            WHERE endpoint IS NOT NULL AND NOT (endpoint = ANY($2))
+            ORDER BY endpoint
+            $q$, p_graph, p_graph)
+        USING frontier, visited, p_namespace
+        LOOP
+            EXIT WHEN cardinality(visited) >= p_cap;
+            visited := visited || nbr;
+            next_f := next_f || nbr;
+        END LOOP;
+        frontier := next_f;
+        EXIT WHEN cardinality(frontier) = 0 OR cardinality(visited) >= p_cap;
+    END LOOP;
+    RETURN ARRAY(SELECT x FROM unnest(visited) AS x ORDER BY x);
+END;
+$fn$;
+"#;
 
 async fn namespace_for(pool: &sqlx::PgPool, graph: &str) -> Result<String> {
     let mapped: Option<String> =
@@ -184,7 +326,7 @@ async fn namespace_for(pool: &sqlx::PgPool, graph: &str) -> Result<String> {
             .bind(graph)
             .fetch_optional(pool)
             .await
-            .map_err(|e| StorageError::Database(format!("namespace lookup failed: {e}")))?;
+            .map_err(|e| cutover_err("namespace lookup", e))?;
     if let Some(ns) = mapped {
         return Ok(ns);
     }
@@ -203,16 +345,26 @@ fn derive_namespace(graph: &str) -> String {
 }
 
 async fn copy_graph(pool: &sqlx::PgPool, graph: &str, namespace: &str) -> Result<(i64, i64, i64)> {
-    let mut tx = pool
-        .begin()
-        .await
-        .map_err(|e| StorageError::Database(format!("backfill begin failed: {e}")))?;
+    let mut tx = begin_cutover_tx(pool, "backfill").await?;
     // Statement triggers would aggregate this whole copy. One recompute after
     // the load writes each degree once.
     sqlx::query("SELECT set_config('eq.skip_graph_degree', 'on', true)")
         .execute(&mut *tx)
         .await
-        .map_err(|e| StorageError::Database(format!("skip degree maintenance failed: {e}")))?;
+        .map_err(|e| cutover_err("skip degree maintenance", e))?;
+    // A failed attempt leaves rows behind. Upsert does not delete them, so the
+    // next compare walks edges Apache AGE no longer has. This namespace is the
+    // snapshot of the current label tables.
+    sqlx::query("DELETE FROM public.eq_graph_edges WHERE namespace = $1")
+        .bind(namespace)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| cutover_err(&format!("replace edges {graph}"), e))?;
+    sqlx::query("DELETE FROM public.eq_graph_nodes WHERE namespace = $1")
+        .bind(namespace)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| cutover_err(&format!("replace nodes {graph}"), e))?;
     let node_sql = format!(
         r#"INSERT INTO public.eq_graph_nodes
              (namespace, node_id, tenant_id, workspace_id, entity_type, properties)
@@ -240,7 +392,7 @@ async fn copy_graph(pool: &sqlx::PgPool, graph: &str, namespace: &str) -> Result
         .bind(namespace)
         .execute(&mut *tx)
         .await
-        .map_err(|e| StorageError::Database(format!("backfill nodes {graph} failed: {e}")))?
+        .map_err(|e| cutover_err(&format!("backfill nodes {graph}"), e))?
         .rows_affected() as i64;
 
     let orphan_sql = format!(
@@ -294,20 +446,21 @@ async fn copy_graph(pool: &sqlx::PgPool, graph: &str, namespace: &str) -> Result
         .bind(namespace)
         .execute(&mut *tx)
         .await
-        .map_err(|e| StorageError::Database(format!("backfill edges {graph} failed: {e}")))?
+        .map_err(|e| cutover_err(&format!("backfill edges {graph}"), e))?
         .rows_affected() as i64;
     sqlx::query("SELECT public.eq_graph_recompute_degrees($1)")
         .bind(namespace)
         .execute(&mut *tx)
         .await
-        .map_err(|e| StorageError::Database(format!("recompute degrees {graph} failed: {e}")))?;
+        .map_err(|e| cutover_err(&format!("recompute degrees {graph}"), e))?;
     tx.commit()
         .await
-        .map_err(|e| StorageError::Database(format!("backfill commit failed: {e}")))?;
+        .map_err(|e| cutover_err("backfill commit", e))?;
     Ok((nodes, edges, orphans))
 }
 
 async fn flush_plain_lineage_gin(pool: &sqlx::PgPool) -> Result<()> {
+    let mut tx = begin_cutover_tx(pool, "lineage GIN flush").await?;
     sqlx::query(
         "SELECT
            gin_clean_pending_list('public.idx_eq_graph_nodes_source_ids_gin'::regclass),
@@ -318,12 +471,144 @@ async fn flush_plain_lineage_gin(pool: &sqlx::PgPool) -> Result<()> {
            gin_clean_pending_list('public.idx_eq_graph_nodes_desc_trgm'::regclass),
            gin_clean_pending_list('public.idx_eq_graph_nodes_type_trgm'::regclass)",
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
-    .map_err(|e| StorageError::Database(format!("lineage GIN flush failed: {e}")))?;
+    .map_err(|e| cutover_err("lineage GIN flush", e))?;
+    tx.commit()
+        .await
+        .map_err(|e| cutover_err("lineage GIN flush commit", e))?;
     Ok(())
+}
+
+async fn begin_cutover_tx<'a>(
+    pool: &'a sqlx::PgPool,
+    step: &str,
+) -> Result<sqlx::Transaction<'a, sqlx::Postgres>> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| cutover_err(&format!("{step} begin"), e))?;
+    apply_local_cutover_timeout(&mut tx).await?;
+    Ok(tx)
+}
+
+fn cutover_err(step: &str, err: sqlx::Error) -> StorageError {
+    let code = match &err {
+        sqlx::Error::Database(db) => db.code().map(|c| c.to_string()),
+        _ => None,
+    };
+    let message = err.to_string();
+    if let Some(explained) = explain_cutover_cancel(step, code.as_deref(), &message) {
+        StorageError::DeadlineExceeded(explained)
+    } else {
+        StorageError::Database(format!("{step} failed: {message}"))
+    }
+}
+
+/// Actionable text for SQLSTATE 57014 during the plain-graph copy.
+///
+/// `None` means the error is not a statement or transaction timeout.
+fn explain_cutover_cancel(step: &str, code: Option<&str>, message: &str) -> Option<String> {
+    // "idle-in-transaction timeout" contains the substring "transaction timeout".
+    if message.contains("idle-in-transaction") {
+        return None;
+    }
+    let transaction = message.contains("due to transaction timeout");
+    let statement = message.contains("statement timeout");
+    if code != Some("57014") && !transaction && !statement {
+        return None;
+    }
+    let guc = if transaction {
+        "transaction_timeout"
+    } else {
+        "statement_timeout"
+    };
+    Some(format!(
+        "{step} cancelled by {guc} (SQLSTATE 57014): {message}. \
+         The open transaction rolled back; plain graph rows for this step are unchanged. \
+         eq_graph_cutover.status stays backfilling. Re-run `edgequake migrate` (idempotent recopy). \
+         Cutover statements set statement_timeout from EDGEQUAKE_CUTOVER_STATEMENT_TIMEOUT (default 0 = disabled) \
+         so a role or database statement_timeout does not apply."
+    ))
 }
 
 fn safe_ident(name: &str) -> bool {
     !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn statement_timeout_names_rollback_and_rerun() {
+        let message = explain_cutover_cancel(
+            "backfill nodes eq_eq_default_graph",
+            Some("57014"),
+            "canceling statement due to statement timeout",
+        )
+        .expect("timeout");
+        assert!(message.contains("statement_timeout"));
+        assert!(message.contains("rolled back"));
+        assert!(message.contains("backfilling"));
+        assert!(message.contains("edgequake migrate"));
+        assert!(!message.contains("transaction_timeout"));
+        let err = cutover_err(
+            "backfill nodes eq_eq_default_graph",
+            sqlx::Error::Protocol("canceling statement due to statement timeout".into()),
+        );
+        match err {
+            StorageError::DeadlineExceeded(text) => {
+                assert!(text.contains("statement_timeout"));
+                assert!(text.contains("rolled back"));
+            }
+            other => panic!("expected deadline, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn transaction_timeout_names_that_guc() {
+        let message = explain_cutover_cancel(
+            "recompute degrees g",
+            Some("57014"),
+            "canceling statement due to transaction timeout",
+        )
+        .expect("timeout");
+        assert!(message.contains("cancelled by transaction_timeout"));
+        assert!(message.contains("rolled back"));
+        assert!(message.contains("backfilling"));
+        let terminated = explain_cutover_cancel(
+            "backfill nodes g",
+            None,
+            "terminating connection due to transaction timeout",
+        )
+        .expect("connection kill");
+        assert!(terminated.contains("cancelled by transaction_timeout"));
+    }
+
+    #[test]
+    fn idle_in_transaction_is_not_relabeled_as_a_cutover_timeout() {
+        assert!(explain_cutover_cancel(
+            "backfill",
+            Some("25P03"),
+            "terminating connection due to idle-in-transaction timeout",
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn unrelated_database_error_stays_a_database_error() {
+        let err = cutover_err(
+            "backfill nodes g",
+            sqlx::Error::Protocol("duplicate key value".into()),
+        );
+        match err {
+            StorageError::Database(text) => {
+                assert!(text.contains("duplicate key value"));
+                assert!(!text.contains("rolled back"));
+            }
+            other => panic!("expected database error, got {other:?}"),
+        }
+        assert!(explain_cutover_cancel("step", Some("23505"), "duplicate key").is_none());
+    }
 }

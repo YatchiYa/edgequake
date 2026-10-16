@@ -405,6 +405,7 @@ async fn run_postgres_migrations_inner_locked(
             pending.len(),
             &irreversibles,
         );
+        progress::print_cutover_duration_note(pool).await;
         info!(
             target: "edgequake.migration",
             step = "sqlx_run",

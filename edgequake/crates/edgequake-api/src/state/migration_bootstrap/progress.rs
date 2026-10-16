@@ -164,6 +164,46 @@ pub fn format_upgrade_path(
     )
 }
 
+/// Note when the plain-graph copy is not part of the empty-DB duration class.
+///
+/// `status == Some("ready")` or a missing ledger table means there is nothing
+/// left to copy. Any other status (`age`, `backfilling`, or no row) still runs
+/// the post-step copy in `edgequake migrate`.
+pub fn cutover_duration_note(table_present: bool, status: Option<&str>) -> Option<&'static str> {
+    if !table_present || status == Some("ready") {
+        return None;
+    }
+    Some(
+        "plain-graph cutover: pending. This copy is sized by the AGE graph and is outside the empty-DB duration class.",
+    )
+}
+
+/// Print [`cutover_duration_note`] when `eq_graph_cutover` is not ready.
+///
+/// A missing table or a failed probe is silent: check and apply must not fail
+/// because the ledger is not there yet.
+pub async fn print_cutover_duration_note(pool: &sqlx::PgPool) {
+    let present: bool =
+        sqlx::query_scalar("SELECT to_regclass('public.eq_graph_cutover') IS NOT NULL")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(false);
+    if !present {
+        return;
+    }
+    let status: Option<String> =
+        match sqlx::query_scalar("SELECT status FROM public.eq_graph_cutover WHERE id = 1")
+            .fetch_optional(pool)
+            .await
+        {
+            Ok(status) => status,
+            Err(_) => return,
+        };
+    if let Some(note) = cutover_duration_note(true, status.as_deref()) {
+        println!("{note}");
+    }
+}
+
 /// Print upgrade path to stdout (CLI only).
 pub fn print_upgrade_path(
     db_schema: Option<i64>,
@@ -240,6 +280,17 @@ mod tests {
         assert!(s.contains("key-value tables"), "{s}");
         assert!(s.contains("v0.26.0–v0.26.10"), "{s}");
         assert!(s.contains("v0.32.0–v0.32.2"), "{s}");
+    }
+
+    #[test]
+    fn cutover_note_is_outside_the_empty_db_class() {
+        let note = cutover_duration_note(true, Some("backfilling")).expect("pending");
+        assert!(note.contains("outside the empty-DB duration class"));
+        assert!(note.contains("AGE graph"));
+        assert!(cutover_duration_note(true, Some("age")).is_some());
+        assert!(cutover_duration_note(true, None).is_some());
+        assert!(cutover_duration_note(true, Some("ready")).is_none());
+        assert!(cutover_duration_note(false, Some("backfilling")).is_none());
     }
 
     #[test]
