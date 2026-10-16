@@ -1219,8 +1219,8 @@ impl PgvectorProjectionApplier {
         let mut wrote = false;
         if self.chunk_index.uses_external_upsert() {
             let rows: Vec<EmbeddingRow> = chunk_by_model
-                .iter()
-                .flat_map(|(_, by_id)| by_id.values().cloned())
+                .values()
+                .flat_map(|by_id| by_id.values().cloned())
                 .collect();
             if !rows.is_empty() {
                 self.chunk_index
