@@ -1,5 +1,4 @@
 resource "google_compute_network" "vpc" {
-  # Leftover Option B already owns `edgequake-vpc` / `edgequake-subnet`. Do not import.
   name                    = "${var.name_prefix}-host-vpc"
   auto_create_subnetworks = false
   routing_mode            = "REGIONAL"

@@ -210,11 +210,16 @@ impl PostgresAGEGraphStorage {
                     .collect();
                 format!(" SET {}", sets.join(", "))
             };
+            // Replace is update-only: MATCH never re-creates deleted endpoints/edges.
+            let verb = match mode {
+                crate::traits::GraphPropertyWriteMode::MergeSources => "MERGE",
+                crate::traits::GraphPropertyWriteMode::Replace => "MATCH",
+            };
             let cypher = format!(
                 "UNWIND [{}] AS e \
-                 MERGE (a:Node {{node_id: e.source_id}}) \
-                 MERGE (b:Node {{node_id: e.target_id}}) \
-                 MERGE (a)-[r:EDGE {{source_id: e.source_id, target_id: e.target_id, relation_type: e.relation_type}}]->(b){}",
+                 {verb} (a:Node {{node_id: e.source_id}}) \
+                 {verb} (b:Node {{node_id: e.target_id}}) \
+                 {verb} (a)-[r:EDGE {{source_id: e.source_id, target_id: e.target_id, relation_type: e.relation_type}}]->(b){}",
                 rows.join(", "),
                 set_clause
             );
@@ -979,21 +984,36 @@ impl PostgresAGEGraphStorage {
         // (Postgres forbids ON CONFLICT DO UPDATE affecting a row twice).
         // ORDER BY … ord DESC → last-write-wins, matching Rust policy.
         // SPEC-058: MergeSources unions via eq_merge; SPEC-098 Replace sets EXCLUDED.
-        let properties_set = match mode {
-            crate::traits::GraphPropertyWriteMode::MergeSources => format!(
-                r#"properties = (
-                    public.eq_merge_graph_properties(
-                        ag_catalog.agtype_to_json({graph}."EDGE".properties)::jsonb,
-                        ag_catalog.agtype_to_json(EXCLUDED.properties)::jsonb
-                    )
-                )::text::ag_catalog.agtype"#
-            ),
-            crate::traits::GraphPropertyWriteMode::Replace => {
-                "properties = EXCLUDED.properties".to_string()
-            }
-        };
-        let sql = format!(
-            r#"
+        // Replace is update-only (N4): never INSERT an edge that was deleted concurrently.
+        let sql = if mode == crate::traits::GraphPropertyWriteMode::Replace {
+            format!(
+                r#"
+            UPDATE {graph}."EDGE" AS e
+            SET properties = d.props_text::ag_catalog.agtype
+            FROM (
+                SELECT DISTINCT ON (
+                    source_id_val,
+                    target_id_val,
+                    UPPER(COALESCE(NULLIF(TRIM(rel_type_val), ''), 'RELATED_TO'))
+                )
+                    source_id_val,
+                    target_id_val,
+                    UPPER(COALESCE(NULLIF(TRIM(rel_type_val), ''), 'RELATED_TO')) AS rel_type_val,
+                    props_text
+                FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
+                       WITH ORDINALITY AS p(source_id_val, target_id_val, rel_type_val, props_text, ord)
+                ORDER BY source_id_val, target_id_val,
+                         UPPER(COALESCE(NULLIF(TRIM(rel_type_val), ''), 'RELATED_TO')),
+                         ord DESC
+            ) AS d
+            WHERE e.eq_source_id = d.source_id_val
+              AND e.eq_target_id = d.target_id_val
+              AND e.eq_rel_type = d.rel_type_val
+            "#
+            )
+        } else {
+            format!(
+                r#"
             INSERT INTO {graph}."EDGE" (id, start_id, end_id, properties, eq_source_id, eq_target_id, eq_rel_type)
             SELECT
                 eq_next_edge_id('{graph}'),
@@ -1036,16 +1056,21 @@ impl PostgresAGEGraphStorage {
             ON CONFLICT (eq_source_id, eq_target_id, eq_rel_type)
                 WHERE eq_source_id IS NOT NULL AND eq_target_id IS NOT NULL AND eq_rel_type IS NOT NULL
             DO UPDATE SET
-                {properties_set},
+                properties = (
+                    public.eq_merge_graph_properties(
+                        ag_catalog.agtype_to_json({graph}."EDGE".properties)::jsonb,
+                        ag_catalog.agtype_to_json(EXCLUDED.properties)::jsonb
+                    )
+                )::text::ag_catalog.agtype,
                 eq_source_id = EXCLUDED.eq_source_id,
                 eq_target_id = EXCLUDED.eq_target_id,
                 eq_rel_type = EXCLUDED.eq_rel_type,
                 start_id = EXCLUDED.start_id,
                 end_id = EXCLUDED.end_id
             "#,
-            graph = graph,
-            properties_set = properties_set
-        );
+                graph = graph
+            )
+        };
 
         let plain = super::plain::tables_present(&pool).await?;
         if plain {

@@ -433,15 +433,18 @@ impl PostgresAGEGraphStorage {
         let ws_expr =
             "COALESCE(ag_catalog.agtype_to_json(n.properties)->>'workspace_id', '')".to_string();
 
-        // Collect node_ids in workspace (one RT).
+        // Collect node_ids in workspace (one RT). Also match the exact
+        // `{workspace_uuid}::` node_id prefix so vertices missing the
+        // workspace_id property (N4 partial-write orphans) cannot survive.
         let list_sql = format!(
             r#"/* DATA-AGE-GRAPH-CLEAR-WORKSPACE list */
                SELECT {node_key} AS node_id
                FROM {graph}."Node" n
-               WHERE {ws_expr} = $1"#
+               WHERE {ws_expr} = $1 OR starts_with({node_key}, $2)"#
         );
         let rows = sqlx::query(&list_sql)
             .bind(&wid)
+            .bind(format!("{wid}::"))
             .fetch_all(&mut *conn)
             .await
             .map_err(|e| StorageError::Database(format!("clear_workspace list failed: {e}")))?;

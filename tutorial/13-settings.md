@@ -1,4 +1,4 @@
-[Contents](README.md) · Previous: [API Explorer](12-api-explorer.md) · Next: [What this is](01-what-this-is.md)
+[Contents](README.md) · Previous: [API Explorer](12-api-explorer.md) · Next: [The copilot](14-copilot.md)
 
 # Settings
 
@@ -81,4 +81,4 @@ Under the form, this demo already has three connections that came from the serve
 
 ## Keep going
 
-You have walked every screen. [What this is](01-what-this-is.md) is the short version if you want to start again. The command-line version of the same jobs is in [docs/tutorials](../docs/tutorials/index.md).
+Next: [The copilot](14-copilot.md), the assistant that works on every screen you just walked. [What this is](01-what-this-is.md) is the short version if you want to start again. The command-line version of the same jobs is in [docs/tutorials](../docs/tutorials/index.md).

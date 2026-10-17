@@ -9,7 +9,8 @@
 //!
 //! Design (mirrors plan-17 P-D2 dry-run + confirm-token pattern):
 //! - `plan()` is read-only: scans `get_all_nodes`, groups every node whose
-//!   `id != normalize_entity_name(id)` by its normalized target, and reports
+//!   `id != canonical_node_id(id)` (NAME part only; workspace prefix kept) by
+//!   its normalized target, and reports
 //!   the merge groups + incident-edge rewrites + vector re-keys it WOULD do.
 //! - `execute(confirm_token)` applies the plan destructively. The caller MUST
 //!   pass the token returned by `plan()` so a stale/different plan cannot be
@@ -112,10 +113,43 @@ fn confirm_token_for(merge_groups: &[MergeGroup]) -> String {
     format!("{:016x}", hasher.finish())
 }
 
-/// Scan the graph and build a read-only reconciliation plan (P-G1b).
+/// Canonical form of a stored graph node id.
 ///
-/// Read-only: this never mutates storage. The returned `confirm_token` must be
-/// passed to [`execute`] to apply the plan.
+/// Workspace-scoped ids (`{workspace_uuid}::NAME`) keep their prefix verbatim
+/// and only the NAME part is normalized — normalizing the whole string would
+/// uppercase the UUID and "repair" every healthy scoped node (F7). Bare legacy
+/// ids are normalized as before.
+fn canonical_node_id(id: &str) -> String {
+    let bare = EntityId::bare_name_from_graph_node_id(id);
+    let prefix = &id[..id.len() - bare.len()];
+    format!("{prefix}{}", normalize_entity_name(bare))
+}
+
+/// True if every rename in the plan is exactly what [`canonical_node_id`]
+/// produces. `execute` receives the plan from the client, so a stale or
+/// hand-edited plan (e.g. one built by the pre-F7 code) must be refused.
+fn plan_is_canonical(planned: &ReconcilePlan) -> bool {
+    let groups_ok = planned.merge_groups.iter().all(|g| {
+        g.raw_nodes.iter().all(|r| {
+            r.normalized_id == g.normalized_id && canonical_node_id(&r.raw_id) == g.normalized_id
+        })
+    });
+    let edges_ok = planned.edge_rewrites.iter().all(|e| {
+        let ok = |from: &str, to: &str| to == from || to == canonical_node_id(from);
+        ok(&e.from_source, &e.to_source) && ok(&e.from_target, &e.to_target)
+    });
+    let vectors_ok = planned.vector_rekeys.iter().all(|v| {
+        match (
+            v.raw_vector_id.strip_prefix("entity:"),
+            v.normalized_vector_id.strip_prefix("entity:"),
+        ) {
+            (Some(raw), Some(norm)) => canonical_node_id(raw) == norm,
+            _ => false,
+        }
+    });
+    groups_ok && edges_ok && vectors_ok
+}
+
 /// Scan the graph and build a read-only reconciliation plan (P-G1b).
 ///
 /// Read-only: this never mutates storage. The returned `confirm_token` must be
@@ -128,12 +162,12 @@ pub async fn plan(graph: &dyn GraphStorage, _vectors: &dyn VectorStorage) -> Res
     let all_nodes = graph.get_all_nodes().await?;
     let all_edges = graph.get_all_edges().await?;
 
-    // Group raw nodes by their normalized target. Nodes already normalized
-    // (id == normalize(id)) are skipped (E6).
+    // Group raw nodes by their normalized target. Nodes already canonical
+    // (id == canonical_node_id(id)) are skipped (E6).
     let mut groups: HashMap<String, MergeGroup> = HashMap::new();
     let mut already_normalized = 0usize;
     for node in &all_nodes {
-        let normalized = normalize_entity_name(&node.id);
+        let normalized = canonical_node_id(&node.id);
         if normalized == node.id {
             already_normalized += 1;
             continue;
@@ -224,9 +258,17 @@ pub async fn execute(
     planned: &ReconcilePlan,
     confirm_token: &str,
 ) -> Result<ReconcileResult> {
-    if confirm_token != planned.confirm_token {
+    if confirm_token != planned.confirm_token
+        || confirm_token != confirm_token_for(&planned.merge_groups)
+    {
         return Err(crate::error::StorageError::InvalidInput(
             "confirm token mismatch — refusing to apply a stale reconciliation plan".to_string(),
+        ));
+    }
+    if !plan_is_canonical(planned) {
+        return Err(crate::error::StorageError::InvalidInput(
+            "plan contains non-canonical renames — refusing to apply it; re-run the dry-run"
+                .to_string(),
         ));
     }
     let mut result = ReconcileResult::default();
@@ -622,5 +664,79 @@ mod tests {
             .is_none());
         let norm_vid = EntityId::from_normalized("JOHN_DOE").as_vector_id();
         assert!(vectors.get_by_id(&norm_vid).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn plan_leaves_canonical_workspace_scoped_ids_alone() {
+        // F7: a healthy `{lowercase-uuid}::NAME` id must not be "normalized"
+        // (uppercasing the UUID); only a non-canonical NAME part is renamed,
+        // with the workspace prefix preserved verbatim.
+        let graph = MemoryGraphStorage::new("test");
+        graph.initialize().await.unwrap();
+        let vectors = MemoryVectorStorage::new("test", 4);
+        vectors.initialize().await.unwrap();
+
+        let ws = "55a78878-1b2c-4d3e-8f90-0123456789ab";
+        let canonical = format!("{ws}::ACME_CORP");
+        let raw = format!("{ws}::John Doe");
+        graph
+            .upsert_node(&canonical, props("acme", &["c1"]))
+            .await
+            .unwrap();
+        graph.upsert_node(&raw, props("jd", &["c2"])).await.unwrap();
+        graph
+            .upsert_edge(&canonical, &raw, Default::default())
+            .await
+            .unwrap();
+
+        let plan = plan(&graph, &vectors).await.unwrap();
+        assert_eq!(plan.already_normalized, 1, "scoped ACME_CORP is clean");
+        assert_eq!(plan.merge_groups.len(), 1);
+        assert_eq!(
+            plan.merge_groups[0].normalized_id,
+            format!("{ws}::JOHN_DOE")
+        );
+        assert_eq!(plan.edge_rewrites.len(), 1);
+        assert_eq!(plan.edge_rewrites[0].to_source, canonical);
+
+        let token = plan.confirm_token.clone();
+        execute(&graph, &vectors, &plan, &token).await.unwrap();
+        assert!(graph.get_node(&canonical).await.unwrap().is_some());
+        assert!(graph
+            .get_edge(&canonical, &format!("{ws}::JOHN_DOE"))
+            .await
+            .unwrap()
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn execute_refuses_plan_that_uppercases_workspace_prefix() {
+        // F7: a client-supplied plan built by the pre-fix code (with a
+        // self-consistent token) must be refused without mutating anything.
+        let graph = MemoryGraphStorage::new("test");
+        graph.initialize().await.unwrap();
+        let vectors = MemoryVectorStorage::new("test", 4);
+        vectors.initialize().await.unwrap();
+        let id = "55a78878-1b2c-4d3e-8f90-0123456789ab::ACME_CORP";
+        graph.upsert_node(id, props("acme", &["c1"])).await.unwrap();
+
+        let bad = id.to_uppercase();
+        let merge_groups = vec![MergeGroup {
+            normalized_id: bad.clone(),
+            raw_nodes: vec![RawNodeRecord {
+                raw_id: id.to_string(),
+                normalized_id: bad,
+            }],
+        }];
+        let token = confirm_token_for(&merge_groups);
+        let stale = ReconcilePlan {
+            confirm_token: token.clone(),
+            merge_groups,
+            edge_rewrites: vec![],
+            vector_rekeys: vec![],
+            already_normalized: 0,
+        };
+        assert!(execute(&graph, &vectors, &stale, &token).await.is_err());
+        assert!(graph.get_node(id).await.unwrap().is_some());
     }
 }

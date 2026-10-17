@@ -198,6 +198,7 @@ impl TaskProcessor for DocumentTaskProcessor {
             {
                 crate::services::injection_process::write_injection_status(
                     &self.kv_storage,
+                    self.optional_pg_pool(),
                     &data.meta_key,
                     &data.injection_id,
                     &data.name,

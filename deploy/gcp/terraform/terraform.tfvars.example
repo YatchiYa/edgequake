@@ -1,12 +1,32 @@
-# Copy to terraform.tfvars (gitignored).
-project_id         = "saas-app-001"
-region             = "us-central1"
-zone               = "us-central1-a"
-name_prefix        = "edgequake"     # bucket/secrets/WIF/SAs/IP; VPC is edgequake-host-vpc
-instance_name      = "elitizon-db"
-machine_type       = "e2-medium"
-edgequake_version  = "0.27.0"
-hostname           = "demo.edgequake.com"
-caddy_acme_email   = "raphael.mansuy@elitizon.com"
-github_repository  = "raphaelmansuy/edgequake"
-operator_members   = ["user:raphael.mansuy@elitizon.com"]
+# Copy to terraform.tfvars (git-ignored: it holds keys), then:
+#   terraform init && terraform apply      # build → infra → deploy → wait for HTTPS
+#   terraform destroy                      # remove everything
+project_id = "my-gcp-project"            # required; you need Owner (or Editor + Security Admin + Service Usage Admin)
+
+# region       = "europe-west1"
+# zone         = "europe-west1-b"
+# name_prefix  = "edgequake"             # VM is <name_prefix>-vm unless instance_name is set
+# machine_type = "e2-standard-2"         # e2-medium is cheaper but slow on large ingests
+
+# Images: built from this checkout during apply (content tag; skipped when unchanged).
+# build_mode   = "cloud"                 # or "local" (docker buildx here; needs ~30 GB free)
+# build_images = true
+# image_tag    = ""                      # pin/roll back: set a pushed tag + build_images = false
+
+# LLM keys, stored in Secret Manager. "UNSET" or "" = not used. Mistral alone is enough.
+mistral_api_key = ""
+# openai_api_key = ""
+# copilot_llm_base_url = "https://api.mistral.ai/v1"
+# copilot_llm_model    = "mistral-medium-latest"
+
+# hostname         = "edgequake.example.com" # empty = <ip-with-dashes>.sslip.io (free HTTPS name)
+# caddy_acme_email = ""                       # empty = your gcloud account
+# operator_members = ["user:teammate@example.com"]  # extra people allowed to SSH (IAP) and read secrets
+
+# false = terraform destroy also deletes the data-disk snapshots (a full clean-up).
+keep_snapshots_on_destroy = true
+
+# Optional GitHub Actions deploy (keyless WIF):
+# enable_github_deploy = true
+# github_repository    = "my-org/edgequake"
+# github_allowed_ref   = "refs/heads/edgequake-main"

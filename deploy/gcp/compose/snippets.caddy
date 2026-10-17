@@ -1,7 +1,19 @@
 (app) {
-	# LAW-148-13: reverse-proxy only on the HTTPS site that imports this snippet.
+	# Reverse-proxy only on the HTTPS site that imports this snippet.
 	# Do not gzip: Next.js + SSE (text/event-stream) must not be buffered.
 
+	# WebUI's own Next route (POST, SSE): must win over /api/* and must not be buffered.
+	# Agents platform proxy (Next route; SSE): before /api/*.
+	handle /api/agents* {
+		reverse_proxy frontend:3000 {
+			flush_interval -1
+		}
+	}
+	handle /api/copilot* {
+		reverse_proxy frontend:3000 {
+			flush_interval -1
+		}
+	}
 	# Slash-bounded: /api* also matches WebUI /api-explorer (SPEC-035).
 	handle /api/* {
 		reverse_proxy api:8080

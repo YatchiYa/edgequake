@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use edgequake_storage::{
     node_counts_by_source_prefixes_sql,
-    traits::{GraphPropertyWriteMode, GraphStorage, GraphStorageMutateOps},
+    traits::{GraphStorage, GraphStorageMutateOps},
     PostgresAGEGraphStorage, PostgresConfig, PostgresPool, LINEAGE_GIN_INDEXES,
     LINEAGE_GIN_PENDING_LIST_LIMIT_KB,
 };
@@ -84,7 +84,7 @@ async fn seed_single_array_node(
     .into_iter()
     .collect();
     graph
-        .upsert_nodes_batch_with_mode(&[(node_id, props)], GraphPropertyWriteMode::Replace)
+        .upsert_nodes_batch(&[(node_id, props)])
         .await
         .expect("seed node");
 }

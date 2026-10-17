@@ -51,6 +51,7 @@ pub fn release_for_schema(max_version: i64) -> &'static str {
         169 => "v0.33.0",
         170..=206 => "v0.35.0",
         207 => "v0.35.1",
+        208 => "v0.35.6-fork",
         _ => "newer-than-matrix",
     }
 }
