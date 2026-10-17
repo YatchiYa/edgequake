@@ -12,6 +12,7 @@
  * @implements SPEC-149 - Auth on every stream (LAW-149-10)
  */
 import { getRuntimeApiBaseUrl } from "@/lib/runtime-config";
+import { ensureSessionScope } from "./session-scope";
 import {
   AuthError,
   buildHeaders,
@@ -80,6 +81,7 @@ export async function* streamClientFrames<T>(
   let allowMidStreamReconnect = true;
 
   while (true) {
+    await ensureSessionScope(endpoint);
     const config: RequestInit = {
       ...options,
       credentials: options.credentials ?? "include",

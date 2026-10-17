@@ -846,13 +846,22 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
         Ok(())
     }
 
-    /// Memory stores replace complete property maps, so `MergeSources` and
-    /// `Replace` intentionally have identical behavior in this adapter.
+    /// Memory stores replace complete property maps; `Replace` is update-only
+    /// (never creates a missing node), matching the Postgres adapter.
     async fn upsert_nodes_batch_with_mode(
         &self,
         nodes: &[(String, HashMap<String, serde_json::Value>)],
-        _mode: crate::traits::GraphPropertyWriteMode,
+        mode: crate::traits::GraphPropertyWriteMode,
     ) -> Result<()> {
+        if mode == crate::traits::GraphPropertyWriteMode::Replace {
+            let mut nodes_map = self.nodes.write().map_err(super::lock::map_lock_err)?;
+            for (node_id, properties) in nodes {
+                if let Some(existing) = nodes_map.get_mut(node_id) {
+                    *existing = properties.clone();
+                }
+            }
+            return Ok(());
+        }
         self.upsert_nodes_batch(nodes).await
     }
 
@@ -1001,13 +1010,23 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
         Ok(())
     }
 
-    /// Memory stores replace complete property maps, so `MergeSources` and
-    /// `Replace` intentionally have identical behavior in this adapter.
+    /// Memory stores replace complete property maps; `Replace` is update-only
+    /// (never creates a missing edge), matching the Postgres adapter.
     async fn upsert_edges_batch_with_mode(
         &self,
         edges: &[(String, String, HashMap<String, serde_json::Value>)],
-        _mode: crate::traits::GraphPropertyWriteMode,
+        mode: crate::traits::GraphPropertyWriteMode,
     ) -> Result<()> {
+        if mode == crate::traits::GraphPropertyWriteMode::Replace {
+            let mut edges_map = self.edges.write().map_err(super::lock::map_lock_err)?;
+            for (source, target, properties) in edges {
+                let key = Self::edge_key(source, target, &Self::rel_type_from_props(properties));
+                if let Some(existing) = edges_map.get_mut(&key) {
+                    *existing = properties.clone();
+                }
+            }
+            return Ok(());
+        }
         self.upsert_edges_batch(edges).await
     }
 
@@ -1513,6 +1532,34 @@ impl GraphScanOps for MemoryGraphStorage {
 mod tests {
     use super::*;
     use crate::traits::{GraphStorageMutateOps, GraphStorageReadOps};
+
+    /// N4: Replace (prune) is update-only — never resurrects a deleted node/edge.
+    #[tokio::test]
+    async fn replace_mode_never_creates_missing_rows() {
+        use crate::traits::GraphPropertyWriteMode::Replace;
+        let storage = MemoryGraphStorage::new("test");
+        storage.initialize().await.unwrap();
+        let props: HashMap<String, serde_json::Value> =
+            [("source_ids".to_string(), serde_json::json!(["d-chunk-0"]))].into();
+        storage
+            .upsert_nodes_batch_with_mode(&[("GONE".into(), props.clone())], Replace)
+            .await
+            .unwrap();
+        storage
+            .upsert_edges_batch_with_mode(&[("GONE".into(), "B".into(), props.clone())], Replace)
+            .await
+            .unwrap();
+        assert!(storage.get_node("GONE").await.unwrap().is_none());
+        assert!(storage.get_edge("GONE", "B").await.unwrap().is_none());
+
+        storage.upsert_node("KEEP", HashMap::new()).await.unwrap();
+        storage
+            .upsert_nodes_batch_with_mode(&[("KEEP".into(), props.clone())], Replace)
+            .await
+            .unwrap();
+        let kept = storage.get_node("KEEP").await.unwrap().unwrap();
+        assert_eq!(kept.properties.get("source_ids"), props.get("source_ids"));
+    }
 
     #[tokio::test]
     async fn test_graph_node_operations() {

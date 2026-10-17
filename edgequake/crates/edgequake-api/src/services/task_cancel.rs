@@ -96,15 +96,36 @@ pub async fn apply_task_row_cancel(
     })
 }
 
-/// Cancel every currently registered in-flight task (pipeline-wide stop).
-pub async fn apply_cancel_all_active(
+/// Cancel every in-flight (Processing) task of one tenant+workspace.
+///
+/// SECURITY: scoped on purpose — `/pipeline/cancel` used to signal every
+/// registered token instance-wide, letting any caller stop other tenants' work.
+// ponytail: one page of 1000 rows; worker concurrency keeps Processing far below that.
+pub async fn apply_cancel_active_in_scope(
     storage: &SharedTaskStorage,
     registry: &CancellationRegistry,
+    tenant_id: uuid::Uuid,
+    workspace_id: uuid::Uuid,
 ) -> Result<Vec<TaskCancelApplyResult>, String> {
-    let ids = registry.cancel_all_active().await;
-    let mut results = Vec::with_capacity(ids.len());
-    for id in ids {
-        results.push(apply_task_row_cancel(storage, registry, &id).await?);
+    let filter = edgequake_tasks::TaskFilter {
+        tenant_id: Some(tenant_id),
+        workspace_id: Some(workspace_id),
+        status: Some(TaskStatus::Processing),
+        ..Default::default()
+    };
+    let pagination = edgequake_tasks::Pagination {
+        page: 1,
+        page_size: 1000,
+        ..Default::default()
+    };
+    let tasks = storage
+        .list_tasks(filter, pagination)
+        .await
+        .map_err(|e| format!("Failed to list in-flight tasks: {e}"))?
+        .tasks;
+    let mut results = Vec::with_capacity(tasks.len());
+    for task in tasks {
+        results.push(apply_task_row_cancel(storage, registry, &task.track_id).await?);
     }
     Ok(results)
 }

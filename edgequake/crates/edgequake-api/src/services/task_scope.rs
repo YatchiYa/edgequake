@@ -46,27 +46,32 @@ pub async fn get_task_for_context(
         .map_err(|e| ApiError::Internal(format!("Failed to get task: {e}")))?
         .ok_or_else(|| ApiError::NotFound(format!("Task not found: {track_id}")))?;
 
-    let not_found = || ApiError::NotFound(format!("Task not found: {track_id}"));
+    match resolve_task_scope(tenant_ctx) {
+        Some((tenant_id, workspace_id))
+            if task.tenant_id == tenant_id && task.workspace_id == workspace_id =>
+        {
+            Ok(task)
+        }
+        _ => Err(ApiError::NotFound(format!("Task not found: {track_id}"))),
+    }
+}
 
-    let ctx_workspace_id = match resolve_workspace_header(tenant_ctx.workspace_id.as_deref()) {
+/// Resolve the requester's (tenant, workspace) for task ownership checks.
+///
+/// Headerless requests map to the built-in defaults; a malformed header
+/// fails closed (`None`), never a wildcard.
+pub fn resolve_task_scope(tenant_ctx: &TenantContext) -> Option<(uuid::Uuid, uuid::Uuid)> {
+    let workspace_id = match resolve_workspace_header(tenant_ctx.workspace_id.as_deref()) {
         ScopeHeader::Resolved(id) => id,
         ScopeHeader::Absent => crate::middleware::default_workspace_uuid(),
-        ScopeHeader::Malformed => return Err(not_found()),
+        ScopeHeader::Malformed => return None,
     };
-    if task.workspace_id != ctx_workspace_id {
-        return Err(not_found());
-    }
-
-    let ctx_tenant_id = match resolve_tenant_header(tenant_ctx.tenant_id.as_deref()) {
+    let tenant_id = match resolve_tenant_header(tenant_ctx.tenant_id.as_deref()) {
         ScopeHeader::Resolved(id) => id,
         ScopeHeader::Absent => crate::middleware::default_tenant_uuid(),
-        ScopeHeader::Malformed => return Err(not_found()),
+        ScopeHeader::Malformed => return None,
     };
-    if task.tenant_id != ctx_tenant_id {
-        return Err(not_found());
-    }
-
-    Ok(task)
+    Some((tenant_id, workspace_id))
 }
 
 #[cfg(test)]

@@ -113,6 +113,7 @@ impl DocumentTaskProcessor {
             Ok((entity_count, chunk_ids)) => {
                 write_injection_status(
                     &self.kv_storage,
+                    self.optional_pg_pool(),
                     &data.meta_key,
                     &data.injection_id,
                     &data.name,
@@ -151,6 +152,7 @@ impl DocumentTaskProcessor {
                 );
                 write_injection_status(
                     &self.kv_storage,
+                    self.optional_pg_pool(),
                     &data.meta_key,
                     &data.injection_id,
                     &data.name,

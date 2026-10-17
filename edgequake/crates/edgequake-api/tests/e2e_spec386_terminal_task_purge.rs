@@ -200,6 +200,11 @@ async fn e2e_http_reprocess_keeps_failed_task_row() {
         .unwrap();
 
     let status = response.status();
+    let location = response
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
     let body = json_body(response).await;
     assert!(
         status == StatusCode::OK || status == StatusCode::ACCEPTED,
@@ -215,6 +220,17 @@ async fn e2e_http_reprocess_keeps_failed_task_row() {
         requeued >= 1 || new_id.is_some(),
         "document must be requeued so purge actually ran: {body}"
     );
+    // Endpoint sweep F9: Location must name a real task, not the batch label.
+    if status == StatusCode::ACCEPTED {
+        assert_eq!(
+            location.as_deref(),
+            new_id
+                .as_ref()
+                .map(|id| format!("/api/v1/tasks/{id}"))
+                .as_deref(),
+            "202 Location must resolve to the requeued task: {body}"
+        );
+    }
     assert!(
         state
             .tasks
@@ -252,5 +268,63 @@ async fn e2e_http_reprocess_keeps_failed_task_row() {
         replacement.status.is_inflight(),
         "new attempt must be Pending/Processing, got {:?}",
         replacement.status
+    );
+}
+
+/// Endpoint sweep F9: v2 `reprocess_failed` job_id must be resolvable via GET.
+#[tokio::test]
+async fn e2e_v2_reprocess_failed_job_id_is_resolvable() {
+    let state = AppState::test_state();
+    let doc_id = "sweep-f9-v2-reprocess-doc";
+    let failed = failed_ingest_task(doc_id);
+    let failed_id = failed.track_id.clone();
+    state.tasks.storage.create_task(&failed).await.unwrap();
+    seed_failed_document(&state, doc_id, &failed_id).await;
+
+    let app = Server::new(test_config(), state.clone()).build_router();
+    let jobs = format!("/api/v2/workspaces/{TEST_WORKSPACE_ID}/jobs");
+    let request = json!({
+        "job_type": "reprocess_failed",
+        "payload": { "document_id": doc_id, "max_documents": 1 }
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(&jobs)
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                .body(Body::from(serde_json::to_string(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = json_body(response).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let job_id = body["job_id"]
+        .as_str()
+        .or_else(|| body["id"].as_str())
+        .expect("job id in response")
+        .to_string();
+
+    let get = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("{jobs}/{job_id}"))
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        get.status(),
+        StatusCode::OK,
+        "GET jobs/{job_id} must resolve"
     );
 }

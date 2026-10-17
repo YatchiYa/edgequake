@@ -69,9 +69,13 @@ pub fn build_injection_metadata(
 }
 
 /// Write terminal injection status to KV (completed or failed).
+///
+/// Update-only (N3): when the injection was deleted while its task ran, nothing
+/// is written and `false` is returned — the status write must not re-create it.
 #[allow(clippy::too_many_arguments)]
 pub async fn write_injection_status(
     kv_storage: &Arc<dyn KVStorage>,
+    pool: crate::services::OptionalPgPool<'_>,
     meta_key: &str,
     injection_id: &str,
     name: &str,
@@ -86,7 +90,7 @@ pub async fn write_injection_status(
     doc_id: &str,
     created_at: &str,
     error: Option<&str>,
-) {
+) -> bool {
     let meta = build_injection_metadata(
         injection_id,
         name,
@@ -103,11 +107,30 @@ pub async fn write_injection_status(
         &Utc::now().to_rfc3339(),
         error,
     );
-    let _ = kv_storage
-        .upsert(&[(meta_key.to_string(), meta.clone())])
-        .await;
-    // SPEC-091 Wave B6: typed dual-write (warn-only).
-    crate::services::injection_relational::typed_injection_upsert(&meta, None).await;
+    use crate::services::injection_relational::{
+        typed_injection_update_existing, typed_injection_upsert,
+    };
+    // ponytail: check-then-write on KV is not atomic; delete also cancels the task,
+    // which closes the window in practice. Typed side is a single UPDATE.
+    let typed = typed_injection_update_existing(&meta, pool).await;
+    let kv_exists = matches!(kv_storage.get_by_id(meta_key).await, Ok(Some(_)));
+    if typed != Some(true) && !kv_exists {
+        info!(
+            injection_id,
+            status, "Injection deleted while processing — status write skipped"
+        );
+        return false;
+    }
+    if kv_exists {
+        let _ = kv_storage
+            .upsert(&[(meta_key.to_string(), meta.clone())])
+            .await;
+        // KV-only row (typed dual-write gap): keep SPEC-091 Wave B6 parity.
+        if typed != Some(true) {
+            typed_injection_upsert(&meta, pool).await;
+        }
+    }
+    true
 }
 
 /// Process injection content through the resilient pipeline + shared persister.

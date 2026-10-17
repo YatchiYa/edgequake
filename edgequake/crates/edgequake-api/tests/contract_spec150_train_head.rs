@@ -1,4 +1,4 @@
-//! SPEC-150: HEAD schema train contracts (migrations 160–169 + fossils).
+//! SPEC-150: HEAD schema train contracts (migrations 160–170 + fossils).
 //!
 //! These are compile-time / source / manifest contracts — no live Postgres
 //! required. Runtime epoch proof remains `make spec150-matrix`.
@@ -28,11 +28,11 @@ fn numbered_sql_versions() -> Vec<i64> {
 }
 
 #[test]
-fn head_train_includes_160_through_169() {
+fn head_train_includes_160_through_170() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 169, "HEAD schema train must end at 169");
-    for v in 160..=169 {
+    assert_eq!(max, 170, "HEAD schema train must end at 170");
+    for v in 160..=170 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "169");
+    assert_eq!(digits, "170");
 }
 
 #[test]
@@ -102,6 +102,10 @@ fn progress_module_release_map_covers_head() {
     assert!(
         src.contains("169 => \"v0.33.0\""),
         "release_for_schema must map 169 to v0.33.0"
+    );
+    assert!(
+        src.contains("170 => \"v0.34.0\""),
+        "release_for_schema must map 170 to v0.34.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

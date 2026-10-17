@@ -12,9 +12,6 @@ use edgequake_llm::traits::{ChatMessage, CompletionOptions, ImageData, LLMProvid
 use super::QueryEngine;
 use super::TokenStream;
 
-/// Copy source math spans; `[N]` stays a citation, not a formula fence.
-const VERBATIM_MATH_RULE: &str = "  - When Context contains math in `$...$` or `$$...$$`, copy that span verbatim with the same delimiters. Do not wrap a formula in `[` `]`. `[N]` is only a citation.";
-
 fn answer_completion_options(reasoning_effort: Option<&str>) -> Option<CompletionOptions> {
     reasoning_effort
         .map(str::trim)
@@ -341,14 +338,12 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
 3. Formatting & Language:
   - The response MUST be in the same language as the user query.
   - Use Markdown formatting for clarity (headings, bold text, bullet points).
-{verbatim_math}
   - Structure the answer as: {response_type}.
 {additional_instructions}
 ---Context---
 
 {context_text}
-{conversation_section}"#,
-            verbatim_math = VERBATIM_MATH_RULE,
+{conversation_section}"#
         )
     }
 
@@ -446,14 +441,12 @@ Prefer **specific named items from Context** (drug names, test names, staging sy
 3. Formatting & Language:
   - The response MUST be in the same language as the user query.
   - Use Markdown formatting for clarity (headings, bold text, bullet points).
-{verbatim_math}
   - Structure the answer as: {response_type}.
 {additional_instructions}
 ---Context---
 
 {context_text}
-{conversation_section}"#,
-            verbatim_math = VERBATIM_MATH_RULE,
+{conversation_section}"#
         )
     }
 
@@ -494,14 +487,12 @@ Consider the conversation history if provided to maintain conversational flow an
 3. Formatting & Language:
   - The response MUST be in the same language as the user query.
   - The response MUST utilize Markdown formatting for enhanced clarity and structure (e.g., headings, bold text, bullet points).
-{verbatim_math}
   - Structure the answer as: {response_type}.
 {additional_instructions}
 ---Context---
 
 {context_text}
-{conversation_section}"#,
-            verbatim_math = VERBATIM_MATH_RULE,
+{conversation_section}"#
         )
     }
 
@@ -564,12 +555,10 @@ Generate a comprehensive, well-structured answer that integrates observations fr
 4. Formatting & Language:
   - The response MUST be in the same language as the user query.
   - Use Markdown formatting for clarity (headings, bold text, bullet points).
-{verbatim_math}
 {additional_instructions}
 ---Context---
 
-{context_text}"#,
-            verbatim_math = VERBATIM_MATH_RULE,
+{context_text}"#
         )
     }
 

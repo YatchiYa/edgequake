@@ -13,6 +13,11 @@ resource "random_password" "bootstrap_admin" {
   special = false
 }
 
+resource "random_password" "agents_internal" {
+  length  = 48
+  special = false
+}
+
 resource "random_password" "master_api_key" {
   length  = 40
   special = false
@@ -24,6 +29,7 @@ locals {
     jwt                      = random_password.jwt.result
     bootstrap-admin-password = random_password.bootstrap_admin.result
     master-api-key           = random_password.master_api_key.result
+    agents-internal-token    = random_password.agents_internal.result
   }
 }
 
@@ -58,9 +64,10 @@ resource "google_secret_manager_secret" "openai" {
   depends_on = [google_project_service.required]
 }
 
-resource "google_secret_manager_secret_version" "openai_placeholder" {
+# "UNSET" placeholder until a key is passed (render-env.sh treats it as empty).
+resource "google_secret_manager_secret_version" "openai" {
   secret      = google_secret_manager_secret.openai.id
-  secret_data = "UNSET"
+  secret_data = var.openai_api_key != "" ? var.openai_api_key : "UNSET"
 
   lifecycle {
     ignore_changes = [enabled]
@@ -94,9 +101,10 @@ resource "google_secret_manager_secret" "mistral" {
   depends_on = [google_project_service.required]
 }
 
-resource "google_secret_manager_secret_version" "mistral_placeholder" {
+# "UNSET" placeholder until a key is passed (render-env.sh treats it as empty).
+resource "google_secret_manager_secret_version" "mistral" {
   secret      = google_secret_manager_secret.mistral.id
-  secret_data = "UNSET"
+  secret_data = var.mistral_api_key != "" ? var.mistral_api_key : "UNSET"
 
   lifecycle {
     ignore_changes = [enabled]
@@ -112,7 +120,7 @@ resource "google_secret_manager_secret_iam_member" "gce_mistral" {
 
 resource "google_secret_manager_secret_iam_member" "operators_secret_accessor" {
   for_each = {
-    for pair in setproduct(keys(google_secret_manager_secret.app), var.operator_members) :
+    for pair in setproduct(keys(google_secret_manager_secret.app), local.operators) :
     "${pair[0]}-${pair[1]}" => {
       secret_key = pair[0]
       member     = pair[1]

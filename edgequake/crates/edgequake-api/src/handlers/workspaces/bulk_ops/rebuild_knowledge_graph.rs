@@ -58,10 +58,11 @@ pub async fn rebuild_knowledge_graph(
     let return_202 = state.security.v1_rpc_return_202;
     let ws = workspace_id.to_string();
     let response = run_rebuild_knowledge_graph(state, workspace_id, tenant_ctx, request).await?;
-    let track_id = response.track_id.clone();
+    // Location must point at a real task (batch track_id has no row).
+    let task_id = response.first_task_id.clone();
     crate::services::v1_rpc_migration::respond_v1_async_rpc(
         &ws,
-        track_id.as_deref(),
+        task_id.as_deref(),
         return_202,
         response,
     )
@@ -211,6 +212,7 @@ pub(crate) async fn run_rebuild_knowledge_graph(
     // pipeline runs from the original PDF bytes: vision extraction → chunking →
     // embedding → entity extraction. Only text/markdown documents fall back to
     // the stored content (TextInsert).
+    let mut first_task_id: Option<String> = None;
     let (documents_queued, chunks_to_process) = if stats.document_count > 0 {
         let docs = collect_workspace_documents(&state, &workspace_id, &workspace.slug).await?;
 
@@ -232,7 +234,8 @@ pub(crate) async fn run_rebuild_knowledge_graph(
             )
             .await
             {
-                BulkReprocessCommit::Queued => {
+                BulkReprocessCommit::Queued(task_id) => {
+                    first_task_id.get_or_insert(task_id);
                     documents_queued += 1;
                     total_chunks += doc.chunk_count;
                 }
@@ -293,6 +296,7 @@ pub(crate) async fn run_rebuild_knowledge_graph(
         llm_provider: new_llm_provider.clone(),
         estimated_time_seconds: estimated_time,
         track_id: Some(track_id.clone()),
+        first_task_id,
         v2_migration: Some(crate::services::job_registry::v2_migration_hint(
             "rebuild_knowledge_graph",
             &workspace_id.to_string(),

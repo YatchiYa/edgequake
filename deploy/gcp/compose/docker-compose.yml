@@ -1,10 +1,10 @@
-# EdgeQuake GCP Option A — production overlay of docker-compose.quickstart.yml
-# Pin is LAW-148-4. Caddy is the only published host ports (LAW-148-13).
-# Secrets come from /opt/edgequake/.env (rendered from Secret Manager).
+# EdgeQuake on GCP — production overlay of docker-compose.quickstart.yml.
+# Images are pinned (never latest). Caddy is the only published host port.
+# Secrets come from /opt/<prefix>/.env (rendered from Secret Manager by render-env.sh).
 
 services:
   postgres:
-    image: ghcr.io/raphaelmansuy/edgequake-postgres:${EDGEQUAKE_POSTGRES_TAG:-${EDGEQUAKE_VERSION}}
+    image: ghcr.io/raphaelmansuy/edgequake-postgres:${EDGEQUAKE_POSTGRES_TAG}
     container_name: edgequake-postgres
     restart: unless-stopped
     shm_size: "256m"
@@ -13,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: edgequake
     volumes:
-      - ${ELITIZON_DATA_MOUNT:-/mnt/elitizon-db-data}/pgdata:/var/lib/postgresql
+      - ${EDGEQUAKE_DATA_MOUNT:-/mnt/edgequake-vm-data}/pgdata:/var/lib/postgresql
     networks:
       - edgequake
     healthcheck:
@@ -24,7 +24,7 @@ services:
       start_period: 20s
 
   migrate:
-    image: ghcr.io/raphaelmansuy/edgequake:${EDGEQUAKE_VERSION}
+    image: ${EDGEQUAKE_IMAGE_REGISTRY}/edgequake:${EDGEQUAKE_VERSION}
     container_name: edgequake-migrate
     restart: "no"
     environment:
@@ -38,9 +38,13 @@ services:
       - edgequake
 
   api:
-    image: ghcr.io/raphaelmansuy/edgequake:${EDGEQUAKE_VERSION}
+    image: ${EDGEQUAKE_IMAGE_REGISTRY}/edgequake:${EDGEQUAKE_VERSION}
     container_name: edgequake-api
     restart: unless-stopped
+    # Fresh /tmp on every (re)start: a half-extracted PDFium cache (PDFIUM_AUTO_CACHE_DIR
+    # lives in /tmp) must not survive a restart and crash-loop the API.
+    tmpfs:
+      - /tmp:size=1g,exec # exec: PDFium loads its .so from here (Docker tmpfs defaults to noexec)
     environment:
       EDGEQUAKE_HOST: "0.0.0.0"
       EDGEQUAKE_PORT: "8080"
@@ -49,7 +53,7 @@ services:
       EDGEQUAKE_LLM_PROVIDER: ${EDGEQUAKE_LLM_PROVIDER:-openai}
       EDGEQUAKE_LLM_MODEL: ${EDGEQUAKE_LLM_MODEL:-}
       EDGEQUAKE_EMBEDDING_PROVIDER: ${EDGEQUAKE_EMBEDDING_PROVIDER:-}
-      EDGEQUAKE_EMBEDDING_MODEL: ${EDGEQUAKE_EMBEDDING_MODEL:-text-embedding-3-small}
+      EDGEQUAKE_EMBEDDING_MODEL: ${EDGEQUAKE_EMBEDDING_MODEL:-}
       EDGEQUAKE_VISION_PROVIDER: ${EDGEQUAKE_VISION_PROVIDER:-${EDGEQUAKE_LLM_PROVIDER:-openai}}
       EDGEQUAKE_VISION_MODEL: ${EDGEQUAKE_VISION_MODEL:-${EDGEQUAKE_LLM_MODEL:-}}
       EDGEQUAKE_ALLOW_MOCK_PROVIDER: ${EDGEQUAKE_ALLOW_MOCK_PROVIDER:-}
@@ -69,7 +73,7 @@ services:
       EDGEQUAKE_CORS_ORIGINS: ${EDGEQUAKE_CORS_ORIGINS}
       EDGEQUAKE_BOOTSTRAP_ADMIN_USERNAME: ${EDGEQUAKE_BOOTSTRAP_ADMIN_USERNAME:-admin}
       EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD: ${EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD}
-      EDGEQUAKE_BOOTSTRAP_ADMIN_EMAIL: ${EDGEQUAKE_BOOTSTRAP_ADMIN_EMAIL:-admin@elitizon.local}
+      EDGEQUAKE_BOOTSTRAP_ADMIN_EMAIL: ${EDGEQUAKE_BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
       EDGEQUAKE_MASTER_API_KEY: ${EDGEQUAKE_MASTER_API_KEY}
       JWT_SECRET: ${JWT_SECRET}
     extra_hosts:
@@ -89,7 +93,7 @@ services:
       start_period: 30s
 
   frontend:
-    image: ghcr.io/raphaelmansuy/edgequake-frontend:${EDGEQUAKE_VERSION}
+    image: ${EDGEQUAKE_IMAGE_REGISTRY}/edgequake-frontend:${EDGEQUAKE_VERSION}
     container_name: edgequake-frontend
     restart: unless-stopped
     environment:
@@ -97,6 +101,13 @@ services:
       EDGEQUAKE_API_URL: ${EDGEQUAKE_API_URL}
       NEXT_PUBLIC_AUTH_ENABLED: "true"
       NEXT_PUBLIC_DISABLE_DEMO_LOGIN: "true"
+      # /api/copilot (Next route) calls the API server-to-server on the private network.
+      EDGEQUAKE_INTERNAL_API_URL: http://api:8080
+      AGENTS_INTERNAL_URL: http://agents:8765
+      AGENTS_INTERNAL_TOKEN: ${AGENTS_INTERNAL_TOKEN}
+      COPILOT_LLM_BASE_URL: ${COPILOT_LLM_BASE_URL:-}
+      COPILOT_LLM_API_KEY: ${COPILOT_LLM_API_KEY:-}
+      COPILOT_LLM_MODEL: ${COPILOT_LLM_MODEL:-}
     depends_on:
       api:
         condition: service_healthy
@@ -108,6 +119,32 @@ services:
       timeout: 10s
       retries: 5
       start_period: 25s
+
+  agents:
+    # Google ADK agents service (SPEC-165 /v1 API). Not published: only the web app
+    # reaches it (http://agents:8765) after checking the EdgeQuake session.
+    image: ${EDGEQUAKE_IMAGE_REGISTRY}/edgequake-agents:${EDGEQUAKE_VERSION}
+    container_name: edgequake-agents
+    restart: unless-stopped
+    environment:
+      EDGEQUAKE_URL: http://api:8080
+      EDGEQUAKE_ADMIN_USERNAME: ${EDGEQUAKE_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      EDGEQUAKE_ADMIN_PASSWORD: ${EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD}
+      EDGEQUAKE_TENANT_ID: ${AGENTS_TENANT_ID:-00000000-0000-0000-0000-000000000002}
+      EDGEQUAKE_WORKSPACE_ID: ${AGENTS_WORKSPACE_ID:-00000000-0000-0000-0000-000000000003}
+      EQ_AGENT_MODEL: ${AGENTS_MODEL:-mistral/mistral-medium-latest}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EQ_MAX_LLM_CALLS: "25"
+      AGENTS_INTERNAL_TOKEN: ${AGENTS_INTERNAL_TOKEN}
+      EQ_DATA_DIR: /data
+    volumes:
+      - agents-data:/data
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - edgequake
 
   caddy:
     image: caddy:2.10-alpine
@@ -130,6 +167,7 @@ services:
     depends_on:
       - api
       - frontend
+      - agents
     networks:
       - edgequake
 
@@ -138,5 +176,6 @@ networks:
     driver: bridge
 
 volumes:
+  agents-data:
   caddy-data:
   caddy-config:

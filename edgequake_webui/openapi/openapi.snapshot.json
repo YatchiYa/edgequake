@@ -1354,6 +1354,55 @@
         "security": []
       }
     },
+    "/api/v1/auth/switch-scope": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "POST /api/v1/auth/switch-scope — re-bind the web session to another tenant/workspace.",
+        "operationId": "switch_scope",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchScopeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Session re-bound to the requested scope (refresh token rotated)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwitchScopeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid web session or refresh token"
+          },
+          "403": {
+            "description": "No access to the requested scope, or API key credential"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/chat/completions": {
       "post": {
         "tags": [
@@ -7448,11 +7497,12 @@
         "tags": [
           "Pipeline"
         ],
-        "summary": "Request cancellation of the current pipeline job.",
+        "summary": "Request cancellation of the caller's in-flight pipeline tasks.",
+        "description": "Scoped to the request's tenant + workspace: other tenants' tasks are never touched.",
         "operationId": "cancel_pipeline",
         "responses": {
           "200": {
-            "description": "Cancellation requested or pipeline already idle",
+            "description": "Cancellation requested or pipeline already idle (caller's workspace only)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7460,6 +7510,9 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Malformed tenant/workspace scope"
           }
         },
         "security": [
@@ -10187,8 +10240,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_all"
+        "x-edgequake-v2-job-type": "reprocess_all",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -10820,8 +10873,8 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     }
   },
@@ -26855,12 +26908,19 @@
             "description": "Estimated time to complete (seconds).",
             "minimum": 0
           },
+          "first_task_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "First worker task track_id (resolvable via `/api/v1/tasks/{id}` and v2\n`.../jobs/{id}`); `None` when nothing was queued (response is then 200, no Location)."
+          },
           "job_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Background job ID for tracking (if async)."
+            "description": "Batch correlation label (stamped on each queued task) — not a task id;\npoll `first_task_id` instead."
           },
           "model_context_length": {
             "type": "integer",
@@ -26901,6 +26961,7 @@
           "embedding_model": {},
           "embedding_provider": {},
           "estimated_time_seconds": {},
+          "first_task_id": {},
           "job_id": {},
           "model_context_length": {},
           "status": {},
@@ -26988,6 +27049,13 @@
             "description": "Estimated time to complete (seconds).",
             "minimum": 0
           },
+          "first_task_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "First worker task track_id (resolvable via `/api/v1/tasks/{id}` and v2\n`.../jobs/{id}`); `None` when nothing was queued (response is then 200, no Location)."
+          },
           "llm_model": {
             "type": "string",
             "description": "New LLM model (after update)."
@@ -27010,7 +27078,7 @@
               "string",
               "null"
             ],
-            "description": "Track ID for monitoring progress."
+            "description": "Batch correlation label (stamped on each queued task) — not a task id;\npoll `first_task_id` instead."
           },
           "v2_migration": {
             "oneOf": [
@@ -27039,6 +27107,7 @@
           "documents_to_process": {},
           "edges_cleared": {},
           "estimated_time_seconds": {},
+          "first_task_id": {},
           "llm_model": {},
           "llm_provider": {},
           "nodes_cleared": {},
@@ -27099,6 +27168,13 @@
             },
             "description": "List of document IDs being recovered."
           },
+          "document_task_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReprocessDocumentTaskId"
+            },
+            "description": "Per-document task ids for newly enqueued recoveries (additive honesty)."
+          },
           "document_titles": {
             "type": "array",
             "items": {
@@ -27118,7 +27194,7 @@
           },
           "track_id": {
             "type": "string",
-            "description": "Track ID for the recovery batch."
+            "description": "Track ID for the recovery batch (correlation only — not a progress key)."
           },
           "v2_migration": {
             "oneOf": [
@@ -27134,6 +27210,7 @@
         },
         "example": {
           "document_ids": [],
+          "document_task_ids": [],
           "document_titles": [],
           "requeued": {},
           "stuck_found": {},
@@ -27760,6 +27837,13 @@
             "description": "Estimated processing time in seconds.",
             "minimum": 0
           },
+          "first_task_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "First worker task track_id (resolvable via `/api/v1/tasks/{id}` and v2\n`.../jobs/{id}`); `None` when nothing was queued (response is then 200, no Location)."
+          },
           "skip_reasons": {
             "type": "object",
             "description": "Why documents were not queued (issue #384 — `no_content` must not\nleave status pending). Empty map is omitted from JSON.",
@@ -27777,7 +27861,7 @@
           },
           "track_id": {
             "type": "string",
-            "description": "Track ID for monitoring progress."
+            "description": "Batch correlation label (stamped on each queued task) — not a task id;\npoll `first_task_id` instead."
           },
           "v2_migration": {
             "oneOf": [
@@ -27801,6 +27885,7 @@
           "documents_queued": {},
           "documents_skipped": {},
           "estimated_time_seconds": {},
+          "first_task_id": {},
           "skip_reasons": {},
           "status": {},
           "track_id": {},
@@ -30223,6 +30308,82 @@
         "example": {
           "entities": [],
           "relationships": []
+        }
+      },
+      "SwitchScopeRequest": {
+        "type": "object",
+        "required": [
+          "tenant_id"
+        ],
+        "properties": {
+          "refresh_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Non-browser clients may send the refresh token here instead of the `eq_refresh` cookie."
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Omit to bind the first workspace of the tenant the caller can use (tenant switch)."
+          }
+        },
+        "example": {
+          "refresh_token": {},
+          "tenant_id": {},
+          "workspace_id": {}
+        }
+      },
+      "SwitchScopeResponse": {
+        "type": "object",
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "tenant_id",
+          "workspace_id"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "refresh_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omitted for browser clients (HttpOnly `eq_refresh` cookie instead)."
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "description": "Always `Bearer`."
+          },
+          "workspace_id": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "access_token": {},
+          "expires_in": {},
+          "refresh_token": {},
+          "tenant_id": {},
+          "token_type": {},
+          "workspace_id": {}
         }
       },
       "TaskErrorResponse": {

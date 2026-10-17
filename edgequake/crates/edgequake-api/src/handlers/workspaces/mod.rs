@@ -27,6 +27,8 @@
 //! | GET | `/api/v1/tenants/{tenant_id}/workspaces` | [`list_workspaces`] | List workspaces for tenant |
 //! | GET | `/api/v1/workspaces/{workspace_id}` | [`get_workspace`] | Get one workspace |
 //! | DELETE | `/api/v1/workspaces/{workspace_id}` | [`delete_workspace`] | Delete workspace |
+//! | GET/POST | `/api/v1/tenants/{tenant_id}/members` | [`list_tenant_members`] / [`add_tenant_member`] | Tenant members |
+//! | PATCH/DELETE | `/api/v1/tenants/{tenant_id}/members/{membership_id}` | [`update_tenant_member`] / [`remove_tenant_member`] | Change role / remove |
 //!
 //! # WHY: Hierarchical Multi-Tenancy
 //!
@@ -50,6 +52,7 @@
 // Sub-modules: each owns a single responsibility
 mod bulk_ops;
 mod helpers;
+mod members;
 mod stats;
 mod tenant_access;
 mod tenants;
@@ -58,6 +61,7 @@ mod workspace_crud;
 // Re-export all public items (includes utoipa __path_* structs for OpenAPI)
 pub use bulk_ops::*;
 pub use helpers::invalidate_workspace_stats_cache;
+pub use members::*;
 pub use stats::*;
 pub use tenants::*;
 pub use workspace_crud::*;

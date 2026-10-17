@@ -1,14 +1,6 @@
 resource "google_service_account" "gce" {
   account_id   = "${var.name_prefix}-gce"
-  display_name = "EdgeQuake runtime on elitizon-db"
-  project      = var.project_id
-
-  depends_on = [google_project_service.required]
-}
-
-resource "google_service_account" "github" {
-  account_id   = "${var.name_prefix}-github"
-  display_name = "EdgeQuake GitHub Actions deploy (WIF)"
+  display_name = "EdgeQuake runtime on ${local.instance_name}"
   project      = var.project_id
 
   depends_on = [google_project_service.required]
@@ -32,68 +24,77 @@ resource "google_storage_bucket_iam_member" "gce_artifacts" {
   member = "serviceAccount:${google_service_account.gce.email}"
 }
 
-resource "google_iap_tunnel_instance_iam_member" "github_iap" {
-  project  = var.project_id
-  zone     = var.zone
-  instance = google_compute_instance.gce.name
-  role     = "roles/iap.tunnelResourceAccessor"
-  member   = "serviceAccount:${google_service_account.github.email}"
-
-  condition {
-    title       = "ssh-port-22"
-    description = "IAP TCP forwarding only to SSH on elitizon-db"
-    expression  = "destination.port == 22"
-  }
+resource "google_artifact_registry_repository_iam_member" "gce_reader" {
+  project    = var.project_id
+  location   = google_artifact_registry_repository.images.location
+  repository = google_artifact_registry_repository.images.name
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.gce.email}"
 }
 
-resource "google_compute_instance_iam_member" "github_oslogin" {
-  project       = var.project_id
-  zone          = var.zone
-  instance_name = google_compute_instance.gce.name
-  role          = "roles/compute.osAdminLogin"
-  member        = "serviceAccount:${google_service_account.github.email}"
+# ── Cloud Build (scripts/build-images.sh) ────────────────────────────────────
+resource "google_service_account" "build" {
+  account_id   = "${var.name_prefix}-build"
+  display_name = "EdgeQuake image builds (Cloud Build)"
+  project      = var.project_id
+
+  depends_on = [google_project_service.required]
 }
 
-resource "google_service_account_iam_member" "github_use_gce" {
-  service_account_id = google_service_account.gce.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${google_service_account.github.email}"
+resource "google_artifact_registry_repository_iam_member" "build_writer" {
+  project    = var.project_id
+  location   = google_artifact_registry_repository.images.location
+  repository = google_artifact_registry_repository.images.name
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${google_service_account.build.email}"
 }
 
-resource "google_compute_instance_iam_member" "github_viewer" {
-  project       = var.project_id
-  zone          = var.zone
-  instance_name = google_compute_instance.gce.name
-  role          = "roles/compute.viewer"
-  member        = "serviceAccount:${google_service_account.github.email}"
-}
-
-# gcloud compute ssh resolves the project before the instance. Instance-scoped
-# compute.viewer does not include compute.projects.get — without this binding
-# CD fails with: Required 'compute.projects.get' permission for 'projects/…'
-resource "google_project_iam_member" "github_compute_viewer" {
+resource "google_project_iam_member" "build_logging" {
   project = var.project_id
-  role    = "roles/compute.viewer"
-  member  = "serviceAccount:${google_service_account.github.email}"
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.build.email}"
 }
 
+# Source tarball + logs live under gs://<artifacts>/cloudbuild-{source,logs}/.
+resource "google_storage_bucket_iam_member" "build_source" {
+  bucket = google_storage_bucket.artifacts.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.build.email}"
+}
+
+# Cloud Build with a user-managed SA + custom staging/log bucket also needs
+# storage.buckets.get, which objectAdmin lacks.
+resource "google_storage_bucket_iam_member" "build_bucket_reader" {
+  bucket = google_storage_bucket.artifacts.name
+  role   = "roles/storage.legacyBucketReader"
+  member = "serviceAccount:${google_service_account.build.email}"
+}
+
+# ── Operators (the caller + var.operator_members) ────────────────────────────
 resource "google_project_iam_member" "operators_iap" {
-  for_each = toset(var.operator_members)
+  for_each = local.operators
   project  = var.project_id
   role     = "roles/iap.tunnelResourceAccessor"
   member   = each.value
 }
 
 resource "google_project_iam_member" "operators_oslogin" {
-  for_each = toset(var.operator_members)
+  for_each = local.operators
   project  = var.project_id
   role     = "roles/compute.osAdminLogin"
   member   = each.value
 }
 
 resource "google_service_account_iam_member" "operators_use_gce" {
-  for_each           = toset(var.operator_members)
+  for_each           = local.operators
   service_account_id = google_service_account.gce.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = each.value
+}
+
+resource "google_service_account_iam_member" "operators_use_build" {
+  for_each           = local.operators
+  service_account_id = google_service_account.build.name
   role               = "roles/iam.serviceAccountUser"
   member             = each.value
 }

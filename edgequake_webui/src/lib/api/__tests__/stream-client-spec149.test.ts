@@ -10,6 +10,9 @@ vi.mock("@/lib/runtime-config", () => ({
   getRuntimeApiBaseUrl: () => "http://api.test/api/v1",
 }));
 
+// Scope re-binding is covered by session-scope.test.ts; keep this suite on the stream client.
+vi.mock("../session-scope", () => ({ ensureSessionScope: async () => {} }));
+
 vi.mock("../client", () => ({
   buildHeaders: (extra?: HeadersInit) => {
     const headers = new Headers(extra);

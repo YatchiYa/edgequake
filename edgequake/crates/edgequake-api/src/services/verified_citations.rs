@@ -28,10 +28,8 @@ pub fn catalog_from_sources(sources: &[SourceReference]) -> CitationCatalog {
 
 /// Rewrite answer markdown with verified document+page links and prose scrub.
 ///
-/// [`rewrite_verified_citations`] normalizes math spans before `[N]` rewrite.
-/// Empty catalog → identity (math delimiters still restored). Acc gold answers
-/// typically have no `[N]` after strip. Records LAW-142-13 Prometheus / tracing
-/// counters.
+/// Empty catalog → identity. Acc gold answers typically have no `[N]` after strip.
+/// Records LAW-142-13 Prometheus / tracing counters.
 pub fn apply_verified_citations(answer: &str, sources: &[SourceReference]) -> RewriteReport {
     let catalog = catalog_from_sources(sources);
     let report = rewrite_verified_citations(answer, &catalog);

@@ -415,11 +415,23 @@ async fn refresh_scope(
         tenant_id: session.tenant_id,
         workspace_id: session.workspace_id,
     };
+    if session.provider_slug == super::scope_switch::LOCAL_SCOPE_PROVIDER {
+        // Password session moved by /auth/switch-scope: workspace-aware scope recheck.
+        crate::services::request_authorization::authorize_scope_in(
+            workspaces,
+            &user_id.to_string(),
+            local_role,
+            Some(&scope.tenant_id.to_string()),
+            scope.workspace_id.map(|w| w.to_string()).as_deref(),
+        )
+        .await?;
+        return Ok((scope, local_role.clone()));
+    }
     let role = revalidate_scope(workspaces, user_id, &scope, &local_role.to_string()).await?;
     Ok((scope, role))
 }
 
-fn with_refresh_cookie<T: serde::Serialize>(
+pub(super) fn with_refresh_cookie<T: serde::Serialize>(
     body: T,
     refresh_token: &str,
     secure: bool,

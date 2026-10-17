@@ -58,9 +58,7 @@ Follow these rules precisely:
 
 6. CODE / FORMULAS
    - Code in fenced blocks with language when clear
-   - One formula, one span: inline math as $...$ and display math as a $$...$$ block
-   - Do not wrap a formula in [ ] and do not substitute emoji for glyphs
-   - When a formula is numbered, keep the number as \tag{n} inside the $$ block
+   - Math as $inline$ / $$display$$ LaTeX
 
 7. WHAT TO IGNORE
    - Page numbers, repeated headers/footers, decorative borders
@@ -124,9 +122,7 @@ Follow these rules precisely:
 
 6. CODE / FORMULAS
    - Code in fenced blocks with language when clear
-   - One formula, one span: inline math as $...$ and display math as a $$...$$ block
-   - Do not wrap a formula in [ ] and do not substitute emoji for glyphs
-   - When a formula is numbered, keep the number as \tag{n} inside the $$ block
+   - Math as $inline$ / $$display$$ LaTeX
 
 7. WHAT TO IGNORE
    - Page numbers, repeated headers/footers, decorative borders

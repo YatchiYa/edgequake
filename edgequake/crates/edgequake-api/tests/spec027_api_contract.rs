@@ -1430,6 +1430,8 @@ fn spec027_auth_memory_store_callers_only_phase55() {
         // SPEC-152 MCP AS + SPEC-154 web refresh outcome type
         "src/oauth/store.rs",
         "src/handlers/auth/session.rs",
+        // switch-scope consumes the web refresh token (same outcome type as refresh)
+        "src/handlers/auth/scope_switch.rs",
     ];
 
     let mut offenders = Vec::new();

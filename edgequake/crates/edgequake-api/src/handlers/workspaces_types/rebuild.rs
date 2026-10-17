@@ -62,8 +62,13 @@ pub struct RebuildEmbeddingsResponse {
     pub model_context_length: usize,
     /// Estimated time to complete (seconds).
     pub estimated_time_seconds: Option<u64>,
-    /// Background job ID for tracking (if async).
+    /// Batch correlation label (stamped on each queued task) — not a task id;
+    /// poll `first_task_id` instead.
     pub job_id: Option<String>,
+    /// First worker task track_id (resolvable via `/api/v1/tasks/{id}` and v2
+    /// `.../jobs/{id}`); `None` when nothing was queued (response is then 200, no Location).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_task_id: Option<String>,
     /// Level 4 v2 migration hint (additive — SPEC-027 phase 21).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub v2_migration: Option<crate::services::job_registry::V2MigrationHint>,
@@ -103,8 +108,13 @@ fn default_max_reprocess() -> usize {
 /// Response from reprocess all operation.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ReprocessAllResponse {
-    /// Track ID for monitoring progress.
+    /// Batch correlation label (stamped on each queued task) — not a task id;
+    /// poll `first_task_id` instead.
     pub track_id: String,
+    /// First worker task track_id (resolvable via `/api/v1/tasks/{id}` and v2
+    /// `.../jobs/{id}`); `None` when nothing was queued (response is then 200, no Location).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_task_id: Option<String>,
     /// Level 4 v2 migration hint (additive).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub v2_migration: Option<crate::services::job_registry::V2MigrationHint>,
@@ -196,8 +206,13 @@ pub struct RebuildKnowledgeGraphResponse {
     pub llm_provider: String,
     /// Estimated time to complete (seconds).
     pub estimated_time_seconds: Option<u64>,
-    /// Track ID for monitoring progress.
+    /// Batch correlation label (stamped on each queued task) — not a task id;
+    /// poll `first_task_id` instead.
     pub track_id: Option<String>,
+    /// First worker task track_id (resolvable via `/api/v1/tasks/{id}` and v2
+    /// `.../jobs/{id}`); `None` when nothing was queued (response is then 200, no Location).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_task_id: Option<String>,
     /// Level 4 v2 migration hint (additive).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub v2_migration: Option<crate::services::job_registry::V2MigrationHint>,

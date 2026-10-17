@@ -28,6 +28,8 @@ pub fn is_query(method: &Method, path: &str) -> bool {
         && matches!(
             path,
             "/api/v1/query"
+                // Re-binding scope is not a content write; readonly members switch too.
+                | "/api/v1/auth/switch-scope"
                 | "/api/v1/query/stream"
                 | "/api/v1/query/context"
                 | "/api/v1/query/context/search"
@@ -82,12 +84,44 @@ pub async fn membership_role(
     tenant_id: Option<&str>,
     workspace_id: Option<&str>,
 ) -> Result<MembershipRole, ApiError> {
+    membership_role_in(
+        state.workspace_service.as_ref(),
+        user_id,
+        tenant_id,
+        workspace_id,
+    )
+    .await
+}
+
+/// Scope authorization for a principal: platform admins (`Role::Admin`, who already manage
+/// every tenant) may use any active workspace without a membership row — `switch-scope`
+/// audits that entry; everyone else needs a membership covering the scope.
+pub async fn authorize_scope_in(
+    workspaces: &dyn edgequake_core::WorkspaceService,
+    user_id: &str,
+    role: &Role,
+    tenant_id: Option<&str>,
+    workspace_id: Option<&str>,
+) -> Result<MembershipRole, ApiError> {
+    match membership_role_in(workspaces, user_id, tenant_id, workspace_id).await {
+        Err(_) if *role == Role::Admin => {
+            active_scope(workspaces, tenant_id, workspace_id).await?;
+            Ok(MembershipRole::Admin)
+        }
+        other => other,
+    }
+}
+
+/// Workspace exists, is active, belongs to an active tenant.
+async fn active_scope(
+    workspaces: &dyn edgequake_core::WorkspaceService,
+    tenant_id: Option<&str>,
+    workspace_id: Option<&str>,
+) -> Result<(Uuid, Uuid), ApiError> {
     let denied = || ApiError::forbidden_reason("No active membership for tenant/workspace scope");
-    let user = Uuid::parse_str(user_id).map_err(|_| denied())?;
     let tenant = parse_scope(tenant_id, crate::middleware::default_tenant_uuid())?;
     let workspace = parse_scope(workspace_id, crate::middleware::default_workspace_uuid())?;
-    let ws = state
-        .workspace_service
+    let ws = workspaces
         .get_workspace(workspace)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
@@ -95,8 +129,7 @@ pub async fn membership_role(
     if !ws.is_active || ws.tenant_id != tenant {
         return Err(denied());
     }
-    let active = state
-        .workspace_service
+    let active = workspaces
         .get_tenant(tenant)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
@@ -104,8 +137,20 @@ pub async fn membership_role(
     if !active {
         return Err(denied());
     }
-    state
-        .workspace_service
+    Ok((tenant, workspace))
+}
+
+/// [`membership_role`] against a bare workspace service (refresh path has no `AppState`).
+pub async fn membership_role_in(
+    workspaces: &dyn edgequake_core::WorkspaceService,
+    user_id: &str,
+    tenant_id: Option<&str>,
+    workspace_id: Option<&str>,
+) -> Result<MembershipRole, ApiError> {
+    let denied = || ApiError::forbidden_reason("No active membership for tenant/workspace scope");
+    let user = Uuid::parse_str(user_id).map_err(|_| denied())?;
+    let (tenant, workspace) = active_scope(workspaces, tenant_id, workspace_id).await?;
+    workspaces
         .get_user_memberships(user)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
@@ -140,6 +185,23 @@ fn global_resource(path: &str) -> bool {
     ]
     .iter()
     .any(|prefix| path.starts_with(prefix))
+}
+
+/// Stored role of the principal's user is `admin` (only consulted after a membership miss).
+async fn owner_is_platform_admin(state: &AppState, user_id: &str) -> bool {
+    // FromRef also builds the unit runtime when the `postgres` feature is off.
+    let pg = <crate::state::PostgresRuntime as axum::extract::FromRef<AppState>>::from_ref(state);
+    crate::handlers::auth::get_record_by_id(
+        &state.storage,
+        Some(&pg),
+        &state.security,
+        state.operational_stores.identity.as_deref(),
+        user_id,
+    )
+    .await
+    .ok()
+    .flatten()
+    .is_some_and(|u| u.is_active && Role::parse(&u.role) == Role::Admin)
 }
 
 pub async fn bind_request(state: &AppState, request: &mut Request) -> Result<(), ApiError> {
@@ -178,13 +240,21 @@ pub async fn bind_request(state: &AppState, request: &mut Request) -> Result<(),
     if !binding_required(state) || global_resource(request_path(request)) {
         return Ok(());
     }
-    let role = membership_role(
-        state,
-        &auth.user_id,
-        ctx.tenant_id.as_deref(),
-        ctx.workspace_id.as_deref(),
-    )
-    .await?;
+    let workspaces = state.workspace_service.as_ref();
+    let (tenant, workspace) = (ctx.tenant_id.as_deref(), ctx.workspace_id.as_deref());
+    let role = match authorize_scope_in(workspaces, &auth.user_id, &auth.role, tenant, workspace).await
+    {
+        // API keys carry a scope-derived role (e.g. Readonly); a platform-admin owner still
+        // reaches every workspace, while `auth.role` keeps the key's write limits below.
+        Err(denied) if auth.role != Role::Admin => {
+            if owner_is_platform_admin(state, &auth.user_id).await {
+                authorize_scope_in(workspaces, &auth.user_id, &Role::Admin, tenant, workspace).await?
+            } else {
+                return Err(denied);
+            }
+        }
+        other => other?,
+    };
     if let Some(target) = request_path(request)
         .split('/')
         .collect::<Vec<_>>()

@@ -1904,7 +1904,7 @@ async fn applied_nodes_carry_mirrored_source_ids_and_prefix_discovery() {
 
 #[tokio::test]
 async fn pre_fix_source_chunk_ids_only_still_discovered() {
-    use edgequake_storage::traits::{GraphPropertyWriteMode, NodeListFilter};
+    use edgequake_storage::traits::NodeListFilter;
 
     let Some((config, pool, tenant_id, workspace_id)) = setup_scope("spec149_pre_fix").await else {
         return;
@@ -1935,7 +1935,7 @@ async fn pre_fix_source_chunk_ids_only_still_discovered() {
     );
     // Intentionally omit source_ids — dual GIN readers must still find it.
     graph
-        .upsert_nodes_batch_with_mode(&[(node_id.clone(), props)], GraphPropertyWriteMode::Replace)
+        .upsert_nodes_batch(&[(node_id.clone(), props)])
         .await
         .expect("upsert pre-fix node");
 
@@ -1997,10 +1997,7 @@ async fn migration_156_sql_is_idempotent_on_missing_source_ids() {
         serde_json::json!(document_id.to_string()),
     );
     graph
-        .upsert_nodes_batch_with_mode(
-            &[(node_id.clone(), props)],
-            edgequake_storage::traits::GraphPropertyWriteMode::Replace,
-        )
+        .upsert_nodes_batch(&[(node_id.clone(), props)])
         .await
         .expect("seed missing source_ids node");
 
@@ -2055,7 +2052,6 @@ async fn legacy_source_ids_only_node_keeps_lineage_through_merge_and_delete() {
 }
 
 async fn legacy_shared_node_round_trip(namespace: &str, legacy_has_chunk_ids: bool) {
-    use edgequake_storage::traits::GraphPropertyWriteMode;
     use edgequake_storage_contracts::{DeleteDocument, LifecycleCommitter};
 
     let Some((config, pool, tenant_id, workspace_id)) = setup_scope(namespace).await else {
@@ -2113,7 +2109,7 @@ async fn legacy_shared_node_round_trip(namespace: &str, legacy_has_chunk_ids: bo
         serde_json::json!(legacy_doc.to_string()),
     );
     graph
-        .upsert_nodes_batch_with_mode(&[(node_id.clone(), props)], GraphPropertyWriteMode::Replace)
+        .upsert_nodes_batch(&[(node_id.clone(), props)])
         .await
         .expect("seed legacy node");
 

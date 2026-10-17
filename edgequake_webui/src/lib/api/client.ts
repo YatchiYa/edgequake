@@ -31,7 +31,9 @@ import {
   getOrCreateUserId,
   getTenantContext,
   getTokens,
+  serializeAuth,
 } from "./client-context";
+import { ensureSessionScope } from "./session-scope";
 import { streamClient } from "./stream-client";
 
 export type { RestoredAccessSession };
@@ -386,6 +388,7 @@ export async function apiClient<T>(
     ? endpoint
     : `${getRuntimeApiBaseUrl()}${endpoint}`;
 
+  await ensureSessionScope(endpoint);
   const signal = resolveFetchSignal(timeoutMs, userSignal);
   const config: RequestInit = {
     ...fetchOptions,
@@ -491,7 +494,7 @@ async function redeemRefreshCookieOnce(): Promise<RestoredAccessSession | null> 
  */
 export async function restoreSessionFromRefreshCookie(): Promise<RestoredAccessSession | null> {
   if (!refreshInFlight) {
-    refreshInFlight = redeemRefreshCookieOnce().finally(() => {
+    refreshInFlight = serializeAuth(redeemRefreshCookieOnce).finally(() => {
       refreshInFlight = null;
     });
   }

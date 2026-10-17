@@ -19,7 +19,6 @@ import { MarkdownInlineTokens } from './MarkdownInlineTokens';
 import type { CitationResolver } from './citation-resolver';
 import type { AlertType } from './utils/configure-marked';
 import { MathTokenRenderer } from './MathTokenRenderer';
-import { displayLatexFromEquationHtml } from './utils/math-token';
 import { sanitizeHtml } from './utils/sanitize-html';
 
 // Lazy load heavy components
@@ -158,7 +157,6 @@ const TokenRenderer = memo(function TokenRenderer({
 
     case 'math_block':
     case 'math_bracket_block':
-    case 'math_bare_bracket_block':
       return <MathTokenRenderer key={tokenId} token={token} />;
 
     case 'blockquote': {
@@ -292,15 +290,6 @@ const TokenRenderer = memo(function TokenRenderer({
 
     case 'html': {
       const html = token as Tokens.HTML;
-      const equation = displayLatexFromEquationHtml(html.raw);
-      if (equation) {
-        return (
-          <MathTokenRenderer
-            key={tokenId}
-            token={{ type: 'math_block', text: equation, raw: html.raw } as Token}
-          />
-        );
-      }
       // Sanitize HTML using DOMPurify for security
       const sanitizedHtml = sanitizeHtml(html.raw);
       return (

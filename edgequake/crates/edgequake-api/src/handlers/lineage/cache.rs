@@ -56,8 +56,10 @@ pub(super) async fn cached_kv_get(
         && crate::services::relational_sidecar_store::artifacts_prefer_relational()
     {
         let doc_id = key.trim_end_matches("-lineage");
+        // Request-scoped store installed by `install_operational_ports`.
+        let store = crate::services::relational_sidecar_store::sidecar_store();
         match crate::services::relational_sidecar_store::typed_artifact_get(
-            None,
+            store.as_deref(),
             doc_id,
             crate::services::relational_sidecar_store::ARTIFACT_KIND_LINEAGE,
         )

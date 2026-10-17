@@ -196,9 +196,14 @@ impl PostgresAGEGraphStorage {
                     .collect();
                 format!(" SET {}", sets.join(", "))
             };
+            // Replace is update-only: MATCH never re-creates a concurrently deleted node.
+            let verb = match mode {
+                crate::traits::GraphPropertyWriteMode::MergeSources => "MERGE",
+                crate::traits::GraphPropertyWriteMode::Replace => "MATCH",
+            };
             let cypher = format!(
                 "UNWIND [{}] AS props \
-                 MERGE (n:Node {{node_id: props.node_id}}){}",
+                 {verb} (n:Node {{node_id: props.node_id}}){}",
                 rows.join(", "),
                 set_clause
             );
@@ -575,21 +580,27 @@ impl PostgresAGEGraphStorage {
         // DISTINCT ON is a SQL safety net (same policy as edge native upsert).
         // SPEC-062: prefer eq_node_id arbiter when column exists (ensure_eq_id_columns).
         // SPEC-098 LAW-098-12: Replace mode must NOT call eq_merge (union undoes prune).
-        let properties_set = match mode {
-            crate::traits::GraphPropertyWriteMode::MergeSources => format!(
-                r#"properties = (
-                    public.eq_merge_graph_properties(
-                        ag_catalog.agtype_to_json({graph}."Node".properties)::jsonb,
-                        ag_catalog.agtype_to_json(EXCLUDED.properties)::jsonb
-                    )
-                )::text::ag_catalog.agtype"#
-            ),
-            crate::traits::GraphPropertyWriteMode::Replace => {
-                "properties = EXCLUDED.properties".to_string()
-            }
-        };
-        let sql = format!(
-            r#"
+        // Replace is update-only (N4): a prune of a node deleted concurrently must
+        // not INSERT a bare `{node_id, source_*}` vertex with no workspace/tenant.
+        let sql = if mode == crate::traits::GraphPropertyWriteMode::Replace {
+            format!(
+                r#"
+            UPDATE {graph}."Node" AS n
+            SET properties = d.props_text::ag_catalog.agtype
+            FROM (
+                SELECT DISTINCT ON (node_id_val)
+                    node_id_val,
+                    props_text
+                FROM unnest($1::text[], $2::text[])
+                       WITH ORDINALITY AS p(node_id_val, props_text, ord)
+                ORDER BY node_id_val, ord DESC
+            ) AS d
+            WHERE n.eq_node_id = d.node_id_val
+            "#
+            )
+        } else {
+            format!(
+                r#"
             INSERT INTO {graph}."Node" (id, properties, eq_node_id)
             SELECT
                 eq_next_node_id('{graph}'),
@@ -605,12 +616,17 @@ impl PostgresAGEGraphStorage {
             ) AS d
             ON CONFLICT (eq_node_id) WHERE eq_node_id IS NOT NULL
             DO UPDATE SET
-                {properties_set},
+                properties = (
+                    public.eq_merge_graph_properties(
+                        ag_catalog.agtype_to_json({graph}."Node".properties)::jsonb,
+                        ag_catalog.agtype_to_json(EXCLUDED.properties)::jsonb
+                    )
+                )::text::ag_catalog.agtype,
                 eq_node_id = EXCLUDED.eq_node_id
             "#,
-            graph = graph,
-            properties_set = properties_set
-        );
+                graph = graph
+            )
+        };
 
         sqlx::query(&sql)
             .bind(&node_ids)
