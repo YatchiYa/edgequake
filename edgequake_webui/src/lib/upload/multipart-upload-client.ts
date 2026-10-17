@@ -4,6 +4,7 @@
  */
 
 import { getRuntimeApiBaseUrl } from "@/lib/runtime-config";
+import { ensureSessionScope } from "@/lib/api/session-scope";
 import {
   adoptTraceparentFromResponse,
   ApiRequestError,
@@ -41,7 +42,7 @@ function parseJsonResponse<T>(xhr: XMLHttpRequest): T {
   return text ? (JSON.parse(text) as T) : ({} as T);
 }
 
-function xhrPostMultipart<T>(
+async function xhrPostMultipart<T>(
   url: string,
   formData: FormData,
   timeoutMs: number,
@@ -49,6 +50,7 @@ function xhrPostMultipart<T>(
   silent: boolean,
   isRetry: boolean,
 ): Promise<T> {
+  await ensureSessionScope();
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);

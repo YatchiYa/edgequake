@@ -8,6 +8,7 @@ import {
   Activity,
   BarChart2,
   BookOpen,
+  Bot,
   FileText,
   FolderKanban,
   Home,
@@ -47,6 +48,7 @@ export const DESTINATION_GROUPS: readonly DestinationGroup[] = [
       { href: "/documents", icon: FileText, labelKey: "nav.documents", fallback: "Documents", chord: "d" },
       { href: "/query", icon: MessageSquare, labelKey: "nav.query", fallback: "Query", chord: "q" },
       { href: "/graph", icon: Network, labelKey: "nav.graph", fallback: "Knowledge Graph", chord: "g" },
+      { href: "/agents", icon: Bot, labelKey: "nav.agents", fallback: "Agents", chord: "i" },
     ],
   },
   {

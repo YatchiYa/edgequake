@@ -19,8 +19,7 @@ use std::collections::HashMap;
 use edgequake_storage::{
     canonical_graph_node_id, node_counts_by_source_prefixes_sql,
     traits::{
-        GraphPropertyWriteMode, GraphScanOps, GraphStorage, GraphStorageMutateOps,
-        GraphStorageReadOps, NodeListFilter,
+        GraphScanOps, GraphStorage, GraphStorageMutateOps, GraphStorageReadOps, NodeListFilter,
     },
     PostgresAGEGraphStorage, PostgresPool,
 };
@@ -154,10 +153,7 @@ async fn migration_158_restores_orphaned_live_document_lineage_missing_only() {
             ),
         ),
     ];
-    graph
-        .upsert_nodes_batch_with_mode(&seeds, GraphPropertyWriteMode::Replace)
-        .await
-        .expect("seed nodes");
+    graph.upsert_nodes_batch(&seeds).await.expect("seed nodes");
 
     let before: Vec<_> = lineage_snapshot(&graph, &[&healthy, &ghost_only, &foreign]).await;
     for _ in 0..2 {

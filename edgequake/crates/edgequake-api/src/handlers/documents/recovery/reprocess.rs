@@ -51,10 +51,11 @@ pub async fn reprocess_failed(
     let return_202 = state.security.v1_rpc_return_202;
     let response = run_reprocess_failed(state, tenant_ctx, request).await?;
     if let Some(ws) = workspace_id.as_deref() {
-        let track_id = response.track_id.clone();
+        // Location must point at a real task (batch track_id has no row).
+        let job_id = response.first_task_id().map(str::to_string);
         return crate::services::v1_rpc_migration::respond_v1_async_rpc(
             ws,
-            Some(track_id.as_str()),
+            job_id.as_deref(),
             return_202,
             response,
         );

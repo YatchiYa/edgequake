@@ -162,7 +162,9 @@ export function AuthGuard({ children }: AuthGuardProps) {
       probing.current = false;
       redirecting.current = true;
       setCookieProbe('done');
-      router.replace('/login');
+      // Come back to the page that asked for a session (e.g. /agents) after sign-in.
+      const back = `${window.location.pathname}${window.location.search}`;
+      router.replace(back && back !== '/' ? `/login?redirect=${encodeURIComponent(back)}` : '/login');
     })();
   }, [hasHydrated, requiresAuth, hasSession, pathname, router]);
 

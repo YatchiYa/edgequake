@@ -9,6 +9,10 @@ meta() {
 
 export STACK_BUCKET="$(meta edgequake-bucket)"
 export STACK_VERSION="$(meta edgequake-version)"
+export STACK_REGISTRY="$(meta edgequake-registry)"
+export STACK_POSTGRES_TAG="$(meta edgequake-postgres-tag)"
+export STACK_COPILOT_URL="$(meta edgequake-copilot-url)"
+export STACK_COPILOT_MODEL="$(meta edgequake-copilot-model)"
 export STACK_HOSTNAME="$(meta edgequake-hostname)"
 export STACK_PROJECT="$(meta edgequake-project)"
 export STACK_PREFIX="$(meta edgequake-prefix)"

@@ -13,6 +13,7 @@
 
 import { ChangePasswordDialog } from '@/components/auth/change-password-dialog';
 import { ClientOnly } from '@/components/client-only';
+import { CopilotToggle } from '@/components/copilot/copilot-panel';
 import { LanguageSelector } from '@/components/shared/language-selector';
 import {
   ConnectionIndicator,
@@ -132,6 +133,9 @@ export function Header() {
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
+        <ClientOnly fallback={null}>
+          <CopilotToggle />
+        </ClientOnly>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>

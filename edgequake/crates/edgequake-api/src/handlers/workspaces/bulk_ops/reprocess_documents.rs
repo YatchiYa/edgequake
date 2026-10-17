@@ -55,10 +55,11 @@ pub async fn reprocess_all_documents(
     let return_202 = state.security.v1_rpc_return_202;
     let ws = workspace_id.to_string();
     let response = run_reprocess_all_documents(state, workspace_id, tenant_ctx, request).await?;
-    let track_id = response.track_id.clone();
+    // Location must point at a real task (batch track_id has no row).
+    let task_id = response.first_task_id.clone();
     crate::services::v1_rpc_migration::respond_v1_async_rpc(
         &ws,
-        Some(track_id.as_str()),
+        task_id.as_deref(),
         return_202,
         response,
     )
@@ -118,6 +119,7 @@ pub(crate) async fn run_reprocess_all_documents(
 
     let documents_found = docs.len();
     let mut documents_queued = 0;
+    let mut first_task_id: Option<String> = None;
     let mut documents_skipped = 0;
     let mut skip_reasons: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
 
@@ -159,7 +161,8 @@ pub(crate) async fn run_reprocess_all_documents(
         )
         .await
         {
-            BulkReprocessCommit::Queued => {
+            BulkReprocessCommit::Queued(task_id) => {
+                first_task_id.get_or_insert(task_id);
                 documents_queued += 1;
             }
             BulkReprocessCommit::EnqueueFailed => {
@@ -191,6 +194,7 @@ pub(crate) async fn run_reprocess_all_documents(
 
     let response = ReprocessAllResponse {
         track_id,
+        first_task_id,
         workspace_id,
         status: if documents_queued > 0 {
             "processing".to_string()

@@ -1,0 +1,31 @@
+{
+  "eval_set_id": "support_agent_mpw",
+  "name": "support_agent on the MPW workspace",
+  "description": "Grounded answers with citations; requires the MPW (Altaroc) documents.",
+  "eval_cases": [
+    {
+      "eval_id": "odyssey_2026_min_ticket",
+      "conversation": [
+        {
+          "invocation_id": "inv-1",
+          "user_content": {"role": "user", "parts": [{"text": "Quel est le ticket minimum pour investir dans Odyssey 2026 ?"}]},
+          "final_response": {"role": "model", "parts": [{"text": "Le ticket minimum pour investir dans Odyssey 2026 est de 100 000 €. Sources : altaroc_produits.md"}]},
+          "intermediate_data": {"tool_uses": [{"name": "knowledge_query", "args": {}}], "tool_responses": [], "intermediate_responses": []}
+        }
+      ],
+      "session_input": {"app_name": "support_agent", "user_id": "eval", "state": {}}
+    },
+    {
+      "eval_id": "discovery_fcpr_fees",
+      "conversation": [
+        {
+          "invocation_id": "inv-1",
+          "user_content": {"role": "user", "parts": [{"text": "Quels sont les frais de gestion annuels des parts A du Discovery FCPR ?"}]},
+          "final_response": {"role": "model", "parts": [{"text": "Les frais de gestion des parts A du Discovery FCPR sont de 2,00 % par an. Sources : altaroc_documentation_agent.md"}]},
+          "intermediate_data": {"tool_uses": [{"name": "knowledge_query", "args": {}}], "tool_responses": [], "intermediate_responses": []}
+        }
+      ],
+      "session_input": {"app_name": "support_agent", "user_id": "eval", "state": {}}
+    }
+  ]
+}

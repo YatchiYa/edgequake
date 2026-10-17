@@ -9,14 +9,15 @@ use crate::error::Result;
 ///
 /// - [`MergeSources`](Self::MergeSources): ingest-safe — `eq_merge_graph_properties`
 ///   unions `source_ids` / `source_chunk_ids` (SPEC-058).
-/// - [`Replace`](Self::Replace): cascade prune — set `properties = EXCLUDED.properties`
-///   so subtractive `source_ids` writes stick (SPEC-098 / LAW-098-12).
+/// - [`Replace`](Self::Replace): cascade prune — full property replace (no union)
+///   so subtractive `source_ids` writes stick (SPEC-098 / LAW-098-12). **Update-only**:
+///   rows that do not exist (e.g. deleted concurrently) are skipped, never created.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GraphPropertyWriteMode {
     /// Concurrent ingest: union source lineage arrays.
     #[default]
     MergeSources,
-    /// Document cascade shared-entity prune: full property replace.
+    /// Document cascade shared-entity prune: full property replace of existing rows only.
     Replace,
 }
 
