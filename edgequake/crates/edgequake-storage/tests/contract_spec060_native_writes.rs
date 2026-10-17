@@ -49,18 +49,21 @@ fn contract_batch_uses_eq_id_on_conflict() {
 
 #[test]
 fn contract_replace_mode_skips_eq_merge() {
-    // SPEC-098 LAW-098-12: cascade prune must SET EXCLUDED.properties, not union.
+    // SPEC-098 LAW-098-12: cascade prune must replace properties, not union.
+    // N4: and must be update-only (UPDATE, never INSERT a deleted row back).
     let mutate = include_str!("../src/adapters/postgres/graph/nodes_ops/mutate.rs");
     assert!(
         mutate.contains("GraphPropertyWriteMode::Replace")
-            && mutate.contains("properties = EXCLUDED.properties"),
-        "native node Replace mode must set EXCLUDED.properties"
+            && mutate.contains(r#"UPDATE {graph}."Node" AS n"#)
+            && mutate.contains("SET properties = d.props_text::ag_catalog.agtype"),
+        "native node Replace mode must be an update-only full replace"
     );
     let edges = include_str!("../src/adapters/postgres/graph/edges_ops.rs");
     assert!(
         edges.contains("GraphPropertyWriteMode::Replace")
-            && edges.contains("properties = EXCLUDED.properties"),
-        "native edge Replace mode must set EXCLUDED.properties"
+            && edges.contains(r#"UPDATE {graph}."EDGE" AS e"#)
+            && edges.contains("SET properties = d.props_text::ag_catalog.agtype"),
+        "native edge Replace mode must be an update-only full replace"
     );
     let trait_src = include_str!("../src/traits/graph_mutate_ops.rs");
     assert!(

@@ -542,6 +542,13 @@ pub async fn delete_tenant(
 
     state
         .workspace_service
+        .get_tenant(tenant_id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Tenant {} not found", tenant_id)))?;
+
+    state
+        .workspace_service
         .delete_tenant(tenant_id)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;

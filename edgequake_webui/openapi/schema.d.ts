@@ -641,6 +641,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/switch-scope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** POST /api/v1/auth/switch-scope — re-bind the web session to another tenant/workspace. */
+        post: operations["switch_scope"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/completions": {
         parameters: {
             query?: never;
@@ -2716,7 +2733,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Request cancellation of the current pipeline job. */
+        /**
+         * Request cancellation of the caller's in-flight pipeline tasks.
+         * @description Scoped to the request's tenant + workspace: other tenants' tasks are never touched.
+         */
         post: operations["cancel_pipeline"];
         delete?: never;
         options?: never;
@@ -4822,7 +4842,10 @@ export interface components {
              *     Liveness `/health` stays HTTP 200 with `status: degraded`.
              */
             eq_id_schema?: boolean | null;
-            /** @description Apache AGE extension available (PostgreSQL only, SPEC-090 F-090-19). */
+            /**
+             * @description Graph queries can run. True when Apache AGE is loaded, or when the
+             *     SPEC-164 plain graph ledger is ready (PostgreSQL only).
+             */
             graph_available?: boolean | null;
             /** @description Graph storage status. */
             graph_storage: boolean;
@@ -10550,6 +10573,7 @@ export interface components {
         /**
          * @description Pagination information for PDF listing.
          * @example {
+         *       "next_cursor": {},
          *       "page": {},
          *       "page_size": {},
          *       "total_count": {},
@@ -10557,6 +10581,8 @@ export interface components {
          *     }
          */
         PdfPaginationInfo: {
+            /** @description Pass this as `cursor` to read the next page without walking skipped rows. */
+            next_cursor?: string | null;
             /** @description Current page (1-indexed). */
             page: number;
             /** @description Page size. */
@@ -12020,6 +12046,7 @@ export interface components {
          *       "embedding_model": {},
          *       "embedding_provider": {},
          *       "estimated_time_seconds": {},
+         *       "first_task_id": {},
          *       "job_id": {},
          *       "model_context_length": {},
          *       "status": {},
@@ -12052,7 +12079,15 @@ export interface components {
              * @description Estimated time to complete (seconds).
              */
             estimated_time_seconds?: number | null;
-            /** @description Background job ID for tracking (if async). */
+            /**
+             * @description First worker task track_id (resolvable via `/api/v1/tasks/{id}` and v2
+             *     `.../jobs/{id}`); `None` when nothing was queued (response is then 200, no Location).
+             */
+            first_task_id?: string | null;
+            /**
+             * @description Batch correlation label (stamped on each queued task) — not a task id;
+             *     poll `first_task_id` instead.
+             */
             job_id?: string | null;
             /**
              * @description New embedding model's context length (max input tokens).
@@ -12124,6 +12159,7 @@ export interface components {
          *       "documents_to_process": {},
          *       "edges_cleared": {},
          *       "estimated_time_seconds": {},
+         *       "first_task_id": {},
          *       "llm_model": {},
          *       "llm_provider": {},
          *       "nodes_cleared": {},
@@ -12146,6 +12182,11 @@ export interface components {
              * @description Estimated time to complete (seconds).
              */
             estimated_time_seconds?: number | null;
+            /**
+             * @description First worker task track_id (resolvable via `/api/v1/tasks/{id}` and v2
+             *     `.../jobs/{id}`); `None` when nothing was queued (response is then 200, no Location).
+             */
+            first_task_id?: string | null;
             /** @description New LLM model (after update). */
             llm_model: string;
             /** @description New LLM provider (after update). */
@@ -12154,7 +12195,10 @@ export interface components {
             nodes_cleared: number;
             /** @description Status of the operation. */
             status: string;
-            /** @description Track ID for monitoring progress. */
+            /**
+             * @description Batch correlation label (stamped on each queued task) — not a task id;
+             *     poll `first_task_id` instead.
+             */
             track_id?: string | null;
             v2_migration?: null | components["schemas"]["V2MigrationHint"];
             /** @description Number of vectors cleared (if rebuild_embeddings was true). */
@@ -12189,6 +12233,7 @@ export interface components {
          * @description Response from recover stuck operation.
          * @example {
          *       "document_ids": [],
+         *       "document_task_ids": [],
          *       "document_titles": [],
          *       "requeued": {},
          *       "stuck_found": {},
@@ -12199,13 +12244,15 @@ export interface components {
         RecoverStuckResponse: {
             /** @description List of document IDs being recovered. */
             document_ids: string[];
+            /** @description Per-document task ids for newly enqueued recoveries (additive honesty). */
+            document_task_ids?: components["schemas"]["ReprocessDocumentTaskId"][];
             /** @description List of document titles for reference. */
             document_titles: string[];
             /** @description Number of documents queued for reprocessing. */
             requeued: number;
             /** @description Number of stuck documents found. */
             stuck_found: number;
-            /** @description Track ID for the recovery batch. */
+            /** @description Track ID for the recovery batch (correlation only — not a progress key). */
             track_id: string;
             v2_migration?: null | components["schemas"]["V2MigrationHint"];
         };
@@ -12485,6 +12532,7 @@ export interface components {
          *       "documents_queued": {},
          *       "documents_skipped": {},
          *       "estimated_time_seconds": {},
+         *       "first_task_id": {},
          *       "skip_reasons": {},
          *       "status": {},
          *       "track_id": {},
@@ -12505,6 +12553,11 @@ export interface components {
              */
             estimated_time_seconds?: number | null;
             /**
+             * @description First worker task track_id (resolvable via `/api/v1/tasks/{id}` and v2
+             *     `.../jobs/{id}`); `None` when nothing was queued (response is then 200, no Location).
+             */
+            first_task_id?: string | null;
+            /**
              * @description Why documents were not queued (issue #384 — `no_content` must not
              *     leave status pending). Empty map is omitted from JSON.
              */
@@ -12513,7 +12566,10 @@ export interface components {
             };
             /** @description Status of the operation. */
             status: string;
-            /** @description Track ID for monitoring progress. */
+            /**
+             * @description Batch correlation label (stamped on each queued task) — not a task id;
+             *     poll `first_task_id` instead.
+             */
             track_id: string;
             v2_migration?: null | components["schemas"]["V2MigrationHint"];
             /**
@@ -13723,6 +13779,45 @@ export interface components {
         SubgraphBundle: {
             entities: components["schemas"]["ContextEntity"][];
             relationships: components["schemas"]["ContextRelationship"][];
+        };
+        /**
+         * @example {
+         *       "refresh_token": {},
+         *       "tenant_id": {},
+         *       "workspace_id": {}
+         *     }
+         */
+        SwitchScopeRequest: {
+            /** @description Non-browser clients may send the refresh token here instead of the `eq_refresh` cookie. */
+            refresh_token?: string | null;
+            /** Format: uuid */
+            tenant_id: string;
+            /**
+             * Format: uuid
+             * @description Omit to bind the first workspace of the tenant the caller can use (tenant switch).
+             */
+            workspace_id?: string | null;
+        };
+        /**
+         * @example {
+         *       "access_token": {},
+         *       "expires_in": {},
+         *       "refresh_token": {},
+         *       "tenant_id": {},
+         *       "token_type": {},
+         *       "workspace_id": {}
+         *     }
+         */
+        SwitchScopeResponse: {
+            access_token: string;
+            /** Format: int64 */
+            expires_in: number;
+            /** @description Omitted for browser clients (HttpOnly `eq_refresh` cookie instead). */
+            refresh_token?: string | null;
+            tenant_id: string;
+            /** @description Always `Bearer`. */
+            token_type: string;
+            workspace_id: string;
         };
         /**
          * @description Detailed error response for failed tasks.
@@ -15978,6 +16073,44 @@ export interface operations {
             };
         };
     };
+    switch_scope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SwitchScopeRequest"];
+            };
+        };
+        responses: {
+            /** @description Session re-bound to the requested scope (refresh token rotated) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SwitchScopeResponse"];
+                };
+            };
+            /** @description No valid web session or refresh token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No access to the requested scope, or API key credential */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     chat_completion: {
         parameters: {
             query?: never;
@@ -16939,6 +17072,8 @@ export interface operations {
                 page?: number;
                 /** @description Page size */
                 page_size?: number;
+                /** @description Keyset cursor from next_cursor. Replaces the page offset. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -19643,7 +19778,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Cancellation requested or pipeline already idle */
+            /** @description Cancellation requested or pipeline already idle (caller's workspace only) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -19651,6 +19786,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CancelPipelineResponse"];
                 };
+            };
+            /** @description Malformed tenant/workspace scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

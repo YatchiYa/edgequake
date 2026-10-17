@@ -200,7 +200,13 @@ pub(crate) async fn get_or_rehydrate_pdf_progress(
         return Some(existing);
     }
 
-    let skeleton = pdf_progress_from_task(task)?;
+    let mut skeleton = pdf_progress_from_task(task)?;
+    // Task rows carry no filename; the PDF row is the source of truth.
+    if let (Ok(storage), Some(pdf_id)) = (super::helpers::get_pdf_storage(state), task.pdf_id()) {
+        if let Ok(Some(pdf)) = storage.get_pdf(&pdf_id).await {
+            skeleton.filename = pdf.filename;
+        }
+    }
     state
         .tasks
         .pipeline_state

@@ -29,6 +29,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WorkspaceActionsCard } from '@/components/workspace/workspace-actions-card';
+import { WorkspaceMembersCard } from '@/components/workspace/workspace-members-card';
 import { WorkspaceExtendedModelConfig } from '@/components/workspace/workspace-extended-model-config';
 import { WorkspaceModelConfigGrid } from '@/components/workspace/workspace-model-config-grid';
 import { WorkspaceStatusFooter } from '@/components/workspace/workspace-status-footer';
@@ -326,6 +327,8 @@ export default function WorkspacePage() {
         />
 
         <WorkspaceStatusFooter />
+
+        <WorkspaceMembersCard />
 
         <Card className="gap-2 border-destructive/50 py-4">
           <CardHeader className="flex flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-between">

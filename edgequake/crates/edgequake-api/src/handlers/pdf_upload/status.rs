@@ -72,9 +72,25 @@ pub async fn get_pdf_status(
         .processed_at
         .map(|processed| processed.timestamp_millis() - pdf.created_at.timestamp_millis());
 
+    // The PDF row is linked to its document only once processing persists it;
+    // before that (or after a failed run) the admitted id lives in the KV shell.
+    // ponytail: scoped metadata scan on the unlinked path only.
+    let document_id = match pdf.document_id {
+        Some(id) => Some(id.to_string()),
+        None => {
+            crate::services::pdf_workspace_dedup::find_kv_document_id_for_pdf(
+                state.storage.kv_storage.as_ref(),
+                state.optional_pg_pool(),
+                &pdf.pdf_id.to_string(),
+                &context,
+            )
+            .await
+        }
+    };
+
     Ok(Json(PdfStatusResponse {
         pdf_id: pdf.pdf_id.to_string(),
-        document_id: pdf.document_id.map(|id| id.to_string()),
+        document_id,
         status: pdf.processing_status.as_str().to_string(),
         processing_duration_ms,
         metadata: PdfStatusMetadata {
@@ -107,7 +123,8 @@ pub async fn get_pdf_status(
     params(
         ("status" = Option<String>, Query, description = "Filter by status"),
         ("page" = Option<usize>, Query, description = "Page number (1-indexed)"),
-        ("page_size" = Option<usize>, Query, description = "Page size")
+        ("page_size" = Option<usize>, Query, description = "Page size"),
+        ("cursor" = Option<String>, Query, description = "Keyset cursor from next_cursor. Replaces the page offset.")
     ),
     responses(
         (status = 200, description = "PDF list", body = ListPdfsResponse),
@@ -125,16 +142,27 @@ pub async fn list_pdfs(
     let workspace_id = context.workspace_id_uuid();
 
     let status = query.status.as_ref().and_then(|s| s.parse().ok());
+    let keyset = super::cursor::parse_pdf_cursor(query.cursor.as_deref());
 
     let list = pdf_storage
         .list_pdfs(ListPdfFilter {
             workspace_id,
             processing_status: status,
-            page: Some(query.page),
+            page: Some(if keyset.is_some() { 1 } else { query.page }),
             page_size: Some(query.page_size),
+            after_created_at: keyset.map(|(at, _)| at),
+            after_pdf_id: keyset.map(|(_, id)| id),
         })
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to list PDFs: {}", e)))?;
+
+    let next_cursor = if list.has_more {
+        list.items
+            .last()
+            .map(|pdf| super::cursor::encode_pdf_cursor(pdf.created_at, pdf.pdf_id))
+    } else {
+        None
+    };
 
     let items: Vec<PdfListItem> = list
         .items
@@ -159,6 +187,7 @@ pub async fn list_pdfs(
             page_size: list.page_size,
             total_count: list.total_count,
             total_pages,
+            next_cursor,
         },
     }))
 }

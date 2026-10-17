@@ -49,10 +49,14 @@ fn parse_rfc3339(s: &str) -> Option<DateTime<Utc>> {
 }
 
 /// Recover orphaned `staging:*-metadata` shells with no live task.
+///
+/// `scope = Some(ctx)` limits the sweep to shells in the caller's
+/// tenant/workspace (user-triggered recover-stuck); `None` is instance-wide.
 pub async fn recover_orphaned_staging_admissions(
     kv_storage: Arc<dyn KVStorage>,
     task_storage: SharedTaskStorage,
     min_age: Option<Duration>,
+    scope: Option<&crate::middleware::TenantContext>,
     #[cfg(feature = "postgres")] pg_pool: crate::services::OptionalPgPool<'_>,
 ) -> Result<OrphanStagingRecoveryReport, String> {
     info!("Checking for orphaned staging admission shells…");
@@ -139,6 +143,11 @@ pub async fn recover_orphaned_staging_admissions(
         //
         // Checked before `as_object_mut` so `&value` is still an immutable borrow.
         if crate::services::task_document_sync::metadata_is_projecting(&value) {
+            continue;
+        }
+        if scope
+            .is_some_and(|ctx| !crate::services::isolation_context::metadata_matches(&value, ctx))
+        {
             continue;
         }
 
@@ -351,6 +360,7 @@ mod tests {
             kv.clone(),
             tasks,
             None,
+            None,
             #[cfg(feature = "postgres")]
             None,
         )
@@ -420,6 +430,7 @@ mod tests {
                 kv.clone(),
                 tasks,
                 None,
+                None,
                 #[cfg(feature = "postgres")]
                 None,
             )
@@ -481,6 +492,7 @@ mod tests {
             kv.clone(),
             tasks as SharedTaskStorage,
             None,
+            None,
             #[cfg(feature = "postgres")]
             None,
         )
@@ -514,6 +526,7 @@ mod tests {
             kv,
             tasks,
             Some(Duration::from_secs(600)),
+            None,
             #[cfg(feature = "postgres")]
             None,
         )
@@ -521,5 +534,43 @@ mod tests {
         .unwrap();
         assert_eq!(report.failed_count, 0);
         assert_eq!(report.skipped_young, 1);
+    }
+
+    /// Endpoint-sweep security: user-triggered recover-stuck must not fail
+    /// another workspace's staging shells.
+    #[tokio::test]
+    async fn scoped_sweep_skips_foreign_workspace() {
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("orphan-staging-scope"));
+        let tasks: SharedTaskStorage = Arc::new(MemoryTaskStorage::new());
+        let doc_id = "doc-orphan-scope";
+        kv.upsert(&[(
+            kv_keys::staging_doc_metadata(doc_id),
+            staging_meta(doc_id, "insert-orphan-scope"),
+        )])
+        .await
+        .unwrap();
+
+        let foreign = crate::middleware::TenantContext {
+            tenant_id: Some(Uuid::new_v4().to_string()),
+            workspace_id: Some(Uuid::new_v4().to_string()),
+            user_id: None,
+        };
+        let report = recover_orphaned_staging_admissions(
+            kv.clone(),
+            tasks,
+            None,
+            Some(&foreign),
+            #[cfg(feature = "postgres")]
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(report.failed_count, 0);
+        let meta = kv
+            .get_by_id(&kv_keys::staging_doc_metadata(doc_id))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(meta["current_stage"], "uploading");
     }
 }

@@ -345,7 +345,7 @@ pub use staging_admission::{
 };
 pub use summary_role::resolve_summary_llm_or_fallback;
 pub use task_cancel::{
-    apply_cancel_all_active, apply_cancel_pdf_pipeline_tasks, apply_task_row_cancel,
+    apply_cancel_active_in_scope, apply_cancel_pdf_pipeline_tasks, apply_task_row_cancel,
     is_cancel_error_message, TaskCancelApplyResult,
 };
 pub use task_document_sync::{

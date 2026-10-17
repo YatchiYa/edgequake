@@ -80,6 +80,8 @@ pub async fn export_document_lineage(
         "csv" => {
             // WHY: CSV flattens hierarchical lineage into a chunk-per-row table.
             // This is useful for spreadsheet analysis and data pipeline ingestion.
+            let mut lineage_data = lineage_data;
+            fill_chunk_text(storage.kv_storage.as_ref(), &mut lineage_data).await;
             let csv_content = lineage_to_csv(&document_id, &lineage_data);
             let filename = format!("{}-lineage.csv", document_id);
             Ok((
@@ -117,6 +119,50 @@ pub async fn export_document_lineage(
     }
 }
 
+/// Persisted lineage chunks carry ids + offsets only; fill `content` and
+/// `token_count` from the chunk store in one batched read. Older payloads that
+/// already inline those fields are left untouched.
+async fn fill_chunk_text(
+    kv: &dyn edgequake_storage::traits::KVStorage,
+    lineage: &mut serde_json::Value,
+) {
+    let Some(chunks) = lineage.get_mut("chunks").and_then(|c| c.as_array_mut()) else {
+        return;
+    };
+    let ids: Vec<String> = chunks
+        .iter()
+        .filter(|c| c.get("content").is_none())
+        .filter_map(|c| c.get("chunk_id")?.as_str().map(str::to_owned))
+        .collect();
+    if ids.is_empty() {
+        return;
+    }
+    let Ok(records) = kv.get_by_ids_ordered(&ids).await else {
+        return;
+    };
+    let by_id: std::collections::HashMap<String, serde_json::Value> = ids
+        .into_iter()
+        .zip(records)
+        .filter_map(|(id, rec)| Some((id, rec?)))
+        .collect();
+    for chunk in chunks.iter_mut() {
+        let Some(rec) = chunk
+            .get("chunk_id")
+            .and_then(|v| v.as_str())
+            .and_then(|id| by_id.get(id))
+        else {
+            continue;
+        };
+        if let Some(obj) = chunk.as_object_mut() {
+            for key in ["content", "token_count"] {
+                if let Some(v) = rec.get(key) {
+                    obj.entry(key).or_insert_with(|| v.clone());
+                }
+            }
+        }
+    }
+}
+
 /// Convert lineage data to CSV format.
 ///
 /// WHY: Flattens the document → chunks hierarchy into a tabular format
@@ -138,7 +184,11 @@ pub(super) fn lineage_to_csv(document_id: &str, lineage: &serde_json::Value) -> 
             let preview = edgequake_observability::utf8_prefix(content, 100);
             // WHY: Escape CSV fields — wrap in quotes and double any internal quotes
             let escaped_preview = preview.replace('"', "\"\"").replace('\n', " ");
-            let tokens = chunk.get("tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+            let tokens = chunk
+                .get("tokens")
+                .or_else(|| chunk.get("token_count"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             let start_line = chunk
                 .get("start_line")
                 .and_then(|v| v.as_u64())
@@ -149,9 +199,16 @@ pub(super) fn lineage_to_csv(document_id: &str, lineage: &serde_json::Value) -> 
                 .and_then(|v| v.as_u64())
                 .map(|v| v.to_string())
                 .unwrap_or_default();
+            // Legacy payloads carry `entity_count`; persisted lineage carries `entity_ids`.
             let entity_count = chunk
                 .get("entity_count")
                 .and_then(|v| v.as_u64())
+                .or_else(|| {
+                    chunk
+                        .get("entity_ids")
+                        .and_then(|v| v.as_array())
+                        .map(|a| a.len() as u64)
+                })
                 .unwrap_or(0);
 
             csv.push_str(&format!(
@@ -162,4 +219,37 @@ pub(super) fn lineage_to_csv(document_id: &str, lineage: &serde_json::Value) -> 
     }
 
     csv
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use edgequake_storage::traits::KVStorage;
+
+    /// N1: chunk text + tokens come from the chunk store; entity_count from entity_ids.
+    #[tokio::test]
+    async fn csv_fills_chunk_text_from_store_for_persisted_lineage() {
+        let kv = edgequake_storage::MemoryKVStorage::new("lineage-export-n1");
+        kv.upsert(&[(
+            "doc-chunk-0".to_string(),
+            serde_json::json!({ "content": "Sarah Chen leads", "token_count": 7 }),
+        )])
+        .await
+        .unwrap();
+        let mut lineage = serde_json::json!({
+            "chunks": [{
+                "chunk_id": "doc-chunk-0",
+                "chunk_index": 0,
+                "start_line": 1,
+                "end_line": 11,
+                "entity_ids": ["a", "b", "c", "d", "e", "f"]
+            }]
+        });
+        fill_chunk_text(&kv, &mut lineage).await;
+        let csv = lineage_to_csv("doc", &lineage);
+        assert_eq!(
+            csv.lines().nth(1),
+            Some("doc,0,\"Sarah Chen leads\",7,1,11,6")
+        );
+    }
 }

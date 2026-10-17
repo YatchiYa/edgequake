@@ -1,5 +1,5 @@
 resource "google_compute_disk" "data" {
-  name    = "${var.instance_name}-data"
+  name    = "${local.instance_name}-data"
   type    = "pd-balanced"
   zone    = var.zone
   size    = var.data_disk_gb
@@ -45,12 +45,12 @@ resource "google_compute_disk_resource_policy_attachment" "data" {
 }
 
 resource "google_compute_instance" "gce" {
-  name         = var.instance_name
+  name         = local.instance_name
   machine_type = var.machine_type
   zone         = var.zone
   project      = var.project_id
   labels       = local.labels
-  tags         = [var.name_prefix, var.instance_name]
+  tags         = [var.name_prefix, local.instance_name]
 
   allow_stopping_for_update = true
 
@@ -66,7 +66,7 @@ resource "google_compute_instance" "gce" {
 
   attached_disk {
     source      = google_compute_disk.data.id
-    device_name = "${var.instance_name}-data"
+    device_name = "${local.instance_name}-data"
     mode        = "READ_WRITE"
   }
 
@@ -99,26 +99,28 @@ resource "google_compute_instance" "gce" {
     enable-oslogin          = "TRUE"
     block-project-ssh-keys  = "TRUE"
     edgequake-bucket        = google_storage_bucket.artifacts.name
-    edgequake-version       = var.edgequake_version
-    edgequake-hostname      = var.hostname
+    edgequake-version       = local.image_tag
+    edgequake-registry      = local.image_registry
+    edgequake-postgres-tag  = var.postgres_image_tag
+    edgequake-hostname      = local.hostname
     edgequake-project       = var.project_id
     edgequake-prefix        = var.name_prefix
     edgequake-public-origin = local.public_origin
-    edgequake-acme-email    = var.caddy_acme_email
+    edgequake-acme-email    = local.acme_email
     edgequake-install-root  = "/opt/${var.name_prefix}"
     edgequake-data-disk     = google_compute_disk.data.name
+    edgequake-copilot-url   = var.copilot_llm_base_url
+    edgequake-copilot-model = var.copilot_llm_model
     startup-script          = file("${path.module}/../scripts/startup.sh")
   }
 
-  lifecycle {
-    ignore_changes = [
-      metadata["startup-script"],
-    ]
-  }
-
   depends_on = [
+    terraform_data.images,
     google_storage_bucket_object.artifacts,
     google_secret_manager_secret_version.app,
+    google_secret_manager_secret_version.openai,
+    google_secret_manager_secret_version.mistral,
+    google_artifact_registry_repository_iam_member.gce_reader,
     google_secret_manager_secret_iam_member.gce_accessor,
     google_compute_disk_resource_policy_attachment.data,
     google_project_iam_member.gce_logging,

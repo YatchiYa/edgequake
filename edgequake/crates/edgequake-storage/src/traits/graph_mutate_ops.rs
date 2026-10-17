@@ -9,14 +9,15 @@ use crate::error::Result;
 ///
 /// - [`MergeSources`](Self::MergeSources): ingest-safe — `eq_merge_graph_properties`
 ///   unions `source_ids` / `source_chunk_ids` (SPEC-058).
-/// - [`Replace`](Self::Replace): cascade prune — set `properties = EXCLUDED.properties`
-///   so subtractive `source_ids` writes stick (SPEC-098 / LAW-098-12).
+/// - [`Replace`](Self::Replace): cascade prune — full property replace (no union)
+///   so subtractive `source_ids` writes stick (SPEC-098 / LAW-098-12). **Update-only**:
+///   rows that do not exist (e.g. deleted concurrently) are skipped, never created.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GraphPropertyWriteMode {
     /// Concurrent ingest: union source lineage arrays.
     #[default]
     MergeSources,
-    /// Document cascade shared-entity prune: full property replace.
+    /// Document cascade shared-entity prune: full property replace of existing rows only.
     Replace,
 }
 
@@ -127,11 +128,11 @@ pub trait GraphStorageMutateOps: Send + Sync {
         workspace_id: &str,
     ) -> Result<bool>;
 
-    /// Batch scoped edge delete: one storage round-trip with tenant/workspace fence
-    /// plus endpoint pairs via `ANY`.
+    /// Batch scoped edge delete: one sister `(source, target, rel_type)` inside
+    /// the tenant/workspace fence. Never removes every relationship between the endpoints.
     async fn delete_edges_scoped_batch(
         &self,
-        edges: &[(String, String)],
+        edges: &[(String, String, String)],
         tenant_id: &str,
         workspace_id: &str,
     ) -> Result<usize>;

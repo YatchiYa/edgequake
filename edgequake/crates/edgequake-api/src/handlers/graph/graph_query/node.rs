@@ -6,9 +6,9 @@ use axum::{
 };
 
 use crate::error::ApiResult;
+use crate::handlers::entities::resolve_entity_node_exact;
 use crate::handlers::graph::graph_dto::{degrees_breakdown_batch, graph_node_response};
 use crate::handlers::graph_types::{DegreeBreakdown, GraphNodeResponse};
-use crate::handlers::isolation::load_node_for_tenant_context;
 use crate::middleware::TenantContext;
 use crate::state::StorageRuntime;
 
@@ -30,12 +30,13 @@ pub async fn get_node(
     tenant_ctx: TenantContext,
     Path(node_id): Path<String>,
 ) -> ApiResult<Json<GraphNodeResponse>> {
+    // F12: plain names resolve to the workspace-scoped node id.
     let node =
-        load_node_for_tenant_context(storage.graph_storage.as_ref(), &node_id, &tenant_ctx).await?;
+        resolve_entity_node_exact(storage.graph_storage.as_ref(), &node_id, &tenant_ctx).await?;
 
-    let degree = degrees_breakdown_batch(&storage.graph_storage, std::slice::from_ref(&node_id))
+    let degree = degrees_breakdown_batch(&storage.graph_storage, std::slice::from_ref(&node.id))
         .await
-        .remove(&node_id)
+        .remove(&node.id)
         .unwrap_or_else(|| DegreeBreakdown::from_total(0));
 
     Ok(Json(graph_node_response(&node, degree)))

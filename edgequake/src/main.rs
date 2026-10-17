@@ -671,6 +671,39 @@ async fn run_migrate_dry_run_cli() -> Result<()> {
     Ok(())
 }
 
+/// Schema line for `edgequake migrate status`. Reads `public._sqlx_migrations`
+/// only. Does not apply migrations.
+#[cfg(feature = "postgres")]
+async fn print_migrate_schema_status(pool: &sqlx::PgPool) -> Result<()> {
+    let exists: bool =
+        sqlx::query_scalar("SELECT to_regclass('public._sqlx_migrations') IS NOT NULL")
+            .fetch_one(pool)
+            .await
+            .context("schema ledger probe")?;
+    let db_schema: Option<i64> = if exists {
+        sqlx::query_scalar("SELECT max(version) FROM public._sqlx_migrations WHERE success")
+            .fetch_one(pool)
+            .await
+            .context("schema version")?
+    } else {
+        None
+    };
+    let pending = edgequake_api::state::migration_bootstrap::list_pending_migrations(pool)
+        .await
+        .context("pending schema migrations")?;
+    let drops: Vec<i64> = pending
+        .iter()
+        .map(|(version, _)| *version)
+        .filter(|version| migrate_console::is_irreversible_drop(*version))
+        .collect();
+    let binary_schema = edgequake_migrate_manifest::load().compat_serve_max;
+    println!(
+        "{}",
+        migrate_console::format_schema_status(db_schema, binary_schema, pending.len(), &drops)
+    );
+    Ok(())
+}
+
 /// SPEC-091 P4: `edgequake migrate status` — read the migration progress
 /// ledger and print per-job state, completion, rate and ETA. Never applies
 /// migrations; safe to run against a live serving database.
@@ -686,6 +719,10 @@ async fn run_migrate_status_cli() -> Result<()> {
         .await
         .context("PgPoolBundle connect failed")?;
 
+    if let Err(e) = print_migrate_schema_status(&bundle.query).await {
+        println!("schema: unavailable ({e})");
+    }
+
     let job_ids: Vec<(sqlx::types::Uuid, String, String)> = match sqlx::query_as(
         "SELECT job_id, step_id, state FROM edgequake.edgequake_migration_job \
          ORDER BY started_at NULLS LAST, step_id",
@@ -695,17 +732,17 @@ async fn run_migrate_status_cli() -> Result<()> {
     {
         Ok(rows) => rows,
         Err(e) => {
-            println!("migration ledger unavailable (apply migration 106?): {e}");
+            println!("data jobs: ledger unavailable (apply migration 106?): {e}");
             return Ok(());
         }
     };
 
     if job_ids.is_empty() {
-        println!("no migration jobs registered (EDGEQUAKE_MIGRATION_MODE=off?)");
+        println!("data jobs: none registered (EDGEQUAKE_MIGRATION_MODE=off?)");
         return Ok(());
     }
 
-    println!("migration jobs:");
+    println!("data jobs:");
     for (job_id, step_id, _state) in job_ids {
         match edgequake_storage::migration_engine::lease::job_detail(&bundle.query, job_id).await {
             Ok(Some(d)) => migrate_console::print_migration_job_line(
@@ -731,11 +768,14 @@ async fn run_migrate_status_cli() -> Result<()> {
 
 /// SPEC-091 Migration Console (doc 15 §7) — usage for the `migrate` verb family.
 const MIGRATE_USAGE: &str = "usage:
-  edgequake migrate [--confirm-drop|--drop-confirm]  apply schema migrations (+ reconcile)
+  edgequake migrate [--confirm-drop|--drop-confirm] [--drop-age|--keep-age]
+                                        apply schema migrations (+ reconcile)
+                                        Apache AGE stays unless you pass --drop-age
+                                        or answer yes to the question
   edgequake migrate check                       preflight environment (no writes)
   edgequake migrate dry-run                     preview pending + posture (no writes)
   edgequake migrate drain [--timeout <secs>]    foreground data-engine drain (SPEC-150)
-  edgequake migrate status                      raw per-job progress ledger
+  edgequake migrate status                      schema version, then data-engine jobs
   edgequake migrate console [--watch]           intelligent posture dashboard + next steps
   edgequake migrate plan                        the ordered, live-derived runbook
   edgequake migrate guard [--family <name>]     read-only flip/drop readiness probe
@@ -813,6 +853,26 @@ fn flag_value(rest: &[String], flag: &str) -> Option<String> {
         .position(|a| a == flag)
         .and_then(|i| rest.get(i + 1))
         .cloned()
+}
+
+/// Owns the ingest runtime and shuts it down without blocking on drop. A plain
+/// `Runtime` dropped by an early `?` / `bail!` inside `async_main` panics with
+/// "Cannot drop a runtime in a context where blocking is not allowed", which
+/// hides the real startup error (seen as a crash loop on a PDFium prime failure).
+struct BackgroundRuntime(Option<tokio::runtime::Runtime>);
+
+impl BackgroundRuntime {
+    fn handle(&self) -> &tokio::runtime::Handle {
+        self.0.as_ref().expect("ingest runtime present until drop").handle()
+    }
+}
+
+impl Drop for BackgroundRuntime {
+    fn drop(&mut self) {
+        if let Some(rt) = self.0.take() {
+            rt.shutdown_background();
+        }
+    }
 }
 
 fn main() -> Result<()> {
@@ -1266,6 +1326,7 @@ async fn async_main_postgres() -> Result<()> {
         Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
         Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>,
         None, // startup: no workers yet → staging without Pending/Processing is orphan
+        None, // system sweep: instance-wide by design
         #[cfg(feature = "postgres")]
         state.pg_pool.as_ref(),
     )
@@ -1429,13 +1490,15 @@ async fn async_main_postgres() -> Result<()> {
     // Measured 2026-08-20: default ~2 MiB eq-ingest stack overflowed immediately
     // on a 4-page manuscript upload ("thread 'eq-ingest' has overflowed its stack").
     let ingest_threads = worker_config.num_workers.max(1);
-    let ingest_rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(ingest_threads)
-        .thread_name("eq-ingest")
-        .thread_stack_size(tokio_worker_stack_size())
-        .enable_all()
-        .build()
-        .expect("failed to build ingest Tokio runtime");
+    let ingest_rt = BackgroundRuntime(Some(
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(ingest_threads)
+            .thread_name("eq-ingest")
+            .thread_stack_size(tokio_worker_stack_size())
+            .enable_all()
+            .build()
+            .expect("failed to build ingest Tokio runtime"),
+    ));
     info!(
         serving_runtime = "current",
         ingest_runtime = "eq-ingest",
@@ -1575,6 +1638,7 @@ async fn async_main_postgres() -> Result<()> {
                     Arc::clone(&kv),
                     Arc::clone(&reconcile_state.tasks.storage) as Arc<dyn TaskStorage>,
                     Some(staging_age),
+                    None, // system sweep: instance-wide by design
                     #[cfg(feature = "postgres")]
                     reconcile_state.pg_pool.as_ref(),
                 )
@@ -1709,7 +1773,7 @@ async fn async_main_postgres() -> Result<()> {
     info!("Shutting down worker pool...");
     worker_pool.shutdown().await;
     info!("Shutting down ingest Tokio runtime...");
-    ingest_rt.shutdown_background();
+    drop(ingest_rt);
 
     if let Err(err) = result {
         if err.kind() == std::io::ErrorKind::AddrInUse {
@@ -1721,4 +1785,24 @@ async fn async_main_postgres() -> Result<()> {
         return Err(err.into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod background_runtime_tests {
+    use super::BackgroundRuntime;
+
+    /// Regression: an early return from `async_main` drops the ingest runtime inside an
+    /// async context. A bare `Runtime` panics there; the guard must not.
+    #[tokio::test]
+    async fn dropping_inside_async_context_does_not_panic() {
+        let rt = BackgroundRuntime(Some(
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .unwrap(),
+        ));
+        rt.handle().spawn(async {});
+        drop(rt);
+    }
 }

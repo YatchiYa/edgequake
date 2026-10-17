@@ -26,7 +26,7 @@ import {
 import { APP_VERSION, APP_VERSION_NUMBER } from '@/lib/app-version';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/use-settings-store';
-import { Activity, BarChart2, BookOpen, ChevronLeft, ChevronRight, FileText, FolderKanban, Home, Menu, MessageSquare, Network, Settings, Terminal } from 'lucide-react';
+import { Activity, BarChart2, BookOpen, Bot, ChevronLeft, ChevronRight, FileText, FolderKanban, Home, Menu, MessageSquare, Network, Settings, Terminal } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
@@ -53,6 +53,7 @@ const navGroups: NavGroup[] = [
       { href: '/documents', icon: FileText, labelKey: 'nav.documents' },
       { href: '/query', icon: MessageSquare, labelKey: 'nav.query' },
       { href: '/graph', icon: Network, labelKey: 'nav.graph' },
+      { href: '/agents', icon: Bot, labelKey: 'nav.agents' },
     ],
   },
   {

@@ -58,10 +58,11 @@ pub async fn rebuild_embeddings(
     let return_202 = state.security.v1_rpc_return_202;
     let ws = workspace_id.to_string();
     let response = run_rebuild_embeddings(state, workspace_id, tenant_ctx, request).await?;
-    let job_id = response.job_id.clone();
+    // Location must point at a real task (batch job_id has no row).
+    let task_id = response.first_task_id.clone();
     crate::services::v1_rpc_migration::respond_v1_async_rpc(
         &ws,
-        job_id.as_deref(),
+        task_id.as_deref(),
         return_202,
         response,
     )
@@ -249,6 +250,7 @@ pub(crate) async fn run_rebuild_embeddings(
     // from the original PDF using the workspace's current vision LLM, then rechunk
     // and re-embed with the new embedding model.
     // Text/Markdown documents fall back to stored content (TextInsert).
+    let mut first_task_id: Option<String> = None;
     let (documents_queued, chunks_to_process, track_id) = if stats.document_count > 0 {
         use chrono::Utc;
 
@@ -278,7 +280,8 @@ pub(crate) async fn run_rebuild_embeddings(
             )
             .await
             {
-                BulkReprocessCommit::Queued => {
+                BulkReprocessCommit::Queued(task_id) => {
+                    first_task_id.get_or_insert(task_id);
                     documents_queued += 1;
                     total_chunks += doc.chunk_count;
                 }
@@ -352,6 +355,7 @@ pub(crate) async fn run_rebuild_embeddings(
         model_context_length,
         estimated_time_seconds: estimated_time,
         job_id: track_id.clone(),
+        first_task_id,
         v2_migration: Some(crate::services::job_registry::v2_migration_hint(
             "rebuild_embeddings",
             &workspace_id.to_string(),
