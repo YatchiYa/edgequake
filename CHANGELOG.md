@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.35.6] — 2026-10-17
+
+Patch: formulas stay math spans through the answer, the renderer, and ingest. A mock embedder reports the configured model, so typed search looks up the vectors that were stored. Schema stays **207**. Upgrade from 0.35.5 is a no-op:
+[`docs/operations/upgrade-to-0.35.6.md`](docs/operations/upgrade-to-0.35.6.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres` (`0.35.6`, `-pg16`, `-pg17`, `-pg18`), and `edgequake-keycloak` on tag `v0.35.6`.
+
+**SPEC-001 Acc:** not re-scored on this cut. The answer prompt gained one verbatim-math rule. The latest valid medical-mid n=200 pack remains the v0.35.5 archive
+[`medical-mid-20261016T162456Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20261016T162456Z/)
+(`valid: true`): EdgeQuake **0.8054**, LightRAG **0.7920**, delta **+0.0135**
+(95% bootstrap CI [+0.0056, +0.1506], n_paired 40). Those numbers are the v0.35.5 prompt, not this one. The harness marks that pack as not a publishable beat because L2 is incomplete. EdgeQuake does not claim a win.
+
+### Changed
+
+- Answers copy `$...$` and `$$...$$` verbatim. `[N]` stays a citation. The renderer tokenizes leftover bare display math, and ingest wraps display math in `<equation>`.
+- An embedding provider whose `model()` disagrees with the configured model reports the configured name. Typed search uses the same registry key the rows were stored under.
+- The demo deploy drops Apache AGE on the v0.35.4 image before a volume moves onto an image that has no `age.so`.
+
 ## [0.35.5] — 2026-10-16
 
 Patch: the published Postgres images no longer ship Apache AGE. On a server that cannot install the extension, `edgequake migrate` records migration 171 with the safe schema, so `/health` is not left with `pending_count` 1. Schema stays **207**. Upgrade from 0.35.4:
