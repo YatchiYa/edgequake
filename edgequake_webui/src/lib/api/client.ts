@@ -32,6 +32,7 @@ import {
   getTenantContext,
   getTokens,
 } from "./client-context";
+import { ensureSessionScope } from "./session-scope";
 import { streamClient } from "./stream-client";
 
 export type { RestoredAccessSession };
@@ -356,6 +357,7 @@ export async function apiClient<T>(
     ? endpoint
     : `${getRuntimeApiBaseUrl()}${endpoint}`;
 
+  await ensureSessionScope(endpoint);
   const callerHeaders = new Headers(fetchOptions.headers);
   if (omitTenant) callerHeaders.set("X-Edgequake-Omit-Tenant", "1");
   const signal = resolveFetchSignal(timeoutMs, userSignal);

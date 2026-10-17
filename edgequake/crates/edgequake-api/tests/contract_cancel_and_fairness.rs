@@ -137,6 +137,80 @@ async fn e2e_cancel_indexed_task_conflicts() {
     assert_eq!(body["status"], "indexed");
 }
 
+/// Endpoint sweep F8: cancelling a Failed task returned 200 and overwrote it.
+#[tokio::test]
+async fn e2e_cancel_failed_task_conflicts_and_keeps_status() {
+    let workers = create_test_app_with_workers().await;
+    let tenant_id = Uuid::parse_str(TEST_TENANT_ID).unwrap();
+    let workspace_id = Uuid::parse_str(TEST_WORKSPACE_ID).unwrap();
+
+    let mut task = Task::new(tenant_id, workspace_id, TaskType::Insert, json!({}));
+    task.mark_processing();
+    task.mark_failed("boom".to_string());
+    let track_id = task.track_id.clone();
+    workers.task_storage.create_task(&task).await.unwrap();
+
+    let response = post_cancel(workers.app(), &track_id).await;
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+
+    let stored = workers
+        .task_storage
+        .get_task(&track_id)
+        .await
+        .unwrap()
+        .expect("task row");
+    assert_eq!(stored.status, TaskStatus::Failed);
+}
+
+/// Security: POST /pipeline/cancel must only stop the caller's workspace tasks.
+#[tokio::test]
+async fn e2e_pipeline_cancel_is_scoped_to_caller_workspace() {
+    let workers = create_test_app_with_workers().await;
+    let tenant_id = Uuid::parse_str(TEST_TENANT_ID).unwrap();
+    let workspace_id = Uuid::parse_str(TEST_WORKSPACE_ID).unwrap();
+
+    let mut own = Task::new(tenant_id, workspace_id, TaskType::Insert, json!({}));
+    own.mark_processing();
+    let mut foreign = Task::new(Uuid::new_v4(), Uuid::new_v4(), TaskType::Insert, json!({}));
+    foreign.mark_processing();
+    workers.task_storage.create_task(&own).await.unwrap();
+    workers.task_storage.create_task(&foreign).await.unwrap();
+
+    let response = workers
+        .app()
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/pipeline/cancel")
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                .header("X-User-ID", TEST_USER_ID)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let status = |id: String| {
+        let storage = Arc::clone(&workers.task_storage);
+        async move { storage.get_task(&id).await.unwrap().unwrap().status }
+    };
+    assert_eq!(status(own.track_id.clone()).await, TaskStatus::Cancelled);
+    assert_eq!(
+        status(foreign.track_id.clone()).await,
+        TaskStatus::Processing,
+        "another tenant's in-flight task must not be cancelled"
+    );
+    assert!(
+        !workers
+            .cancellation_registry
+            .has_cancel_intent(&foreign.track_id)
+            .await
+    );
+}
+
 #[tokio::test]
 async fn e2e_worker_app_wires_tenant_fairness_limiter() {
     let workers = create_test_app_with_workers().await;
@@ -838,4 +912,84 @@ async fn e2e_cancel_held_task_not_requeued_after_park_wake() {
     );
 
     pool.shutdown().await;
+}
+
+/// Endpoint sweep F13: before the PDF row is linked, status must still report
+/// the admitted document_id (KV shell), and rehydrated progress the real filename.
+#[cfg(feature = "postgres")]
+#[tokio::test]
+async fn e2e_pdf_status_reports_admitted_document_id_and_filename() {
+    use edgequake_storage::CreatePdfRequest;
+
+    let workers = create_test_app_with_workers().await;
+    let pdf_storage = workers.pdf_storage.as_ref().expect("pdf storage");
+    let tenant_id = Uuid::parse_str(TEST_TENANT_ID).unwrap();
+    let workspace_id = Uuid::parse_str(TEST_WORKSPACE_ID).unwrap();
+    let pdf_bytes = b"%PDF-1.4\n%%EOF\n";
+    let pdf_id = pdf_storage
+        .create_pdf(CreatePdfRequest {
+            workspace_id,
+            filename: "tiny.pdf".to_string(),
+            content_type: "application/pdf".to_string(),
+            file_size_bytes: pdf_bytes.len() as i64,
+            sha256_checksum: format!("f13-{}", Uuid::new_v4()),
+            page_count: Some(1),
+            pdf_data: pdf_bytes.to_vec(),
+            vision_model: None,
+        })
+        .await
+        .expect("create pdf");
+
+    let doc_id = Uuid::new_v4().to_string();
+    edgequake_api::services::upsert_metadata_kv_with_index(
+        workers.kv_storage.as_ref(),
+        &kv_keys::doc_metadata(&doc_id),
+        json!({
+            "id": doc_id,
+            "status": "queued",
+            "pdf_id": pdf_id.to_string(),
+            "tenant_id": TEST_TENANT_ID,
+            "workspace_id": TEST_WORKSPACE_ID,
+        }),
+    )
+    .await
+    .expect("seed shell");
+
+    let get = |uri: String| {
+        workers.app().clone().oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(uri)
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                .header("X-User-ID", TEST_USER_ID)
+                .body(Body::empty())
+                .unwrap(),
+        )
+    };
+
+    let response = get(format!("/api/v1/documents/pdf/{pdf_id}"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = extract_json(response).await;
+    assert_eq!(body["document_id"], doc_id, "{body}");
+
+    // Progress rehydrated from a durable task (in-memory miss) keeps the filename.
+    let mut task = Task::new(
+        tenant_id,
+        workspace_id,
+        TaskType::PdfProcessing,
+        json!({ "pdf_id": pdf_id.to_string(), "existing_document_id": doc_id }),
+    );
+    task.mark_processing();
+    let track_id = task.track_id.clone();
+    workers.task_storage.create_task(&task).await.unwrap();
+
+    let response = get(format!("/api/v1/documents/pdf/progress/{track_id}"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = extract_json(response).await;
+    assert!(body.to_string().contains("tiny.pdf"), "{body}");
 }

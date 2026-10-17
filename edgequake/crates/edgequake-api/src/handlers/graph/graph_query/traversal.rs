@@ -74,7 +74,18 @@ pub async fn get_graph(
     let _materialize_guard = admit_graph_materialization(&graph)?;
 
     let (nodes, edges, bfs_truncated) = if let Some(start) = &params.start_node {
-        let start = start.clone();
+        // F12: resolve plain names to the workspace-scoped node id; unknown
+        // ids pass through unchanged (empty traversal, as before).
+        let start = match crate::handlers::entities::resolve_entity_node_exact(
+            storage.graph_storage.as_ref(),
+            start,
+            &tenant_ctx,
+        )
+        .await
+        {
+            Ok(node) => node.id,
+            Err(_) => start.clone(),
+        };
         let depth = params.depth;
         let max_nodes = params.max_nodes;
         let scoped = tenant_ctx.tenant_id.is_some() && tenant_ctx.workspace_id.is_some();

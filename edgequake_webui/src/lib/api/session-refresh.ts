@@ -15,7 +15,7 @@ import {
   applyRestoredAccessSession,
   type RestoredAccessSession,
 } from "@/stores/use-auth-store";
-import { clearTokens } from "./client-context";
+import { clearTokens, serializeAuth } from "./client-context";
 
 /** One in-flight refresh, shared by every concurrent caller. */
 let refreshInFlight: Promise<RestoredAccessSession | null> | null = null;
@@ -71,7 +71,8 @@ async function redeemRefreshCookieOnce(): Promise<RestoredAccessSession | null> 
  */
 export async function restoreSessionFromRefreshCookie(): Promise<RestoredAccessSession | null> {
   if (!refreshInFlight) {
-    refreshInFlight = redeemRefreshCookieOnce().finally(() => {
+    // Fork: serialized with switch-scope so a refresh never races a scope switch (same family).
+    refreshInFlight = serializeAuth(redeemRefreshCookieOnce).finally(() => {
       refreshInFlight = null;
     });
   }

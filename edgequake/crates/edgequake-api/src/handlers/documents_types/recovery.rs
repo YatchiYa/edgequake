@@ -107,6 +107,14 @@ pub struct ReprocessFailedResponse {
     pub document_task_ids: Vec<ReprocessDocumentTaskId>,
 }
 
+impl ReprocessFailedResponse {
+    /// First real task track_id — resolvable via `/api/v1/tasks/{id}` and v2
+    /// `.../jobs/{id}`. `track_id` is a batch label with no task row.
+    pub fn first_task_id(&self) -> Option<&str> {
+        self.document_task_ids.first().map(|t| t.task_id.as_str())
+    }
+}
+
 // ============================================================================
 // Recovery DTOs
 // ============================================================================
@@ -131,7 +139,7 @@ pub struct RecoverStuckRequest {
 /// Response from recover stuck operation.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RecoverStuckResponse {
-    /// Track ID for the recovery batch.
+    /// Track ID for the recovery batch (correlation only — not a progress key).
     pub track_id: String,
 
     /// Level 4 v2 migration hint (additive).
@@ -149,6 +157,17 @@ pub struct RecoverStuckResponse {
 
     /// List of document titles for reference.
     pub document_titles: Vec<String>,
+
+    /// Per-document task ids for newly enqueued recoveries (additive honesty).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub document_task_ids: Vec<ReprocessDocumentTaskId>,
+}
+
+impl RecoverStuckResponse {
+    /// First real task track_id (see [`ReprocessFailedResponse::first_task_id`]).
+    pub fn first_task_id(&self) -> Option<&str> {
+        self.document_task_ids.first().map(|t| t.task_id.as_str())
+    }
 }
 
 /// Response from cancelling a document by id.

@@ -322,7 +322,7 @@ mod cost_estimation_tests {
     }
 
     #[tokio::test]
-    async fn test_estimate_cost_unknown_model_uses_default() {
+    async fn test_estimate_cost_unknown_model_rejected() {
         let app = create_test_app();
 
         let request_body = json!({
@@ -343,16 +343,12 @@ mod cost_estimation_tests {
             .await
             .unwrap();
 
-        // Should still succeed with default pricing
-        assert_eq!(response.status(), StatusCode::OK);
-
+        // Endpoint sweep F11: unknown model is a 400, not a silent default price.
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         let body = extract_json(response).await;
-        let cost = body["estimated_cost_usd"].as_f64().unwrap();
-
-        // Should use gpt-4o-mini as default
         assert!(
-            (cost - 0.00045).abs() < 0.0001,
-            "Unknown model should use gpt-4o-mini pricing"
+            body.to_string().contains("unknown-model-xyz"),
+            "error must name the model: {body}"
         );
     }
 

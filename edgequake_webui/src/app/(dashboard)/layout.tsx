@@ -1,5 +1,6 @@
 'use client';
 
+import { CopilotPanel } from '@/components/copilot/copilot-panel';
 import { AuthGuard } from '@/components/layout/auth-guard';
 import { DynamicBreadcrumb } from '@/components/layout/dynamic-breadcrumb';
 import { Header } from '@/components/layout/header';
@@ -74,6 +75,7 @@ export default function DashboardLayout({
             </RouteErrorBoundary>
           </main>
         </div>
+        <CopilotPanel />
       </div>
     </AuthGuard>
   );

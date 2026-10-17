@@ -1,5 +1,5 @@
 (app) {
-	# LAW-148-13: reverse-proxy only on the HTTPS site that imports this snippet.
+	# Reverse-proxy only on the HTTPS site that imports this snippet.
 	# Do not gzip: Next.js + SSE (text/event-stream) must not be buffered.
 	# `route` keeps `tracing` outside the exclusive `handle` matchers so every
 	# request becomes one span. Caddy exports it with OTEL_EXPORTER_OTLP_*.
@@ -7,6 +7,18 @@
 	route {
 		tracing {
 			span edgequake
+		}
+
+		# Fork: WebUI's own Next routes (SSE) must win over /api/* and must not be buffered.
+		handle /api/agents* {
+			reverse_proxy frontend:3000 {
+				flush_interval -1
+			}
+		}
+		handle /api/copilot* {
+			reverse_proxy frontend:3000 {
+				flush_interval -1
+			}
 		}
 
 		# Slash-bounded: /api* also matches WebUI /api-explorer (SPEC-035).

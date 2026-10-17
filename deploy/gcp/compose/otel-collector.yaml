@@ -13,8 +13,7 @@ processors:
     timeout: 5s
 
 exporters:
-  googlecloud:
-    project: saas-app-001
+  googlecloud: {} # project = the VM's project (metadata server)
 
 extensions:
   health_check:

@@ -34,16 +34,32 @@ output "originals_bucket" {
   value = google_storage_bucket.originals.name
 }
 
-output "edgequake_version" {
-  value = var.edgequake_version
+output "image_registry" {
+  value = local.image_registry
+}
+
+output "image_tag" {
+  value = local.image_tag
+}
+
+output "build_service_account" {
+  value = google_service_account.build.email
+}
+
+output "admin_username" {
+  value = "admin"
+}
+
+output "admin_password_command" {
+  value = "gcloud secrets versions access latest --secret=${google_secret_manager_secret.app["bootstrap-admin-password"].secret_id} --project=${var.project_id}"
 }
 
 output "workload_identity_provider" {
-  value = google_iam_workload_identity_pool_provider.github.name
+  value = var.enable_github_deploy ? google_iam_workload_identity_pool_provider.github["enabled"].name : null
 }
 
 output "github_service_account" {
-  value = google_service_account.github.email
+  value = var.enable_github_deploy ? google_service_account.github["enabled"].email : null
 }
 
 output "gce_service_account" {
@@ -60,4 +76,9 @@ output "secret_ids" {
     mistral_api_key          = google_secret_manager_secret.mistral.secret_id
     gcs_originals_key        = google_secret_manager_secret.gcs_originals.secret_id
   }
+}
+
+output "agents_url" {
+  description = "Agents platform (ChatGPT-style), same EdgeQuake sign-in"
+  value       = "${local.public_origin}/agents"
 }

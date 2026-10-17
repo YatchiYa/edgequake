@@ -72,9 +72,25 @@ pub async fn get_pdf_status(
         .processed_at
         .map(|processed| processed.timestamp_millis() - pdf.created_at.timestamp_millis());
 
+    // The PDF row is linked to its document only once processing persists it;
+    // before that (or after a failed run) the admitted id lives in the KV shell.
+    // ponytail: scoped metadata scan on the unlinked path only.
+    let document_id = match pdf.document_id {
+        Some(id) => Some(id.to_string()),
+        None => {
+            crate::services::pdf_workspace_dedup::find_kv_document_id_for_pdf(
+                state.storage.kv_storage.as_ref(),
+                state.optional_pg_pool(),
+                &pdf.pdf_id.to_string(),
+                &context,
+            )
+            .await
+        }
+    };
+
     Ok(Json(PdfStatusResponse {
         pdf_id: pdf.pdf_id.to_string(),
-        document_id: pdf.document_id.map(|id| id.to_string()),
+        document_id,
         status: pdf.processing_status.as_str().to_string(),
         processing_duration_ms,
         metadata: PdfStatusMetadata {

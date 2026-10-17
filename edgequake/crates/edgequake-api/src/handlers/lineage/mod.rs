@@ -207,6 +207,24 @@ mod tests {
         assert!(std::str::from_utf8(csv.as_bytes()).is_ok());
     }
 
+    /// N1: persisted lineage shape (entity_ids + token_count, no entity_count/tokens).
+    #[test]
+    fn test_lineage_to_csv_persisted_shape() {
+        let lineage = serde_json::json!({
+            "chunks": [{
+                "chunk_id": "doc-chunk-0",
+                "chunk_index": 0,
+                "start_line": 1,
+                "end_line": 11,
+                "entity_ids": ["a", "b", "c", "d", "e", "f"],
+                "content": "Sarah Chen",
+                "token_count": 42
+            }]
+        });
+        let csv = lineage_to_csv("doc", &lineage);
+        assert_eq!(csv.lines().nth(1), Some("doc,0,\"Sarah Chen\",42,1,11,6"));
+    }
+
     #[test]
     fn test_lineage_to_csv_empty_chunks() {
         let lineage = serde_json::json!({ "chunks": [] });

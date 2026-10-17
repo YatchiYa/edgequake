@@ -12,6 +12,7 @@
 
 import { layoutAssetStem } from '@/components/documents/layout-asset';
 import { buildHeaders } from '@/lib/api/client';
+import { getRuntimeServerBaseUrl } from '@/lib/runtime-config';
 import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import { imageAspectRatio } from './image-dimensions';
@@ -29,12 +30,32 @@ interface ShownImage {
   ratio: number | null;
 }
 
+/**
+ * SECURITY: markdown (LLM answers, copilot, document text) is untrusted. Only our own
+ * origins (web app or API) may receive session headers or be auto-loaded; anything else
+ * would leak the bearer token or exfiltrate content via the URL with zero clicks.
+ */
+export function isTrustedImageOrigin(src: string): boolean {
+  if (typeof window === 'undefined') return false;
+  if (src.startsWith('data:image/') || src.startsWith('blob:')) return true;
+  try {
+    const origin = new URL(src, window.location.href).origin;
+    const api = getRuntimeServerBaseUrl();
+    return (
+      origin === window.location.origin ||
+      (!!api && origin === new URL(api, window.location.href).origin)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isMmAssetUrl(src: string): boolean {
   // Path splat: …/mm-assets/assets/page-0001.png
   // Id REST:    …/documents/{id}/assets/page-0001
   return (
-    src.includes('/mm-assets/') ||
-    /\/documents\/[^/]+\/assets\/[^/]+/.test(src)
+    isTrustedImageOrigin(src) &&
+    (src.includes('/mm-assets/') || /\/documents\/[^/]+\/assets\/[^/]+/.test(src))
   );
 }
 
@@ -52,8 +73,10 @@ export function AuthenticatedMarkdownImage({
   className,
 }: AuthenticatedMarkdownImageProps) {
   const [shown, setShown] = useState<ShownImage | null>(null);
+  const trusted = isTrustedImageOrigin(src);
 
   useEffect(() => {
+    if (!trusted) return;
     let objectUrl: string | null = null;
     let cancelled = false;
     const ac = new AbortController();
@@ -97,9 +120,26 @@ export function AuthenticatedMarkdownImage({
       ac.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [src]);
+  }, [src, trusted]);
 
   const layoutAsset = layoutAssetStem(src);
+
+  if (!trusted) {
+    // External image: never auto-load; the user may open it deliberately (http/https only).
+    if (!/^https?:\/\//i.test(src)) {
+      return <span className="text-sm italic text-muted-foreground">[Image: {alt || 'external'}]</span>;
+    }
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        className="text-sm italic text-muted-foreground underline"
+      >
+        [Image: {alt || 'external'}]
+      </a>
+    );
+  }
 
   if (!shown) {
     return (

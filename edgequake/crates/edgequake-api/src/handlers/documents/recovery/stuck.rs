@@ -42,10 +42,11 @@ pub async fn recover_stuck(
     let return_202 = state.security.v1_rpc_return_202;
     let response = run_recover_stuck(state, tenant_ctx, request).await?;
     if let Some(ws) = workspace_id.as_deref() {
-        let track_id = response.track_id.clone();
+        // Location must point at a real task (batch track_id has no row).
+        let job_id = response.first_task_id().map(str::to_string);
         return crate::services::v1_rpc_migration::respond_v1_async_rpc(
             ws,
-            Some(track_id.as_str()),
+            job_id.as_deref(),
             return_202,
             response,
         );
@@ -72,6 +73,7 @@ pub(crate) async fn run_recover_stuck(
         std::sync::Arc::clone(&state.storage.kv_storage),
         std::sync::Arc::clone(&state.tasks.storage),
         Some(staging_age),
+        Some(&tenant_ctx),
         #[cfg(feature = "postgres")]
         state.optional_pg_pool(),
     )
@@ -103,6 +105,7 @@ pub(crate) async fn run_recover_stuck(
     let mut stuck_docs = Vec::new();
     let mut requeued_ids = Vec::new();
     let mut requeued_titles = Vec::new();
+    let mut document_task_ids = Vec::new();
 
     for value in scoped_metadata {
         if stuck_docs.len() >= request.max_documents {
@@ -272,7 +275,16 @@ pub(crate) async fn run_recover_stuck(
         )
         .await?
         {
-            EnsureTaskOutcome::Enqueued { .. } | EnsureTaskOutcome::AlreadyScheduled => {
+            EnsureTaskOutcome::Enqueued { task_id } => {
+                document_task_ids.push(ReprocessDocumentTaskId {
+                    document_id: doc_id.clone(),
+                    task_id,
+                });
+                requeued_ids.push(doc_id.clone());
+                requeued_titles.push(doc_title.clone());
+                tracing::info!("Recovered stuck document: {} ({})", doc_id, doc_title);
+            }
+            EnsureTaskOutcome::AlreadyScheduled => {
                 requeued_ids.push(doc_id.clone());
                 requeued_titles.push(doc_title.clone());
                 tracing::info!("Recovered stuck document: {} ({})", doc_id, doc_title);
@@ -297,6 +309,7 @@ pub(crate) async fn run_recover_stuck(
         requeued: requeued_ids.len(),
         document_ids: requeued_ids,
         document_titles: requeued_titles,
+        document_task_ids,
     };
     Ok(response)
 }

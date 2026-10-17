@@ -69,6 +69,41 @@ fn parse_task_type(raw: &str) -> ApiResult<TaskType> {
     }
 }
 
+/// Job id that `GET`/`DELETE .../jobs/{id}` resolve: the first real task when
+/// work was queued, else a terminal no-op task row under the batch label
+/// (`job_type` kept in `task_data.v2_job_type`). Batch labels have no task row
+/// of their own, so returning one bare would advertise a 404.
+async fn resolvable_job_id(
+    state: &AppState,
+    tenant_id: Uuid,
+    workspace_id: Uuid,
+    job_type: &str,
+    first_task_id: Option<String>,
+    batch_label: Option<String>,
+) -> ApiResult<String> {
+    if let Some(task_id) = first_task_id {
+        return Ok(task_id);
+    }
+    let mut task = Task::new(
+        tenant_id,
+        workspace_id,
+        TaskType::Reindex,
+        serde_json::json!({ "v2_job_type": job_type, "noop": true }),
+    );
+    if let Some(label) = batch_label {
+        task.track_id = label;
+    }
+    task.mark_processing();
+    task.mark_success(serde_json::json!({ "queued": 0, "reason": "nothing_to_queue" }));
+    state
+        .tasks
+        .storage
+        .create_task(&task)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to persist no-op job: {e}")))?;
+    Ok(task.track_id)
+}
+
 /// Submit a workspace-scoped async job (Level 4 dispatch SSOT).
 pub async fn submit_workspace_job(
     state: &AppState,
@@ -115,9 +150,15 @@ pub async fn submit_workspace_job(
             let response =
                 run_rebuild_embeddings(state.clone(), workspace_id, tenant_ctx.clone(), req)
                     .await?;
-            let job_id = response.job_id.clone().ok_or_else(|| {
-                ApiError::Internal("rebuild_embeddings returned no job_id".into())
-            })?;
+            let job_id = resolvable_job_id(
+                state,
+                tenant_id,
+                workspace_id,
+                &job_type,
+                response.first_task_id,
+                response.job_id,
+            )
+            .await?;
             Ok(SubmittedJob { job_id, job_type })
         }
         "rebuild_knowledge_graph" => {
@@ -125,9 +166,15 @@ pub async fn submit_workspace_job(
             let response =
                 run_rebuild_knowledge_graph(state.clone(), workspace_id, tenant_ctx.clone(), req)
                     .await?;
-            let job_id = response.track_id.clone().ok_or_else(|| {
-                ApiError::Internal("rebuild_knowledge_graph returned no track_id".into())
-            })?;
+            let job_id = resolvable_job_id(
+                state,
+                tenant_id,
+                workspace_id,
+                &job_type,
+                response.first_task_id,
+                response.track_id,
+            )
+            .await?;
             Ok(SubmittedJob { job_id, job_type })
         }
         "reprocess_all" => {
@@ -135,26 +182,46 @@ pub async fn submit_workspace_job(
             let response =
                 run_reprocess_all_documents(state.clone(), workspace_id, tenant_ctx.clone(), req)
                     .await?;
-            Ok(SubmittedJob {
-                job_id: response.track_id,
-                job_type,
-            })
+            let job_id = resolvable_job_id(
+                state,
+                tenant_id,
+                workspace_id,
+                &job_type,
+                response.first_task_id,
+                Some(response.track_id),
+            )
+            .await?;
+            Ok(SubmittedJob { job_id, job_type })
         }
         "reprocess_failed" => {
             let req: ReprocessFailedRequest = payload_as(&request.payload)?;
             let response = run_reprocess_failed(state.clone(), tenant_ctx.clone(), req).await?;
-            Ok(SubmittedJob {
-                job_id: response.track_id,
-                job_type,
-            })
+            let first = response.first_task_id().map(str::to_string);
+            let job_id = resolvable_job_id(
+                state,
+                tenant_id,
+                workspace_id,
+                &job_type,
+                first,
+                Some(response.track_id),
+            )
+            .await?;
+            Ok(SubmittedJob { job_id, job_type })
         }
         "recover_stuck" => {
             let req: RecoverStuckRequest = payload_as(&request.payload)?;
             let response = run_recover_stuck(state.clone(), tenant_ctx.clone(), req).await?;
-            Ok(SubmittedJob {
-                job_id: response.track_id,
-                job_type,
-            })
+            let first = response.first_task_id().map(str::to_string);
+            let job_id = resolvable_job_id(
+                state,
+                tenant_id,
+                workspace_id,
+                &job_type,
+                first,
+                Some(response.track_id),
+            )
+            .await?;
+            Ok(SubmittedJob { job_id, job_type })
         }
         "reanalyze_multimodal" => {
             let document_id = request
@@ -173,13 +240,19 @@ pub async fn submit_workspace_job(
                 req,
             )
             .await?;
-            let job_id = response.track_id.clone().unwrap_or_else(|| {
-                format!(
+            let job_id = resolvable_job_id(
+                state,
+                tenant_id,
+                workspace_id,
+                &job_type,
+                response.track_id.clone(),
+                Some(format!(
                     "reanalyze_{}_{}",
                     document_id,
                     &Uuid::new_v4().to_string()[..8]
-                )
-            });
+                )),
+            )
+            .await?;
             Ok(SubmittedJob { job_id, job_type })
         }
         other => unreachable!("creatable job types validated above: {other}"),

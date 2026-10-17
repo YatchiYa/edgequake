@@ -95,9 +95,16 @@ impl JobLinks {
 impl JobResponse {
     pub fn from_task_for_workspace(workspace_id: &str, task: &Task) -> Self {
         let job_id = task.track_id.clone();
+        // No-op jobs (nothing queued) keep the requested v2 job type.
+        let job_type = task
+            .task_data
+            .get("v2_job_type")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| task.task_type.to_string());
         Self {
             job_id: job_id.clone(),
-            job_type: task.task_type.to_string(),
+            job_type,
             status: task.status.to_string(),
             tenant_id: task.tenant_id.to_string(),
             workspace_id: task.workspace_id.to_string(),

@@ -94,7 +94,9 @@ const nextConfig: NextConfig = {
     }
     const backend = resolveDevProxyBackend();
     return [
-      { source: "/api/:path*", destination: `${backend}/api/:path*` },
+      // Array rewrites run before *dynamic* routes: exclude /api/agents/[...path] (SPEC-165)
+      // so it is not shadowed. Static handlers (/api/copilot) already win over rewrites.
+      { source: "/api/:path((?!agents(?:/|$)).*)", destination: `${backend}/api/:path` },
       { source: "/oauth/:path*", destination: `${backend}/oauth/:path*` },
       { source: "/mcp", destination: `${backend}/mcp` },
       { source: "/.well-known/:path*", destination: `${backend}/.well-known/:path*` },
