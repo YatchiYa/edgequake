@@ -128,7 +128,8 @@ pub(super) async fn read_stored_content(state: &AppState, doc_id: &str) -> Optio
 /// Status is a projection of a live Task. `no_content` and enqueue failure
 /// must not write `pending`.
 pub(super) enum BulkReprocessCommit {
-    Queued,
+    /// Carries the worker task track_id (resolvable via `/api/v1/tasks/{id}`).
+    Queued(String),
     SkippedNoContent,
     EnqueueFailed,
 }
@@ -171,7 +172,7 @@ pub(super) async fn enqueue_then_bind_pending(
     }
 
     bind_document_pending_to_task(state, &doc.doc_id, &task_id, batch_track_id).await;
-    BulkReprocessCommit::Queued
+    BulkReprocessCommit::Queued(task_id)
 }
 
 /// Bind KV `pending` + worker `track_id` after the task row exists (issue #384).

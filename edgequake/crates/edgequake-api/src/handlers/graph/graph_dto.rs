@@ -12,7 +12,6 @@ use crate::handlers::graph_types::{
     CommunitySummary, DegreeBreakdown, GraphEdgeResponse, GraphFacetsResponse, GraphNodeResponse,
     TypeFacetCount,
 };
-use crate::handlers::isolation::properties_match_tenant_context;
 use crate::middleware::TenantContext;
 
 /// Workspace-exact node/edge totals (never shared AGE `reltuples`).
@@ -112,22 +111,27 @@ pub async fn degrees_breakdown_for_workspace(
         return Ok(Vec::new());
     }
 
+    // F12: accept plain names as well as full `{workspace}::NAME` ids; the
+    // response echoes the caller's id so clients can correlate results.
+    let mut requested = Vec::with_capacity(node_ids.len());
     let mut scoped_ids = Vec::with_capacity(node_ids.len());
     for id in node_ids {
-        match graph.get_node(id).await {
-            Ok(Some(node)) if properties_match_tenant_context(&node.properties, tenant_ctx) => {
-                scoped_ids.push(id.clone());
-            }
-            _ => {}
+        if let Ok(node) =
+            crate::handlers::entities::resolve_entity_node_exact(graph.as_ref(), id, tenant_ctx)
+                .await
+        {
+            requested.push(id.clone());
+            scoped_ids.push(node.id);
         }
     }
 
     let map = degrees_breakdown_batch(graph, &scoped_ids).await;
-    Ok(scoped_ids
+    Ok(requested
         .into_iter()
-        .map(|id| {
+        .zip(scoped_ids)
+        .map(|(id, node_id)| {
             let deg = map
-                .get(&id)
+                .get(&node_id)
                 .copied()
                 .unwrap_or_else(|| DegreeBreakdown::from_total(0));
             (id, deg)
@@ -196,6 +200,43 @@ fn type_facets(counts: Vec<(String, usize)>) -> Vec<TypeFacetCount> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// F12: plain names resolve to the workspace-scoped node; the response
+    /// echoes the caller's id, full ids keep working, other workspaces see nothing.
+    #[tokio::test]
+    async fn degrees_for_workspace_accepts_plain_names_and_full_ids() {
+        use edgequake_storage::traits::GraphStorageMutateOps;
+        const WS: &str = "79d6e213-032d-402c-9325-aee3483d3185";
+        const TENANT: &str = "00000000-0000-0000-0000-000000000002";
+        let mem = edgequake_storage::MemoryGraphStorage::new("test");
+        let mut props = HashMap::new();
+        props.insert("tenant_id".to_string(), TENANT.into());
+        props.insert("workspace_id".to_string(), WS.into());
+        mem.upsert_node(&format!("{WS}::ALTAROC"), props)
+            .await
+            .unwrap();
+        let graph: Arc<dyn GraphStorage> = Arc::new(mem);
+        let ctx = TenantContext {
+            tenant_id: Some(TENANT.into()),
+            workspace_id: Some(WS.into()),
+            user_id: None,
+        };
+        let ids = vec!["ALTAROC".to_string(), format!("{WS}::ALTAROC")];
+        let got = degrees_breakdown_for_workspace(&graph, &ctx, &ids)
+            .await
+            .unwrap();
+        let got_ids: Vec<_> = got.iter().map(|(id, _)| id.clone()).collect();
+        assert_eq!(got_ids, ids);
+
+        let other = TenantContext {
+            workspace_id: Some("11111111-1111-1111-1111-111111111111".into()),
+            ..ctx
+        };
+        assert!(degrees_breakdown_for_workspace(&graph, &other, &ids)
+            .await
+            .unwrap()
+            .is_empty());
+    }
 
     #[test]
     fn truncation_when_returned_less_than_total() {

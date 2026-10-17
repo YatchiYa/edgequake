@@ -53,6 +53,25 @@ export function getTokens(): {
   return { accessToken, refreshToken: null };
 }
 
+let authChain: Promise<unknown> = Promise.resolve();
+let authPending = 0;
+
+/**
+ * Run refresh-token mutations (refresh, switch-scope) one at a time: both rotate the
+ * `eq_refresh` cookie, and presenting a rotated token twice trips reuse detection (logout).
+ */
+export function serializeAuth<T>(fn: () => Promise<T>): Promise<T> {
+  // Idle → start now (no extra tick); otherwise queue behind the in-flight mutation.
+  const run = authPending === 0 ? fn() : authChain.then(fn, fn);
+  authPending++;
+  authChain = run
+    .catch(() => undefined)
+    .finally(() => {
+      authPending--;
+    });
+  return run;
+}
+
 export function clearTokens(): void {
   accessToken = null;
   if (typeof window !== "undefined") {

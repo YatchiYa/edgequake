@@ -247,6 +247,31 @@ pub async fn ensure_default_tenant_workspace(
     .await
 }
 
+/// Fork: `EDGEQUAKE_DEFAULT_WORKSPACE_AUTO_MEMBERSHIP=false` also skips the first default
+/// membership, so a new user sees no workspace until an administrator grants one.
+/// Default `true` keeps upstream behaviour.
+#[cfg(feature = "postgres")]
+fn default_workspace_auto_membership() -> bool {
+    auto_membership_enabled(
+        std::env::var("EDGEQUAKE_DEFAULT_WORKSPACE_AUTO_MEMBERSHIP")
+            .ok()
+            .as_deref(),
+    )
+}
+
+fn auto_membership_enabled(value: Option<&str>) -> bool {
+    !matches!(value.map(str::trim), Some("0" | "false" | "no" | "off"))
+}
+
+#[cfg(test)]
+#[test]
+fn auto_membership_defaults_on_and_turns_off_on_false() {
+    assert!(auto_membership_enabled(None));
+    assert!(auto_membership_enabled(Some("true")));
+    assert!(!auto_membership_enabled(Some("false")));
+    assert!(!auto_membership_enabled(Some(" 0 ")));
+}
+
 /// Provision the default tenant/workspace membership for a user who has none (SPEC-027 phase 34).
 ///
 /// SPEC-169: insert-only. This runs on every user persist (each login), so it used to
@@ -264,6 +289,9 @@ pub async fn sync_default_membership_to_postgres(
     use edgequake_storage::StorageError;
 
     ensure_default_tenant_workspace(pool, security).await?;
+    if !default_workspace_auto_membership() {
+        return Ok(());
+    }
     let (tenant_id, workspace_id) = default_identity_scope();
     let membership_role = membership_role_from_global_role(global_role);
     let scope = Some(PgIsolationScope::for_membership(

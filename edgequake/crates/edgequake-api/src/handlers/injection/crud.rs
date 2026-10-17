@@ -194,6 +194,9 @@ pub async fn delete_injection(
 
     let doc_id = injection_doc_id(&workspace_id, &injection_id);
 
+    // N3: stop queued/running processing first so it cannot re-write the injection.
+    cancel_injection_tasks(&state, &workspace_id, &injection_id).await;
+
     let vector_storage = resolve_injection_context(&state, &workspace_id)
         .await
         .vector_storage;
@@ -250,6 +253,49 @@ pub async fn delete_injection(
         deleted: true,
         message: format!("Injection {} deleted", injection_id),
     }))
+}
+
+/// Cancel this injection's pending/processing `knowledge_injection` tasks.
+/// Warn-only: the worker's final status write is update-only as a second fence.
+async fn cancel_injection_tasks(state: &AppState, workspace_id: &str, injection_id: &str) {
+    use edgequake_tasks::{Pagination, TaskFilter, TaskStatus, TaskType};
+    let Some(ws) = crate::middleware::resolve_workspace_uuid(Some(workspace_id)) else {
+        return;
+    };
+    for status in [TaskStatus::Pending, TaskStatus::Processing] {
+        let filter = TaskFilter {
+            workspace_id: Some(ws),
+            status: Some(status),
+            task_type: Some(TaskType::KnowledgeInjection),
+            ..Default::default()
+        };
+        // ponytail: one page of 1000 active injection tasks per workspace is plenty.
+        let pagination = Pagination {
+            page: 1,
+            page_size: 1000,
+            ..Default::default()
+        };
+        let tasks = match state.tasks.storage.list_tasks(filter, pagination).await {
+            Ok(list) => list.tasks,
+            Err(e) => {
+                warn!(injection_id, error = %e, "Injection delete: listing tasks failed");
+                continue;
+            }
+        };
+        for task in tasks.iter().filter(|t| {
+            t.task_data.get("injection_id").and_then(|v| v.as_str()) == Some(injection_id)
+        }) {
+            if let Err(e) = crate::services::apply_task_row_cancel(
+                &state.tasks.storage,
+                &state.tasks.cancellation_registry,
+                &task.track_id,
+            )
+            .await
+            {
+                warn!(injection_id, track_id = %task.track_id, error = %e, "Injection delete: task cancel failed");
+            }
+        }
+    }
 }
 
 /// Update an existing injection entry. Re-processes if content changes.

@@ -99,6 +99,53 @@ pub async fn typed_injection_upsert(meta: &Value, pool: crate::services::Optiona
     }
 }
 
+/// Update-only typed write for worker status (N3): never creates the row, so a
+/// task finishing after DELETE cannot resurrect the injection.
+/// `Some(true)` = row updated, `Some(false)` = no injection row, `None` = no
+/// typed path (no pool / non-UUID ids / DB error).
+pub async fn typed_injection_update_existing(
+    meta: &Value,
+    pool: crate::services::OptionalPgPool<'_>,
+) -> Option<bool> {
+    #[cfg(feature = "postgres")]
+    {
+        let pool = pool?;
+        let id = meta
+            .get("id")
+            .and_then(|v| v.as_str())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())?;
+        let title = meta.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let content = meta.get("content").and_then(|v| v.as_str()).unwrap_or("");
+        let status = doc_status(meta.get("status").and_then(|v| v.as_str()).unwrap_or(""));
+        let mut stored = meta.clone();
+        stored["source_type"] = Value::String("injection".to_string());
+        match sqlx::query(
+            "UPDATE public.documents SET title = $2, content = $3, status = $4, \
+             metadata = $5, updated_at = now() \
+             WHERE id = $1 AND metadata->>'source_type' = 'injection'",
+        )
+        .bind(id)
+        .bind(title)
+        .bind(content)
+        .bind(status)
+        .bind(stored)
+        .execute(pool)
+        .await
+        {
+            Ok(done) => Some(done.rows_affected() > 0),
+            Err(e) => {
+                tracing::warn!(injection_id = %id, error = %e, "typed injection status update failed");
+                None
+            }
+        }
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (meta, pool);
+        None
+    }
+}
+
 /// Typed read of one injection's metadata JSON (None → KV fallback).
 pub async fn typed_injection_get(
     injection_id: &str,

@@ -41,7 +41,7 @@ impl WorkspaceServiceImpl {
 
         let row: SnapshotRow = sqlx::query_as(
             r#"
-            INSERT INTO workspace_metrics_history (
+            INSERT INTO public.workspace_metrics_history (
                 workspace_id, trigger_type,
                 document_count, chunk_count, entity_count, relationship_count,
                 embedding_count, storage_bytes
@@ -107,7 +107,7 @@ impl WorkspaceServiceImpl {
             SELECT id, workspace_id, recorded_at, trigger_type,
                    document_count, chunk_count, entity_count, relationship_count,
                    embedding_count, storage_bytes
-            FROM workspace_metrics_history
+            FROM public.workspace_metrics_history
             WHERE workspace_id = $1
             ORDER BY recorded_at DESC
             LIMIT $2 OFFSET $3

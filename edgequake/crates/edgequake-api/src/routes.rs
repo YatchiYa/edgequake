@@ -269,6 +269,7 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         .route("/auth/refresh", post(handlers::refresh_token))
         .route("/auth/logout", post(handlers::logout))
         .route("/auth/me", get(handlers::get_me))
+        .route("/auth/switch-scope", post(handlers::switch_scope))
         .route("/auth/oidc/login", get(handlers::oidc_login))
         .route("/auth/oidc/callback", get(handlers::oidc_callback))
         // SPEC-158: SSO handoff, back-channel logout, provider discovery + admin
@@ -354,6 +355,15 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         .route(
             "/tenants/{tenant_id}/invitations/{invitation_id}/resend",
             post(handlers::members::resend_invitation),
+        )
+        // Fork: per-workspace memberships (SPEC-164), next to SPEC-169 org members
+        .route(
+            "/tenants/{tenant_id}/workspace-members",
+            get(handlers::list_tenant_members).post(handlers::add_tenant_member),
+        )
+        .route(
+            "/tenants/{tenant_id}/workspace-members/{membership_id}",
+            patch(handlers::update_tenant_member).delete(handlers::remove_tenant_member),
         )
         // Admin quota management (SPEC-0001: Issue #133)
         .route(

@@ -19,7 +19,7 @@
 //! ## Enforces
 //!
 //! - **BR0510**: Costs must be calculated using official pricing data
-//! - **BR0511**: Unknown models fallback to gpt-4o-mini pricing
+//! - **BR0511**: Unknown models are rejected (400), never priced with a default
 //! - **BR0512**: Cost history must respect workspace isolation
 
 use axum::{
@@ -86,10 +86,13 @@ pub async fn estimate_cost(
 ) -> ApiResult<Json<EstimateCostResponse>> {
     let pricing = edgequake_pipeline::default_model_pricing();
 
-    let model_pricing = pricing.get(&request.model).cloned().unwrap_or_else(|| {
-        // Default to gpt-4.1-nano pricing if unknown
-        edgequake_pipeline::ModelPricing::new("gpt-4.1-nano", 0.00015, 0.0006)
-    });
+    // Unknown model → 400 (documented); a silent default price misleads callers.
+    let model_pricing = pricing.get(&request.model).cloned().ok_or_else(|| {
+        crate::error::ApiError::BadRequest(format!(
+            "Unknown model '{}'. See GET /api/v1/pipeline/costs/pricing for supported models.",
+            request.model
+        ))
+    })?;
 
     let cost = model_pricing.calculate_cost(request.input_tokens, request.output_tokens);
 

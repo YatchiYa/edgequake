@@ -28,7 +28,7 @@ use utoipa::IntoParams;
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
 use crate::services::sync_doc_cancelled_for_task;
-use crate::services::task_cancel::apply_cancel_all_active;
+use crate::services::task_cancel::apply_cancel_active_in_scope;
 use crate::services::task_scope::task_filter_for_scope;
 use crate::state::AppState;
 use std::sync::Arc;
@@ -193,32 +193,44 @@ pub async fn get_pipeline_activity(
     Ok(Json(assemble_pipeline_activity(classified, activity_tasks)))
 }
 
-/// Request cancellation of the current pipeline job.
+/// Request cancellation of the caller's in-flight pipeline tasks.
+///
+/// Scoped to the request's tenant + workspace: other tenants' tasks are never touched.
 #[utoipa::path(
     post,
     path = "/api/v1/pipeline/cancel",
     tag = "Pipeline",
     responses(
-        (status = 200, description = "Cancellation requested or pipeline already idle", body = CancelPipelineResponse)
+        (status = 200, description = "Cancellation requested or pipeline already idle (caller's workspace only)", body = CancelPipelineResponse),
+        (status = 404, description = "Malformed tenant/workspace scope")
     )
 )]
 pub async fn cancel_pipeline(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
 ) -> ApiResult<Json<CancelPipelineResponse>> {
+    let (tenant_id, workspace_id) = crate::services::task_scope::resolve_task_scope(&tenant_ctx)
+        .ok_or_else(|| ApiError::NotFound("Workspace not found".to_string()))?;
+
+    // Signal this workspace's in-flight tasks via the shared cancel helper (registry + task rows).
+    let results = apply_cancel_active_in_scope(
+        &state.tasks.storage,
+        &state.tasks.cancellation_registry,
+        tenant_id,
+        workspace_id,
+    )
+    .await
+    .map_err(ApiError::Internal)?;
+
     // WHY: Cancellation is an idempotent user action. If the pipeline already
     // finished between dialog open and confirm click, the desired state is
     // already achieved, so return success instead of surfacing a noisy 409.
-    if !state.tasks.pipeline_state.is_busy().await {
+    if results.is_empty() {
         return Ok(Json(CancelPipelineResponse {
             status: "already_idle".to_string(),
             message: "Pipeline is already idle; there is nothing left to cancel.".to_string(),
         }));
     }
-
-    // Signal every in-flight task via the shared cancel helper (registry + task rows).
-    let results = apply_cancel_all_active(&state.tasks.storage, &state.tasks.cancellation_registry)
-        .await
-        .map_err(ApiError::Internal)?;
 
     // SPEC-057 P0 + SPEC-059: sync linked doc KV and retract indexes.
     for applied in &results {

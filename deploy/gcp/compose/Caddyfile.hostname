@@ -1,7 +1,7 @@
 # Used when EDGEQUAKE_HOSTNAME is set.
 # Do not prefix the site with http:// — that disables automatic HTTPS for the name
 # (https://caddyserver.com/docs/automatic-https). Caddy obtains a public cert
-# (Let's Encrypt, then ZeroSSL) and redirects :80 → HTTPS (LAW-148-13).
+# (Let's Encrypt, then ZeroSSL) and redirects :80 → HTTPS.
 
 {
 	email {$CADDY_ACME_EMAIL}

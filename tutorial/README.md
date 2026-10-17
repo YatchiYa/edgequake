@@ -40,6 +40,9 @@ A **model** is the language program that reads documents and writes answers. You
 12. [API Explorer](12-api-explorer.md) — the same product, as web requests a program can send.
 13. [Settings](13-settings.md) — theme, language, connections, and the switches that change pictures and answers.
 14. [Members and invites](https://edgequake.com/tutorial/14-members-and-invites/) — invite teammates, roles, and one-time sign-in links (v0.36.0).
+15. [The copilot](14-copilot.md) — the assistant on the right of every page that answers, opens pages, and proposes map changes you approve.
+16. [Agents](15-adk-agents.md) — the support, explorer and investigator assistants built with Google ADK, and their chat page.
+17. [Deploy on Google Cloud](16-deploy-on-gcp.md) — put the whole thing online with one command, and take it down again.
 
 ## How the pages link
 

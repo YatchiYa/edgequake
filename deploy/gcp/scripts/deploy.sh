@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# SPEC-148 deploy: pull images, LD-15 migrate, compose up, HTTPS + \dx gates.
+# Deploy: pull images, LD-15 migrate, compose up, HTTPS + \dx gates.
 set -euo pipefail
 
-ROOT="${STACK_ROOT:-/opt/edgequake}"
+ROOT="${STACK_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 COMPOSE_DIR="${ROOT}/compose"
 ENV_FILE="${ROOT}/.env"
 LOG="${STACK_LOG:-/var/log/edgequake-deploy.log}"
@@ -31,9 +31,13 @@ set +a
 
 if [[ -n "${EDGEQUAKE_PIN_VERSION:-}" ]]; then
   EDGEQUAKE_VERSION="${EDGEQUAKE_PIN_VERSION}"
-  EDGEQUAKE_POSTGRES_TAG="${EDGEQUAKE_PIN_VERSION}"
   sed -i "s/^EDGEQUAKE_VERSION=.*/EDGEQUAKE_VERSION=${EDGEQUAKE_PIN_VERSION}/" "${ENV_FILE}"
-  sed -i "s/^EDGEQUAKE_POSTGRES_TAG=.*/EDGEQUAKE_POSTGRES_TAG=${EDGEQUAKE_PIN_VERSION}/" "${ENV_FILE}"
+fi
+
+# Artifact Registry pulls use the VM service account (root's docker config).
+if [[ "${EDGEQUAKE_IMAGE_REGISTRY:-}" == *-docker.pkg.dev/* ]]; then
+  log "docker auth for ${EDGEQUAKE_IMAGE_REGISTRY%%/*}"
+  gcloud auth configure-docker "${EDGEQUAKE_IMAGE_REGISTRY%%/*}" --quiet 2>&1 | tee -a "${LOG}"
 fi
 
 if [[ -n "${EDGEQUAKE_HOSTNAME:-}" ]]; then
@@ -99,10 +103,14 @@ wait_postgres() {
 # 0.35.5 postgres images have no age.so. DROP EXTENSION on that image fails
 # with "could not access file age" when the volume still has the extension.
 # Drop it on the last image that ships the library, then open the new image.
+# Fork: decided by the postgres image tag (our app images use content tags, not versions).
 postgres_has_no_age_library() {
-  python3 - <<'PY' "${EDGEQUAKE_VERSION}"
+  python3 - <<'PY' "${EDGEQUAKE_POSTGRES_TAG:-}"
 import sys
-parts = tuple(int(x) for x in sys.argv[1].split("."))
+try:
+    parts = tuple(int(x) for x in sys.argv[1].split("."))
+except ValueError:
+    raise SystemExit(1)
 raise SystemExit(0 if parts >= (0, 35, 5) else 1)
 PY
 }
@@ -124,12 +132,20 @@ if postgres_has_no_age_library; then
     EDGEQUAKE_POSTGRES_TAG=0.35.4 EDGEQUAKE_VERSION=0.35.4 "${COMPOSE[@]}" up -d postgres
     wait_postgres
     EDGEQUAKE_POSTGRES_TAG=0.35.4 EDGEQUAKE_VERSION=0.35.4 \
-      "${COMPOSE[@]}" run --rm --no-deps -T api migrate --drop-age
+      EDGEQUAKE_IMAGE_REGISTRY=ghcr.io/raphaelmansuy "${COMPOSE[@]}" run --rm --no-deps -T api migrate --drop-age
     log "Apache AGE dropped; starting ${EDGEQUAKE_VERSION} postgres"
     "${COMPOSE[@]}" up -d postgres
     wait_postgres
   fi
 fi
+
+# Fork transition: earlier builds recorded workspace_metrics_history_public as migration
+# 170, then 208. Upstream owns both numbers (v0.35.6 / v0.36.0); ours is now 215
+# (idempotent). Forget the old ledger rows so upstream's migrations apply. No-op on fresh
+# or already-moved volumes.
+"${COMPOSE[@]}" exec -T postgres psql -U edgequake -d edgequake -tAc \
+  "DELETE FROM public._sqlx_migrations WHERE version IN (170, 208) AND description ILIKE '%metrics history public%'" \
+  >/dev/null 2>&1 || true
 
 log "LD-15 migrate dry-run"
 "${COMPOSE[@]}" run --rm --no-deps -T api migrate dry-run || true
@@ -238,4 +254,7 @@ else
   log "Apache AGE is not installed"
 fi
 
+# The 20 GB boot disk holds the images: drop the ones no container uses any more
+# (previous deploys), or the next pull fills the disk and containers crash on write.
+docker image prune -af >/dev/null 2>&1 || true
 log "DEPLOY_OK"

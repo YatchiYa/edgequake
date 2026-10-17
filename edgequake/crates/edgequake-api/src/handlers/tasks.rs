@@ -244,6 +244,18 @@ pub async fn cancel_task(
         Err(e) => return Err(e),
     };
 
+    // Terminal rows (Failed / Indexed) cannot be cancelled: 409 before any doc
+    // KV write, so task and document never disagree. Cancelled stays idempotent
+    // (same contract as POST /documents/{id}/cancel).
+    if let Some(task) = existing.as_ref() {
+        if matches!(task.status, TaskStatus::Failed | TaskStatus::Indexed) {
+            return Err(ApiError::Conflict(format!(
+                "Cannot cancel task in status: {}",
+                task.status
+            )));
+        }
+    }
+
     // SPEC-002: Update document status for this track_id within tenant/workspace scope.
     // SPEC-027 pass 11: scoped metadata scan — never cancel cross-tenant documents.
     let mut doc_updated = false;

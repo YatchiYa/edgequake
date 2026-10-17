@@ -1647,3 +1647,18 @@ mark.highlight-citation {
   position: relative;
   display: block;
 }
+/* SPEC-165: shimmering text for live agent activity ("Recherche…") */
+.text-shimmer {
+  background: linear-gradient(90deg, currentColor 35%, color-mix(in oklab, currentColor 25%, transparent) 50%, currentColor 65%) 0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 2s linear infinite;
+}
+@keyframes text-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .text-shimmer { animation: none; -webkit-text-fill-color: currentColor; }
+}
