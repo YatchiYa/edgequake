@@ -4,9 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT/edgequake"
 export EDGEQUAKE_ALLOW_MOCK_PROVIDER=1
-# A fresh runner has an empty crates.io cache. --offline then fails on the
-# first workspace lookup (edgequake-api needs async-trait) before any test
-# runs. Fetch the lockfile once; the proof itself stays offline.
+# A fresh CI runner has an empty crates.io cache. The proof stays offline, but
+# resolving the workspace (edgequake-api needs async-trait) requires one fetch.
 echo ">> cargo fetch --locked"
 cargo fetch --locked
 START=$(date +%s)

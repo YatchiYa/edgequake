@@ -13,13 +13,10 @@ use super::types::{
 pub trait EmbeddingIndex: Send + Sync {
     fn capabilities(&self) -> EmbeddingCapabilities;
 
-    /// Whether projection upserts must be delivered to this index.
-    ///
-    /// Built-in pgvector indexes return false: the applier opens one typed
-    /// table per payload `model_id`. An injected index returns true so those
-    /// rows reach the provider the query path actually searches.
-    fn receive_projection_upserts(&self) -> bool {
-        true
+    /// The pgvector applier writes typed Postgres tables itself.
+    /// An index that stores somewhere else must take the batch.
+    fn uses_external_upsert(&self) -> bool {
+        false
     }
 
     async fn upsert_batch(
