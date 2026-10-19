@@ -225,6 +225,7 @@ pub(super) async fn insert_contributions(
             WHERE g.contribution_id IS NULL
                OR g.tenant_id <> $1
                OR g.workspace_id <> $2
+               OR g.source_document_id IS DISTINCT FROM $3
                OR g.fact_id <> u.fact_id
                OR g.fact_revision <> u.fact_revision
                OR g.source_generation <> $4
