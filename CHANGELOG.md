@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.36.0] — 2026-10-19
+
+Members, invitations, and one-time sign-in links. Schema moves from **207** to **214**. An upgrade from 0.35.7 runs migrations **208** through **214**:
+[`docs/operations/upgrade-to-0.36.0.md`](docs/operations/upgrade-to-0.36.0.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres` (`0.36.0`, `-pg16`, `-pg17`, `-pg18`), and `edgequake-keycloak` on tag `v0.36.0`.
+
+**SPEC-001 Acc:** scored on this cut, medical-mid n=200, Mistral pins, archive
+[`medical-mid-20261019T141211Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20261019T141211Z/)
+(`valid: true`). EdgeQuake **0.8240**, LightRAG **0.8016**, delta **+0.0223**
+(95% bootstrap CI [-0.0132, +0.0780], n_paired 97). The interval includes 0,
+so this is a statistical tie. EdgeQuake does not claim a win. Evidence recall is
+0.923 versus 0.969, and context relevancy is 0.390 versus 0.489.
+
 ### Added (SPEC-169 — user management)
 
 - **Members screen** (`/members`): directory with search, role and status filters, sorting, role pill with last-owner and SSO-pin notes, detail sheet, suspend/restore, and a Roles & permissions matrix read from `GET /roles`. Settings links to it. The duplicated user card is gone.
@@ -17,6 +31,12 @@ All notable changes to this project will be documented in this file.
 
 - `POST /users` and `PATCH /users/{id}` rejected unknown role names instead of coercing them (`viewer` became `user`).
 - A role an admin chose is no longer overwritten by the IdP at the next SSO sign-in; removed users are not silently re-added.
+
+### Changed
+
+- ANN-first typed vector search hydrates chunk, entity, and relationship rows after the embedding lookup.
+- Row-security helpers run once per statement (migration **208**). Graph list pages use ordered scope indexes (**209**). Typo label search uses an owner function (**210**).
+- Relationships store the chunk keys that produced them (**211**) and are backfilled from graph edge lineage (**212**). Document-scoped search can find those relationships.
 
 ## [0.35.7] — 2026-10-18
 

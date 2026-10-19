@@ -16766,6 +16766,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Account signs in through single sign-on */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Account locked */
             423: {
                 headers: {
