@@ -1,9 +1,13 @@
 # SPEC-150 epoch table — schema-distinct release points
 #
 # v0.35.1 owns schema 207. v0.35.2 through v0.35.7 serve that migration set.
-# v0.36.0 owns schema 214.
+# v0.36.0 owns schema 214. Pin the set here until the tag is on the remote;
+# check_epoch_coverage.sh treats a missing tag as a failure.
 
 [unreleased]
+hash = "b8260fba4d6bc653"
+max = 214
+files = 212
 
 [[epoch]]
 tag = "v0.2.0"
@@ -321,12 +325,3 @@ replay = true
 # max mig 207 (AGE lineage discovery under row security, GitHub #478)
 # hash 6c9f5db14719d62f (205 numbered migration files)
 # schema-identical aliases: v0.35.2 v0.35.3 v0.35.4 v0.35.5 v0.35.6 v0.35.7
-
-[[epoch]]
-tag = "v0.36.0"
-mode = "image"
-pg_majors = [16,17,18]
-key = true
-replay = true
-# max mig 214 (SPEC-169 invitations and access links; query migrations 208–212)
-# hash b8260fba4d6bc653 (212 numbered migration files)
