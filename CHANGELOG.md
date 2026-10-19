@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added (SPEC-169 — user management)
+
+- **Members screen** (`/members`): directory with search, role and status filters, sorting, role pill with last-owner and SSO-pin notes, detail sheet, suspend/restore, and a Roles & permissions matrix read from `GET /roles`. Settings links to it. The duplicated user card is gone.
+- **Invitations**: `POST/DELETE /tenants/{id}/invitations`, resend, and public `GET/POST /auth/invitations/{token}[/accept]`. The token is 256-bit, stored as SHA-256, shown once, single use, 7-day TTL. Migration **213**.
+- **Magic sign-in links and password-reset links**: an admin creates a one-time link for a member (`POST /tenants/{id}/members/{user_id}/access-links`); the member opens `/access/{token}`. Magic links live 15 minutes, reset links 24 hours. A reset sets the new password, signs the person out everywhere else, and signs them in. Redeem is a POST so mail scanners cannot consume the link. Migration **214**.
+- **Change password** (`POST /auth/password`, user menu): needs the current password, signs out other devices, keeps this one signed in.
+- **Password UX**: one `PasswordField` (reveal, Caps Lock warning, live strength meter and the server's three rules) used by invitation accept, reset and change password.
+- **Guards**: a link needs a manager who strictly outranks the target. Single sign-on accounts, suspended accounts, yourself, platform admins and people who also belong to other organizations are refused (platform admins excepted for the last two).
+
+### Fixed (SPEC-169)
+
+- `POST /users` and `PATCH /users/{id}` rejected unknown role names instead of coercing them (`viewer` became `user`).
+- A role an admin chose is no longer overwritten by the IdP at the next SSO sign-in; removed users are not silently re-added.
+
 ## [0.35.7] — 2026-10-18
 
 Patch: this tag is the 0.35.5 train on `edgequake-main`. A platform admin can switch organization after login. Label search recovers typos, and scoped discovery fails closed, on the Postgres image that does not ship Apache AGE. Schema stays **207**. An upgrade from 0.35.5 or 0.35.6 applies no new migration:

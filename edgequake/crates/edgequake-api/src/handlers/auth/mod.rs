@@ -29,6 +29,7 @@ mod refresh_cookie;
 mod session;
 mod sso_providers;
 mod user_management;
+pub(crate) mod user_provision;
 
 pub use api_keys::*;
 pub use backchannel::*;

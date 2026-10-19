@@ -11,16 +11,15 @@ use axum::{
 };
 use chrono::Utc;
 use tracing::info;
-use uuid::Uuid;
 
 use crate::error::ApiError;
 use crate::handlers::auth::{ApiOptionalAuth, ApiRequireAdmin};
 use crate::state::{
     ApiSecurityConfig, AuthRuntime, OperationalStores, PostgresRuntime, StorageRuntime,
 };
-use edgequake_auth::{Role, User};
+use edgequake_auth::Role;
 
-use super::{get_record_by_id, persist_user_record, UserRecord};
+use super::{get_record_by_id, persist_user_record};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -85,12 +84,20 @@ pub use crate::handlers::auth_types::{
 pub async fn create_user(
     State(auth): State<AuthRuntime>,
     State(storage): State<StorageRuntime>,
-    State(pg_runtime): State<PostgresRuntime>,
+    State(pg): State<PostgresRuntime>,
     State(security): State<ApiSecurityConfig>,
     State(stores): State<OperationalStores>,
     ApiOptionalAuth(auth_context): ApiOptionalAuth,
     Json(request): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<CreateUserResponse>), ApiError> {
+    let ctx = super::user_provision::IdentityCtx {
+        auth,
+        storage,
+        pg,
+        security,
+        stores,
+    };
+    let auth = &ctx.auth;
     // Validate inputs
     if request.username.is_empty() {
         return Err(ApiError::BadRequest("Username is required".to_string()));
@@ -104,45 +111,22 @@ pub async fn create_user(
         return Err(ApiError::BadRequest("Password is required".to_string()));
     }
 
-    #[cfg(feature = "postgres")]
-    {
-        if crate::services::identity_storage::find_user_record_by_login(
-            &storage,
-            Some(&pg_runtime),
-            &security,
-            &request.username,
-        )
-        .await?
-        .is_some()
-        {
-            return Err(ApiError::Conflict("Username already exists".to_string()));
-        }
-        if crate::services::identity_storage::find_user_record_by_login(
-            &storage,
-            Some(&pg_runtime),
-            &security,
-            &request.email,
-        )
-        .await?
-        .is_some()
-        {
-            return Err(ApiError::Conflict("Email already exists".to_string()));
-        }
-    }
+    super::user_provision::assert_login_available(&ctx, &request.username, &request.email).await?;
 
     if auth_context.is_none() && !auth.config.allow_registration {
         return Err(ApiError::forbidden());
     }
 
-    // Hash password
-    let password_hash = auth
-        .password
-        .hash_password(&request.password)
-        .map_err(|e| ApiError::BadRequest(format!("Password error: {}", e)))?;
-
     // Determine role
     let default_role = Role::parse(&auth.config.default_role);
-    let requested_role = request.role.as_ref().map(|r| Role::parse(r));
+    // SPEC-169: unknown role names are rejected, never silently coerced
+    // (`viewer` used to fall through to `user`, a privilege escalation).
+    let requested_role = request
+        .role
+        .as_deref()
+        .map(Role::from_api_input)
+        .transpose()
+        .map_err(ApiError::BadRequest)?;
 
     let role = match auth_context {
         Some(context) if context.role == Role::Admin => requested_role.unwrap_or(default_role),
@@ -158,35 +142,20 @@ pub async fn create_user(
         None => default_role,
     };
 
-    // Create user
-    let user_id = Uuid::new_v4().to_string();
-    let now = Utc::now();
-
-    let user = User::new(
-        &user_id,
+    let user = super::user_provision::provision_password_user(
+        &ctx,
         &request.username,
         &request.email,
-        password_hash,
+        &request.password,
         role,
-    );
-
-    let user_record = UserRecord::from(&user);
-    persist_user_record(
-        &storage,
-        Some(&pg_runtime),
-        &security,
-        stores.identity.as_deref(),
-        &user_record,
     )
     .await?;
-
-    info!("User created: {} ({})", user.username, user.user_id);
 
     Ok((
         StatusCode::CREATED,
         Json(CreateUserResponse {
             user: UserInfo::from(&user),
-            created_at: now.to_rfc3339(),
+            created_at: user.created_at.to_rfc3339(),
         }),
     ))
 }
@@ -402,7 +371,7 @@ pub async fn update_user(
 
     // Apply role change if requested
     if let Some(ref new_role) = request.role {
-        let parsed = Role::parse(new_role);
+        let parsed = Role::from_api_input(new_role).map_err(ApiError::BadRequest)?;
         let current_role = Role::parse(&record.role);
 
         // WHY: Guard against demoting the last admin — system would be unmanageable.

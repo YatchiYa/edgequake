@@ -62,6 +62,21 @@ impl FederationStore for MemoryFederationStore {
         Ok(LinkOutcome::Created)
     }
 
+    async fn identities_for_users(
+        &self,
+        user_ids: &[Uuid],
+    ) -> Result<Vec<FederatedIdentityRecord>, ApiError> {
+        let s = self.state.lock().await;
+        let mut found: Vec<_> = s
+            .identities
+            .values()
+            .filter(|i| user_ids.contains(&i.user_id))
+            .cloned()
+            .collect();
+        found.sort_by_key(|i| (i.linked_at, i.federated_id));
+        Ok(found)
+    }
+
     async fn touch_identity(&self, issuer: &str, subject: &str) -> Result<(), ApiError> {
         let mut s = self.state.lock().await;
         if let Some(r) = s.identities.get_mut(&(issuer.into(), subject.into())) {

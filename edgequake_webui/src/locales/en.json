@@ -62,7 +62,8 @@
     "search": "Search",
     "expandSidebar": "Expand sidebar",
     "collapseSidebar": "Collapse sidebar",
-    "openMenu": "Open navigation menu"
+    "openMenu": "Open navigation menu",
+    "members": "Members"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1158,6 +1159,11 @@
       "access": "Access",
       "observability": "Observability",
       "data": "Data"
+    },
+    "membersCard": {
+      "title": "Members, roles and sign-in",
+      "description": "Invite people, manage their roles and configure single sign-on from the Members page.",
+      "cta": "Open Members"
     }
   },
   "context": {
@@ -1521,6 +1527,30 @@
         "trustEmail": "trusts email",
         "noTrustEmail": "email not trusted"
       }
+    },
+    "password": {
+      "show": "Show password",
+      "hide": "Hide password",
+      "capsLock": "Caps Lock is on",
+      "new": "New password",
+      "confirm": "Confirm password",
+      "current": "Current password",
+      "mismatch": "Passwords do not match.",
+      "strength": {
+        "weak": "Weak",
+        "fair": "Fair",
+        "good": "Good",
+        "excellent": "Excellent"
+      },
+      "rules": {
+        "length": "8 to 128 characters",
+        "variety": "3 of 4: uppercase, lowercase, number, symbol",
+        "common": "No common patterns such as \"password\""
+      },
+      "changeTitle": "Change password",
+      "changeBody": "Choose a new password. You stay signed in here; your other devices are signed out.",
+      "changeSubmit": "Change password",
+      "changed": "Password changed. Other devices were signed out."
     }
   },
   "extractionMode": {
@@ -1679,5 +1709,328 @@
     "graphDepth": "Neighbourhood depth",
     "graphZoom": "Zoom in, out, reset",
     "graphFullscreen": "Toggle fullscreen"
+  },
+  "members": {
+    "title": "Members",
+    "description": "Manage who can access this organization, what they can do, and how they sign in.",
+    "tabs": {
+      "members": "Members",
+      "roles": "Roles & permissions",
+      "sso": "Single sign-on"
+    },
+    "you": "You",
+    "invitedBy": "Invited by {{name}}",
+    "invitationPending": "Invitation pending",
+    "expiredAgo": "Expired {{when}}",
+    "expiresIn": "Expires {{when}}",
+    "neverSignedIn": "Never",
+    "columns": {
+      "person": "Person",
+      "role": "Role",
+      "signIn": "Sign-in",
+      "status": "Status",
+      "lastActive": "Last active",
+      "actions": "Actions"
+    },
+    "status": {
+      "active": "Active",
+      "invited": "Invited",
+      "expired": "Expired",
+      "deactivated": "Suspended"
+    },
+    "signIn": {
+      "password": "Password",
+      "ssoVia": "Single sign-on via {{name}}"
+    },
+    "toolbar": {
+      "search": "Search by name or email",
+      "clearSearch": "Clear search",
+      "roleFilter": "Filter by role",
+      "allRoles": "All",
+      "statusFilter": "Filter by status",
+      "allStatuses": "All statuses"
+    },
+    "roles": {
+      "owner": {
+        "label": "Owner",
+        "description": "Full control of the organization, including ownership transfer and deletion."
+      },
+      "admin": {
+        "label": "Admin",
+        "description": "Manages members, roles and workspaces. Cannot grant Owner."
+      },
+      "member": {
+        "label": "Member",
+        "description": "Works with knowledge: uploads, edits, queries and chat."
+      },
+      "readonly": {
+        "label": "Viewer",
+        "description": "Read-only access: browse documents, graph and run queries."
+      },
+      "capability": "Capability",
+      "granted": "{{role}} can",
+      "denied": "{{role}} cannot",
+      "instanceTitle": "Instance roles",
+      "instanceBody": "A separate, platform-wide setting managed by instance admins. It does not replace organization roles.",
+      "permissions_one": "{{count}} permission",
+      "permissions_other": "{{count}} permissions",
+      "intro": "Every member has one role in this organization. Roles are cumulative: each one can do everything the roles below it can.",
+      "instance": {
+        "admin": {
+          "label": "Instance admin",
+          "description": "Platform administrator: SSO, models, quotas and every organization. Use sparingly."
+        },
+        "user": {
+          "label": "Standard",
+          "description": "Regular account. Access is decided by organization roles."
+        },
+        "readonly": {
+          "label": "Read-only",
+          "description": "Account-wide read-only guard, regardless of organization role."
+        }
+      }
+    },
+    "role": {
+      "change": "Change role (currently {{role}})",
+      "menuTitle": "Organization role",
+      "ssoPinNote": "This role follows {{provider}}. Changing it here pins it, and the identity provider will stop overriding it.",
+      "locked": {
+        "notManager": "Only admins and owners can change roles.",
+        "outranked": "You cannot change a role above your own.",
+        "lastOwner": "Promote another owner first — an organization needs at least one."
+      }
+    },
+    "actions": {
+      "open": "Actions for {{name}}",
+      "details": "View details",
+      "copyEmail": "Copy email",
+      "resend": "Resend invitation",
+      "suspend": "Suspend account",
+      "restore": "Restore account",
+      "leave": "Leave organization",
+      "remove": "Remove from organization",
+      "revoke": "Revoke invitation",
+      "magicLink": "Create sign-in link",
+      "resetPassword": "Reset password"
+    },
+    "confirm": {
+      "remove": {
+        "title": "Remove {{name}}?",
+        "body": "{{name}} will lose access to {{org}} immediately. Their account and data elsewhere are not deleted.",
+        "cta": "Remove"
+      },
+      "leave": {
+        "title": "Leave {{org}}?",
+        "body": "You will lose access to {{org}} immediately. An owner will need to invite you back.",
+        "cta": "Leave"
+      },
+      "revoke": {
+        "title": "Revoke this invitation?",
+        "body": "The link sent to {{name}} will stop working.",
+        "cta": "Revoke"
+      },
+      "suspend": {
+        "title": "Suspend {{name}}?",
+        "body": "They will be signed out and cannot sign in to any organization until restored.",
+        "cta": "Suspend"
+      },
+      "restore": {
+        "title": "Restore {{name}}?",
+        "body": "They will be able to sign in again with their existing roles.",
+        "cta": "Restore"
+      },
+      "ssoWarning": "This person signs in through single sign-on. Removing them here is undone the next time the identity provider signs them in. To lock them out for good, suspend the account or remove them in the identity provider."
+    },
+    "invite": {
+      "title": "Invite someone",
+      "description": "They join this organization with the role you choose. You can change it any time.",
+      "email": "Email address",
+      "role": "Role",
+      "submit": "Create invitation",
+      "cta": "Invite people",
+      "created": "Invitation created for {{email}}. Share this link with them — it works once and expires in {{days}} days.",
+      "link": "Invite link",
+      "copy": "Copy link",
+      "copiedShort": "Copied",
+      "copied": "Invite link copied",
+      "shownOnce": "For security this link is shown only once. If you lose it, resend the invitation to get a new one.",
+      "done": "Done"
+    },
+    "detail": {
+      "scope": "Access",
+      "workspaceOnly": "One workspace",
+      "wholeOrg": "Whole organization",
+      "instanceRole": "Instance role",
+      "joined": "Joined",
+      "ssoNote": "This person's role is kept in sync with {{provider}} at every sign-in. Changing it here pins it so the identity provider stops overriding it.",
+      "accessTitle": "Sign-in help",
+      "accessBody": "No email needed: create a one-time link and send it to them yourself.",
+      "accessSso": "This person signs in through single sign-on. Their identity provider manages their password and sessions."
+    },
+    "summary": {
+      "people_one": "{{count}} person",
+      "people_other": "{{count}} people",
+      "in": "in {{org}}",
+      "pending_one": "{{count}} pending",
+      "pending_other": "{{count}} pending"
+    },
+    "seats": {
+      "label": "Seats used",
+      "usage": "{{used}} of {{max}} seats"
+    },
+    "restricted": {
+      "title": "Members are managed by admins",
+      "body": "Only owners and admins of this organization can see and manage its members. Ask an owner if you need access."
+    },
+    "error": {
+      "title": "Couldn't load members",
+      "body": "Check your connection and try again."
+    },
+    "noMatch": {
+      "title": "No one matches these filters",
+      "body": "Try a different name, role or status.",
+      "clear": "Clear filters"
+    },
+    "alone": {
+      "title": "It's just you for now",
+      "body": "Invite teammates to share documents, graphs and answers in this organization."
+    },
+    "pager": {
+      "label": "Pagination",
+      "range": "{{from}}–{{to}} of {{total}}",
+      "prev": "Previous page",
+      "next": "Next page"
+    },
+    "toasts": {
+      "updated": "Member updated",
+      "updateFailed": "Could not update member",
+      "removed": "Member removed",
+      "removeFailed": "Could not remove member",
+      "inviteFailed": "Could not send invitation",
+      "resendFailed": "Could not resend invitation",
+      "revoked": "Invitation revoked",
+      "revokeFailed": "Could not revoke invitation",
+      "emailCopied": "Email copied",
+      "resent": "New invitation link created",
+      "linkFailed": "Could not create the link"
+    },
+    "errors": {
+      "alreadyMember": "That person is already a member.",
+      "alreadyInvited": "That person already has a pending invitation.",
+      "seatLimit": "This organization has reached its seat limit.",
+      "lastOwner": "An organization needs at least one owner.",
+      "lastAdmin": "There must be at least one instance admin.",
+      "selfSuspend": "You cannot suspend your own account.",
+      "insufficientRole": "You cannot grant or change a role above your own.",
+      "instanceAdminRequired": "Only instance admins can do that.",
+      "inviteExpired": "This invitation has expired.",
+      "inviteInvalid": "This invitation is no longer valid.",
+      "invalidEmail": "Enter a valid email address.",
+      "weakPassword": "Choose a stronger password.",
+      "usernameTaken": "That username is already taken.",
+      "forbidden": "You don't have permission to do that.",
+      "linkExpired": "This link has expired.",
+      "linkInvalid": "This link is no longer valid.",
+      "wrongPassword": "The current password is incorrect.",
+      "ssoManaged": "This person signs in through single sign-on; their identity provider manages access.",
+      "suspended": "This account is suspended. Restore it first.",
+      "selfLink": "You cannot create a link for yourself. Use Change password instead.",
+      "samePassword": "The new password must differ from the current one.",
+      "passwordRequired": "Enter a new password."
+    },
+    "capabilities": {
+      "knowledge_read": "View documents, the knowledge graph and answers",
+      "knowledge_query": "Run queries and chat with the knowledge base",
+      "knowledge_write": "Upload, edit and delete documents, entities and relationships",
+      "workspace_manage": "Create, configure and delete workspaces",
+      "members_manage": "Invite members, change roles and remove people",
+      "members_grant_owner": "Grant or revoke the Owner role",
+      "tenant_delete": "Delete the organization"
+    },
+    "capabilityGroups": {
+      "knowledge": "Knowledge",
+      "organization": "Organization"
+    },
+    "sso": {
+      "restrictedTitle": "Single sign-on is set up by instance admins",
+      "restrictedBody": "Ask an instance admin to connect or change an identity provider.",
+      "howTitle": "How single sign-on maps people",
+      "flow": {
+        "org": "A Keycloak Organization maps to an EdgeQuake organization, matched by its alias.",
+        "role": "The IdP role claim sets the member's role at each sign-in, capped by the provider's maximum role.",
+        "jit": "New people are created on first sign-in when just-in-time provisioning is on. Pinning a role here stops the IdP overriding it."
+      }
+    },
+    "accept": {
+      "title": "Join {{org}}",
+      "invitedBy": "{{name}} invited you to collaborate.",
+      "invited": "You have been invited to collaborate.",
+      "email": "Email",
+      "role": "Your role",
+      "username": "Username",
+      "password": "Password",
+      "confirm": "Confirm password",
+      "mismatch": "Passwords do not match.",
+      "join": "Join {{org}}",
+      "existing": "You already have an account. Sign in as {{email}} to accept.",
+      "wrongAccount": "You are signed in with a different account. Sign in as {{email}} to accept.",
+      "signIn": "Sign in to accept",
+      "toLogin": "Go to sign in",
+      "expiredTitle": "This invitation has expired",
+      "expiredBody": "Ask the person who invited you to send a new link.",
+      "invalidTitle": "This invitation is no longer valid",
+      "invalidBody": "It may have been used already or revoked. Ask for a new invitation."
+    },
+    "share": {
+      "copy": "Copy link",
+      "copied": "Link copied",
+      "copiedShort": "Copied",
+      "done": "Done"
+    },
+    "access": {
+      "link": "Access link",
+      "shownOnce": "This link is shown only once. Creating another one replaces it.",
+      "warning": "Anyone who opens this link signs in as {{name}}. Send it privately, never in a shared channel.",
+      "rule3": "It works once. A new link replaces the previous one.",
+      "create": "Create link",
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes",
+      "hours_one": "{{count}} hour",
+      "hours_other": "{{count}} hours",
+      "magic": {
+        "title": "Sign-in link for {{name}}",
+        "description": "Let {{name}} in without a password — useful when they are locked out or just joined.",
+        "rule1": "They are signed in the moment they open it; their password is not changed.",
+        "rule2": "It is valid for a short time only.",
+        "created": "Sign-in link for {{name}} is ready. It works once and expires in {{duration}}."
+      },
+      "reset": {
+        "title": "Reset password for {{name}}",
+        "description": "Let {{name}} choose a new password themselves. You never see or set it.",
+        "rule1": "Their current password keeps working until they choose a new one.",
+        "rule2": "Setting a new password signs them out of every other device.",
+        "created": "Reset link for {{name}} is ready. It works once and expires in {{duration}}."
+      }
+    },
+    "accessPage": {
+      "expiredTitle": "This link has expired",
+      "expiredBody": "Ask your administrator to create a new one.",
+      "invalidTitle": "This link is no longer valid",
+      "invalidBody": "It may have been used already or replaced by a newer link. Ask your administrator for a new one.",
+      "toLogin": "Go to sign in",
+      "account": "Account",
+      "organization": "Organization",
+      "switching": "You are signed in as {{current}}. Continuing switches this browser to {{name}}.",
+      "magicTitle": "Sign in to EdgeQuake",
+      "magicBy": "{{name}} created this one-time sign-in link for you.",
+      "magicBody": "This is a one-time sign-in link.",
+      "signInAs": "Sign in as {{name}}",
+      "onceNote": "Opening the link signs you in once. Your password is unchanged.",
+      "resetTitle": "Choose a new password",
+      "resetBy": "{{name}} sent you this link to set a new password.",
+      "resetBody": "Set a new password for your account.",
+      "resetSubmit": "Set password and sign in",
+      "resetNote": "Setting a new password signs you out everywhere else."
+    }
   }
 }

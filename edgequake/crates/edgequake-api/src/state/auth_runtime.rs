@@ -4,9 +4,11 @@ use std::sync::Arc;
 
 use edgequake_auth::{AuthConfig, JwtService, OidcConfig, PasswordService, RbacService};
 
+use crate::services::access_links::{MemoryAccessLinkStore, SharedAccessLinkStore};
 use crate::services::federation::policy::FederationPolicy;
 use crate::services::federation::registry::{service_from_stored, ProviderRegistry};
 use crate::services::federation::{MemoryFederationStore, SharedFederationStore};
+use crate::services::invitations::{MemoryInvitationStore, SharedInvitationStore};
 use crate::services::oidc_flow::{OidcFlowService, SharedOidcFlowService};
 
 /// JWT, password hashing, RBAC, and optional OIDC services.
@@ -20,6 +22,10 @@ pub struct AuthRuntime {
     pub providers: Arc<ProviderRegistry>,
     /// Durable federation state: identities, login attempts, handoffs, sessions (SPEC-158).
     pub federation: SharedFederationStore,
+    /// Pending organization invitations (SPEC-169).
+    pub invitations: SharedInvitationStore,
+    /// One-time magic sign-in / password-reset links (SPEC-169).
+    pub access_links: SharedAccessLinkStore,
     pub jwt: Arc<JwtService>,
     pub password: Arc<PasswordService>,
     pub rbac: Arc<RbacService>,
@@ -45,7 +51,21 @@ impl AuthRuntime {
             oidc_service,
             providers: Arc::new(ProviderRegistry::new()),
             federation: Arc::new(MemoryFederationStore::new()),
+            invitations: Arc::new(MemoryInvitationStore::new()),
+            access_links: Arc::new(MemoryAccessLinkStore::new()),
         }
+    }
+
+    /// Swap the access-link store (PostgreSQL adapter in production — SPEC-169).
+    pub fn with_access_link_store(mut self, store: SharedAccessLinkStore) -> Self {
+        self.access_links = store;
+        self
+    }
+
+    /// Swap the invitation store (PostgreSQL adapter in production — SPEC-169).
+    pub fn with_invitation_store(mut self, store: SharedInvitationStore) -> Self {
+        self.invitations = store;
+        self
     }
 
     /// Swap the federation store (PostgreSQL adapter in production — LAW-158-11).

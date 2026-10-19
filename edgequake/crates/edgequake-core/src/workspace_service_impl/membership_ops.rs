@@ -16,13 +16,20 @@ use super::WorkspaceServiceImpl;
 impl WorkspaceServiceImpl {
     // ============ Membership Operations ============
 
+    /// Insert, or revive a deactivated tombstone for the same (user, tenant, workspace).
+    /// An already-active grant is a validation error (never silently overwritten).
     pub(super) async fn pg_add_membership(&self, membership: Membership) -> Result<Membership> {
-        sqlx::query(
+        let row: Option<MembershipRow> = sqlx::query_as(&format!(
             r#"
             INSERT INTO memberships (membership_id, tenant_id, workspace_id, user_id, role, is_active, joined_at, metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            "#,
-        )
+            ON CONFLICT (user_id, tenant_id, workspace_id) DO UPDATE SET
+                role = EXCLUDED.role, is_active = TRUE,
+                joined_at = EXCLUDED.joined_at, metadata = EXCLUDED.metadata
+            WHERE memberships.is_active = FALSE
+            RETURNING {MEMBERSHIP_COLUMNS}
+            "#
+        ))
         .bind(membership.membership_id)
         .bind(membership.tenant_id)
         .bind(membership.workspace_id)
@@ -31,11 +38,12 @@ impl WorkspaceServiceImpl {
         .bind(membership.is_active)
         .bind(membership.joined_at)
         .bind(sqlx::types::Json(&membership.metadata))
-        .execute(&self.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("Failed to add membership: {}", e)))?;
 
-        Ok(membership)
+        row.map(|r| r.into_membership())
+            .ok_or_else(|| Error::validation("Membership already exists"))
     }
 
     pub(super) async fn pg_get_user_memberships(&self, user_id: Uuid) -> Result<Vec<Membership>> {
@@ -96,6 +104,29 @@ impl WorkspaceServiceImpl {
         Ok(row.into_membership())
     }
 
+    /// Administrator-chosen role: also detaches an SSO-managed row from IdP role sync.
+    pub(super) async fn pg_assign_membership_role(
+        &self,
+        membership_id: Uuid,
+        role: MembershipRole,
+    ) -> Result<Membership> {
+        let row: Option<MembershipRow> = sqlx::query_as(&format!(
+            "UPDATE memberships SET role = $2, metadata = CASE \
+               WHEN metadata->>'source' = 'sso' \
+               THEN COALESCE(metadata, '{{}}'::jsonb) \
+                    || jsonb_build_object('source', 'manual', 'previous_source', 'sso') \
+               ELSE metadata END \
+             WHERE membership_id = $1 RETURNING {MEMBERSHIP_COLUMNS}"
+        ))
+        .bind(membership_id)
+        .bind(role.to_string())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("Failed to assign membership role: {}", e)))?;
+        row.map(|r| r.into_membership())
+            .ok_or_else(|| Error::not_found(format!("Membership {} not found", membership_id)))
+    }
+
     pub(super) async fn pg_remove_membership(&self, membership_id: Uuid) -> Result<()> {
         sqlx::query("DELETE FROM memberships WHERE membership_id = $1")
             .bind(membership_id)
@@ -103,6 +134,22 @@ impl WorkspaceServiceImpl {
             .await
             .map_err(|e| Error::internal(format!("Failed to remove membership: {}", e)))?;
 
+        Ok(())
+    }
+
+    pub(super) async fn pg_deactivate_membership(&self, membership_id: Uuid) -> Result<()> {
+        let result =
+            sqlx::query("UPDATE memberships SET is_active = FALSE WHERE membership_id = $1")
+                .bind(membership_id)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| Error::internal(format!("Failed to deactivate membership: {}", e)))?;
+        if result.rows_affected() == 0 {
+            return Err(Error::not_found(format!(
+                "Membership {} not found",
+                membership_id
+            )));
+        }
         Ok(())
     }
 

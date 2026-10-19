@@ -438,6 +438,65 @@ pub(crate) async fn revoke_refresh_family(
     crate::services::auth_memory_store::revoke_refresh_family(&storage.auth_memory, family_id).await
 }
 
+#[cfg(feature = "postgres")]
+async fn revoke_user_refresh_tokens_pg(
+    pool: &sqlx::PgPool,
+    security: &ApiSecurityConfig,
+    user_id: Uuid,
+) -> Result<(), ApiError> {
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
+
+    let scope = Some(PgIsolationScope::default_identity(None));
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            sqlx::query(
+                r#"
+                UPDATE refresh_tokens
+                SET revoked = true, revoked_at = NOW(), status = 'revoked'
+                WHERE user_id = $1 AND status <> 'revoked'
+                "#,
+            )
+            .bind(user_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("user refresh revoke: {e}")))?;
+            Ok(())
+        })
+    })
+    .await
+}
+
+/// Sign a user out everywhere: revoke every refresh token they hold (SPEC-169 password reset).
+pub(crate) async fn revoke_user_refresh_tokens(
+    storage: &StorageRuntime,
+    pg_runtime: Option<&PostgresRuntime>,
+    security: &ApiSecurityConfig,
+    user_id: Uuid,
+) -> Result<(), ApiError> {
+    #[cfg(feature = "postgres")]
+    {
+        let pool = pg_runtime.and_then(|pg| pg.pool.as_ref());
+        let policy = IdentityPolicy::resolve(security, pool.is_some());
+        if policy.pg_primary {
+            if let Some(pool) = pool {
+                return revoke_user_refresh_tokens_pg(pool, security, user_id).await;
+            }
+            return Ok(());
+        }
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (pg_runtime, security);
+    }
+    crate::services::auth_memory_store::revoke_user_refresh_tokens(
+        &storage.auth_memory,
+        &user_id.to_string(),
+    )
+    .await;
+    Ok(())
+}
+
 /// Consume an active web refresh (rotate); reuse of rotated/revoked revokes the family.
 ///
 /// SPEC-154: when a PG pool is available, use `take_web_refresh_pg` (FOR UPDATE +

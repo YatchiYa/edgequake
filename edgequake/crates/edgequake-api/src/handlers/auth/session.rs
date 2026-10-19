@@ -33,7 +33,7 @@ use super::refresh_cookie::{
     clear_refresh_cookie_header, cookie_secure_from_headers, refresh_token_for_json_body,
     resolve_refresh_token, set_refresh_cookie_header,
 };
-use super::{find_user_by_login, get_record_by_id, get_user_by_id};
+use super::{find_user_by_login, get_record_by_id, get_user_by_id, UserRecord};
 pub use crate::handlers::auth_types::{
     GetMeResponse, LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, UserInfo,
 };
@@ -146,18 +146,14 @@ pub async fn login(
     )
     .await?;
 
-    let ctx = SessionContext {
-        auth: &auth,
-        storage: &storage,
-        pg: &pg_runtime,
-        security: &security,
-        stores: &stores,
-    };
-    let issued = issue_session(
-        &ctx,
-        &record.user_id,
-        Role::parse(&record.role),
-        &SessionScope::default_scope(),
+    let response = open_session(
+        &auth,
+        &storage,
+        &pg_runtime,
+        &security,
+        &stores,
+        &headers,
+        &record,
     )
     .await?;
 
@@ -174,16 +170,47 @@ pub async fn login(
         None,
     );
 
+    Ok(response)
+}
+
+/// Mint a session for an already-authenticated account: tokens + HttpOnly refresh cookie.
+///
+/// Shared by password login and the one-time access links (SPEC-169) so a session is always
+/// created the same way.
+pub(crate) async fn open_session(
+    auth: &AuthRuntime,
+    storage: &StorageRuntime,
+    pg: &PostgresRuntime,
+    security: &ApiSecurityConfig,
+    stores: &OperationalStores,
+    headers: &HeaderMap,
+    record: &UserRecord,
+) -> Result<Response, ApiError> {
+    let ctx = SessionContext {
+        auth,
+        storage,
+        pg,
+        security,
+        stores,
+    };
+    let issued = issue_session(
+        &ctx,
+        &record.user_id,
+        Role::parse(&record.role),
+        &SessionScope::default_scope(),
+    )
+    .await?;
+
     Ok(with_refresh_cookie(
         LoginResponse {
             access_token: issued.access_token,
             token_type: "Bearer".to_string(),
             expires_in: issued.expires_in,
-            refresh_token: refresh_token_for_json_body(&headers, &issued.refresh_token),
-            user: UserInfo::from(&record),
+            refresh_token: refresh_token_for_json_body(headers, &issued.refresh_token),
+            user: UserInfo::from(record),
         },
         &issued.refresh_token,
-        cookie_secure_from_headers(&headers),
+        cookie_secure_from_headers(headers),
     ))
 }
 

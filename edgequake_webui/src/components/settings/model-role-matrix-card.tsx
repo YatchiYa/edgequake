@@ -29,7 +29,8 @@ interface RoleRow {
 
 const emptyRow = (): RoleRow => ({ provider: '', model: '', connection_id: '' });
 
-export function RoleMatrixCard() {
+/** Which saved Connection + model each ingest/query *LLM role* uses (not people roles — see /members). */
+export function ModelRoleMatrixCard() {
   const selectedTenantId = useTenantStore((s) => s.selectedTenantId);
   const selectedWorkspaceId = useTenantStore((s) => s.selectedWorkspaceId);
   const tenants = useTenantStore((s) => s.tenants);
@@ -98,7 +99,7 @@ export function RoleMatrixCard() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Grid3x3 className="h-5 w-5" />
-          Workspace role matrix
+          Model roles
         </CardTitle>
         <CardDescription>
           Each ingest/query role can use a saved Connection plus a model id. Empty cells inherit

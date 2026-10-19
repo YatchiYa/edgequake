@@ -247,7 +247,12 @@ pub async fn ensure_default_tenant_workspace(
     .await
 }
 
-/// Upsert default tenant/workspace membership for a user (SPEC-027 phase 34).
+/// Provision the default tenant/workspace membership for a user who has none (SPEC-027 phase 34).
+///
+/// SPEC-169: insert-only. This runs on every user persist (each login), so it used to
+/// overwrite a role chosen in the Members screen and re-add people an administrator had
+/// removed or moved to another organization. A user with *any* membership row — active
+/// or a deactivated tombstone — is left untouched.
 #[cfg(feature = "postgres")]
 pub async fn sync_default_membership_to_postgres(
     pool: &sqlx::PgPool,
@@ -272,10 +277,9 @@ pub async fn sync_default_membership_to_postgres(
             sqlx::query(
                 r#"
                 INSERT INTO memberships (tenant_id, workspace_id, user_id, role, is_active)
-                VALUES ($1, $2, $3, $4, TRUE)
-                ON CONFLICT (user_id, tenant_id, workspace_id) DO UPDATE SET
-                    role = EXCLUDED.role,
-                    is_active = TRUE
+                SELECT $1, $2, $3, $4, TRUE
+                WHERE NOT EXISTS (SELECT 1 FROM memberships WHERE user_id = $3)
+                ON CONFLICT (user_id, tenant_id, workspace_id) DO NOTHING
                 "#,
             )
             .bind(tenant_id)

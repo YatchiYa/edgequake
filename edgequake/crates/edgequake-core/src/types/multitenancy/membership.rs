@@ -4,6 +4,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+/// `metadata` key naming who manages a membership's role.
+pub const MEMBERSHIP_SOURCE_KEY: &str = "source";
+/// Role is re-synchronised from the identity provider on every sign-in (SPEC-158).
+pub const MEMBERSHIP_SOURCE_SSO: &str = "sso";
+/// Role was set by an administrator; IdP claims no longer overwrite it (SPEC-169).
+pub const MEMBERSHIP_SOURCE_MANUAL: &str = "manual";
+/// `metadata` key remembering the source before an administrator pinned the role.
+pub const MEMBERSHIP_PREVIOUS_SOURCE_KEY: &str = "previous_source";
+
 /// A user's membership in a tenant/workspace.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Membership {
@@ -60,6 +69,48 @@ impl Membership {
         self.role.level() >= required.level()
     }
 
+    /// Mark the membership as provisioned and role-managed by an identity provider.
+    pub fn sso_managed(mut self, provider_slug: &str) -> Self {
+        self.metadata.insert(
+            MEMBERSHIP_SOURCE_KEY.into(),
+            serde_json::json!(MEMBERSHIP_SOURCE_SSO),
+        );
+        self.metadata
+            .insert("provider".into(), serde_json::json!(provider_slug));
+        self
+    }
+
+    /// Slug of the identity provider that manages this membership, when SSO-managed.
+    pub fn sso_provider(&self) -> Option<&str> {
+        if !self.is_sso_managed() {
+            return None;
+        }
+        self.metadata.get("provider").and_then(|v| v.as_str())
+    }
+
+    /// True when an IdP re-sync may rewrite this membership's role (`metadata.source == "sso"`).
+    pub fn is_sso_managed(&self) -> bool {
+        self.metadata
+            .get(MEMBERSHIP_SOURCE_KEY)
+            .and_then(|v| v.as_str())
+            == Some(MEMBERSHIP_SOURCE_SSO)
+    }
+
+    /// An administrator chose this role: detach the membership from IdP role sync so the
+    /// next sign-in cannot silently overwrite it. Keeps the origin in `previous_source`.
+    pub fn pin_manual_role(&mut self) {
+        if self.is_sso_managed() {
+            self.metadata.insert(
+                MEMBERSHIP_PREVIOUS_SOURCE_KEY.into(),
+                serde_json::json!(MEMBERSHIP_SOURCE_SSO),
+            );
+            self.metadata.insert(
+                MEMBERSHIP_SOURCE_KEY.into(),
+                serde_json::json!(MEMBERSHIP_SOURCE_MANUAL),
+            );
+        }
+    }
+
     /// Check if user can access a specific workspace.
     pub fn can_access_workspace(&self, workspace_id: &Uuid) -> bool {
         if !self.is_active {
@@ -109,6 +160,11 @@ impl MembershipRole {
         matches!(self, MembershipRole::Admin | MembershipRole::Owner)
     }
 
+    /// Check if this role can create and configure workspaces.
+    pub fn can_manage_workspaces(&self) -> bool {
+        matches!(self, MembershipRole::Admin | MembershipRole::Owner)
+    }
+
     /// Check if this role can delete the tenant.
     pub fn can_delete_tenant(&self) -> bool {
         matches!(self, MembershipRole::Owner)
@@ -142,6 +198,34 @@ impl std::str::FromStr for MembershipRole {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn admin_assigned_role_detaches_sso_managed_membership_from_idp_sync() {
+        let mut m = Membership::new(Uuid::new_v4(), Uuid::new_v4(), MembershipRole::Member)
+            .sso_managed("keycloak");
+        assert!(m.is_sso_managed());
+        assert_eq!(m.sso_provider(), Some("keycloak"));
+
+        m.pin_manual_role();
+        assert!(!m.is_sso_managed(), "IdP sync must no longer own the role");
+        assert_eq!(m.sso_provider(), None);
+        assert_eq!(m.metadata["source"], "manual");
+        assert_eq!(m.metadata["previous_source"], "sso");
+    }
+
+    #[test]
+    fn pinning_a_manual_membership_is_a_no_op() {
+        let mut m = Membership::new(Uuid::new_v4(), Uuid::new_v4(), MembershipRole::Admin);
+        m.pin_manual_role();
+        assert!(m.metadata.is_empty());
+    }
+
+    #[test]
+    fn workspace_administration_is_an_admin_capability() {
+        assert!(!MembershipRole::Member.can_manage_workspaces());
+        assert!(MembershipRole::Admin.can_manage_workspaces());
+        assert!(MembershipRole::Owner.can_manage_workspaces());
+    }
+
     use super::*;
 
     #[test]

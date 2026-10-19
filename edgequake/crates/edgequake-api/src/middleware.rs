@@ -581,6 +581,33 @@ fn is_public_request(state: &crate::state::AppState, method: &Method, path: &str
         || (*method == Method::POST
             && normalized_path == "/users"
             && state.auth.config.allow_registration)
+        || is_invitation_link(method, normalized_path)
+        || is_access_link(method, normalized_path)
+}
+
+/// SPEC-169: the invitee has no session yet — preview (GET) and accept (POST) are token-gated.
+fn is_invitation_link(method: &Method, normalized_path: &str) -> bool {
+    let Some(rest) = normalized_path.strip_prefix("/auth/invitations/") else {
+        return false;
+    };
+    match rest.split('/').collect::<Vec<_>>().as_slice() {
+        [token] => !token.is_empty() && *method == Method::GET,
+        [token, "accept"] => !token.is_empty() && *method == Method::POST,
+        _ => false,
+    }
+}
+
+/// SPEC-169: a person with a one-time link has no session yet — preview (GET) and redeem (POST)
+/// are token-gated.
+fn is_access_link(method: &Method, normalized_path: &str) -> bool {
+    let Some(rest) = normalized_path.strip_prefix("/auth/access-links/") else {
+        return false;
+    };
+    match rest.split('/').collect::<Vec<_>>().as_slice() {
+        [token] => !token.is_empty() && *method == Method::GET,
+        [token, "redeem"] => !token.is_empty() && *method == Method::POST,
+        _ => false,
+    }
 }
 
 /// OpenAPI / Swagger documentation paths (including static assets under subpaths).

@@ -112,7 +112,7 @@ export default defineConfig({
           ],
         },
       },
-      grep: /@spec155|@spec157|@spec168/,
+      grep: /@spec155|@spec157|@spec168|@spec169/,
       workers: 1,
       timeout: 180_000,
     },

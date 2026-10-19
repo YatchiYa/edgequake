@@ -235,6 +235,28 @@ impl Sso {
             .expect("admin token")
     }
 
+    /// Access token of a real platform-admin account. The principal is re-read from the user
+    /// store on every request (auth enforced), so a bare admin JWT without a user row is
+    /// rejected — use this for tests that call the API as a platform admin.
+    pub async fn platform_admin_token(&mut self) -> String {
+        let previous = std::mem::replace(&mut self.state.auth.config.default_role, "admin".into());
+        self.create_local_user(
+            "platform-root",
+            "root@platform.test",
+            "Str0ng!Passw0rd#2026",
+        )
+        .await;
+        self.state.auth.config.default_role = previous;
+        let res = self
+            .password_login("platform-root", "Str0ng!Passw0rd#2026")
+            .await;
+        assert_eq!(res.status(), StatusCode::OK, "platform admin login");
+        json_body(res).await["access_token"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
     pub async fn password_login(&self, username: &str, password: &str) -> Response {
         self.post_json(
             "/api/v1/auth/login",

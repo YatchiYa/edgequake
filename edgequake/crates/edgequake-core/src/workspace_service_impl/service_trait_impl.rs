@@ -97,6 +97,10 @@ impl WorkspaceService for WorkspaceServiceImpl {
         self.pg_remove_membership(membership_id).await
     }
 
+    async fn deactivate_membership(&self, membership_id: Uuid) -> Result<()> {
+        self.pg_deactivate_membership(membership_id).await
+    }
+
     async fn check_tenant_access(&self, user_id: Uuid, tenant_id: Uuid) -> Result<bool> {
         self.pg_check_tenant_access(user_id, tenant_id).await
     }
@@ -162,6 +166,14 @@ impl WorkspaceService for WorkspaceServiceImpl {
         role: MembershipRole,
     ) -> Result<Membership> {
         self.pg_update_membership_role(membership_id, role).await
+    }
+
+    async fn assign_membership_role(
+        &self,
+        membership_id: Uuid,
+        role: MembershipRole,
+    ) -> Result<Membership> {
+        self.pg_assign_membership_role(membership_id, role).await
     }
 
     async fn get_user_role(

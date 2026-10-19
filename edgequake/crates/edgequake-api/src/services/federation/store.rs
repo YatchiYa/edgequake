@@ -115,6 +115,11 @@ pub trait FederationStore: Send + Sync {
         record: &FederatedIdentityRecord,
     ) -> Result<LinkOutcome, ApiError>;
     async fn touch_identity(&self, issuer: &str, subject: &str) -> Result<(), ApiError>;
+    /// Every identity linked to any of `user_ids` (member directory: "how does this person sign in?").
+    async fn identities_for_users(
+        &self,
+        user_ids: &[Uuid],
+    ) -> Result<Vec<FederatedIdentityRecord>, ApiError>;
 
     // ── pending authorization (LAW-158-11) ──
     async fn put_login_attempt(&self, attempt: &LoginAttempt) -> Result<(), ApiError>;

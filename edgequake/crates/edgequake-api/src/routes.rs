@@ -278,6 +278,30 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
             post(handlers::oidc_backchannel_logout),
         )
         .route("/auth/sso/providers", get(handlers::list_sso_providers))
+        // SPEC-169: invitation accept links (public, token-gated)
+        .route(
+            "/auth/invitations/{token}",
+            get(handlers::members::preview_invitation),
+        )
+        .route(
+            "/auth/invitations/{token}/accept",
+            post(handlers::members::accept_invitation),
+        )
+        // SPEC-169: one-time sign-in / password-reset links (public, token-gated)
+        .route(
+            "/auth/access-links/{token}",
+            get(handlers::access_links::preview_access_link),
+        )
+        .route(
+            "/auth/access-links/{token}/redeem",
+            post(handlers::access_links::redeem_access_link),
+        )
+        .route(
+            "/auth/password",
+            post(handlers::access_links::change_password),
+        )
+        // SPEC-169: role & permission catalog
+        .route("/roles", get(handlers::roles::get_role_catalog))
         .route(
             "/admin/identity-providers",
             get(handlers::admin_list_identity_providers),
@@ -306,6 +330,31 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         .route("/tenants/{tenant_id}", get(handlers::get_tenant))
         .route("/tenants/{tenant_id}", put(handlers::update_tenant))
         .route("/tenants/{tenant_id}", delete(handlers::delete_tenant))
+        // SPEC-169: organization members + invitations
+        .route(
+            "/tenants/{tenant_id}/members",
+            get(handlers::members::list_members),
+        )
+        .route(
+            "/tenants/{tenant_id}/members/{user_id}",
+            patch(handlers::members::update_member).delete(handlers::members::remove_member),
+        )
+        .route(
+            "/tenants/{tenant_id}/members/{user_id}/access-links",
+            post(handlers::access_links::issue_access_link),
+        )
+        .route(
+            "/tenants/{tenant_id}/invitations",
+            post(handlers::members::create_invitation),
+        )
+        .route(
+            "/tenants/{tenant_id}/invitations/{invitation_id}",
+            delete(handlers::members::revoke_invitation),
+        )
+        .route(
+            "/tenants/{tenant_id}/invitations/{invitation_id}/resend",
+            post(handlers::members::resend_invitation),
+        )
         // Admin quota management (SPEC-0001: Issue #133)
         .route(
             "/admin/tenants/{tenant_id}/quota",

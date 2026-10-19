@@ -170,8 +170,23 @@ pub trait WorkspaceService: Send + Sync {
         role: MembershipRole,
     ) -> Result<Membership>;
 
+    /// Set a role chosen by an administrator (SPEC-169).
+    ///
+    /// Unlike [`Self::update_membership_role`] (used by IdP re-sync) this detaches an
+    /// SSO-managed membership from role sync, so the next sign-in keeps the chosen role.
+    async fn assign_membership_role(
+        &self,
+        membership_id: Uuid,
+        role: MembershipRole,
+    ) -> Result<Membership>;
+
     /// Remove a membership.
     async fn remove_membership(&self, membership_id: Uuid) -> Result<()>;
+
+    /// Soft-remove a membership (SPEC-169): the row stays as a tombstone so default
+    /// provisioning never silently re-adds a person an administrator removed. Adding the
+    /// same (user, tenant, workspace) again re-activates the row.
+    async fn deactivate_membership(&self, membership_id: Uuid) -> Result<()>;
 
     /// Check if a user has access to a tenant.
     async fn check_tenant_access(&self, user_id: Uuid, tenant_id: Uuid) -> Result<bool>;

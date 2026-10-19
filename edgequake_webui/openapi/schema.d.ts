@@ -476,6 +476,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/access-links/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public preview of an access link. */
+        get: operations["preview_access_link"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/access-links/{token}/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem an access link: sign in (and, for a reset, set the new password). */
+        post: operations["redeem_access_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/handoff": {
         parameters: {
             query?: never;
@@ -487,6 +521,40 @@ export interface paths {
         put?: never;
         /** POST /api/v1/auth/handoff — redeem a single-use SSO handoff code. */
         post: operations["redeem_sso_handoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/invitations/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public preview of an invitation link. */
+        get: operations["preview_invitation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/invitations/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept an invitation and join the organization. */
+        post: operations["accept_invitation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -598,6 +666,26 @@ export interface paths {
         get: operations["oidc_login"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the signed-in user's password; every other session is signed out.
+         * @description Returns a fresh session so the device that made the change stays signed in.
+         */
+        post: operations["change_password"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2927,6 +3015,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Organization roles, instance roles and the capability matrix derived from enforcement. */
+        get: operations["get_role_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/app-attribution": {
         parameters: {
             query?: never;
@@ -3224,6 +3329,109 @@ export interface paths {
          * @description DELETE /api/v1/tenants/{tenant_id}
          */
         delete: operations["delete_tenant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invite a person by email. */
+        post: operations["create_invitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/invitations/{invitation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a pending invitation. */
+        delete: operations["revoke_invitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/invitations/{invitation_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue a fresh link (the old one stops working) and restart the expiry clock. */
+        post: operations["resend_invitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List members of an organization (organization owner/admin or instance admin). */
+        get: operations["list_members"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a person from the organization (their account is kept). */
+        delete: operations["remove_member"];
+        options?: never;
+        head?: never;
+        /** Change a member's organization role, or (platform admins) suspend / change instance role. */
+        patch: operations["update_member"];
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/members/{user_id}/access-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a one-time sign-in or password-reset link for a member. */
+        post: operations["issue_access_link"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3923,6 +4131,74 @@ export interface components {
     schemas: {
         /**
          * @example {
+         *       "password": {},
+         *       "username": {}
+         *     }
+         */
+        AcceptInvitationRequest: {
+            password?: string | null;
+            /** @description Required (with `password`) when the email has no account yet. */
+            username?: string | null;
+        };
+        /**
+         * @example {
+         *       "created_account": {},
+         *       "email": {},
+         *       "role": {},
+         *       "tenant_id": {},
+         *       "tenant_name": {},
+         *       "username": {}
+         *     }
+         */
+        AcceptInvitationResponse: {
+            /** @description True when a new password account was created. */
+            created_account: boolean;
+            email: string;
+            role: string;
+            tenant_id: string;
+            tenant_name: string;
+            username: string;
+        };
+        /**
+         * @example {
+         *       "email": {},
+         *       "expires_at": {},
+         *       "expires_in_minutes": {},
+         *       "purpose": {},
+         *       "token": {},
+         *       "username": {}
+         *     }
+         */
+        AccessLinkIssued: {
+            email: string;
+            expires_at: string;
+            /** Format: int64 */
+            expires_in_minutes: number;
+            purpose: string;
+            /** @description Single-use token. Shown once: only its hash is stored. The UI builds `/access/{token}`. */
+            token: string;
+            username: string;
+        };
+        /**
+         * @example {
+         *       "email": {},
+         *       "expires_at": {},
+         *       "issued_by": {},
+         *       "purpose": {},
+         *       "tenant_name": {},
+         *       "username": {}
+         *     }
+         */
+        AccessLinkPreview: {
+            email: string;
+            expires_at: string;
+            issued_by?: string | null;
+            purpose: string;
+            tenant_name?: string | null;
+            username: string;
+        };
+        /**
+         * @example {
          *       "data_quality_warnings": [],
          *       "documents_touched": {},
          *       "dominant_entity_types": [],
@@ -4393,6 +4669,31 @@ export interface components {
             message: string;
             /** @description Status of the cancellation request. */
             status: string;
+        };
+        /**
+         * @example {
+         *       "group": {},
+         *       "id": {},
+         *       "label": {},
+         *       "roles": []
+         *     }
+         */
+        CapabilityInfo: {
+            group: string;
+            id: string;
+            label: string;
+            /** @description Organization role ids that hold this capability. */
+            roles: string[];
+        };
+        /**
+         * @example {
+         *       "current_password": {},
+         *       "new_password": {}
+         *     }
+         */
+        ChangePasswordRequest: {
+            current_password: string;
+            new_password: string;
         };
         /**
          * @description Changes summary.
@@ -5633,6 +5934,23 @@ export interface components {
              * @description Parent folder ID.
              */
             parent_id?: string | null;
+        };
+        /**
+         * @example {
+         *       "email": {},
+         *       "role": {},
+         *       "workspace_id": {}
+         *     }
+         */
+        CreateInvitationRequest: {
+            email: string;
+            /** @description Organization role id; defaults to `member`. */
+            role?: string | null;
+            /**
+             * Format: uuid
+             * @description Limit the grant to one workspace; omit for the whole organization.
+             */
+            workspace_id?: string | null;
         };
         /**
          * @description Create an async job under a workspace.
@@ -8099,6 +8417,21 @@ export interface components {
             timestamp: string;
         };
         /**
+         * @example {
+         *       "description": {},
+         *       "id": {},
+         *       "label": {},
+         *       "permission_count": {}
+         *     }
+         */
+        InstanceRoleInfo: {
+            description: string;
+            id: string;
+            label: string;
+            /** @description Number of fine-grained RBAC permissions the role carries. */
+            permission_count: number;
+        };
+        /**
          * @description A data invariant violation from Layer 2.
          * @example {
          *       "count": {},
@@ -8114,6 +8447,56 @@ export interface components {
             invariant_id: string;
             sample_ids: string[];
             severity: components["schemas"]["Severity"];
+        };
+        /**
+         * @example {
+         *       "expires_in_days": {},
+         *       "invitation": {},
+         *       "token": {}
+         *     }
+         */
+        InvitationIssued: {
+            /** Format: int64 */
+            expires_in_days: number;
+            invitation: components["schemas"]["MemberView"];
+            /**
+             * @description Single-use accept token. Shown once: only its hash is stored. The UI builds
+             *     `/invite/{token}` from it.
+             */
+            token: string;
+        };
+        /**
+         * @example {
+         *       "account_exists": {},
+         *       "email": {},
+         *       "expires_at": {},
+         *       "invited_by": {},
+         *       "role": {},
+         *       "role_label": {},
+         *       "sso_providers": [],
+         *       "tenant_name": {}
+         *     }
+         */
+        InvitationPreview: {
+            /** @description True when the email already has an account: the invitee must sign in to accept. */
+            account_exists: boolean;
+            email: string;
+            expires_at: string;
+            invited_by?: string | null;
+            role: string;
+            role_label: string;
+            /** @description Configured SSO providers (an alternative way in for the same address). */
+            sso_providers: components["schemas"]["ProviderSummary"][];
+            tenant_name: string;
+        };
+        /**
+         * @example {
+         *       "purpose": {}
+         *     }
+         */
+        IssueAccessLinkRequest: {
+            /** @description `magic_login` (sign in, no password) or `password_reset` (choose a new password). */
+            purpose: string;
         };
         /**
          * @example {
@@ -8892,6 +9275,155 @@ export interface components {
             jsonrpc: string;
             method: string;
             params?: unknown;
+        };
+        /**
+         * @description Whether a directory row is a person or a pending invitation.
+         * @example {}
+         * @enum {string}
+         */
+        MemberKind: "member" | "invitation";
+        /**
+         * @example {
+         *       "dir": {},
+         *       "page": {},
+         *       "page_size": {},
+         *       "q": {},
+         *       "role": {},
+         *       "sort": {},
+         *       "status": {}
+         *     }
+         */
+        MemberListQuery: {
+            /** @description `asc` (default) | `desc`. */
+            dir?: string | null;
+            /** Format: int32 */
+            page?: number;
+            /** Format: int32 */
+            page_size?: number;
+            /** @description Case-insensitive match on username or email. */
+            q?: string | null;
+            /** @description Organization role id filter. */
+            role?: string | null;
+            /** @description `name` (default) | `role` | `last_active` | `joined`. */
+            sort?: string | null;
+            /** @description `active` | `deactivated` | `invited` | `expired`. */
+            status?: string | null;
+        };
+        /**
+         * @example {
+         *       "members": [],
+         *       "page": {},
+         *       "page_size": {},
+         *       "seats": {},
+         *       "summary": {},
+         *       "tenant_name": {},
+         *       "total": {},
+         *       "total_pages": {},
+         *       "viewer": {}
+         *     }
+         */
+        MemberListResponse: {
+            members: components["schemas"]["MemberView"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            page_size: number;
+            seats: components["schemas"]["SeatUsage"];
+            summary: components["schemas"]["MemberSummary"];
+            tenant_name: string;
+            /** @description Rows matching the filter (before pagination). */
+            total: number;
+            /** Format: int32 */
+            total_pages: number;
+            viewer: components["schemas"]["MemberViewer"];
+        };
+        /**
+         * @description Lifecycle status shown as a badge.
+         * @example {}
+         * @enum {string}
+         */
+        MemberStatus: "active" | "deactivated" | "invited" | "expired";
+        /**
+         * @description Facets over the whole directory (independent of the active filter).
+         * @example {
+         *       "active": {},
+         *       "by_role": {},
+         *       "deactivated": {},
+         *       "invited": {},
+         *       "total": {}
+         *     }
+         */
+        MemberSummary: {
+            active: number;
+            by_role: {
+                [key: string]: number;
+            };
+            deactivated: number;
+            invited: number;
+            total: number;
+        };
+        /**
+         * @description A row of the organization directory.
+         * @example {
+         *       "email": {},
+         *       "expires_at": {},
+         *       "id": {},
+         *       "instance_role": {},
+         *       "invited_by": {},
+         *       "is_last_owner": {},
+         *       "is_you": {},
+         *       "joined_at": {},
+         *       "kind": {},
+         *       "last_login_at": {},
+         *       "role": {},
+         *       "role_managed_by": {},
+         *       "sign_in": [],
+         *       "status": {},
+         *       "user_id": {},
+         *       "username": {},
+         *       "workspace_id": {}
+         *     }
+         */
+        MemberView: {
+            email: string;
+            expires_at?: string | null;
+            /** @description Stable row id: the user id, or the invitation id for invitations. */
+            id: string;
+            /** @description Instance role id (`admin`, `user`, `readonly`); only present for people. */
+            instance_role?: string | null;
+            invited_by?: string | null;
+            is_last_owner: boolean;
+            is_you: boolean;
+            joined_at: string;
+            kind: components["schemas"]["MemberKind"];
+            last_login_at?: string | null;
+            /** @description Organization role id (`owner`, `admin`, `member`, `readonly`). */
+            role: string;
+            /** @description Provider slug when the role is re-synced from the IdP on each sign-in. */
+            role_managed_by?: string | null;
+            sign_in: components["schemas"]["SignInMethod"][];
+            status: components["schemas"]["MemberStatus"];
+            user_id?: string | null;
+            username?: string | null;
+            /** @description Workspace the grant is limited to; `None` = whole organization. */
+            workspace_id?: string | null;
+        };
+        /**
+         * @description Who is looking, so the UI can enable only what the server will allow.
+         * @example {
+         *       "instance_admin": {},
+         *       "max_assignable_role": {},
+         *       "role": {},
+         *       "user_id": {}
+         *     }
+         */
+        MemberViewer: {
+            instance_admin: boolean;
+            /** @description Highest organization role id the viewer may assign. */
+            max_assignable_role: string;
+            /** @description The viewer's organization role, if they hold a membership. */
+            role?: string | null;
+            user_id: string;
         };
         /**
          * @description Merge operation details.
@@ -9956,6 +10488,26 @@ export interface components {
             /** @description Chunk storage layout (SPEC-024 pass 12 — storage efficiency). */
             storage: components["schemas"]["StorageHealthSnapshot"];
             task_queue: components["schemas"]["TaskQueueHealthSnapshot"];
+        };
+        /**
+         * @example {
+         *       "description": {},
+         *       "id": {},
+         *       "label": {},
+         *       "level": {}
+         *     }
+         */
+        OrganizationRoleInfo: {
+            description: string;
+            /** @description Wire id (`owner`, `admin`, `member`, `readonly`). */
+            id: string;
+            /** @description Product label (`Viewer` for `readonly`). */
+            label: string;
+            /**
+             * Format: int32
+             * @description Privilege rank (1 = lowest); a manager can only assign roles at or below their own.
+             */
+            level: number;
         };
         /**
          * @description One page's health across stages.
@@ -12216,6 +12768,15 @@ export interface components {
             v2_migration?: null | components["schemas"]["V2MigrationHint"];
         };
         /**
+         * @example {
+         *       "password": {}
+         *     }
+         */
+        RedeemAccessLinkRequest: {
+            /** @description Required for `password_reset`; ignored for `magic_login`. */
+            password?: string | null;
+        };
+        /**
          * @description Refresh token request (body optional when `eq_refresh` cookie present — SPEC-154 Wave 5).
          * @example {
          *       "refresh_token": {}
@@ -12738,6 +13299,18 @@ export interface components {
             token_type_hint?: string | null;
         };
         /**
+         * @example {
+         *       "capabilities": [],
+         *       "instance_roles": [],
+         *       "organization_roles": []
+         *     }
+         */
+        RoleCatalog: {
+            capabilities: components["schemas"]["CapabilityInfo"][];
+            instance_roles: components["schemas"]["InstanceRoleInfo"][];
+            organization_roles: components["schemas"]["OrganizationRoleInfo"][];
+        };
+        /**
          * @description Phase strip ids (Admit is queue-only and has no work tasks).
          * @example {}
          * @enum {string}
@@ -13022,6 +13595,17 @@ export interface components {
             total_matches: number;
         };
         /**
+         * @description Seat usage against the plan's `max_users`.
+         * @example {
+         *       "max": {},
+         *       "used": {}
+         *     }
+         */
+        SeatUsage: {
+            max?: number | null;
+            used: number;
+        };
+        /**
          * @description Additive `/health` security signals (SPEC-163).
          * @example {
          *       "auth_enabled": {},
@@ -13204,6 +13788,23 @@ export interface components {
             share_id: string;
             /** @description Share URL. */
             share_url: string;
+        };
+        /**
+         * @description One way a person can sign in.
+         * @example {
+         *       "kind": {},
+         *       "provider_kind": {},
+         *       "provider_name": {},
+         *       "provider_slug": {}
+         *     }
+         */
+        SignInMethod: {
+            /** @description `password` or `sso`. */
+            kind: string;
+            /** @description `keycloak`, `google`, `microsoft`, … (drives the badge icon). */
+            provider_kind?: string | null;
+            provider_name?: string | null;
+            provider_slug?: string | null;
         };
         /**
          * @description Information about a skipped file.
@@ -14202,6 +14803,22 @@ export interface components {
             saved: boolean;
         };
         /**
+         * @description PATCH body. Every field is optional; only provided fields change.
+         * @example {
+         *       "instance_role": {},
+         *       "is_active": {},
+         *       "role": {}
+         *     }
+         */
+        UpdateMemberRequest: {
+            /** @description New instance role (instance admin only). */
+            instance_role?: string | null;
+            /** @description Suspend / restore the account (instance admin only). */
+            is_active?: boolean | null;
+            /** @description New organization role. */
+            role?: string | null;
+        };
+        /**
          * @description Update message request DTO.
          * @example {
          *       "content": {},
@@ -14379,7 +14996,10 @@ export interface components {
             email?: string | null;
             /** @description Whether the account should be active. */
             is_active?: boolean | null;
-            /** @description New role for the user (`admin`, `developer`, `viewer`). */
+            /**
+             * @description New instance role: `admin`, `user` or `readonly` (aliases `developer`/`member` and
+             *     `viewer`/`read-only` are accepted). Unknown values are rejected with 400.
+             */
             role?: string | null;
         };
         /**
@@ -15678,6 +16298,91 @@ export interface operations {
             };
         };
     };
+    preview_access_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Single-use access token */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Link details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessLinkPreview"];
+                };
+            };
+            /** @description Unknown, used or revoked link */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Link expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    redeem_access_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Single-use access token */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedeemAccessLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Missing or weak password */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown, used or revoked link */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Link expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     redeem_sso_handoff: {
         parameters: {
             query?: never;
@@ -15709,6 +16414,105 @@ export interface operations {
             };
             /** @description Tenant suspended or membership revoked */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    preview_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Single-use accept token */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitation details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationPreview"];
+                };
+            };
+            /** @description Unknown, used or revoked invitation */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invitation expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    accept_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Single-use accept token */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description Joined */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptInvitationResponse"];
+                };
+            };
+            /** @description Missing or weak credentials */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sign in as the invited account first */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown, used or revoked invitation */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Username already taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invitation expired */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15926,6 +16730,44 @@ export interface operations {
             };
             /** @description OIDC not enabled or provider unknown */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    change_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Password changed; new session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Wrong current password, or weak / unchanged new password */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Account locked */
+            423: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19986,6 +20828,26 @@ export interface operations {
             };
         };
     };
+    get_role_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Role catalog */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleCatalog"];
+                };
+            };
+        };
+    };
     get_app_attribution_settings: {
         parameters: {
             query?: never;
@@ -20568,6 +21430,324 @@ export interface operations {
             };
             /** @description Tenant not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization id */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description Invitation created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationIssued"];
+                };
+            };
+            /** @description Invalid email or role */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cannot grant a role above your own */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Already a member, already invited, or no seat left */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    revoke_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization id */
+                tenant_id: string;
+                /** @description Invitation id */
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitation revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invitation not found or already used */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resend_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization id */
+                tenant_id: string;
+                /** @description Invitation id */
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New link issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationIssued"];
+                };
+            };
+            /** @description Invitation not found or already used */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_members: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive match on username or email. */
+                q?: string | null;
+                /** @description Organization role id filter. */
+                role?: string | null;
+                /** @description `active` | `deactivated` | `invited` | `expired`. */
+                status?: string | null;
+                /** @description `name` (default) | `role` | `last_active` | `joined`. */
+                sort?: string | null;
+                /** @description `asc` (default) | `desc`. */
+                dir?: string | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Organization id */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Directory page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberListResponse"];
+                };
+            };
+            /** @description Owner/admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Organization not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    remove_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization id */
+                tenant_id: string;
+                /** @description User id */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Member removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Member outranks you */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Member not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cannot remove the last owner */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization id */
+                tenant_id: string;
+                /** @description User id */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated member */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberView"];
+                };
+            };
+            /** @description Unknown role */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not allowed to change this member or grant this role */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Member not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Would orphan the organization or platform */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    issue_access_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization id */
+                tenant_id: string;
+                /** @description User id */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueAccessLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Link created (token shown once) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessLinkIssued"];
+                };
+            };
+            /** @description Unknown purpose */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Target outranks you or is reachable by platform admins only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Member not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Suspended, SSO-managed or yourself */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

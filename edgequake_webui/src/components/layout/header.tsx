@@ -11,6 +11,7 @@
  */
 'use client';
 
+import { ChangePasswordDialog } from '@/components/auth/change-password-dialog';
 import { ClientOnly } from '@/components/client-only';
 import { LanguageSelector } from '@/components/shared/language-selector';
 import {
@@ -35,10 +36,10 @@ import {
 import { getBackendReadinessSnapshot } from '@/lib/api/client';
 import { getBackendReadyRefetchIntervalForState } from '@/lib/runtime/health-poll';
 import { useAuthStore } from '@/stores/use-auth-store';
-import { LogOut, Monitor, Moon, Sun, User } from 'lucide-react';
+import { KeyRound, LogOut, Monitor, Moon, Sun, User } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { HeaderSearchTrigger } from './header-search-trigger';
@@ -61,6 +62,7 @@ export function Header() {
   const router = useRouter();
   const { t } = useTranslation();
   const { isAuthenticated, user, logout } = useAuthStore();
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const { data: readiness, isLoading } = useQuery({
     queryKey: ['backend-ready'],
@@ -201,6 +203,10 @@ export function Header() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setChangePasswordOpen(true)} data-testid="user-menu-change-password">
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    {t('auth.password.changeTitle', 'Change password')}
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" />
                     {t('header.logout', 'Logout')}
@@ -216,6 +222,7 @@ export function Header() {
           </DropdownMenu>
         </ClientOnly>
       </div>
+      <ChangePasswordDialog open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} />
     </header>
   );
 }

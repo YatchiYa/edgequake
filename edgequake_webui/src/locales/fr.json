@@ -62,7 +62,8 @@
     "search": "Rechercher",
     "expandSidebar": "Déplier la barre latérale",
     "collapseSidebar": "Replier la barre latérale",
-    "openMenu": "Ouvrir le menu de navigation"
+    "openMenu": "Ouvrir le menu de navigation",
+    "members": "Membres"
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -1125,6 +1126,11 @@
       "access": "Accès",
       "observability": "Observabilité",
       "data": "Données"
+    },
+    "membersCard": {
+      "title": "Membres, rôles et connexion",
+      "description": "Invitez des personnes, gérez leurs rôles et configurez l'authentification unique depuis la page Membres.",
+      "cta": "Ouvrir Membres"
     }
   },
   "websocket": {
@@ -1521,6 +1527,30 @@
         "trustEmail": "e-mail approuvé",
         "noTrustEmail": "e-mail non approuvé"
       }
+    },
+    "password": {
+      "show": "Afficher le mot de passe",
+      "hide": "Masquer le mot de passe",
+      "capsLock": "Verrouillage majuscules activé",
+      "new": "Nouveau mot de passe",
+      "confirm": "Confirmer le mot de passe",
+      "current": "Mot de passe actuel",
+      "mismatch": "Les mots de passe ne correspondent pas.",
+      "strength": {
+        "weak": "Faible",
+        "fair": "Moyen",
+        "good": "Bon",
+        "excellent": "Excellent"
+      },
+      "rules": {
+        "length": "8 à 128 caractères",
+        "variety": "3 sur 4 : majuscule, minuscule, chiffre, symbole",
+        "common": "Aucun motif courant comme « password »"
+      },
+      "changeTitle": "Changer le mot de passe",
+      "changeBody": "Choisissez un nouveau mot de passe. Vous restez connecté ici ; vos autres appareils sont déconnectés.",
+      "changeSubmit": "Changer le mot de passe",
+      "changed": "Mot de passe modifié. Les autres appareils ont été déconnectés."
     }
   },
   "extractionMode": {
@@ -1679,5 +1709,328 @@
     "graphDepth": "Profondeur du voisinage",
     "graphZoom": "Zoom avant, arrière, réinitialiser",
     "graphFullscreen": "Basculer en plein écran"
+  },
+  "members": {
+    "title": "Membres",
+    "description": "Gérez qui peut accéder à cette organisation, ce qu'il peut faire et comment il se connecte.",
+    "tabs": {
+      "members": "Membres",
+      "roles": "Rôles et permissions",
+      "sso": "Authentification unique"
+    },
+    "you": "Vous",
+    "invitedBy": "Invité par {{name}}",
+    "invitationPending": "Invitation en attente",
+    "expiredAgo": "Expirée {{when}}",
+    "expiresIn": "Expire {{when}}",
+    "neverSignedIn": "Jamais",
+    "columns": {
+      "person": "Personne",
+      "role": "Rôle",
+      "signIn": "Connexion",
+      "status": "Statut",
+      "lastActive": "Dernière activité",
+      "actions": "Actions"
+    },
+    "status": {
+      "active": "Actif",
+      "invited": "Invité",
+      "expired": "Expirée",
+      "deactivated": "Suspendu"
+    },
+    "signIn": {
+      "password": "Mot de passe",
+      "ssoVia": "Authentification unique via {{name}}"
+    },
+    "toolbar": {
+      "search": "Rechercher par nom ou e-mail",
+      "clearSearch": "Effacer la recherche",
+      "roleFilter": "Filtrer par rôle",
+      "allRoles": "Tous",
+      "statusFilter": "Filtrer par statut",
+      "allStatuses": "Tous les statuts"
+    },
+    "roles": {
+      "owner": {
+        "label": "Propriétaire",
+        "description": "Contrôle total de l'organisation, y compris le transfert de propriété et la suppression."
+      },
+      "admin": {
+        "label": "Administrateur",
+        "description": "Gère les membres, les rôles et les espaces de travail. Ne peut pas attribuer Propriétaire."
+      },
+      "member": {
+        "label": "Membre",
+        "description": "Travaille avec les connaissances : import, édition, requêtes et discussion."
+      },
+      "readonly": {
+        "label": "Lecteur",
+        "description": "Accès en lecture seule : parcourir les documents, le graphe et lancer des requêtes."
+      },
+      "capability": "Capacité",
+      "granted": "{{role}} peut",
+      "denied": "{{role}} ne peut pas",
+      "instanceTitle": "Rôles d'instance",
+      "instanceBody": "Un réglage distinct, valable sur toute la plateforme, géré par les administrateurs d'instance. Il ne remplace pas les rôles d'organisation.",
+      "permissions_one": "{{count}} permission",
+      "permissions_other": "{{count}} permissions",
+      "intro": "Chaque membre a un rôle dans cette organisation. Les rôles sont cumulatifs : chacun peut faire tout ce que peuvent les rôles inférieurs.",
+      "instance": {
+        "admin": {
+          "label": "Administrateur d'instance",
+          "description": "Administrateur de la plateforme : SSO, modèles, quotas et toutes les organisations. À utiliser avec parcimonie."
+        },
+        "user": {
+          "label": "Standard",
+          "description": "Compte ordinaire. L'accès dépend des rôles d'organisation."
+        },
+        "readonly": {
+          "label": "Lecture seule",
+          "description": "Garde-fou en lecture seule au niveau du compte, quel que soit le rôle d'organisation."
+        }
+      }
+    },
+    "role": {
+      "change": "Changer le rôle (actuellement {{role}})",
+      "menuTitle": "Rôle dans l'organisation",
+      "ssoPinNote": "Ce rôle suit {{provider}}. Le modifier ici le fige : le fournisseur d'identité ne l'écrasera plus.",
+      "locked": {
+        "notManager": "Seuls les administrateurs et propriétaires peuvent changer les rôles.",
+        "outranked": "Vous ne pouvez pas modifier un rôle supérieur au vôtre.",
+        "lastOwner": "Promouvez d'abord un autre propriétaire — une organisation en a besoin d'au moins un."
+      }
+    },
+    "actions": {
+      "open": "Actions pour {{name}}",
+      "details": "Voir les détails",
+      "copyEmail": "Copier l'e-mail",
+      "resend": "Renvoyer l'invitation",
+      "suspend": "Suspendre le compte",
+      "restore": "Rétablir le compte",
+      "leave": "Quitter l'organisation",
+      "remove": "Retirer de l'organisation",
+      "revoke": "Révoquer l'invitation",
+      "magicLink": "Créer un lien de connexion",
+      "resetPassword": "Réinitialiser le mot de passe"
+    },
+    "confirm": {
+      "remove": {
+        "title": "Retirer {{name}} ?",
+        "body": "{{name}} perdra immédiatement l'accès à {{org}}. Son compte et ses données ailleurs ne sont pas supprimés.",
+        "cta": "Retirer"
+      },
+      "leave": {
+        "title": "Quitter {{org}} ?",
+        "body": "Vous perdrez immédiatement l'accès à {{org}}. Un propriétaire devra vous réinviter.",
+        "cta": "Quitter"
+      },
+      "revoke": {
+        "title": "Révoquer cette invitation ?",
+        "body": "Le lien envoyé à {{name}} cessera de fonctionner.",
+        "cta": "Révoquer"
+      },
+      "suspend": {
+        "title": "Suspendre {{name}} ?",
+        "body": "La personne sera déconnectée et ne pourra plus se connecter à aucune organisation tant qu'elle n'est pas rétablie.",
+        "cta": "Suspendre"
+      },
+      "restore": {
+        "title": "Rétablir {{name}} ?",
+        "body": "La personne pourra de nouveau se connecter avec ses rôles existants.",
+        "cta": "Rétablir"
+      },
+      "ssoWarning": "Cette personne se connecte via l'authentification unique. Son retrait ici est annulé à la prochaine connexion par le fournisseur d'identité. Pour la bloquer définitivement, suspendez le compte ou retirez-la dans le fournisseur d'identité."
+    },
+    "invite": {
+      "title": "Inviter quelqu'un",
+      "description": "La personne rejoint cette organisation avec le rôle choisi. Vous pouvez le changer à tout moment.",
+      "email": "Adresse e-mail",
+      "role": "Rôle",
+      "submit": "Créer l'invitation",
+      "cta": "Inviter des personnes",
+      "created": "Invitation créée pour {{email}}. Partagez ce lien : il fonctionne une seule fois et expire dans {{days}} jours.",
+      "link": "Lien d'invitation",
+      "copy": "Copier le lien",
+      "copiedShort": "Copié",
+      "copied": "Lien d'invitation copié",
+      "shownOnce": "Par sécurité, ce lien n'est affiché qu'une seule fois. Si vous le perdez, renvoyez l'invitation pour en obtenir un nouveau.",
+      "done": "Terminé"
+    },
+    "detail": {
+      "scope": "Accès",
+      "workspaceOnly": "Un espace de travail",
+      "wholeOrg": "Toute l'organisation",
+      "instanceRole": "Rôle d'instance",
+      "joined": "A rejoint",
+      "ssoNote": "Le rôle de cette personne est synchronisé avec {{provider}} à chaque connexion. Le modifier ici le fige pour que le fournisseur d'identité ne l'écrase plus.",
+      "accessTitle": "Aide à la connexion",
+      "accessBody": "Pas besoin d'e-mail : créez un lien à usage unique et envoyez-le vous-même.",
+      "accessSso": "Cette personne se connecte par authentification unique. Son fournisseur d'identité gère son mot de passe et ses sessions."
+    },
+    "summary": {
+      "people_one": "{{count}} personne",
+      "people_other": "{{count}} personnes",
+      "in": "dans {{org}}",
+      "pending_one": "{{count}} en attente",
+      "pending_other": "{{count}} en attente"
+    },
+    "seats": {
+      "label": "Licences utilisées",
+      "usage": "{{used}} sur {{max}} licences"
+    },
+    "restricted": {
+      "title": "Les membres sont gérés par les administrateurs",
+      "body": "Seuls les propriétaires et administrateurs de cette organisation peuvent voir et gérer ses membres. Demandez à un propriétaire si vous avez besoin d'un accès."
+    },
+    "error": {
+      "title": "Impossible de charger les membres",
+      "body": "Vérifiez votre connexion et réessayez."
+    },
+    "noMatch": {
+      "title": "Personne ne correspond à ces filtres",
+      "body": "Essayez un autre nom, rôle ou statut.",
+      "clear": "Effacer les filtres"
+    },
+    "alone": {
+      "title": "Vous êtes seul pour l'instant",
+      "body": "Invitez vos collègues pour partager documents, graphes et réponses dans cette organisation."
+    },
+    "pager": {
+      "label": "Pagination",
+      "range": "{{from}}–{{to}} sur {{total}}",
+      "prev": "Page précédente",
+      "next": "Page suivante"
+    },
+    "toasts": {
+      "updated": "Membre mis à jour",
+      "updateFailed": "Impossible de mettre à jour le membre",
+      "removed": "Membre retiré",
+      "removeFailed": "Impossible de retirer le membre",
+      "inviteFailed": "Impossible d'envoyer l'invitation",
+      "resendFailed": "Impossible de renvoyer l'invitation",
+      "revoked": "Invitation révoquée",
+      "revokeFailed": "Impossible de révoquer l'invitation",
+      "emailCopied": "E-mail copié",
+      "resent": "Nouveau lien d'invitation créé",
+      "linkFailed": "Impossible de créer le lien"
+    },
+    "errors": {
+      "alreadyMember": "Cette personne est déjà membre.",
+      "alreadyInvited": "Cette personne a déjà une invitation en attente.",
+      "seatLimit": "Cette organisation a atteint sa limite de licences.",
+      "lastOwner": "Une organisation a besoin d'au moins un propriétaire.",
+      "lastAdmin": "Il doit rester au moins un administrateur d'instance.",
+      "selfSuspend": "Vous ne pouvez pas suspendre votre propre compte.",
+      "insufficientRole": "Vous ne pouvez pas attribuer ni modifier un rôle supérieur au vôtre.",
+      "instanceAdminRequired": "Seuls les administrateurs d'instance peuvent faire cela.",
+      "inviteExpired": "Cette invitation a expiré.",
+      "inviteInvalid": "Cette invitation n'est plus valide.",
+      "invalidEmail": "Saisissez une adresse e-mail valide.",
+      "weakPassword": "Choisissez un mot de passe plus robuste.",
+      "usernameTaken": "Ce nom d'utilisateur est déjà pris.",
+      "forbidden": "Vous n'avez pas l'autorisation de faire cela.",
+      "linkExpired": "Ce lien a expiré.",
+      "linkInvalid": "Ce lien n'est plus valide.",
+      "wrongPassword": "Le mot de passe actuel est incorrect.",
+      "ssoManaged": "Cette personne se connecte par authentification unique ; son fournisseur d'identité gère l'accès.",
+      "suspended": "Ce compte est suspendu. Rétablissez-le d'abord.",
+      "selfLink": "Vous ne pouvez pas créer de lien pour vous-même. Utilisez plutôt Changer le mot de passe.",
+      "samePassword": "Le nouveau mot de passe doit être différent de l'actuel.",
+      "passwordRequired": "Saisissez un nouveau mot de passe."
+    },
+    "capabilities": {
+      "knowledge_read": "Consulter les documents, le graphe de connaissances et les réponses",
+      "knowledge_query": "Lancer des requêtes et discuter avec la base de connaissances",
+      "knowledge_write": "Importer, modifier et supprimer documents, entités et relations",
+      "workspace_manage": "Créer, configurer et supprimer des espaces de travail",
+      "members_manage": "Inviter des membres, changer les rôles et retirer des personnes",
+      "members_grant_owner": "Attribuer ou retirer le rôle Propriétaire",
+      "tenant_delete": "Supprimer l'organisation"
+    },
+    "capabilityGroups": {
+      "knowledge": "Connaissances",
+      "organization": "Organisation"
+    },
+    "sso": {
+      "restrictedTitle": "L'authentification unique est configurée par les administrateurs d'instance",
+      "restrictedBody": "Demandez à un administrateur d'instance de connecter ou de modifier un fournisseur d'identité.",
+      "howTitle": "Comment l'authentification unique associe les personnes",
+      "flow": {
+        "org": "Une organisation Keycloak correspond à une organisation EdgeQuake, identifiée par son alias.",
+        "role": "La revendication de rôle du fournisseur d'identité définit le rôle du membre à chaque connexion, plafonné par le rôle maximal du fournisseur.",
+        "jit": "Les nouvelles personnes sont créées à la première connexion lorsque le provisionnement à la volée est activé. Figer un rôle ici empêche le fournisseur de l'écraser."
+      }
+    },
+    "accept": {
+      "title": "Rejoindre {{org}}",
+      "invitedBy": "{{name}} vous invite à collaborer.",
+      "invited": "Vous êtes invité à collaborer.",
+      "email": "E-mail",
+      "role": "Votre rôle",
+      "username": "Nom d'utilisateur",
+      "password": "Mot de passe",
+      "confirm": "Confirmer le mot de passe",
+      "mismatch": "Les mots de passe ne correspondent pas.",
+      "join": "Rejoindre {{org}}",
+      "existing": "Vous avez déjà un compte. Connectez-vous en tant que {{email}} pour accepter.",
+      "wrongAccount": "Vous êtes connecté avec un autre compte. Connectez-vous en tant que {{email}} pour accepter.",
+      "signIn": "Se connecter pour accepter",
+      "toLogin": "Aller à la connexion",
+      "expiredTitle": "Cette invitation a expiré",
+      "expiredBody": "Demandez à la personne qui vous a invité de vous envoyer un nouveau lien.",
+      "invalidTitle": "Cette invitation n'est plus valide",
+      "invalidBody": "Elle a peut-être déjà été utilisée ou révoquée. Demandez une nouvelle invitation."
+    },
+    "share": {
+      "copy": "Copier le lien",
+      "copied": "Lien copié",
+      "copiedShort": "Copié",
+      "done": "Terminé"
+    },
+    "access": {
+      "link": "Lien d'accès",
+      "shownOnce": "Ce lien n'est affiché qu'une seule fois. En créer un autre le remplace.",
+      "warning": "Toute personne qui ouvre ce lien se connecte en tant que {{name}}. Envoyez-le en privé, jamais dans un canal partagé.",
+      "rule3": "Il ne fonctionne qu'une fois. Un nouveau lien remplace le précédent.",
+      "create": "Créer le lien",
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes",
+      "hours_one": "{{count}} heure",
+      "hours_other": "{{count}} heures",
+      "magic": {
+        "title": "Lien de connexion pour {{name}}",
+        "description": "Laissez {{name}} entrer sans mot de passe — utile en cas de blocage ou pour un nouvel arrivant.",
+        "rule1": "La personne est connectée dès qu'elle l'ouvre ; son mot de passe n'est pas modifié.",
+        "rule2": "Il n'est valable que peu de temps.",
+        "created": "Le lien de connexion pour {{name}} est prêt. Il fonctionne une fois et expire dans {{duration}}."
+      },
+      "reset": {
+        "title": "Réinitialiser le mot de passe de {{name}}",
+        "description": "Laissez {{name}} choisir elle-même un nouveau mot de passe. Vous ne le voyez ni ne le définissez.",
+        "rule1": "Son mot de passe actuel reste valable tant qu'elle n'en choisit pas un nouveau.",
+        "rule2": "Définir un nouveau mot de passe la déconnecte de tous les autres appareils.",
+        "created": "Le lien de réinitialisation pour {{name}} est prêt. Il fonctionne une fois et expire dans {{duration}}."
+      }
+    },
+    "accessPage": {
+      "expiredTitle": "Ce lien a expiré",
+      "expiredBody": "Demandez à votre administrateur d'en créer un nouveau.",
+      "invalidTitle": "Ce lien n'est plus valide",
+      "invalidBody": "Il a peut-être déjà été utilisé ou remplacé par un lien plus récent. Demandez-en un nouveau à votre administrateur.",
+      "toLogin": "Aller à la connexion",
+      "account": "Compte",
+      "organization": "Organisation",
+      "switching": "Vous êtes connecté en tant que {{current}}. Continuer basculera ce navigateur vers {{name}}.",
+      "magicTitle": "Connexion à EdgeQuake",
+      "magicBy": "{{name}} a créé ce lien de connexion à usage unique pour vous.",
+      "magicBody": "Ceci est un lien de connexion à usage unique.",
+      "signInAs": "Se connecter en tant que {{name}}",
+      "onceNote": "Ouvrir le lien vous connecte une seule fois. Votre mot de passe reste inchangé.",
+      "resetTitle": "Choisissez un nouveau mot de passe",
+      "resetBy": "{{name}} vous a envoyé ce lien pour définir un nouveau mot de passe.",
+      "resetBody": "Définissez un nouveau mot de passe pour votre compte.",
+      "resetSubmit": "Définir le mot de passe et se connecter",
+      "resetNote": "Définir un nouveau mot de passe vous déconnecte partout ailleurs."
+    }
   }
 }

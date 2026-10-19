@@ -18,7 +18,7 @@ use super::store::{HandoffRecord, SharedFederationStore};
 pub const HANDOFF_TTL_SECS: i64 = 90;
 
 /// 256-bit URL-safe random code.
-fn random_code() -> String {
+pub fn random_code() -> String {
     let mut bytes = [0u8; 32];
     rand::rng().fill_bytes(&mut bytes);
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)

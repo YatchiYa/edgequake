@@ -5,7 +5,7 @@
 //! * read / list — platform admin; otherwise members only when membership scoping is on
 //!   (SSO active or `EDGEQUAKE_STRICT_TENANT_BIND`); legacy single-tenant installs keep read access.
 
-use edgequake_core::{MembershipRole, Tenant};
+use edgequake_core::Tenant;
 use uuid::Uuid;
 
 use crate::error::ApiError;
@@ -25,10 +25,6 @@ pub fn membership_scoped(state: &AppState) -> bool {
 
 fn is_platform_admin(ctx: &RequestAuthContext) -> bool {
     matches!(ctx.role, edgequake_auth::Role::Admin)
-}
-
-fn manages(role: MembershipRole) -> bool {
-    matches!(role, MembershipRole::Owner | MembershipRole::Admin)
 }
 
 fn denied() -> ApiError {
@@ -83,7 +79,7 @@ pub async fn require_tenant_access(
         .ok_or_else(denied)?;
     match need {
         TenantAccess::Read => Ok(()),
-        TenantAccess::Manage if manages(role) => Ok(()),
+        TenantAccess::Manage if role.can_manage_users() => Ok(()),
         TenantAccess::Manage => Err(denied()),
     }
 }

@@ -189,7 +189,8 @@ pub struct GetMeResponse {
 /// All fields are optional; only provided fields are updated.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateUserRequest {
-    /// New role for the user (`admin`, `developer`, `viewer`).
+    /// New instance role: `admin`, `user` or `readonly` (aliases `developer`/`member` and
+    /// `viewer`/`read-only` are accepted). Unknown values are rejected with 400.
     pub role: Option<String>,
     /// Whether the account should be active.
     pub is_active: Option<bool>,

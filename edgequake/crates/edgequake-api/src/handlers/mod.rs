@@ -51,6 +51,7 @@
 //! }
 //! ```
 
+pub mod access_links;
 pub mod admin;
 pub mod app_attribution;
 pub mod attribution;
@@ -83,6 +84,7 @@ pub mod lineage;
 pub mod lineage_types;
 pub mod llm_defaults;
 pub mod mcp;
+pub mod members;
 pub mod metrics;
 pub mod metrics_types;
 pub mod models;
@@ -101,6 +103,7 @@ pub mod query;
 pub mod query_types;
 pub mod relationships;
 pub mod relationships_types;
+pub mod roles;
 pub mod settings;
 pub mod settings_langfuse;
 pub mod setup;

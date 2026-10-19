@@ -197,6 +197,10 @@ function LoginPageInner() {
               )}
             </Button>
 
+            <p className="text-center text-xs text-muted-foreground" data-testid="login-forgot-hint">
+              Forgot your password? Ask an organization admin for a one-time sign-in or reset link.
+            </p>
+
             {showDemoLogin && (
               <>
                 <div className="relative my-4">

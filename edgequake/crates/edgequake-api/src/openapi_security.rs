@@ -51,6 +51,8 @@ fn is_public_path(path: &str) -> bool {
             | "/api/v1/setup/status"
             | "/api/v1/setup/initialize"
     ) || path.starts_with("/api/v1/shared/")
+        || path.starts_with("/api/v1/auth/invitations/")
+        || path.starts_with("/api/v1/auth/access-links/")
 }
 
 fn auth_only() -> Vec<SecurityRequirement> {

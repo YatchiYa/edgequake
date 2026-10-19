@@ -875,15 +875,22 @@ impl WorkspaceService for InMemoryWorkspaceService {
     async fn add_membership(&self, membership: Membership) -> Result<Membership> {
         let mut memberships = self.memberships.write().await;
 
-        // Check for existing membership
-        let exists = memberships.values().any(|m| {
+        // Check for existing membership; a deactivated tombstone is revived in place.
+        let existing = memberships.values_mut().find(|m| {
             m.user_id == membership.user_id
                 && m.tenant_id == membership.tenant_id
                 && m.workspace_id == membership.workspace_id
         });
 
-        if exists {
-            return Err(Error::validation("Membership already exists"));
+        if let Some(existing) = existing {
+            if existing.is_active {
+                return Err(Error::validation("Membership already exists"));
+            }
+            existing.role = membership.role;
+            existing.is_active = true;
+            existing.joined_at = membership.joined_at;
+            existing.metadata = membership.metadata.clone();
+            return Ok(existing.clone());
         }
 
         memberships.insert(membership.membership_id, membership.clone());
@@ -932,9 +939,32 @@ impl WorkspaceService for InMemoryWorkspaceService {
         Ok(membership.clone())
     }
 
+    async fn assign_membership_role(
+        &self,
+        membership_id: Uuid,
+        role: MembershipRole,
+    ) -> Result<Membership> {
+        let mut memberships = self.memberships.write().await;
+        let membership = memberships
+            .get_mut(&membership_id)
+            .ok_or_else(|| Error::not_found(format!("Membership {} not found", membership_id)))?;
+        membership.role = role;
+        membership.pin_manual_role();
+        Ok(membership.clone())
+    }
+
     async fn remove_membership(&self, membership_id: Uuid) -> Result<()> {
         let mut memberships = self.memberships.write().await;
         memberships.remove(&membership_id);
+        Ok(())
+    }
+
+    async fn deactivate_membership(&self, membership_id: Uuid) -> Result<()> {
+        let mut memberships = self.memberships.write().await;
+        let membership = memberships
+            .get_mut(&membership_id)
+            .ok_or_else(|| Error::not_found(format!("Membership {} not found", membership_id)))?;
+        membership.is_active = false;
         Ok(())
     }
 

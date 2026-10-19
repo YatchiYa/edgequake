@@ -82,6 +82,8 @@ pub struct RelationalProviderRuntime {
     pub conversation_service: SharedConversationService,
     pub task_storage: edgequake_tasks::SharedTaskStorage,
     pub federation_store: crate::services::federation::SharedFederationStore,
+    pub invitation_store: crate::services::invitations::SharedInvitationStore,
+    pub access_link_store: crate::services::access_links::SharedAccessLinkStore,
     pub decision_store: Arc<dyn edgequake_storage::decision::DecisionStore>,
     pub documents: DocumentStores,
 }

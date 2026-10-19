@@ -145,6 +145,7 @@ fn global_resource(path: &str) -> bool {
         "/api/v1/admin/",
         "/api/v1/settings/",
         "/api/v1/models",
+        "/api/v1/roles",
         "/api/v1/config/",
         "/api/v1/decision/",
         "/api/v1/setup/",
@@ -229,7 +230,7 @@ pub async fn bind_request(state: &AppState, request: &mut Request) -> Result<(),
     // Workspace configuration/lifecycle needs a tenant administrator, rather than ordinary content write access.
     if path.contains("/workspaces")
         && is_write(request.method(), path)
-        && !matches!(role, MembershipRole::Owner | MembershipRole::Admin)
+        && !role.can_manage_workspaces()
     {
         return Err(ApiError::forbidden_reason(
             "Workspace administration requires owner/admin membership",

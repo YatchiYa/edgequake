@@ -654,7 +654,9 @@ impl AppState {
         // Create auth services
         // SPEC-158: durable federation store (identities, handoff codes, sessions, providers).
         let auth = AuthRuntime::from_env()
-            .with_federation_store(Arc::clone(&materialized.relational.federation_store));
+            .with_federation_store(Arc::clone(&materialized.relational.federation_store))
+            .with_invitation_store(Arc::clone(&materialized.relational.invitation_store))
+            .with_access_link_store(Arc::clone(&materialized.relational.access_link_store));
         match auth.reload_providers().await {
             Ok(n) => tracing::info!(providers = n, "SPEC-158 identity providers loaded"),
             Err(e) => tracing::warn!(error = %e, "SPEC-158 identity provider load failed"),

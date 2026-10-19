@@ -969,3 +969,5 @@ pub async fn list_all_graph_edges(
 pub mod federation_contract;
 pub mod rsa_fixtures;
 pub mod spec158;
+#[cfg(feature = "postgres")]
+pub mod spec169;

@@ -255,7 +255,7 @@ async fn revoked_membership_blocks_refresh() {
 #[tokio::test]
 async fn tenant_crud_requires_authorization() {
     let mut sso = Sso::start(org_policy(), None).await;
-    let admin_token = sso.admin_token();
+    let admin_token = sso.platform_admin_token().await;
     let acme = sso.create_tenant("Acme", "acme").await;
     let globex = sso.create_tenant("Globex", "globex").await;
     let member = ok_body(

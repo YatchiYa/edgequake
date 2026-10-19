@@ -3,6 +3,7 @@
 //! WHY-OODA83: Extracted services follow SRP and DRY principles.
 //! Consolidates repeated logic into single, testable modules.
 
+pub mod access_links;
 #[cfg(feature = "postgres")]
 pub mod ann_readiness;
 pub mod artifact_retrieval;
@@ -60,6 +61,7 @@ pub mod injection_list;
 pub mod injection_process;
 pub mod injection_relational;
 pub mod interrupted_restart;
+pub mod invitations;
 pub mod isolation_context;
 pub mod job_registry;
 pub mod jti_denylist;
@@ -116,6 +118,7 @@ pub mod reprocess_stage_reset;
 pub mod request_authorization;
 pub mod retract_document_indexes;
 pub mod retrieval_id_cache;
+pub mod role_catalog;
 pub mod route_registry;
 pub mod run_progress;
 pub mod run_progress_writer;

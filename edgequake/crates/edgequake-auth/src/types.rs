@@ -41,6 +41,23 @@ impl Role {
         Self::try_parse(s).ok()
     }
 
+    /// Parse a role supplied to an administrative API (SPEC-169).
+    ///
+    /// Accepts the canonical names plus the product-level aliases that older UIs and
+    /// docs used (`developer`/`member` → [`Role::User`], `viewer`/`read_only` →
+    /// [`Role::Readonly`]). Unknown input is an **error**: [`Role::parse`] silently
+    /// falls back to `User`, which turned a requested `viewer` into a writer.
+    pub fn from_api_input(s: &str) -> Result<Self, String> {
+        match s.trim().to_lowercase().as_str() {
+            "admin" => Ok(Self::Admin),
+            "user" | "developer" | "member" => Ok(Self::User),
+            "readonly" | "read_only" | "read-only" | "viewer" => Ok(Self::Readonly),
+            other => Err(format!(
+                "Unknown role: {other} (expected admin, user or readonly)"
+            )),
+        }
+    }
+
     /// Convert role to string.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -434,6 +451,21 @@ mod tests {
         assert_eq!(Role::parse("user"), Role::User);
         assert_eq!(Role::parse("readonly"), Role::Readonly);
         assert_eq!(Role::parse("invalid"), Role::User); // Defaults to User
+    }
+
+    #[test]
+    fn api_input_maps_aliases_and_never_widens_a_viewer() {
+        assert_eq!(Role::from_api_input("viewer"), Ok(Role::Readonly));
+        assert_eq!(Role::from_api_input(" Read-Only "), Ok(Role::Readonly));
+        assert_eq!(Role::from_api_input("developer"), Ok(Role::User));
+        assert_eq!(Role::from_api_input("ADMIN"), Ok(Role::Admin));
+    }
+
+    #[test]
+    fn api_input_rejects_unknown_roles_instead_of_defaulting() {
+        let err = Role::from_api_input("superuser").unwrap_err();
+        assert!(err.contains("superuser"), "{err}");
+        assert!(Role::from_api_input("").is_err());
     }
 
     #[test]

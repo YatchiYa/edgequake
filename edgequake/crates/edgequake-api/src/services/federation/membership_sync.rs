@@ -5,21 +5,14 @@
 //! a tenant is never demoted by an IdP claim change.
 
 use edgequake_core::{Membership, MembershipRole, WorkspaceService};
-use serde_json::json;
 use uuid::Uuid;
 
 use crate::error::ApiError;
 
 use super::tenant_resolver::ResolvedTenant;
 
-const SSO_SOURCE: &str = "sso";
-
 fn map_ws(e: edgequake_core::Error) -> ApiError {
     ApiError::Internal(format!("workspace service: {e}"))
-}
-
-fn is_sso_managed(m: &Membership) -> bool {
-    m.metadata.get("source").and_then(|v| v.as_str()) == Some(SSO_SOURCE)
 }
 
 /// Active members of the tenant, de-duplicated by user.
@@ -94,7 +87,7 @@ pub async fn sync_membership(
         return create(ws, user_id, tenant, desired, provider_slug).await;
     };
 
-    if !is_sso_managed(&current) || current.role == desired {
+    if !current.is_sso_managed() || current.role == desired {
         return Ok(current.role);
     }
     if current.role == MembershipRole::Owner
@@ -127,12 +120,7 @@ async fn create(
     if let Some(workspace_id) = tenant.workspace_id {
         membership = membership.for_workspace(workspace_id);
     }
-    membership
-        .metadata
-        .insert("source".into(), json!(SSO_SOURCE));
-    membership
-        .metadata
-        .insert("provider".into(), json!(provider_slug));
+    let membership = membership.sso_managed(provider_slug);
     match ws.add_membership(membership).await {
         Ok(m) => Ok(m.role),
         // Concurrent first login (EC-158-20): the winner's row stands.

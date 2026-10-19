@@ -51,7 +51,7 @@
 mod bulk_ops;
 mod helpers;
 mod stats;
-mod tenant_access;
+pub(crate) mod tenant_access;
 mod tenants;
 mod workspace_crud;
 

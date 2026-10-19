@@ -79,6 +79,8 @@ impl RelationalProviderFactory for PgRelationalProviderFactory {
             conversation_service: Arc::new(edgequake_core::ConversationServiceImpl::new(pool.clone())),
             task_storage: Arc::new(edgequake_tasks::postgres::PostgresTaskStorage::new(r.queue.clone())),
             federation_store: Arc::new(crate::services::federation::pg_store::PgFederationStore::new(pool.clone())),
+            invitation_store: Arc::new(crate::services::invitations::pg_store::PgInvitationStore::new(pool.clone())),
+            access_link_store: Arc::new(crate::services::access_links::pg_store::PgAccessLinkStore::new(pool.clone())),
             decision_store: Arc::new(edgequake_storage::adapters::postgres::decision_store::PostgresDecisionStore::new(pool.clone())),
             documents: DocumentStores {
                 pdf: Arc::new(edgequake_storage::PostgresPdfStorage::new(pool.clone())),

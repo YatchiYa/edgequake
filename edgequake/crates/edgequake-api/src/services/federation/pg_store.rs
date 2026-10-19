@@ -140,6 +140,28 @@ impl FederationStore for PgFederationStore {
         }
     }
 
+    async fn identities_for_users(
+        &self,
+        user_ids: &[Uuid],
+    ) -> Result<Vec<FederatedIdentityRecord>, ApiError> {
+        if user_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let sql = format!(
+            "SELECT {IDENTITY_COLS} FROM federated_identities \
+             WHERE user_id = ANY($1) ORDER BY linked_at, federated_id"
+        );
+        let rows = sqlx::query(&sql)
+            .bind(user_ids)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db("identities_for_users"))?;
+        rows.iter()
+            .map(identity_from_row)
+            .collect::<Result<_, _>>()
+            .map_err(db("identities_for_users"))
+    }
+
     async fn touch_identity(&self, issuer: &str, subject: &str) -> Result<(), ApiError> {
         sqlx::query(
             "UPDATE federated_identities SET last_login_at = NOW() WHERE issuer = $1 AND subject = $2",

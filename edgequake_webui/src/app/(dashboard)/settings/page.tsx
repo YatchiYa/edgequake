@@ -8,10 +8,9 @@ import { PdfParserSettingsCard } from '@/components/settings/pdf-parser-settings
 import { ConnectionsCard } from '@/components/settings/connections-card';
 import { ProviderStatusCard } from '@/components/settings/provider-status-card';
 import { ProviderStatusHub } from '@/components/settings/provider-status-hub';
-import { RoleMatrixCard } from '@/components/settings/role-matrix-card';
+import { ModelRoleMatrixCard } from '@/components/settings/model-role-matrix-card';
 import { LangfuseObservabilityCard } from '@/components/settings/langfuse-observability-card';
-import { IdentityProvidersCard } from '@/components/settings/identity-providers-card';
-import { UserManagementCard } from '@/components/settings/user-management-card';
+import { MembersLinkCard } from '@/components/settings/members-link-card';
 import { VisionLLMSettingsCard } from '@/components/settings/vision-llm-settings-card';
 import { PageHeader } from '@/components/shared/page-header';
 import { PageShell } from '@/components/shared/page-shell';
@@ -554,17 +553,15 @@ export default function SettingsPage() {
       <SettingsSection id="access">
       <ConnectionsCard />
 
-      <RoleMatrixCard />
+      <ModelRoleMatrixCard />
 
       {/* Application attribution (SPEC-043) — above provider status for discoverability */}
       <AppAttributionSettingsCard />
 
       {/* Admin section — only fetches and renders for admin users (SPEC-0001) */}
       <AdminQuotaSection />
-      {/* SPEC-158 — admin-only, read-only SSO provider overview */}
-      <IdentityProvidersCard />
-      {/* User management — Issue #205: admin-only user CRUD */}
-      <UserManagementCard />
+      {/* SPEC-169 — people, roles and SSO live on /members */}
+      <MembersLinkCard />
       </SettingsSection>
 
       <SettingsSection id="observability">

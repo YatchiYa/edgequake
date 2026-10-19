@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Network,
   Settings,
+  Users,
   Terminal,
   type LucideIcon,
 } from "lucide-react";
@@ -65,6 +66,7 @@ export const DESTINATION_GROUPS: readonly DestinationGroup[] = [
       { href: "/pipeline", icon: Activity, labelKey: "nav.pipeline", fallback: "Pipeline", chord: "p" },
       { href: "/costs", icon: BarChart2, labelKey: "nav.costs", fallback: "Costs", chord: "c" },
       { href: "/api-explorer", icon: Terminal, labelKey: "nav.apiExplorer", fallback: "API Explorer", chord: "a" },
+      { href: "/members", icon: Users, labelKey: "nav.members", fallback: "Members", chord: "m" },
       { href: "/settings", icon: Settings, labelKey: "nav.settings", fallback: "Settings", chord: "s" },
     ],
   },

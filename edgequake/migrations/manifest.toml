@@ -4,7 +4,7 @@
 
 schema_version = 1
 compat_serve_min = 149
-compat_serve_max = 212
+compat_serve_max = 214
 irreversible_drop = [125, 126, 131, 171]
 legacy_cutover_assert = 142
 
@@ -1538,3 +1538,17 @@ file = "212_relationship_source_chunk_keys_backfill.sql"
 phase = "data"
 no_transaction = false
 lock_class = "dml_batch"
+
+[[migration]]
+version = 213
+file = "213_spec169_tenant_invitations.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 214
+file = "214_spec169_user_access_links.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"

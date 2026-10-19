@@ -190,6 +190,16 @@ pub(crate) async fn take_web_refresh(
     Ok(TakeWebRefreshOutcome::ReuseDetected { family_id })
 }
 
+/// Revoke every refresh token a user holds (password reset: sign out everywhere, SPEC-169).
+pub(crate) async fn revoke_user_refresh_tokens(store: &AuthMemoryStore, user_id: &str) {
+    for record in store.inner.write().await.refresh_tokens.values_mut() {
+        if record.user_id == user_id {
+            record.status = "revoked".to_string();
+            record.revoked = true;
+        }
+    }
+}
+
 fn revoke_family_web_locked(state: &mut AuthMemoryState, family_id: uuid::Uuid) {
     for record in state.refresh_tokens.values_mut() {
         if record.family_id == family_id {

@@ -1001,6 +1001,97 @@
         ]
       }
     },
+    "/api/v1/auth/access-links/{token}": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Public preview of an access link.",
+        "operationId": "preview_access_link",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Single-use access token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Link details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessLinkPreview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown, used or revoked link"
+          },
+          "410": {
+            "description": "Link expired"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/auth/access-links/{token}/redeem": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Redeem an access link: sign in (and, for a reset, set the new password).",
+        "operationId": "redeem_access_link",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Single-use access token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemAccessLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or weak password"
+          },
+          "404": {
+            "description": "Unknown, used or revoked link"
+          },
+          "410": {
+            "description": "Link expired"
+          }
+        },
+        "security": []
+      }
+    },
     "/api/v1/auth/handoff": {
       "post": {
         "tags": [
@@ -1034,6 +1125,103 @@
           },
           "403": {
             "description": "Tenant suspended or membership revoked"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/auth/invitations/{token}": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Public preview of an invitation link.",
+        "operationId": "preview_invitation",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Single-use accept token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invitation details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPreview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown, used or revoked invitation"
+          },
+          "410": {
+            "description": "Invitation expired"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/auth/invitations/{token}/accept": {
+      "post": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Accept an invitation and join the organization.",
+        "operationId": "accept_invitation",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Single-use accept token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Joined",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptInvitationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or weak credentials"
+          },
+          "401": {
+            "description": "Sign in as the invited account first"
+          },
+          "404": {
+            "description": "Unknown, used or revoked invitation"
+          },
+          "409": {
+            "description": "Username already taken"
+          },
+          "410": {
+            "description": "Invitation expired"
           }
         },
         "security": []
@@ -1294,6 +1482,56 @@
           }
         },
         "security": []
+      }
+    },
+    "/api/v1/auth/password": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Change the signed-in user's password; every other session is signed out.",
+        "description": "Returns a fresh session so the device that made the change stays signed in.",
+        "operationId": "change_password",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Password changed; new session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Wrong current password, or weak / unchanged new password"
+          },
+          "423": {
+            "description": "Account locked"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
       }
     },
     "/api/v1/auth/refresh": {
@@ -3734,8 +3972,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "recover_stuck"
+        "x-edgequake-v2-job-type": "recover_stuck",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -8036,6 +8274,39 @@
         ]
       }
     },
+    "/api/v1/roles": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Organization roles, instance roles and the capability matrix derived from enforcement.",
+        "operationId": "get_role_catalog",
+        "responses": {
+          "200": {
+            "description": "Role catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleCatalog"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/settings/app-attribution": {
       "get": {
         "tags": [
@@ -8910,6 +9181,516 @@
           },
           "404": {
             "description": "Tenant not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/invitations": {
+      "post": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Invite a person by email.",
+        "operationId": "create_invitation",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Organization id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Invitation created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationIssued"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid email or role"
+          },
+          "403": {
+            "description": "Cannot grant a role above your own"
+          },
+          "409": {
+            "description": "Already a member, already invited, or no seat left"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/invitations/{invitation_id}": {
+      "delete": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Revoke a pending invitation.",
+        "operationId": "revoke_invitation",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Organization id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "description": "Invitation id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Invitation revoked"
+          },
+          "404": {
+            "description": "Invitation not found or already used"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/invitations/{invitation_id}/resend": {
+      "post": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Issue a fresh link (the old one stops working) and restart the expiry clock.",
+        "operationId": "resend_invitation",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Organization id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "description": "Invitation id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "New link issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationIssued"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invitation not found or already used"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/members": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "List members of an organization (organization owner/admin or instance admin).",
+        "operationId": "list_members",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Organization id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Case-insensitive match on username or email.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "description": "Organization role id filter.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "`active` | `deactivated` | `invited` | `expired`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "`name` (default) | `role` | `last_active` | `joined`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "description": "`asc` (default) | `desc`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Directory page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberListResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner/admin role required"
+          },
+          "404": {
+            "description": "Organization not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/members/{user_id}": {
+      "delete": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Remove a person from the organization (their account is kept).",
+        "operationId": "remove_member",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Organization id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "User id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Member removed"
+          },
+          "403": {
+            "description": "Member outranks you"
+          },
+          "404": {
+            "description": "Member not found"
+          },
+          "409": {
+            "description": "Cannot remove the last owner"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Change a member's organization role, or (platform admins) suspend / change instance role.",
+        "operationId": "update_member",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Organization id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "User id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown role"
+          },
+          "403": {
+            "description": "Not allowed to change this member or grant this role"
+          },
+          "404": {
+            "description": "Member not found"
+          },
+          "409": {
+            "description": "Would orphan the organization or platform"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/members/{user_id}/access-links": {
+      "post": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Create a one-time sign-in or password-reset link for a member.",
+        "operationId": "issue_access_link",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Organization id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "User id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueAccessLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Link created (token shown once)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessLinkIssued"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown purpose"
+          },
+          "403": {
+            "description": "Target outranks you or is reachable by platform admins only"
+          },
+          "404": {
+            "description": "Member not found"
+          },
+          "409": {
+            "description": "Suspended, SSO-managed or yourself"
           }
         },
         "security": [
@@ -10196,8 +10977,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_all"
+        "x-edgequake-v2-job-type": "reprocess_all",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -10797,8 +11578,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     },
     "/ws/progress/{track_id}": {
@@ -10829,13 +11610,159 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     }
   },
   "components": {
     "schemas": {
+      "AcceptInvitationRequest": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required (with `password`) when the email has no account yet."
+          }
+        },
+        "example": {
+          "password": {},
+          "username": {}
+        }
+      },
+      "AcceptInvitationResponse": {
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "tenant_name",
+          "role",
+          "email",
+          "username",
+          "created_account"
+        ],
+        "properties": {
+          "created_account": {
+            "type": "boolean",
+            "description": "True when a new password account was created."
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "tenant_name": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "created_account": {},
+          "email": {},
+          "role": {},
+          "tenant_id": {},
+          "tenant_name": {},
+          "username": {}
+        }
+      },
+      "AccessLinkIssued": {
+        "type": "object",
+        "required": [
+          "token",
+          "purpose",
+          "username",
+          "email",
+          "expires_at",
+          "expires_in_minutes"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "expires_in_minutes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string",
+            "description": "Single-use token. Shown once: only its hash is stored. The UI builds `/access/{token}`."
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "email": {},
+          "expires_at": {},
+          "expires_in_minutes": {},
+          "purpose": {},
+          "token": {},
+          "username": {}
+        }
+      },
+      "AccessLinkPreview": {
+        "type": "object",
+        "required": [
+          "purpose",
+          "username",
+          "email",
+          "expires_at"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "issued_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "tenant_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "email": {},
+          "expires_at": {},
+          "issued_by": {},
+          "purpose": {},
+          "tenant_name": {},
+          "username": {}
+        }
+      },
       "AgentHints": {
         "type": "object",
         "required": [
@@ -11741,6 +12668,58 @@
         "example": {
           "message": {},
           "status": {}
+        }
+      },
+      "CapabilityInfo": {
+        "type": "object",
+        "required": [
+          "id",
+          "group",
+          "label",
+          "roles"
+        ],
+        "properties": {
+          "group": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Organization role ids that hold this capability."
+          }
+        },
+        "example": {
+          "group": {},
+          "id": {},
+          "label": {},
+          "roles": []
+        }
+      },
+      "ChangePasswordRequest": {
+        "type": "object",
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "properties": {
+          "current_password": {
+            "type": "string"
+          },
+          "new_password": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "current_password": {},
+          "new_password": {}
         }
       },
       "ChangesSummary": {
@@ -14454,6 +15433,37 @@
         "example": {
           "name": {},
           "parent_id": {}
+        }
+      },
+      "CreateInvitationRequest": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Organization role id; defaults to `member`."
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Limit the grant to one workspace; omit for the whole organization."
+          }
+        },
+        "example": {
+          "email": {},
+          "role": {},
+          "workspace_id": {}
         }
       },
       "CreateJobRequest": {
@@ -19318,6 +20328,37 @@
           "timestamp": {}
         }
       },
+      "InstanceRoleInfo": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "description",
+          "permission_count"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "permission_count": {
+            "type": "integer",
+            "description": "Number of fine-grained RBAC permissions the role carries.",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "description": {},
+          "id": {},
+          "label": {},
+          "permission_count": {}
+        }
+      },
       "InvariantViolation": {
         "type": "object",
         "description": "A data invariant violation from Layer 2.",
@@ -19355,6 +20396,103 @@
           "invariant_id": {},
           "sample_ids": [],
           "severity": {}
+        }
+      },
+      "InvitationIssued": {
+        "type": "object",
+        "required": [
+          "invitation",
+          "token",
+          "expires_in_days"
+        ],
+        "properties": {
+          "expires_in_days": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "invitation": {
+            "$ref": "#/components/schemas/MemberView"
+          },
+          "token": {
+            "type": "string",
+            "description": "Single-use accept token. Shown once: only its hash is stored. The UI builds\n`/invite/{token}` from it."
+          }
+        },
+        "example": {
+          "expires_in_days": {},
+          "invitation": {},
+          "token": {}
+        }
+      },
+      "InvitationPreview": {
+        "type": "object",
+        "required": [
+          "tenant_name",
+          "email",
+          "role",
+          "role_label",
+          "expires_at",
+          "account_exists",
+          "sso_providers"
+        ],
+        "properties": {
+          "account_exists": {
+            "type": "boolean",
+            "description": "True when the email already has an account: the invitee must sign in to accept."
+          },
+          "email": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "invited_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "role_label": {
+            "type": "string"
+          },
+          "sso_providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderSummary"
+            },
+            "description": "Configured SSO providers (an alternative way in for the same address)."
+          },
+          "tenant_name": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "account_exists": {},
+          "email": {},
+          "expires_at": {},
+          "invited_by": {},
+          "role": {},
+          "role_label": {},
+          "sso_providers": [],
+          "tenant_name": {}
+        }
+      },
+      "IssueAccessLinkRequest": {
+        "type": "object",
+        "required": [
+          "purpose"
+        ],
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "description": "`magic_login` (sign in, no password) or `password_reset` (choose a new password)."
+          }
+        },
+        "example": {
+          "purpose": {}
         }
       },
       "ItemsRetrieved": {
@@ -20835,6 +21973,349 @@
           "jsonrpc": {},
           "method": {},
           "params": {}
+        }
+      },
+      "MemberKind": {
+        "type": "string",
+        "description": "Whether a directory row is a person or a pending invitation.",
+        "enum": [
+          "member",
+          "invitation"
+        ],
+        "example": {}
+      },
+      "MemberListQuery": {
+        "type": "object",
+        "properties": {
+          "dir": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`asc` (default) | `desc`."
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "page_size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "q": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Case-insensitive match on username or email."
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Organization role id filter."
+          },
+          "sort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`name` (default) | `role` | `last_active` | `joined`."
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`active` | `deactivated` | `invited` | `expired`."
+          }
+        },
+        "example": {
+          "dir": {},
+          "page": {},
+          "page_size": {},
+          "q": {},
+          "role": {},
+          "sort": {},
+          "status": {}
+        }
+      },
+      "MemberListResponse": {
+        "type": "object",
+        "required": [
+          "members",
+          "total",
+          "page",
+          "page_size",
+          "total_pages",
+          "summary",
+          "viewer",
+          "seats",
+          "tenant_name"
+        ],
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberView"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "page_size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "seats": {
+            "$ref": "#/components/schemas/SeatUsage"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/MemberSummary"
+          },
+          "tenant_name": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Rows matching the filter (before pagination).",
+            "minimum": 0
+          },
+          "total_pages": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "viewer": {
+            "$ref": "#/components/schemas/MemberViewer"
+          }
+        },
+        "example": {
+          "members": [],
+          "page": {},
+          "page_size": {},
+          "seats": {},
+          "summary": {},
+          "tenant_name": {},
+          "total": {},
+          "total_pages": {},
+          "viewer": {}
+        }
+      },
+      "MemberStatus": {
+        "type": "string",
+        "description": "Lifecycle status shown as a badge.",
+        "enum": [
+          "active",
+          "deactivated",
+          "invited",
+          "expired"
+        ],
+        "example": {}
+      },
+      "MemberSummary": {
+        "type": "object",
+        "description": "Facets over the whole directory (independent of the active filter).",
+        "required": [
+          "total",
+          "active",
+          "deactivated",
+          "invited",
+          "by_role"
+        ],
+        "properties": {
+          "active": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "by_role": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "deactivated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "invited": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "active": {},
+          "by_role": {},
+          "deactivated": {},
+          "invited": {},
+          "total": {}
+        }
+      },
+      "MemberView": {
+        "type": "object",
+        "description": "A row of the organization directory.",
+        "required": [
+          "id",
+          "kind",
+          "email",
+          "role",
+          "status",
+          "sign_in",
+          "joined_at",
+          "is_you",
+          "is_last_owner"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable row id: the user id, or the invitation id for invitations."
+          },
+          "instance_role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Instance role id (`admin`, `user`, `readonly`); only present for people."
+          },
+          "invited_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_last_owner": {
+            "type": "boolean"
+          },
+          "is_you": {
+            "type": "boolean"
+          },
+          "joined_at": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MemberKind"
+          },
+          "last_login_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "description": "Organization role id (`owner`, `admin`, `member`, `readonly`)."
+          },
+          "role_managed_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider slug when the role is re-synced from the IdP on each sign-in."
+          },
+          "sign_in": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SignInMethod"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/MemberStatus"
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Workspace the grant is limited to; `None` = whole organization."
+          }
+        },
+        "example": {
+          "email": {},
+          "expires_at": {},
+          "id": {},
+          "instance_role": {},
+          "invited_by": {},
+          "is_last_owner": {},
+          "is_you": {},
+          "joined_at": {},
+          "kind": {},
+          "last_login_at": {},
+          "role": {},
+          "role_managed_by": {},
+          "sign_in": [],
+          "status": {},
+          "user_id": {},
+          "username": {},
+          "workspace_id": {}
+        }
+      },
+      "MemberViewer": {
+        "type": "object",
+        "description": "Who is looking, so the UI can enable only what the server will allow.",
+        "required": [
+          "user_id",
+          "instance_admin",
+          "max_assignable_role"
+        ],
+        "properties": {
+          "instance_admin": {
+            "type": "boolean"
+          },
+          "max_assignable_role": {
+            "type": "string",
+            "description": "Highest organization role id the viewer may assign."
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The viewer's organization role, if they hold a membership."
+          },
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "instance_admin": {},
+          "max_assignable_role": {},
+          "role": {},
+          "user_id": {}
         }
       },
       "MergeDetails": {
@@ -22848,6 +24329,40 @@
           "read_model": {},
           "storage": {},
           "task_queue": {}
+        }
+      },
+      "OrganizationRoleInfo": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "description",
+          "level"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "description": "Wire id (`owner`, `admin`, `member`, `readonly`)."
+          },
+          "label": {
+            "type": "string",
+            "description": "Product label (`Viewer` for `readonly`)."
+          },
+          "level": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Privilege rank (1 = lowest); a manager can only assign roles at or below their own.",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "description": {},
+          "id": {},
+          "label": {},
+          "level": {}
         }
       },
       "PageHealth": {
@@ -27158,6 +28673,21 @@
           "v2_migration": {}
         }
       },
+      "RedeemAccessLinkRequest": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required for `password_reset`; ignored for `magic_login`."
+          }
+        },
+        "example": {
+          "password": {}
+        }
+      },
       "RefreshTokenRequest": {
         "type": "object",
         "description": "Refresh token request (body optional when `eq_refresh` cookie present — SPEC-154 Wave 5).",
@@ -28195,6 +29725,39 @@
           "token_type_hint": {}
         }
       },
+      "RoleCatalog": {
+        "type": "object",
+        "required": [
+          "organization_roles",
+          "instance_roles",
+          "capabilities"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityInfo"
+            }
+          },
+          "instance_roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InstanceRoleInfo"
+            }
+          },
+          "organization_roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationRoleInfo"
+            }
+          }
+        },
+        "example": {
+          "capabilities": [],
+          "instance_roles": [],
+          "organization_roles": []
+        }
+      },
       "RunPhaseId": {
         "type": "string",
         "description": "Phase strip ids (Admit is queue-only and has no work tasks).",
@@ -28785,6 +30348,30 @@
           "total_matches": {}
         }
       },
+      "SeatUsage": {
+        "type": "object",
+        "description": "Seat usage against the plan's `max_users`.",
+        "required": [
+          "used"
+        ],
+        "properties": {
+          "max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "used": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "max": {},
+          "used": {}
+        }
+      },
       "SecurityPosture": {
         "type": "object",
         "description": "Additive `/health` security signals (SPEC-163).",
@@ -29270,6 +30857,44 @@
         "example": {
           "share_id": {},
           "share_url": {}
+        }
+      },
+      "SignInMethod": {
+        "type": "object",
+        "description": "One way a person can sign in.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`password` or `sso`."
+          },
+          "provider_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`keycloak`, `google`, `microsoft`, … (drives the badge icon)."
+          },
+          "provider_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider_slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "kind": {},
+          "provider_kind": {},
+          "provider_name": {},
+          "provider_slug": {}
         }
       },
       "SkippedFile": {
@@ -31188,6 +32813,38 @@
           "saved": {}
         }
       },
+      "UpdateMemberRequest": {
+        "type": "object",
+        "description": "PATCH body. Every field is optional; only provided fields change.",
+        "properties": {
+          "instance_role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New instance role (instance admin only)."
+          },
+          "is_active": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Suspend / restore the account (instance admin only)."
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New organization role."
+          }
+        },
+        "example": {
+          "instance_role": {},
+          "is_active": {},
+          "role": {}
+        }
+      },
       "UpdateMessageApiRequest": {
         "type": "object",
         "description": "Update message request DTO.",
@@ -31518,7 +33175,7 @@
               "string",
               "null"
             ],
-            "description": "New role for the user (`admin`, `developer`, `viewer`)."
+            "description": "New instance role: `admin`, `user` or `readonly` (aliases `developer`/`member` and\n`viewer`/`read-only` are accepted). Unknown values are rejected with 400."
           }
         },
         "example": {
@@ -32826,6 +34483,10 @@
     {
       "name": "User Management",
       "description": "User administration endpoints (Phase 3)"
+    },
+    {
+      "name": "Members",
+      "description": "Organization members, invitations and the role catalog (SPEC-169)"
     },
     {
       "name": "API Keys",
