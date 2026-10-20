@@ -1,0 +1,479 @@
+{
+  "label": "after",
+  "baseURL": "http://localhost:4321",
+  "when": "2026-10-20T03:23:53.727Z",
+  "views": [
+    {
+      "viewport": "wide",
+      "theme": "light",
+      "cls": 0.0001,
+      "shifts": [],
+      "vw": 1920,
+      "bodyOverflow": 0,
+      "defects": [],
+      "defectCount": 0,
+      "sectionCount": 9,
+      "sections": [
+        {
+          "label": "Graph-RAG.Built to ship.",
+          "h": 793,
+          "top": 73
+        },
+        {
+          "label": "Similarity search loses the ",
+          "h": 922,
+          "top": 866
+        },
+        {
+          "label": "Built for real Graph-RAG wor",
+          "h": 835,
+          "top": 1788
+        },
+        {
+          "label": "Your documents, as a living ",
+          "h": 1808,
+          "top": 2622
+        },
+        {
+          "label": "From files to answers with s",
+          "h": 911,
+          "top": 4430
+        },
+        {
+          "label": "Honest numbers",
+          "h": 835,
+          "top": 5341
+        },
+        {
+          "label": "Up and running in minutes",
+          "h": 905,
+          "top": 6176
+        },
+        {
+          "label": "One product, clear surfaces",
+          "h": 1111,
+          "top": 7080
+        },
+        {
+          "label": "Taking Graph-RAG into produc",
+          "h": 779,
+          "top": 8191
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-wide-light.png"
+    },
+    {
+      "viewport": "wide",
+      "theme": "dark",
+      "cls": 0,
+      "shifts": [],
+      "vw": 1920,
+      "bodyOverflow": 0,
+      "defects": [],
+      "defectCount": 0,
+      "sectionCount": 9,
+      "sections": [
+        {
+          "label": "Graph-RAG.Built to ship.",
+          "h": 793,
+          "top": 73
+        },
+        {
+          "label": "Similarity search loses the ",
+          "h": 922,
+          "top": 866
+        },
+        {
+          "label": "Built for real Graph-RAG wor",
+          "h": 835,
+          "top": 1788
+        },
+        {
+          "label": "Your documents, as a living ",
+          "h": 1808,
+          "top": 2622
+        },
+        {
+          "label": "From files to answers with s",
+          "h": 911,
+          "top": 4430
+        },
+        {
+          "label": "Honest numbers",
+          "h": 835,
+          "top": 5341
+        },
+        {
+          "label": "Up and running in minutes",
+          "h": 905,
+          "top": 6176
+        },
+        {
+          "label": "One product, clear surfaces",
+          "h": 1111,
+          "top": 7080
+        },
+        {
+          "label": "Taking Graph-RAG into produc",
+          "h": 779,
+          "top": 8191
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-wide-dark.png"
+    },
+    {
+      "viewport": "desktop",
+      "theme": "light",
+      "cls": 0.0001,
+      "shifts": [],
+      "vw": 1440,
+      "bodyOverflow": 0,
+      "defects": [],
+      "defectCount": 0,
+      "sectionCount": 9,
+      "sections": [
+        {
+          "label": "Graph-RAG.Built to ship.",
+          "h": 757,
+          "top": 73
+        },
+        {
+          "label": "Similarity search loses the ",
+          "h": 893,
+          "top": 830
+        },
+        {
+          "label": "Built for real Graph-RAG wor",
+          "h": 806,
+          "top": 1723
+        },
+        {
+          "label": "Your documents, as a living ",
+          "h": 1772,
+          "top": 2529
+        },
+        {
+          "label": "From files to answers with s",
+          "h": 882,
+          "top": 4301
+        },
+        {
+          "label": "Honest numbers",
+          "h": 799,
+          "top": 5182
+        },
+        {
+          "label": "Up and running in minutes",
+          "h": 869,
+          "top": 5981
+        },
+        {
+          "label": "One product, clear surfaces",
+          "h": 1082,
+          "top": 6850
+        },
+        {
+          "label": "Taking Graph-RAG into produc",
+          "h": 750,
+          "top": 7932
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-desktop-light.png"
+    },
+    {
+      "viewport": "desktop",
+      "theme": "dark",
+      "cls": 0.0001,
+      "shifts": [],
+      "vw": 1440,
+      "bodyOverflow": 0,
+      "defects": [],
+      "defectCount": 0,
+      "sectionCount": 9,
+      "sections": [
+        {
+          "label": "Graph-RAG.Built to ship.",
+          "h": 757,
+          "top": 73
+        },
+        {
+          "label": "Similarity search loses the ",
+          "h": 893,
+          "top": 830
+        },
+        {
+          "label": "Built for real Graph-RAG wor",
+          "h": 806,
+          "top": 1723
+        },
+        {
+          "label": "Your documents, as a living ",
+          "h": 1772,
+          "top": 2529
+        },
+        {
+          "label": "From files to answers with s",
+          "h": 882,
+          "top": 4301
+        },
+        {
+          "label": "Honest numbers",
+          "h": 799,
+          "top": 5182
+        },
+        {
+          "label": "Up and running in minutes",
+          "h": 869,
+          "top": 5981
+        },
+        {
+          "label": "One product, clear surfaces",
+          "h": 1082,
+          "top": 6850
+        },
+        {
+          "label": "Taking Graph-RAG into produc",
+          "h": 750,
+          "top": 7932
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-desktop-dark.png"
+    },
+    {
+      "viewport": "tablet",
+      "theme": "light",
+      "cls": 0.0002,
+      "shifts": [],
+      "vw": 834,
+      "bodyOverflow": 0,
+      "defects": [],
+      "defectCount": 0,
+      "sectionCount": 9,
+      "sections": [
+        {
+          "label": "Graph-RAG.Built to ship.",
+          "h": 1251,
+          "top": 73
+        },
+        {
+          "label": "Similarity search loses the ",
+          "h": 1013,
+          "top": 1324
+        },
+        {
+          "label": "Built for real Graph-RAG wor",
+          "h": 1065,
+          "top": 2337
+        },
+        {
+          "label": "Your documents, as a living ",
+          "h": 1351,
+          "top": 3402
+        },
+        {
+          "label": "From files to answers with s",
+          "h": 829,
+          "top": 4752
+        },
+        {
+          "label": "Honest numbers",
+          "h": 856,
+          "top": 5581
+        },
+        {
+          "label": "Up and running in minutes",
+          "h": 906,
+          "top": 6437
+        },
+        {
+          "label": "One product, clear surfaces",
+          "h": 1235,
+          "top": 7343
+        },
+        {
+          "label": "Taking Graph-RAG into produc",
+          "h": 801,
+          "top": 8578
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-tablet-light.png"
+    },
+    {
+      "viewport": "tablet",
+      "theme": "dark",
+      "cls": 0.0004,
+      "shifts": [],
+      "vw": 834,
+      "bodyOverflow": 0,
+      "defects": [],
+      "defectCount": 0,
+      "sectionCount": 9,
+      "sections": [
+        {
+          "label": "Graph-RAG.Built to ship.",
+          "h": 1251,
+          "top": 73
+        },
+        {
+          "label": "Similarity search loses the ",
+          "h": 1013,
+          "top": 1324
+        },
+        {
+          "label": "Built for real Graph-RAG wor",
+          "h": 1065,
+          "top": 2337
+        },
+        {
+          "label": "Your documents, as a living ",
+          "h": 1351,
+          "top": 3402
+        },
+        {
+          "label": "From files to answers with s",
+          "h": 829,
+          "top": 4752
+        },
+        {
+          "label": "Honest numbers",
+          "h": 856,
+          "top": 5581
+        },
+        {
+          "label": "Up and running in minutes",
+          "h": 906,
+          "top": 6437
+        },
+        {
+          "label": "One product, clear surfaces",
+          "h": 1235,
+          "top": 7343
+        },
+        {
+          "label": "Taking Graph-RAG into produc",
+          "h": 801,
+          "top": 8578
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-tablet-dark.png"
+    },
+    {
+      "viewport": "mobile",
+      "theme": "light",
+      "cls": 0.0001,
+      "shifts": [],
+      "vw": 390,
+      "bodyOverflow": 0,
+      "defects": [],
+      "defectCount": 0,
+      "sectionCount": 9,
+      "sections": [
+        {
+          "label": "Graph-RAG.Built to ship.",
+          "h": 1140,
+          "top": 73
+        },
+        {
+          "label": "Similarity search loses the ",
+          "h": 1649,
+          "top": 1213
+        },
+        {
+          "label": "Built for real Graph-RAG wor",
+          "h": 1745,
+          "top": 2861
+        },
+        {
+          "label": "Your documents, as a living ",
+          "h": 1484,
+          "top": 4606
+        },
+        {
+          "label": "From files to answers with s",
+          "h": 961,
+          "top": 6090
+        },
+        {
+          "label": "Honest numbers",
+          "h": 1115,
+          "top": 7051
+        },
+        {
+          "label": "Up and running in minutes",
+          "h": 898,
+          "top": 8166
+        },
+        {
+          "label": "One product, clear surfaces",
+          "h": 2036,
+          "top": 9063
+        },
+        {
+          "label": "Taking Graph-RAG into produc",
+          "h": 1240,
+          "top": 11099
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-mobile-light.png"
+    },
+    {
+      "viewport": "mobile",
+      "theme": "dark",
+      "cls": 0.0001,
+      "shifts": [],
+      "vw": 390,
+      "bodyOverflow": 0,
+      "defects": [],
+      "defectCount": 0,
+      "sectionCount": 9,
+      "sections": [
+        {
+          "label": "Graph-RAG.Built to ship.",
+          "h": 1140,
+          "top": 73
+        },
+        {
+          "label": "Similarity search loses the ",
+          "h": 1649,
+          "top": 1213
+        },
+        {
+          "label": "Built for real Graph-RAG wor",
+          "h": 1745,
+          "top": 2861
+        },
+        {
+          "label": "Your documents, as a living ",
+          "h": 1484,
+          "top": 4606
+        },
+        {
+          "label": "From files to answers with s",
+          "h": 961,
+          "top": 6090
+        },
+        {
+          "label": "Honest numbers",
+          "h": 1115,
+          "top": 7051
+        },
+        {
+          "label": "Up and running in minutes",
+          "h": 898,
+          "top": 8166
+        },
+        {
+          "label": "One product, clear surfaces",
+          "h": 2036,
+          "top": 9063
+        },
+        {
+          "label": "Taking Graph-RAG into produc",
+          "h": 1240,
+          "top": 11099
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-mobile-dark.png"
+    }
+  ]
+}

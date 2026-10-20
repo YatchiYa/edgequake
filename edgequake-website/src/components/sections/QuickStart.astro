@@ -1,6 +1,8 @@
 ---
 import { Code } from "@astrojs/starlight/components";
 import { getProductVersion } from "../../lib/product";
+import Section from "../primitives/Section.astro";
+import SectionHeader from "../primitives/SectionHeader.astro";
 
 const version = getProductVersion();
 
@@ -59,19 +61,13 @@ curl -X POST http://localhost:8080/api/v1/query \\
 ];
 ---
 
-<section id="quickstart" class="mkt-section-alt py-20 sm:py-24">
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <div class="text-center max-w-3xl mx-auto">
-      <h2 class="font-display text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
-        Up and running in minutes
-      </h2>
-      <p class="mt-4 text-lg mkt-text-muted">
-        One Docker command starts the full stack. Or hit the REST API, or follow
-        the web UI after the wizard detects your local models.
-      </p>
-    </div>
+<Section id="quickstart" tone="alt" focal container="max-w-7xl">
+  <SectionHeader
+    title="Up and running in minutes"
+    lede="One Docker command starts the full stack. Or call the REST API, or follow the web UI after the wizard detects your local models."
+  />
 
-    <div class="mt-12 max-w-3xl mx-auto">
+    <div class="mt-12 max-w-3xl">
       <div
         class="mkt-tablist flex"
         role="tablist"
@@ -106,20 +102,14 @@ curl -X POST http://localhost:8080/api/v1/query \\
             class={`relative ${i === 0 ? "" : "hidden"}`}
           >
             <div class="mkt-code-showcase rounded-b-2xl border border-t-0 p-4 sm:p-6 overflow-x-auto">
-              <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p class="text-sm mkt-text-secondary">{tab.summary}</p>
-                <span class="mkt-badge inline-flex w-fit items-center rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
-                  {tab.label}
-                </span>
-              </div>
+              <p class="mb-4 text-sm mkt-text-secondary">{tab.summary}</p>
               <Code code={tab.code} lang={tab.lang} title={tab.title} />
             </div>
           </div>
         ))
       }
     </div>
-  </div>
-</section>
+</Section>
 
 <script>
   const setupQuickStartTabs = () => {

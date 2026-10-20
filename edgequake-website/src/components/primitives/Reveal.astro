@@ -1,0 +1,24 @@
+---
+/**
+ * Reveal — scroll-entrance wrapper (SPEC-170 REQ-170-05/12). Replaces the dead
+ * FadeIn. Animates opacity+transform only (compositor) → never shifts layout.
+ * Progressive enhancement: visible until `<html>` is marked `reveal-ready`
+ * (set pre-paint when JS is on); fully visible under reduced-motion / no-JS.
+ * The IntersectionObserver that toggles `.is-visible` lives in MarketingLayout.
+ */
+interface Props {
+  /** Stagger delay in ms (applied via CSS var). */
+  delay?: number;
+  class?: string;
+  /** Rendered element tag. */
+  as?: string;
+}
+
+const { delay = 0, class: className = "", as = "div" } = Astro.props;
+const Tag = as as keyof HTMLElementTagNameMap;
+const style = delay ? `--reveal-delay:${delay}ms` : undefined;
+---
+
+<Tag class:list={["reveal", className]} style={style} data-reveal>
+  <slot />
+</Tag>

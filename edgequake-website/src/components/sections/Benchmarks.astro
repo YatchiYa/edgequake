@@ -1,65 +1,47 @@
 ---
 /**
- * Honest Acc vs LightRAG (SPEC-001), plus historical micro-bench disclosure.
+ * Benchmarks — focal #2 (SPEC-170). Honest Acc vs LightRAG. Composes primitives;
+ * keeps the honest "no win when CI includes zero" framing (trust asset).
  */
+import Section from "../primitives/Section.astro";
+import SectionHeader from "../primitives/SectionHeader.astro";
+
 const headlineStats = [
-  { value: "0.824", label: "EdgeQuake Acc (medical-mid)" },
-  { value: "0.802", label: "LightRAG Acc (same pack)" },
+  { value: "0.824", label: "EdgeQuake Acc, medical-mid" },
+  { value: "0.802", label: "LightRAG Acc, same pack" },
   { value: "Tie", label: "95% CI includes zero" },
-  { value: "82 ms", label: "Warm query p50 (cached)" },
+  { value: "82 ms", label: "warm query p50, cached" },
 ];
 
 const rows = [
-  {
-    metric: "Answer accuracy (Acc)",
-    eq: "0.8240",
-    lr: "0.8016",
-    note: "Statistical tie",
-  },
-  {
-    metric: "Evidence recall",
-    eq: "0.923",
-    lr: "0.969",
-    note: "LightRAG ahead",
-  },
-  {
-    metric: "Warm query p50",
-    eq: "82 ms",
-    lr: "993 ms",
-    note: "EdgeQuake faster when cached",
-  },
+  { metric: "Answer accuracy (Acc)", eq: "0.8240", lr: "0.8016", note: "Statistical tie" },
+  { metric: "Evidence recall", eq: "0.923", lr: "0.969", note: "LightRAG ahead" },
+  { metric: "Warm query p50", eq: "82 ms", lr: "993 ms", note: "EdgeQuake faster when cached" },
 ];
 ---
 
-<section class="py-20 sm:py-24">
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <div class="text-center max-w-3xl mx-auto">
-      <h2 class="font-display text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
-        Honest numbers
-      </h2>
-      <p class="mt-4 text-lg mkt-text-muted">
-        Same GraphRAG-Bench medical-mid quality as LightRAG Python — productionised
-        as a Rust binary, Postgres, auth, MCP, and explicit upgrades. We do
-        <strong class="mkt-text-secondary font-semibold">not</strong> claim a
-        statistical win when the interval includes zero.
-      </p>
-    </div>
+<Section focal>
+  <SectionHeader
+    title="Honest numbers"
+    lede="Same GraphRAG-Bench medical-mid quality as LightRAG Python, productionised as a Rust binary with Postgres, auth, MCP, and explicit upgrades. When the confidence interval includes zero, we call it a tie rather than a win."
+  />
 
-    <div class="mt-12 grid grid-cols-2 gap-6 sm:grid-cols-4">
-      {
-        headlineStats.map((s) => (
-          <div class="text-center">
-            <div class="text-3xl font-bold mkt-accent-text font-display">
-              {s.value}
-            </div>
-            <div class="mt-1 text-sm mkt-text-muted">{s.label}</div>
+  <div class="mt-12 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-4">
+    {
+      headlineStats.map((s) => (
+        <div>
+          <div class="font-display text-3xl font-semibold mkt-text [font-variant-numeric:tabular-nums]">
+            {s.value}
           </div>
-        ))
-      }
-    </div>
+          <div class="mt-1 text-sm mkt-text-muted">{s.label}</div>
+        </div>
+      ))
+    }
+  </div>
 
-    <div class="mt-12 overflow-x-auto">
-      <table class="w-full max-w-3xl mx-auto text-left text-sm">
+  <div class="mt-12">
+    <div class="overflow-x-auto">
+      <table class="w-full max-w-3xl text-left text-sm">
         <thead>
           <tr class="mkt-border-subtle border-b">
             <th class="py-3 pr-4 font-semibold mkt-text">Metric</th>
@@ -73,8 +55,12 @@ const rows = [
             rows.map((r) => (
               <tr class="mkt-border-subtle border-b">
                 <td class="py-3 pr-4 mkt-text-secondary">{r.metric}</td>
-                <td class="py-3 pr-4 font-mono mkt-text">{r.eq}</td>
-                <td class="py-3 pr-4 font-mono mkt-text-muted">{r.lr}</td>
+                <td class="py-3 pr-4 font-mono mkt-text [font-variant-numeric:tabular-nums]">
+                  {r.eq}
+                </td>
+                <td class="py-3 pr-4 font-mono mkt-text-muted [font-variant-numeric:tabular-nums]">
+                  {r.lr}
+                </td>
                 <td class="py-3 mkt-text-muted">{r.note}</td>
               </tr>
             ))
@@ -82,33 +68,31 @@ const rows = [
         </tbody>
       </table>
     </div>
-
-    <p class="mt-6 text-center text-sm mkt-text-dim max-w-2xl mx-auto">
-      Pack: medical-mid n=200 on the v0.36.0 cut. Methodology:
-      <a
-        href="/docs/comparisons/eq-vs-lightrag-acc-bench/"
-        class="mkt-accent-text hover:underline">EQ vs LightRAG Acc</a
-      >.
-    </p>
-
-    <details class="mt-8">
-      <summary
-        class="text-center text-xs mkt-text-dim cursor-pointer hover:mkt-text transition-colors select-none"
-      >
-        Historical ingestion micro-bench (EdgeQuake 0.7.0) ▾
-      </summary>
-      <div
-        class="mt-3 mx-auto max-w-2xl text-xs mkt-text-dim rounded-lg border mkt-border p-4 space-y-1"
-      >
-        <p>
-          Older directional comparison on 100 Wikipedia articles (~50k tokens),
-          Apple M3 Pro: EdgeQuake ingestion throughput ~10× LightRAG Python on
-          that hardware and set. Not a substitute for Acc or your workload.
-        </p>
-        <p class="pt-1 italic">
-          Prefer the Acc table above for quality claims.
-        </p>
-      </div>
-    </details>
   </div>
-</section>
+
+  <p class="mt-6 text-sm mkt-text-dim max-w-2xl">
+    Pack: medical-mid, n=200, on the v0.36.0 cut. Methodology:
+    <a href="/docs/comparisons/eq-vs-lightrag-acc-bench/" class="mkt-accent-text hover:underline"
+      >EQ vs LightRAG Acc</a
+    >.
+  </p>
+
+  <details class="mt-8 max-w-2xl">
+    <summary
+      class="text-xs mkt-text-dim cursor-pointer hover:mkt-text transition-colors select-none"
+    >
+      Historical ingestion micro-bench (EdgeQuake 0.7.0)
+    </summary>
+    <div
+      class="mt-3 text-xs mkt-text-dim rounded-lg border mkt-border p-4 space-y-1"
+    >
+      <p>
+        An older directional comparison on 100 Wikipedia articles (~50k tokens),
+        Apple M3 Pro: EdgeQuake ingestion throughput ran roughly 10× LightRAG
+        Python on that hardware and set. It is not a substitute for Acc or your
+        own workload.
+      </p>
+      <p class="pt-1 italic">Prefer the Acc table above for quality claims.</p>
+    </div>
+  </details>
+</Section>

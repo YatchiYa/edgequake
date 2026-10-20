@@ -1,0 +1,82 @@
+---
+/**
+ * Showcase — product-forward (SPEC-170 REQ-170-21). Real screenshots from
+ * demo.edgequake.com. Intrinsic image dims → no CLS. frontend-design skill:
+ * plain-sentence captions (no middots), restrained motion.
+ */
+import ProductShot from "../primitives/ProductShot.astro";
+import Section from "../primitives/Section.astro";
+import SectionHeader from "../primitives/SectionHeader.astro";
+
+const stats = [
+  { value: "15", label: "documents" },
+  { value: "13,200", label: "entities" },
+  { value: "12,023", label: "relationships" },
+  { value: "591", label: "chunks" },
+];
+
+const supporting = [
+  {
+    base: "showcase-dashboard",
+    alt: "EdgeQuake dashboard showing document, entity, relationship, and chunk counts",
+    caption: "The dashboard keeps live counts for the whole corpus.",
+  },
+  {
+    base: "showcase-query",
+    alt: "EdgeQuake query console with six retrieval modes",
+    caption: "Query returns answers with the sources they came from.",
+  },
+];
+---
+
+<Section tone="alt" focal container="max-w-7xl">
+  <SectionHeader
+    title="Your documents, as a living graph"
+    lede="This is the public demo at demo.edgequake.com, with entities and relationships pulled from real PDFs that you can explore right in the browser."
+  />
+
+  <figure class="mkt-frame mkt-frame-raised mt-12">
+    <div class="mkt-frame-bar">
+      <span class="mkt-frame-dot"></span>
+      <span class="mkt-frame-dot"></span>
+      <span class="mkt-frame-dot"></span>
+      <span class="ml-3 truncate text-xs mkt-text-muted">
+        demo.edgequake.com/graph
+      </span>
+    </div>
+    <ProductShot
+      base="product-graph"
+      alt="EdgeQuake knowledge graph: a dense network of color-coded entities connected by relationships"
+      width={2000}
+      height={1250}
+    />
+  </figure>
+
+  <dl class="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-xl border mkt-border sm:grid-cols-4">
+    {
+      stats.map((s) => (
+        <div class="mkt-bg-card-solid px-5 py-6">
+          <dd class="font-display text-3xl font-semibold mkt-text [font-variant-numeric:tabular-nums]">
+            {s.value}
+          </dd>
+          <dt class="mt-1 text-sm mkt-text-muted">{s.label}</dt>
+        </div>
+      ))
+    }
+  </dl>
+
+  <div class="mt-12 grid gap-10 md:grid-cols-2">
+    {
+      supporting.map((shot) => (
+        <figure>
+          <div class="mkt-frame">
+            <ProductShot base={shot.base} alt={shot.alt} width={1800} height={1125} />
+          </div>
+          <figcaption class="mt-3 text-sm mkt-text-muted">
+            {shot.caption}
+          </figcaption>
+        </figure>
+      ))
+    }
+  </div>
+</Section>

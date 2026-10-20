@@ -1,0 +1,32 @@
+---
+/**
+ * Icon — single renderer for stroke-based line icons (SPEC-170 REQ-170-11).
+ * DIP: callers pass a registry key, never a raw SVG path.
+ */
+import { ICONS, type IconName } from "../data/icons";
+
+interface Props {
+  name: IconName;
+  class?: string;
+  /** Decorative by default; pass a label to expose to assistive tech. */
+  label?: string;
+}
+
+const { name, class: className = "h-5 w-5", label } = Astro.props;
+const d = ICONS[name];
+---
+
+<svg
+  class={className}
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  role={label ? "img" : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : "true"}
+>
+  <path d={d}></path>
+</svg>

@@ -5,13 +5,35 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
+/* ──── Metric-matched font fallbacks (SPEC-170: zero font-swap CLS) ────
+   size-adjust empirically measured (e2e/measure-fonts2.mjs) so the fallback
+   advance width matches the web font → the swap causes no reflow. Type uses
+   explicit line-heights, so advance-matching is the decisive factor.
+   See specs/170-perfect-astra-design/12-design-plan-frontend-skill.md. */
+@font-face {
+  font-family: "Space Grotesk Fallback";
+  src: local("Arial"), local("Helvetica Neue");
+  size-adjust: 103.77%;
+  ascent-override: 92%;
+  descent-override: 24%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "IBM Plex Sans Fallback";
+  src: local("Arial"), local("Helvetica Neue");
+  size-adjust: 101.23%;
+  ascent-override: 102%;
+  descent-override: 27%;
+  line-gap-override: 0%;
+}
+
 /* ──── Starlight Theme Overrides ──── */
 
 /* Dark mode (default) */
 :root {
-  --sl-color-accent-low: #1e3a5f;
-  --sl-color-accent: #3b82f6;
-  --sl-color-accent-high: #93c5fd;
+  --sl-color-accent-low: #232a6b;
+  --sl-color-accent: #5b6cf7;
+  --sl-color-accent-high: #a3adff;
   --sl-color-white: #fafafa;
   --sl-color-gray-1: #eceef2;
   --sl-color-gray-2: #a1a1aa;
@@ -21,16 +43,17 @@
   --sl-color-gray-6: #18181b;
   --sl-color-black: #09090b;
 
-  --sl-font: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --sl-font: "IBM Plex Sans", "IBM Plex Sans Fallback", ui-sans-serif, system-ui,
+    sans-serif;
   --sl-font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "Fira Code",
     monospace;
 }
 
 /* Light mode */
 :root[data-theme="light"] {
-  --sl-color-accent-low: #dbeafe;
-  --sl-color-accent: #2563eb;
-  --sl-color-accent-high: #1e40af;
+  --sl-color-accent-low: #e0e5ff;
+  --sl-color-accent: #4a5bf0;
+  --sl-color-accent-high: #2f399e;
   --sl-color-white: #09090b;
   --sl-color-gray-1: #18181b;
   --sl-color-gray-2: #27272a;
@@ -44,65 +67,87 @@
 
 /* ──── Marketing Theme Variables (dark default, light override) ──── */
 :root {
-  --mkt-bg: #09090b;
-  --mkt-bg-alt: rgba(24, 24, 27, 0.5);
-  --mkt-bg-card: rgba(24, 24, 27, 0.8);
-  --mkt-bg-card-solid: #18181b;
-  --mkt-text: #fafafa;
-  --mkt-text-secondary: #d4d4d8;
-  --mkt-text-muted: #a1a1aa;
-  --mkt-text-dim: #71717a;
-  --mkt-border: #27272a;
-  --mkt-border-subtle: rgba(39, 39, 42, 0.5);
-  --mkt-header-bg: rgba(9, 9, 11, 0.8);
+  --mkt-bg: #0a0c12;
+  --mkt-bg-alt: rgba(18, 21, 29, 0.6);
+  --mkt-bg-card: rgba(18, 21, 29, 0.82);
+  --mkt-bg-card-solid: #12151d;
+  --mkt-text: #eaecef;
+  --mkt-text-secondary: #c7ccd4;
+  --mkt-text-muted: #9ba2ae;
+  --mkt-text-dim: #828996;
+  --mkt-border: #232838;
+  --mkt-border-subtle: rgba(35, 40, 56, 0.6);
+  --mkt-header-bg: rgba(10, 12, 18, 0.8);
   --mkt-hover-bg: rgba(255, 255, 255, 0.05);
-  --mkt-code-bg: #09090b;
+  --mkt-code-bg: #0a0c12;
   --mkt-glow-opacity: 1;
-  --mkt-accent-text: #93c5fd;
-  --mkt-accent-soft: rgba(59, 130, 246, 0.12);
+  --mkt-accent-text: #9db4ff;
+  --mkt-accent-soft: rgba(79, 107, 250, 0.14);
   --mkt-danger-text: #f87171;
   --mkt-danger-soft: rgba(248, 113, 113, 0.12);
   --mkt-success-text: #34d399;
-  --mkt-canvas-edge: rgba(59, 130, 246, 0.15);
-  --mkt-canvas-label: rgba(250, 250, 250, 0.72);
+  --mkt-canvas-edge: rgba(79, 107, 250, 0.15);
+  --mkt-canvas-label: rgba(234, 236, 239, 0.72);
+
+  /* SPEC-170 additions (dark) */
+  --mkt-accent-2: #34d399; /* graph/data secondary — used sparingly */
+  --mkt-accent-2-soft: rgba(52, 211, 153, 0.12);
+  --mkt-ring: rgba(96, 165, 250, 0.45);
+  --mkt-elevate:
+    0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -8px rgba(0, 0, 0, 0.45);
+  --mkt-elevate-hover:
+    0 1px 2px rgba(0, 0, 0, 0.35), 0 20px 48px -10px rgba(0, 0, 0, 0.55);
+  --mkt-grid: rgba(148, 163, 184, 0.08);
+  --mkt-frame-bar: rgba(39, 39, 42, 0.85);
 }
 
 :root[data-theme="light"] {
   --mkt-bg: #ffffff;
-  --mkt-bg-alt: #f4f7fb;
+  --mkt-bg-alt: #f3f6fb;
   --mkt-bg-card: #ffffff;
-  --mkt-bg-card-solid: #fcfdff;
-  --mkt-text: #09090b;
-  --mkt-text-secondary: #27272a;
-  --mkt-text-muted: #52525b;
-  --mkt-text-dim: #71717a;
-  --mkt-border: #e4e4e7;
-  --mkt-border-subtle: #e4e4e7;
+  --mkt-bg-card-solid: #fbfcfe;
+  --mkt-text: #0a0c12;
+  --mkt-text-secondary: #272d3a;
+  --mkt-text-muted: #51586a;
+  --mkt-text-dim: #6b7280;
+  --mkt-border: #e3e7ef;
+  --mkt-border-subtle: #e8ebf1;
   --mkt-header-bg: rgba(255, 255, 255, 0.92);
-  --mkt-hover-bg: rgba(37, 99, 235, 0.08);
-  --mkt-code-bg: #eef4ff;
+  --mkt-hover-bg: rgba(79, 107, 250, 0.08);
+  --mkt-code-bg: #eef2ff;
   --mkt-glow-opacity: 0.4;
-  --mkt-accent-text: #1e40af;
-  --mkt-accent-soft: rgba(37, 99, 235, 0.1);
+  --mkt-accent-text: #3242c8;
+  --mkt-accent-soft: rgba(79, 107, 250, 0.1);
   --mkt-danger-text: #b91c1c;
   --mkt-danger-soft: rgba(220, 38, 38, 0.08);
   --mkt-success-text: #15803d;
-  --mkt-canvas-edge: rgba(37, 99, 235, 0.18);
-  --mkt-canvas-label: rgba(24, 24, 27, 0.7);
+  --mkt-canvas-edge: rgba(79, 107, 250, 0.18);
+  --mkt-canvas-label: rgba(10, 12, 18, 0.7);
+
+  /* SPEC-170 additions (light) */
+  --mkt-accent-2: #047857; /* graph/data secondary — used sparingly */
+  --mkt-accent-2-soft: rgba(5, 150, 105, 0.1);
+  --mkt-ring: rgba(37, 99, 235, 0.4);
+  --mkt-elevate:
+    0 1px 2px rgba(15, 23, 42, 0.06), 0 12px 28px -10px rgba(15, 23, 42, 0.12);
+  --mkt-elevate-hover:
+    0 1px 2px rgba(15, 23, 42, 0.08), 0 20px 44px -12px rgba(15, 23, 42, 0.18);
+  --mkt-grid: rgba(15, 23, 42, 0.05);
+  --mkt-frame-bar: rgba(244, 247, 251, 0.95);
 }
 
 /* ──── Tailwind Theme for Marketing Pages ──── */
 @theme {
-  --color-accent-50: #eff6ff;
-  --color-accent-100: #dbeafe;
-  --color-accent-200: #bfdbfe;
-  --color-accent-300: #93c5fd;
-  --color-accent-400: #60a5fa;
-  --color-accent-500: #3b82f6;
-  --color-accent-600: #2563eb;
-  --color-accent-700: #1d4ed8;
-  --color-accent-800: #1e40af;
-  --color-accent-900: #1e3a5f;
+  --color-accent-50: #eef1ff;
+  --color-accent-100: #e0e5ff;
+  --color-accent-200: #c6ceff;
+  --color-accent-300: #a3adff;
+  --color-accent-400: #7d8bfb;
+  --color-accent-500: #5b6cf7;
+  --color-accent-600: #4a5bf0;
+  --color-accent-700: #3a46c8;
+  --color-accent-800: #2f399e;
+  --color-accent-900: #232a6b;
 
   --color-gray-50: #fafafa;
   --color-gray-100: #f4f4f5;
@@ -116,9 +161,10 @@
   --color-gray-900: #18181b;
   --color-gray-950: #09090b;
 
-  --font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Source Serif 4", "Iowan Old Style", "Palatino Linotype",
-    Palatino, Georgia, serif;
+  --font-sans: "IBM Plex Sans", "IBM Plex Sans Fallback", ui-sans-serif,
+    system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif,
+    system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "Fira Code",
     monospace;
 }
@@ -234,11 +280,20 @@
     min-width: 0;
     border: 1px solid var(--mkt-border);
     background: var(--mkt-bg-card);
-    box-shadow: 0 24px 64px rgba(9, 9, 11, 0.08);
+    border-radius: 0.875rem;
+    box-shadow: var(--mkt-elevate);
+    transition:
+      transform 200ms ease,
+      box-shadow 200ms ease,
+      border-color 200ms ease,
+      background-color 200ms ease;
   }
 
   .mkt-card:hover {
     background: var(--mkt-bg-card-solid);
+    border-color: color-mix(in srgb, var(--sl-color-accent) 35%, var(--mkt-border));
+    box-shadow: var(--mkt-elevate-hover);
+    transform: translateY(-2px);
   }
 
   .mkt-section-alt {
@@ -363,5 +418,119 @@
   :root[data-theme] .main-pane {
     background:
       linear-gradient(180deg, color-mix(in srgb, var(--sl-color-black) 100%, transparent), color-mix(in srgb, var(--sl-color-black) 100%, transparent));
+  }
+
+  /* ──── SPEC-170: band rhythm, texture, frame, secondary accent ──── */
+  .mkt-band {
+    padding-block: clamp(4rem, 8vh, 6rem);
+  }
+
+  .mkt-band-focal {
+    padding-block: clamp(5rem, 10vh, 7.5rem);
+  }
+
+  .mkt-accent-2-text {
+    color: var(--mkt-accent-2);
+  }
+
+  .mkt-accent-2-surface {
+    background: var(--mkt-accent-2-soft);
+    color: var(--mkt-accent-2);
+  }
+
+  /* Faint "engineered" grid texture; purely decorative (aria-hidden host). */
+  .mkt-grid-bg {
+    background-image:
+      linear-gradient(to right, var(--mkt-grid) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--mkt-grid) 1px, transparent 1px);
+    background-size: 56px 56px;
+    -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 0%, #000 40%, transparent 85%);
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 0%, #000 40%, transparent 85%);
+  }
+
+  /* Lightweight browser-chrome frame for product screenshots. */
+  .mkt-frame {
+    border: 1px solid var(--mkt-border);
+    border-radius: 0.875rem;
+    background: var(--mkt-bg-card-solid);
+    box-shadow: var(--mkt-elevate);
+    overflow: hidden;
+  }
+
+  /* The hero graph is the page's one bold element — deeper elevation + ring. */
+  .mkt-frame-raised {
+    border-radius: 1rem;
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.25),
+      0 40px 80px -24px rgba(0, 0, 0, 0.55),
+      0 0 0 1px color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
+  }
+
+  .mkt-frame-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.625rem 0.875rem;
+    background: var(--mkt-frame-bar);
+    border-bottom: 1px solid var(--mkt-border);
+  }
+
+  .mkt-frame-dot {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 9999px;
+    background: var(--mkt-text-dim);
+    opacity: 0.55;
+  }
+
+  .mkt-elevate {
+    box-shadow: var(--mkt-elevate);
+  }
+
+  /* Theme-aware product screenshots: show the shot that matches the site theme.
+     Both occupy identical boxes (same intrinsic dims) → no CLS on theme switch. */
+  .theme-shot-light {
+    display: none;
+  }
+  :root[data-theme="light"] .theme-shot-dark {
+    display: none;
+  }
+  :root[data-theme="light"] .theme-shot-light {
+    display: block;
+  }
+}
+
+/* ──── SPEC-170: scroll-reveal primitive (compositor-only → never shifts layout) ──── */
+@layer utilities {
+  .reveal {
+    opacity: 0;
+    transform: translateY(14px);
+    transition:
+      opacity 560ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+    will-change: opacity, transform;
+  }
+
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* No-JS / pre-hydration safety: if the observer never runs, show content. */
+  .no-js .reveal,
+  html:not(.reveal-ready) .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal,
+    .reveal.is-visible {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+    }
   }
 }

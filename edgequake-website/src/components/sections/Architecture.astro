@@ -1,24 +1,19 @@
 ---
 /**
- * Architecture section — System pipeline diagram.
- * Ported from _archive/architecture.tsx (inline SVG)
+ * Architecture section — System pipeline diagram (SPEC-170: Section shell).
  */
+import Section from "../primitives/Section.astro";
+import SectionHeader from "../primitives/SectionHeader.astro";
 ---
 
-<section class="mkt-section-alt py-20 sm:py-24">
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <div class="text-center max-w-3xl mx-auto">
-      <h2 class="font-display text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
-        From files to answers with sources
-      </h2>
-      <p class="mt-4 text-lg mkt-text-muted">
-        Ingest once. Keep structure and lineage in PostgreSQL (pgvector + graph
-        tables). Serve six retrieval modes from the same store.
-      </p>
-    </div>
+<Section tone="base" container="max-w-7xl">
+  <SectionHeader
+    title="From files to answers with sources"
+    lede="Ingest once. Keep structure and lineage in PostgreSQL with pgvector and graph tables. Serve six retrieval modes from the same store."
+  />
 
-    <div class="mt-12 flex justify-center">
-      <div class="mkt-card w-full max-w-4xl rounded-xl p-4 sm:p-8">
+  <div class="mt-12 flex justify-center">
+      <div class="mkt-card w-full max-w-4xl p-4 sm:p-8">
 
         <!-- Mobile pipeline: vertical steps (visible on xs/sm only) -->
         <div class="sm:hidden">
@@ -237,10 +232,9 @@
 
         <p class="mt-6 text-sm leading-relaxed mkt-text-muted">
           Ingest once, keep structure and lineage in Postgres, then serve
-          multiple retrieval modes from a storage layer built for production —
-          not a prototype glue stack.
+          multiple retrieval modes from a storage layer built for production
+          rather than a prototype glue stack.
         </p>
       </div>
-    </div>
   </div>
-</section>
+</Section>

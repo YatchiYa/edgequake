@@ -1,27 +1,38 @@
 ---
 /**
- * Solution — current product capabilities in plain English.
+ * Solution — current product capabilities. frontend-design skill: capability
+ * rows (not a card kit), icons encode category, no fade-up chrome, no eyebrow.
  */
-const features = [
+import Icon from "../primitives/Icon.astro";
+import Section from "../primitives/Section.astro";
+import SectionHeader from "../primitives/SectionHeader.astro";
+import type { IconName } from "../data/icons";
+
+const features: {
+  icon: IconName;
+  title: string;
+  description: string;
+  href: string;
+}[] = [
   {
     icon: "brain",
-    title: "Knowledge graph on Postgres",
+    title: "A knowledge graph on Postgres",
     description:
-      "Entities and relationships live in ordinary PostgreSQL tables with pgvector. Apache AGE is optional — product images work without it.",
+      "Entities and relationships live in ordinary PostgreSQL tables with pgvector. Apache AGE is optional — product images run without it.",
     href: "/docs/architecture/",
   },
   {
     icon: "users",
     title: "Members, invites, and magic links",
     description:
-      "Invite teammates, set roles, suspend accounts, and issue one-time sign-in or password-reset links — without wiring SMTP first.",
+      "Invite teammates, set roles, suspend accounts, and issue one-time sign-in or reset links — without wiring SMTP first.",
     href: "/tutorial/14-members-and-invites/",
   },
   {
     icon: "shield",
     title: "SSO and workspace isolation",
     description:
-      "OIDC / Keycloak sign-in and Postgres row-level security keep tenants and workspaces separated across UI, API, and MCP.",
+      "OIDC and Keycloak sign-in plus Postgres row-level security keep tenants and workspaces separated across the UI, API, and MCP.",
     href: "/docs/security/",
   },
   {
@@ -35,82 +46,49 @@ const features = [
     icon: "file-text",
     title: "PDF vision and manuscripts",
     description:
-      "Turn hard PDFs into usable markdown — tables, layouts, and scanned or handwritten pages with a dedicated manuscript path.",
+      "Turn hard PDFs into usable markdown — tables, layouts, and scanned or handwritten pages through a dedicated manuscript path.",
     href: "/docs/tutorials/pdf-ingestion/",
   },
   {
     icon: "plug",
     title: "Any LLM, encrypted connections",
     description:
-      "OpenAI, Anthropic, Mistral, Gemini, or Ollama / LM Studio. Save connections with encrypted keys; the wizard finds local servers.",
+      "OpenAI, Anthropic, Mistral, Gemini, or Ollama and LM Studio. Save connections with encrypted keys; the wizard finds local servers.",
     href: "/docs/providers/",
   },
 ];
-
-const iconPaths: Record<string, string> = {
-  brain:
-    "M12 2a7 7 0 017 7c0 2-1 3.5-2.5 4.5M12 2a7 7 0 00-7 7c0 2 1 3.5 2.5 4.5M12 2v4M8.5 8.5L12 12l3.5-3.5M12 22v-8M7 14.5C5 15.5 4 17 4 19a3 3 0 003 3h10a3 3 0 003-3c0-2-1-3.5-3-4.5",
-  users:
-    "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
-  shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
-  bot: "M12 8V4H8M2 14h2M20 14h2M15 13a3 3 0 11-6 0v3h6v-3zM12 20v2M9 13h.01M15 13h.01M6 10a6 6 0 1112 0v4a6 6 0 01-12 0v-4z",
-  "file-text":
-    "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
-  plug: "M12 22v-5M9 8V2M15 8V2M6 8h12v5a6 6 0 01-12 0V8z",
-};
 ---
 
-<section class="py-20 sm:py-24">
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <div class="text-center max-w-3xl mx-auto">
-      <h2 class="font-display text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
-        Built for real Graph-RAG work
-      </h2>
-      <p class="mt-4 text-lg mkt-text-muted">
-        Ingest once, keep structure and lineage, then answer with the retrieval
-        mode that fits the question — on a stack you can run and upgrade.
-      </p>
-    </div>
+<Section>
+  <SectionHeader
+    title="Built for real Graph-RAG work"
+    lede="Ingest once, keep structure and lineage, then answer with the retrieval mode that fits the question — on a stack you can run and upgrade."
+  />
 
-    <div class="mt-14 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-      {
-        features.map((f) => (
-          <a
-            href={f.href}
-            class="group block border-b border-transparent pb-6 transition-colors hover:border-accent-500/40"
-          >
-            <div class="mkt-accent-surface mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg">
-              <svg
-                class="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                viewBox="0 0 24 24"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d={iconPaths[f.icon]} />
-              </svg>
-            </div>
-            <h3 class="text-lg font-semibold mkt-text group-hover:mkt-accent-text transition-colors">
-              {f.title}
-            </h3>
-            <p class="mt-2 text-sm mkt-text-muted leading-relaxed">
-              {f.description}
-            </p>
-          </a>
-        ))
-      }
-    </div>
-
-    <p class="mt-12 text-center text-sm mkt-text-dim">
-      Also: explicit
-      <code class="mkt-text-secondary">edgequake migrate</code> upgrades, hybrid
-      cloud LLM + local embeddings, and side-by-side PDF citations.
-      <a href="/docs/whats-new/" class="mkt-accent-text hover:underline ml-1"
-        >See what’s new →</a
-      >
-    </p>
+  <div class="mt-12 grid gap-x-12 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
+    {
+      features.map((f) => (
+        <a
+          href={f.href}
+          class="group block focus-visible:outline-2 focus-visible:outline-offset-4"
+        >
+          <span class="mkt-accent-surface inline-flex h-9 w-9 items-center justify-center rounded-md">
+            <Icon name={f.icon} class="h-[18px] w-[18px]" />
+          </span>
+          <h3 class="mt-4 text-base font-semibold mkt-text group-hover:mkt-accent-text transition-colors">
+            {f.title}
+          </h3>
+          <p class="mt-2 text-sm mkt-text-muted leading-relaxed">
+            {f.description}
+          </p>
+        </a>
+      ))
+    }
   </div>
-</section>
+
+  <p class="mt-10 text-sm mkt-text-muted">
+    Plus explicit <code class="mkt-text-secondary">edgequake migrate</code>
+    upgrades, hybrid cloud LLM with local embeddings, and side-by-side PDF
+    citations. <a href="/docs/whats-new/" class="mkt-accent-text hover:underline">See what’s new</a>.
+  </p>
+</Section>

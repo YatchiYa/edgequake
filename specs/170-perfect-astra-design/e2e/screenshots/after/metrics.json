@@ -1,0 +1,353 @@
+{
+  "label": "after",
+  "baseURL": "http://localhost:4321",
+  "when": "2026-10-20T01:40:17.311Z",
+  "pages": [
+    {
+      "viewport": 1440,
+      "theme": "light",
+      "cls": 0.001,
+      "shifts": [
+        {
+          "value": 0.0006,
+          "sources": [
+            "#text"
+          ]
+        }
+      ],
+      "bodyScrollWidth": 1440,
+      "horizontalOverflowPx": 0,
+      "overflowers": [],
+      "sectionCount": 9,
+      "sections": [
+        {
+          "h": 621,
+          "top": 73
+        },
+        {
+          "h": 944,
+          "top": 694
+        },
+        {
+          "h": 933,
+          "top": 1638
+        },
+        {
+          "h": 1633,
+          "top": 2571
+        },
+        {
+          "h": 898,
+          "top": 4204
+        },
+        {
+          "h": 813,
+          "top": 5102
+        },
+        {
+          "h": 897,
+          "top": 5915
+        },
+        {
+          "h": 895,
+          "top": 6812
+        },
+        {
+          "h": 659,
+          "top": 7707
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-desktop-light.png"
+    },
+    {
+      "viewport": 1440,
+      "theme": "dark",
+      "cls": 0.0007,
+      "shifts": [
+        {
+          "value": 0.0006,
+          "sources": [
+            "#text"
+          ]
+        }
+      ],
+      "bodyScrollWidth": 1440,
+      "horizontalOverflowPx": 0,
+      "overflowers": [],
+      "sectionCount": 9,
+      "sections": [
+        {
+          "h": 621,
+          "top": 73
+        },
+        {
+          "h": 944,
+          "top": 694
+        },
+        {
+          "h": 933,
+          "top": 1638
+        },
+        {
+          "h": 1633,
+          "top": 2571
+        },
+        {
+          "h": 898,
+          "top": 4204
+        },
+        {
+          "h": 813,
+          "top": 5102
+        },
+        {
+          "h": 897,
+          "top": 5915
+        },
+        {
+          "h": 895,
+          "top": 6812
+        },
+        {
+          "h": 659,
+          "top": 7707
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-desktop-dark.png"
+    },
+    {
+      "viewport": 390,
+      "theme": "light",
+      "cls": 0.0007,
+      "shifts": [
+        {
+          "value": 0.0007,
+          "sources": [
+            "#text"
+          ]
+        }
+      ],
+      "bodyScrollWidth": 390,
+      "horizontalOverflowPx": 0,
+      "overflowers": [
+        {
+          "tag": "div.absolute.left-1/2",
+          "right": 575,
+          "left": -185
+        },
+        {
+          "tag": "code",
+          "right": 953,
+          "left": 41
+        },
+        {
+          "tag": "div.ec-line",
+          "right": 953,
+          "left": 41
+        },
+        {
+          "tag": "div.code",
+          "right": 953,
+          "left": 41
+        },
+        {
+          "tag": "div.ec-line",
+          "right": 953,
+          "left": 41
+        },
+        {
+          "tag": "div.code",
+          "right": 953,
+          "left": 41
+        },
+        {
+          "tag": "span",
+          "right": 894,
+          "left": 151
+        },
+        {
+          "tag": "span",
+          "right": 902,
+          "left": 894
+        },
+        {
+          "tag": "span",
+          "right": 911,
+          "left": 902
+        },
+        {
+          "tag": "span",
+          "right": 920,
+          "left": 911
+        },
+        {
+          "tag": "span",
+          "right": 937,
+          "left": 920
+        },
+        {
+          "tag": "div.ec-line",
+          "right": 953,
+          "left": 41
+        }
+      ],
+      "sectionCount": 9,
+      "sections": [
+        {
+          "h": 1045,
+          "top": 73
+        },
+        {
+          "h": 2235,
+          "top": 1118
+        },
+        {
+          "h": 2080,
+          "top": 3353
+        },
+        {
+          "h": 1540,
+          "top": 5433
+        },
+        {
+          "h": 959,
+          "top": 6973
+        },
+        {
+          "h": 1068,
+          "top": 7933
+        },
+        {
+          "h": 937,
+          "top": 9001
+        },
+        {
+          "h": 2209,
+          "top": 9938
+        },
+        {
+          "h": 1216,
+          "top": 12148
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-mobile-light.png"
+    },
+    {
+      "viewport": 390,
+      "theme": "dark",
+      "cls": 0.001,
+      "shifts": [
+        {
+          "value": 0.0007,
+          "sources": [
+            "#text"
+          ]
+        }
+      ],
+      "bodyScrollWidth": 390,
+      "horizontalOverflowPx": 0,
+      "overflowers": [
+        {
+          "tag": "div.absolute.left-1/2",
+          "right": 575,
+          "left": -185
+        },
+        {
+          "tag": "code",
+          "right": 953,
+          "left": 41
+        },
+        {
+          "tag": "div.ec-line",
+          "right": 953,
+          "left": 41
+        },
+        {
+          "tag": "div.code",
+          "right": 953,
+          "left": 41
+        },
+        {
+          "tag": "div.ec-line",
+          "right": 953,
+          "left": 41
+        },
+        {
+          "tag": "div.code",
+          "right": 953,
+          "left": 41
+        },
+        {
+          "tag": "span",
+          "right": 894,
+          "left": 151
+        },
+        {
+          "tag": "span",
+          "right": 902,
+          "left": 894
+        },
+        {
+          "tag": "span",
+          "right": 911,
+          "left": 902
+        },
+        {
+          "tag": "span",
+          "right": 920,
+          "left": 911
+        },
+        {
+          "tag": "span",
+          "right": 937,
+          "left": 920
+        },
+        {
+          "tag": "div.ec-line",
+          "right": 953,
+          "left": 41
+        }
+      ],
+      "sectionCount": 9,
+      "sections": [
+        {
+          "h": 1045,
+          "top": 73
+        },
+        {
+          "h": 2235,
+          "top": 1118
+        },
+        {
+          "h": 2080,
+          "top": 3353
+        },
+        {
+          "h": 1540,
+          "top": 5433
+        },
+        {
+          "h": 959,
+          "top": 6973
+        },
+        {
+          "h": 1068,
+          "top": 7933
+        },
+        {
+          "h": 937,
+          "top": 9001
+        },
+        {
+          "h": 2209,
+          "top": 9938
+        },
+        {
+          "h": 1216,
+          "top": 12148
+        }
+      ],
+      "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-mobile-dark.png"
+    }
+  ]
+}

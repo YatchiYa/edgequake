@@ -1,0 +1,38 @@
+---
+/**
+ * Section — band wrapper owning vertical rhythm + tone (SPEC-170 REQ-170-24).
+ * OCP: new emphasis via `tone`/`focal` props, not by editing callers.
+ */
+interface Props {
+  id?: string;
+  /** "base" | "alt" background tone (alternating rhythm). */
+  tone?: "base" | "alt";
+  /** Focal bands get taller padding. */
+  focal?: boolean;
+  class?: string;
+  /** Inner container max width utility (Tailwind). */
+  container?: string;
+}
+
+const {
+  id,
+  tone = "base",
+  focal = false,
+  class: className = "",
+  container = "max-w-6xl",
+} = Astro.props;
+---
+
+<section
+  id={id}
+  class:list={[
+    focal ? "mkt-band-focal" : "mkt-band",
+    tone === "alt" && "mkt-section-alt",
+    "relative",
+    className,
+  ]}
+>
+  <div class:list={["mx-auto px-4 sm:px-6 lg:px-8", container]}>
+    <slot />
+  </div>
+</section>

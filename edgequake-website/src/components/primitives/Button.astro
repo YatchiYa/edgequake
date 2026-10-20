@@ -1,0 +1,53 @@
+---
+/**
+ * Button — single source for CTA styling (SPEC-170 DRY).
+ * OCP: variants extend via prop, not by re-styling per section.
+ */
+import Icon from "./Icon.astro";
+import type { IconName } from "../data/icons";
+
+interface Props {
+  href: string;
+  variant?: "primary" | "outline" | "ghost";
+  size?: "md" | "lg";
+  icon?: IconName;
+  iconRight?: IconName;
+  external?: boolean;
+  class?: string;
+}
+
+const {
+  href,
+  variant = "primary",
+  size = "md",
+  icon,
+  iconRight,
+  external = false,
+  class: className = "",
+} = Astro.props;
+
+const base =
+  "inline-flex items-center justify-center gap-2 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2";
+const sizes = {
+  md: "px-5 py-2.5 text-sm rounded-lg",
+  lg: "px-6 py-3 text-sm rounded-lg",
+};
+const variants = {
+  primary: "bg-accent-600 text-white hover:bg-accent-500 shadow-sm",
+  outline: "mkt-outline-button",
+  ghost: "mkt-text-secondary hover:mkt-text mkt-hover-bg",
+};
+const rel = external ? "noopener noreferrer" : undefined;
+const target = external ? "_blank" : undefined;
+---
+
+<a
+  href={href}
+  rel={rel}
+  target={target}
+  class:list={[base, sizes[size], variants[variant], className]}
+>
+  {icon && <Icon name={icon} class="h-4 w-4" />}
+  <span><slot /></span>
+  {iconRight && <Icon name={iconRight} class="h-4 w-4" />}
+</a>

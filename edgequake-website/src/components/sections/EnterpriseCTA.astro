@@ -1,14 +1,20 @@
 ---
 /**
- * Enterprise CTA section.
- * Content ported from _archive/enterprise-cta.tsx
+ * EnterpriseCTA — conversion close. frontend-design skill: no eyebrow, no arrow
+ * glyph, no "WORD — fragment" trust strings, restrained motion, left-aligned.
  */
-const pillars = [
+import Button from "../primitives/Button.astro";
+import Icon from "../primitives/Icon.astro";
+import Section from "../primitives/Section.astro";
+import SectionHeader from "../primitives/SectionHeader.astro";
+import type { IconName } from "../data/icons";
+
+const pillars: { icon: IconName; title: string; description: string }[] = [
   {
     icon: "shield",
     title: "SSO, members, and audit",
     description:
-      "OIDC / Keycloak, invitations, role guards, and audit trails for teams that need real access boundaries.",
+      "OIDC and Keycloak, invitations, role guards, and audit trails for teams that need real access boundaries.",
   },
   {
     icon: "headphones",
@@ -20,96 +26,49 @@ const pillars = [
     icon: "settings",
     title: "Your models, your network",
     description:
-      "Private LLMs, encrypted connections, on-prem Docker/K8s, and explicit migrate — no forced cloud path.",
+      "Private LLMs, encrypted connections, on-prem Docker or Kubernetes, and explicit migrations — no forced cloud path.",
   },
 ];
 
-const iconPaths: Record<string, string> = {
-  shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
-  headphones:
-    "M3 18v-6a9 9 0 0118 0v6M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3z",
-  settings:
-    "M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z",
-};
+const trust = [
+  "Apache-2.0 licensed, so there is no lock-in",
+  "Runs on-premise, so your data stays on your network",
+  "Works without any cloud embedding dependency",
+];
 ---
 
-<section class="mkt-section-alt py-20 sm:py-24">
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <div class="text-center max-w-3xl mx-auto">
-      <h2 class="font-display text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
-        Taking Graph-RAG into production?
-      </h2>
-      <p class="mt-4 text-lg mkt-text-muted">
-        Internal platforms, customer copilots, and regulated installs that need
-        more than a demo stack.
-      </p>
-    </div>
+<Section tone="alt">
+  <SectionHeader
+    title="Taking Graph-RAG into production?"
+    lede="Internal platforms, customer copilots, and regulated installs that need more than a demo stack."
+  />
 
-    <div class="mt-12 grid gap-8 sm:grid-cols-3">
+  <div class="mt-12 grid gap-10 sm:grid-cols-3">
+    {
+      pillars.map((p) => (
+        <div>
+          <span class="mkt-accent-surface inline-flex h-11 w-11 items-center justify-center rounded-lg">
+            <Icon name={p.icon} class="h-[22px] w-[22px]" />
+          </span>
+          <h3 class="mt-4 text-base font-semibold mkt-text">{p.title}</h3>
+          <p class="mt-2 text-sm mkt-text-muted leading-relaxed">{p.description}</p>
+        </div>
+      ))
+    }
+  </div>
+
+  <div class="mt-12 flex flex-col items-start gap-6">
+    <Button href="/contact/" variant="primary" size="lg">Talk to the team</Button>
+
+    <ul class="flex flex-col gap-2 text-sm mkt-text-muted">
       {
-        pillars.map((p) => (
-          <div class="text-center">
-            <div class="mkt-accent-surface mx-auto mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl">
-              <svg
-                class="h-6 w-6"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                viewBox="0 0 24 24"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d={iconPaths[p.icon]} />
-              </svg>
-            </div>
-            <h3 class="text-lg font-semibold mkt-text">{p.title}</h3>
-            <p class="mt-2 text-sm mkt-text-muted">{p.description}</p>
-          </div>
+        trust.map((t) => (
+          <li class="flex items-center gap-2">
+            <Icon name="check" class="h-4 w-4 mkt-success-text" />
+            {t}
+          </li>
         ))
       }
-    </div>
-
-    <div class="mt-12 text-center">
-      <a
-        href="/contact/"
-        class="inline-flex items-center rounded-lg bg-accent-600 px-8 py-3 text-sm font-semibold text-white hover:bg-accent-500 transition-colors shadow-lg shadow-accent-600/25"
-      >
-        Talk to the Team
-        <svg
-          class="ml-2 h-4 w-4"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          viewBox="0 0 24 24"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
-        </svg>
-      </a>
-
-      <!-- Trust anchors -->
-      <div class="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs mkt-text-dim">
-        <span class="flex items-center gap-1.5">
-          <svg class="h-3.5 w-3.5 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
-          </svg>
-          Apache 2.0 — no license lock-in
-        </span>
-        <span class="flex items-center gap-1.5">
-          <svg class="h-3.5 w-3.5 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
-          </svg>
-          On-premise deployment — your data stays on your network
-        </span>
-        <span class="flex items-center gap-1.5">
-          <svg class="h-3.5 w-3.5 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
-          </svg>
-          No cloud embedding dependency required
-        </span>
-      </div>
-    </div>
+    </ul>
   </div>
-</section>
+</Section>

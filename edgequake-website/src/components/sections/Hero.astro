@@ -1,153 +1,118 @@
 ---
 /**
- * Hero — above-the-fold marketing.
+ * Hero — focal (SPEC-170 + frontend-design skill). The knowledge graph is the
+ * one bold element; the headline is monochrome (no single-phrase color accent);
+ * no arrow glyphs on buttons; facts separated by hairline dividers, not middots.
  */
 import { formatStars, getGithubStats } from "../../lib/github";
-import { getProductVersion } from "../../lib/product";
+import { getProductVersion, QUERY_MODES } from "../../lib/product";
+import Button from "../primitives/Button.astro";
+import ProductShot from "../primitives/ProductShot.astro";
+import Reveal from "../primitives/Reveal.astro";
 
 const { stars } = await getGithubStats();
 const formattedStars = formatStars(stars);
 const version = getProductVersion();
+const modeCount = QUERY_MODES.length;
 
-const badges = [
-  "Apache 2.0",
-  `${formattedStars} GitHub stars`,
-  `v${version}`,
+const facts = [
+  { v: "Apache-2.0", l: "licensed" },
+  { v: formattedStars, l: "GitHub stars" },
+  { v: `v${version}`, l: "current release" },
+  { v: `${modeCount}`, l: "retrieval modes" },
 ];
 ---
 
-<section class="relative overflow-hidden py-16 sm:py-24">
-  <div class="absolute inset-0 -z-10 opacity-60">
+<section class="relative mkt-band-focal overflow-clip">
+  <div class="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+    <div class="mkt-grid-bg absolute inset-x-0 top-0 h-[560px]"></div>
     <div
-      class="absolute top-0 right-0 h-96 w-96 translate-x-1/4 -translate-y-1/4 rounded-full bg-accent-500/8 blur-[100px]"
+      class="absolute right-[-160px] top-[-140px] h-[480px] w-[720px] rounded-full bg-accent-500/12 blur-[130px]"
     >
     </div>
   </div>
 
   <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <div class="grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
-      <div class="text-center lg:text-left">
-        <p
-          class="text-sm font-semibold tracking-[0.2em] uppercase mkt-accent-text"
-        >
-          EdgeQuake
-        </p>
-
-        <div
-          class="mt-4 flex flex-wrap items-center justify-center gap-2 lg:justify-start"
-        >
-          {
-            badges.map((b) => (
-              <span class="mkt-badge inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium">
-                {b}
-              </span>
-            ))
-          }
-        </div>
-
+    <div class="grid items-center gap-12 lg:grid-cols-[0.92fr_1.08fr] lg:gap-16">
+      <div>
         <h1
-          class="mt-6 font-display text-4xl font-bold tracking-tight mkt-text sm:text-5xl lg:text-[3.25rem] lg:leading-[1.1]"
+          class="font-display font-bold tracking-[-0.03em] mkt-text text-[clamp(2.6rem,1.9rem+3vw,3.9rem)] leading-[1.02]"
         >
-          Graph-RAG.{" "}
-          <span class="mkt-accent-text">Built to ship.</span>
+          Graph-RAG.<br />Built to ship.
         </h1>
 
         <p
-          class="mt-6 max-w-xl text-lg leading-relaxed mkt-text-muted mx-auto lg:mx-0"
+          class="mt-6 max-w-xl text-lg leading-relaxed mkt-text-secondary"
         >
-          Upload PDFs and text. EdgeQuake builds a knowledge graph in
-          PostgreSQL, then answers questions with sources — using any LLM, cloud
-          or fully local.
+          EdgeQuake reads your PDFs and text, builds a knowledge graph in
+          PostgreSQL, and answers questions with sources, on any LLM, cloud or
+          fully local.
         </p>
 
-        <div
-          class="mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start"
-        >
-          <a
-            href="#quickstart"
-            class="inline-flex items-center rounded-lg bg-accent-600 px-6 py-3 text-sm font-semibold text-white hover:bg-accent-500 transition-colors"
-          >
-            Get started
-            <svg
-              class="ml-2 h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
-            </svg>
-          </a>
-          <a
-            href="/tutorial/"
-            class="mkt-outline-button px-6 py-3 text-sm font-semibold"
-          >
-            Picture tour
-          </a>
-          <a
+        <div class="mt-9 flex flex-wrap items-center gap-3">
+          <Button href="#quickstart" variant="primary" size="lg">Get started</Button>
+          <Button href="/tutorial/" variant="outline" size="lg">See the picture tour</Button>
+          <Button
             href="https://github.com/raphaelmansuy/edgequake"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="mkt-outline-button px-6 py-3 text-sm font-semibold"
+            variant="ghost"
+            size="lg"
+            external
           >
-            <svg
-              class="mr-2 h-5 w-5"
-              fill="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
+            <svg class="mr-2 h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"
               ></path>
             </svg>
-            GitHub · {formattedStars}
-          </a>
+            {formattedStars} stars
+          </Button>
         </div>
 
-        <div
-          class="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm md:justify-start lg:justify-start"
+        <!-- Spec strip: facts separated by hairline rules (structural, not middots) -->
+        <dl
+          class="mt-10 grid grid-cols-2 gap-x-6 gap-y-5 border-t mkt-border-subtle pt-6 sm:flex sm:flex-wrap sm:items-center"
         >
-          <a
-            href="/docs/getting-started/"
-            class="mkt-text-muted hover:mkt-text transition-colors"
-          >
-            Docs
-          </a>
-          <a
-            href="/demo/"
-            class="mkt-text-muted hover:mkt-text transition-colors"
-          >
-            Try the demo
-          </a>
-          <a
-            href="/docs/whats-new/"
-            class="mkt-text-muted hover:mkt-text transition-colors"
-          >
-            What’s new in v{version}
-          </a>
-        </div>
+          {
+            facts.map((f, i) => (
+              <div
+                class:list={[
+                  "flex flex-col gap-0.5 sm:pr-6",
+                  i < facts.length - 1 && "sm:border-r mkt-border-subtle",
+                ]}
+              >
+                <dt class="text-xs mkt-text-dim">{f.l}</dt>
+                <dd class="font-display text-lg font-medium mkt-text [font-variant-numeric:tabular-nums]">
+                  {f.v}
+                </dd>
+              </div>
+            ))
+          }
+        </dl>
       </div>
 
-      <div class="relative mx-auto w-full max-w-xl lg:max-w-none">
-        <figure class="mkt-hero-shot overflow-hidden rounded-xl border mkt-border shadow-xl">
-          <img
-            src="/product-hero.png"
-            alt="EdgeQuake web UI: documents, knowledge graph, and grounded answers"
-            width="1200"
-            height="750"
-            class="h-auto w-full object-cover object-top"
-            loading="eager"
-            decoding="async"
+      <!-- The one bold element: the real knowledge graph -->
+      <Reveal class="relative mx-auto w-full max-w-2xl lg:max-w-none">
+        <figure class="mkt-frame mkt-frame-raised">
+          <div class="mkt-frame-bar">
+            <span class="mkt-frame-dot"></span>
+            <span class="mkt-frame-dot"></span>
+            <span class="mkt-frame-dot"></span>
+            <span class="ml-3 truncate text-xs mkt-text-muted">
+              demo.edgequake.com/graph
+            </span>
+          </div>
+          <ProductShot
+            base="product-graph"
+            alt="EdgeQuake knowledge graph: 13,200 entities and 12,023 relationships extracted from uploaded documents"
+            width={2000}
+            height={1250}
+            eager
           />
         </figure>
-        <p class="mt-3 text-center text-xs mkt-text-dim lg:text-left">
-          Six retrieval modes: naive, local, global, hybrid, mix, and bypass.
+        <p class="mt-4 text-sm mkt-text-muted">
+          The public demo at demo.edgequake.com is a real graph you can open and
+          explore, with {QUERY_MODES.join(", ")} retrieval over one Postgres store.
         </p>
-      </div>
+      </Reveal>
     </div>
   </div>
 </section>

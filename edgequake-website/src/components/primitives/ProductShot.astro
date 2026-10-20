@@ -1,0 +1,43 @@
+---
+/**
+ * ProductShot — theme-aware product screenshot (SPEC-170). Renders a dark and a
+ * light variant; CSS shows the one matching the site theme. Both carry intrinsic
+ * width/height (identical) → no image CLS and no CLS on theme switch.
+ * WebP with PNG fallback. SRP: image only; callers apply the frame.
+ */
+interface Props {
+  /** Base asset name, e.g. "product-graph" → product-graph-dark/-light .webp/.png */
+  base: string;
+  alt: string;
+  width: number;
+  height: number;
+  eager?: boolean;
+  class?: string;
+}
+
+const { base, alt, width, height, eager = false, class: className = "" } =
+  Astro.props;
+
+const loading = eager ? "eager" : "lazy";
+const common = {
+  alt,
+  width,
+  height,
+  decoding: "async" as const,
+  class: `block h-auto w-full ${className}`,
+};
+---
+
+<picture class="theme-shot-dark">
+  <source srcset={`/${base}-dark.webp`} type="image/webp" />
+  <img
+    src={`/${base}-dark.png`}
+    {...common}
+    loading={loading}
+    fetchpriority={eager ? "high" : undefined}
+  />
+</picture>
+<picture class="theme-shot-light">
+  <source srcset={`/${base}-light.webp`} type="image/webp" />
+  <img src={`/${base}-light.png`} {...common} loading="lazy" />
+</picture>

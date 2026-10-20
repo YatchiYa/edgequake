@@ -1,0 +1,82 @@
+[
+  {
+    "name": "dashboard-light",
+    "path": "/",
+    "login": false,
+    "theme": "__variable_8adcd2 __variable_46451f h-full overflow-hidden light",
+    "canvas": 0,
+    "file": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/product/dashboard-light.png"
+  },
+  {
+    "name": "documents-light",
+    "path": "/documents",
+    "login": false,
+    "theme": "__variable_8adcd2 __variable_46451f h-full overflow-hidden light",
+    "canvas": 0,
+    "file": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/product/documents-light.png"
+  },
+  {
+    "name": "query-light",
+    "path": "/query",
+    "login": false,
+    "theme": "__variable_8adcd2 __variable_46451f h-full overflow-hidden light",
+    "canvas": 0,
+    "file": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/product/query-light.png"
+  },
+  {
+    "name": "members-light",
+    "path": "/members",
+    "login": false,
+    "theme": "__variable_8adcd2 __variable_46451f h-full overflow-hidden light",
+    "canvas": 0,
+    "file": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/product/members-light.png"
+  },
+  {
+    "name": "graph-light",
+    "path": "/graph",
+    "login": false,
+    "theme": "__variable_8adcd2 __variable_46451f h-full overflow-hidden light",
+    "canvas": 9,
+    "file": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/product/graph-light.png"
+  },
+  {
+    "name": "dashboard-dark",
+    "path": "/",
+    "login": false,
+    "theme": "__variable_8adcd2 __variable_46451f h-full overflow-hidden dark",
+    "canvas": 0,
+    "file": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/product/dashboard-dark.png"
+  },
+  {
+    "name": "documents-dark",
+    "path": "/documents",
+    "login": false,
+    "theme": "__variable_8adcd2 __variable_46451f h-full overflow-hidden dark",
+    "canvas": 0,
+    "file": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/product/documents-dark.png"
+  },
+  {
+    "name": "query-dark",
+    "path": "/query",
+    "login": false,
+    "theme": "__variable_8adcd2 __variable_46451f h-full overflow-hidden dark",
+    "canvas": 0,
+    "file": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/product/query-dark.png"
+  },
+  {
+    "name": "members-dark",
+    "path": "/members",
+    "login": false,
+    "theme": "__variable_8adcd2 __variable_46451f h-full overflow-hidden dark",
+    "canvas": 0,
+    "file": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/product/members-dark.png"
+  },
+  {
+    "name": "graph-dark",
+    "path": "/graph",
+    "login": false,
+    "theme": "__variable_8adcd2 __variable_46451f h-full overflow-hidden dark",
+    "canvas": 9,
+    "file": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/product/graph-dark.png"
+  }
+]

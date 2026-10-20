@@ -1,8 +1,10 @@
 ---
 /**
- * Ecosystem — product surfaces + crate map at current version.
+ * Ecosystem — product surfaces + crate map (SPEC-170: composes primitives).
  */
 import { getProductVersion } from "../../lib/product";
+import Section from "../primitives/Section.astro";
+import SectionHeader from "../primitives/SectionHeader.astro";
 
 const version = getProductVersion();
 
@@ -30,87 +32,49 @@ const surfaces = [
 ];
 
 const crates = [
-  {
-    name: "edgequake-core",
-    description: "Pipeline orchestration, workspaces, and top-level APIs.",
-  },
-  {
-    name: "edgequake-api",
-    description: "HTTP service: ingest, query, health, streaming, auth.",
-  },
-  {
-    name: "edgequake-storage",
-    description: "KV, vector, and graph storage on PostgreSQL + pgvector.",
-  },
-  {
-    name: "edgequake-pipeline",
-    description: "Chunking, extraction, relationships, and graph build.",
-  },
-  {
-    name: "edgequake-query",
-    description: "naive, local, global, hybrid, mix, and bypass retrieval.",
-  },
-  {
-    name: "edgequake-llm",
-    description: "Provider adapters: OpenAI, Ollama, Anthropic, mocks, and more.",
-  },
-  {
-    name: "edgequake-pdf",
-    description: "PDF → markdown, vision layouts, manuscript pages.",
-  },
-  {
-    name: "edgequake-auth",
-    description: "Sessions, SSO (OIDC), members, invitations, magic links.",
-  },
+  { name: "edgequake-core", description: "Pipeline orchestration, workspaces, and top-level APIs." },
+  { name: "edgequake-api", description: "HTTP service: ingest, query, health, streaming, auth." },
+  { name: "edgequake-storage", description: "KV, vector, and graph storage on PostgreSQL + pgvector." },
+  { name: "edgequake-pipeline", description: "Chunking, extraction, relationships, and graph build." },
+  { name: "edgequake-query", description: "naive, local, global, hybrid, mix, and bypass retrieval." },
+  { name: "edgequake-llm", description: "Provider adapters: OpenAI, Ollama, Anthropic, mocks, and more." },
+  { name: "edgequake-pdf", description: "PDF to markdown, vision layouts, manuscript pages." },
+  { name: "edgequake-auth", description: "Sessions, SSO (OIDC), members, invitations, magic links." },
 ];
 ---
 
-<section class="py-20 sm:py-24">
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <div class="text-center max-w-3xl mx-auto">
-      <h2 class="font-display text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
-        One product, clear surfaces
-      </h2>
-      <p class="mt-4 text-lg mkt-text-muted">
-        Run the full stack from Docker, or embed the Rust crates. Everything
-        below ships as <span class="mkt-text-secondary">v{version}</span>.
-      </p>
-    </div>
+<Section>
+  <SectionHeader
+    title="One product, clear surfaces"
+    lede={`Run the full stack from Docker, or embed the Rust crates. Everything below ships as v${version}.`}
+  />
 
-    <div class="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-      {
-        surfaces.map((s) => (
-          <div>
-            <h3 class="text-base font-semibold mkt-text">{s.name}</h3>
-            <p class="mt-2 text-sm mkt-text-muted leading-relaxed">
-              {s.description}
-            </p>
-          </div>
-        ))
-      }
-    </div>
-
-    <h3
-      class="mt-16 text-center text-sm font-semibold uppercase tracking-[0.14em] mkt-text-dim"
-    >
-      Rust workspace crates
-    </h3>
-    <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {
-        crates.map((c) => (
-          <div class="rounded-lg border mkt-border p-4">
-            <div class="flex items-center justify-between gap-2">
-              <h4 class="text-sm font-semibold font-mono mkt-accent-text">
-                {c.name}
-              </h4>
-              <span class="text-xs mkt-text-dim shrink-0">v{version}</span>
-            </div>
-            <p class="mt-2 text-xs mkt-text-muted leading-relaxed">
-              {c.description}
-            </p>
-          </div>
-        ))
-      }
-    </div>
+  <div class="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+    {
+      surfaces.map((s) => (
+        <div>
+          <h3 class="text-base font-semibold mkt-text">{s.name}</h3>
+          <p class="mt-2 text-sm mkt-text-muted leading-relaxed">
+            {s.description}
+          </p>
+        </div>
+      ))
+    }
   </div>
-</section>
+
+  <h3 class="mt-16 text-base font-semibold mkt-text">Rust workspace crates</h3>
+  <div class="mt-5 grid gap-px overflow-hidden rounded-xl border mkt-border sm:grid-cols-2">
+    {
+      crates.map((c) => (
+        <div class="mkt-bg-card-solid p-4">
+          <h4 class="text-sm font-semibold font-mono mkt-accent-text">
+            {c.name}
+          </h4>
+          <p class="mt-1.5 text-xs mkt-text-muted leading-relaxed">
+            {c.description}
+          </p>
+        </div>
+      ))
+    }
+  </div>
+</Section>

@@ -1,5 +1,4 @@
 ---
-import FadeIn from "../components/FadeIn.astro";
 import Architecture from "../components/sections/Architecture.astro";
 import Benchmarks from "../components/sections/Benchmarks.astro";
 import Ecosystem from "../components/sections/Ecosystem.astro";
@@ -7,6 +6,7 @@ import EnterpriseCTA from "../components/sections/EnterpriseCTA.astro";
 import Hero from "../components/sections/Hero.astro";
 import Problem from "../components/sections/Problem.astro";
 import QuickStart from "../components/sections/QuickStart.astro";
+import Showcase from "../components/sections/Showcase.astro";
 import Solution from "../components/sections/Solution.astro";
 import MarketingLayout from "../layouts/MarketingLayout.astro";
 ---
@@ -16,25 +16,12 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
   description="Graph-RAG in Rust: one binary, one Postgres, any LLM. Knowledge graphs, six retrieval modes, members and SSO, MCP for agents. Apache 2.0."
 >
   <Hero />
-  <FadeIn>
-    <Problem />
-  </FadeIn>
-  <FadeIn delay={100}>
-    <Solution />
-  </FadeIn>
-  <FadeIn>
-    <Architecture />
-  </FadeIn>
-  <FadeIn delay={100}>
-    <Benchmarks />
-  </FadeIn>
-  <FadeIn>
-    <QuickStart />
-  </FadeIn>
-  <FadeIn delay={100}>
-    <Ecosystem />
-  </FadeIn>
-  <FadeIn>
-    <EnterpriseCTA />
-  </FadeIn>
+  <Problem />
+  <Solution />
+  <Showcase />
+  <Architecture />
+  <Benchmarks />
+  <QuickStart />
+  <Ecosystem />
+  <EnterpriseCTA />
 </MarketingLayout>
