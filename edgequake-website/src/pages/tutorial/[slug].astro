@@ -26,7 +26,7 @@ const meta = TUTORIAL_CHAPTERS.find((c) => c.slug === slug);
   <article class="py-12 sm:py-16">
     <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
       <nav class="text-sm mkt-text-dim mb-8 flex flex-wrap gap-x-3 gap-y-1">
-        <a href="/tutorial/" class="mkt-accent-text hover:underline">Contents</a>
+        <a href="/tutorial/" class="mkt-inline-link">Contents</a>
         {
           prev && (
             <a
@@ -73,7 +73,7 @@ const meta = TUTORIAL_CHAPTERS.find((c) => c.slug === slug);
           prev ? (
             <a
               href={`/tutorial/${prev.slug}/`}
-              class="mkt-accent-text hover:underline"
+              class="mkt-inline-link"
             >
               ← {prev.title}
             </a>
@@ -88,12 +88,12 @@ const meta = TUTORIAL_CHAPTERS.find((c) => c.slug === slug);
           next ? (
             <a
               href={`/tutorial/${next.slug}/`}
-              class="mkt-accent-text hover:underline"
+              class="mkt-inline-link"
             >
               {next.title} →
             </a>
           ) : (
-            <a href="/demo/" class="mkt-accent-text hover:underline">
+            <a href="/demo/" class="mkt-inline-link">
               Try the demo →
             </a>
           )

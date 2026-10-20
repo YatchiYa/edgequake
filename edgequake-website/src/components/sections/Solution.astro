@@ -1,7 +1,7 @@
 ---
 /**
- * Solution — current product capabilities. frontend-design skill: capability
- * rows (not a card kit), icons encode category, no fade-up chrome, no eyebrow.
+ * Solution — product capabilities as a readable grid (SPEC-170 + ui-ux-pro-max).
+ * Titles are the only links; body copy stays muted with no underline noise.
  */
 import Icon from "../primitives/Icon.astro";
 import Section from "../primitives/Section.astro";
@@ -65,30 +65,31 @@ const features: {
     lede="Ingest once, keep structure and lineage, then answer with the retrieval mode that fits the question — on a stack you can run and upgrade."
   />
 
-  <div class="mt-12 grid gap-x-12 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
+  <ul class="mt-12 grid list-none gap-x-10 gap-y-0 p-0 m-0 sm:grid-cols-2 lg:grid-cols-3">
     {
       features.map((f) => (
-        <a
-          href={f.href}
-          class="group block focus-visible:outline-2 focus-visible:outline-offset-4"
-        >
-          <span class="mkt-accent-surface inline-flex h-9 w-9 items-center justify-center rounded-md">
-            <Icon name={f.icon} class="h-[18px] w-[18px]" />
+        <li class="min-w-0 border-t mkt-border-subtle py-7">
+          <span class="mkt-accent-surface inline-flex h-11 w-11 items-center justify-center rounded-lg">
+            <Icon name={f.icon} class="h-5 w-5" />
           </span>
-          <h3 class="mt-4 text-base font-semibold mkt-text group-hover:mkt-accent-text transition-colors">
-            {f.title}
+          <h3 class="mt-4 text-base font-semibold leading-snug">
+            <a
+              href={f.href}
+              class="mkt-text transition-colors duration-200 hover:mkt-accent-text focus-visible:outline-2 focus-visible:outline-offset-4"
+            >
+              {f.title}
+            </a>
           </h3>
-          <p class="mt-2 text-sm mkt-text-muted leading-relaxed">
-            {f.description}
-          </p>
-        </a>
+          <p class="mt-2 text-sm leading-relaxed mkt-text-muted">{f.description}</p>
+        </li>
       ))
     }
-  </div>
+  </ul>
 
-  <p class="mt-10 text-sm mkt-text-muted">
-    Plus explicit <code class="mkt-text-secondary">edgequake migrate</code>
-    upgrades, hybrid cloud LLM with local embeddings, and side-by-side PDF
-    citations. <a href="/docs/whats-new/" class="mkt-accent-text hover:underline">See what’s new</a>.
+  <p class="mt-12 text-sm mkt-text-muted leading-relaxed max-w-3xl">
+    Plus explicit{" "}
+    <code class="mkt-text-secondary">edgequake migrate</code> upgrades, hybrid
+    cloud LLM with local embeddings, and side-by-side PDF citations.{" "}
+    <a href="/docs/whats-new/" class="mkt-inline-link">See what’s new</a>.
   </p>
 </Section>
