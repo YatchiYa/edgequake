@@ -1,91 +1,77 @@
 ---
 import { Code } from "@astrojs/starlight/components";
+import { getProductVersion } from "../../lib/product";
 
-/**
- * QuickStart section — Tabbed code examples.
- * Content ported from _archive/quickstart.tsx
- */
+const version = getProductVersion();
+
 const tabs = [
-  {
-    id: "rust",
-    label: "Rust",
-    title: "src/main.rs",
-    lang: "rust",
-    summary:
-      "Create an EdgeQuake client, ingest text, and run a graph-aware query.",
-    code: `use edgequake::EdgeQuake;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let eq = EdgeQuake::new("postgres://localhost/edgequake").await?;
-    let document = "GraphRAG combines vector search with knowledge graphs to deliver more accurate and contextual retrieval.";
-
-    // Ingest documents
-    eq.insert(document).await?;
-
-    // Query with different modes
-    let result = eq.query("How does GraphRAG work?").await?;
-    println!("{}", result);
-
-    Ok(())
-}`,
-  },
   {
     id: "docker",
     label: "Docker",
-    title: "One command — no build step",
+    title: "quickstart.sh",
     lang: "bash",
     summary:
-      "Paste one line into any terminal that has Docker. Three prebuilt images start in ~30 seconds.",
-    code: `# No git clone, no Rust, no Node.js needed
-curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/docker-compose.quickstart.yml \\
-  | docker compose -f - up -d
+      "One script pulls the stack. No git clone, Rust, or Node.js required.",
+    code: `# Needs Docker only
+curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/quickstart.sh | sh
 
-# Web UI  → http://localhost:3000
-# API     → http://localhost:8080
-# Swagger → http://localhost:8080/swagger-ui
+# Pin this release:
+# EDGEQUAKE_VERSION=${version} sh quickstart.sh
 
-# Use OpenAI instead of the default Ollama provider:
-# EDGEQUAKE_LLM_PROVIDER=openai OPENAI_API_KEY=sk-... \\
-#   docker compose -f docker-compose.quickstart.yml up -d
+# Then open http://localhost:3000
+# API / Swagger → http://localhost:8080 · /swagger-ui
 
-# Or with make (after git clone):
-# make stack`,
+# Headless / CI examples:
+# quickstart.sh --yes --provider ollama
+# EDGEQUAKE_LLM_PROVIDER=openai OPENAI_API_KEY=sk-... quickstart.sh --yes`,
   },
   {
     id: "api",
     label: "REST API",
     title: "api-demo.sh",
     lang: "bash",
-    summary:
-      "Post a document, then send a retrieval request to the query endpoint.",
-    code: `# Insert a document
-curl -X POST http://localhost:8080/api/v1/documents \\
-  -H "Content-Type: application/json" \\
-  -d '{"content": "EdgeQuake is a Graph-RAG framework."}'
+    summary: "Upload a PDF, then ask a hybrid query.",
+    code: `# Upload a document
+curl -X POST http://localhost:8080/api/v1/documents/upload \\
+  -F "file=@your-document.pdf"
 
 # Query the knowledge graph
 curl -X POST http://localhost:8080/api/v1/query \\
   -H "Content-Type: application/json" \\
-  -d '{"query": "What is EdgeQuake?", "mode": "hybrid"}'`,
+  -d '{"query": "What are the main concepts?", "mode": "hybrid"}'`,
+  },
+  {
+    id: "ui",
+    label: "Web UI",
+    title: "First five minutes",
+    lang: "bash",
+    summary:
+      "After quickstart, walk the UI — or follow the picture tour with screenshots.",
+    code: `# 1. Open http://localhost:3000
+# 2. Finish the connection wizard (Ollama / cloud key)
+# 3. Drop a PDF on Documents
+# 4. Ask a question on Query (try hybrid)
+# 5. Open Knowledge Graph to see entities
+
+# Picture tour with screenshots:
+# https://edgequake.com/tutorial/`,
   },
 ];
 ---
 
-<section class="mkt-section-alt py-20 sm:py-24">
+<section id="quickstart" class="mkt-section-alt py-20 sm:py-24">
   <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
     <div class="text-center max-w-3xl mx-auto">
-      <h2 class="text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
-        Up and Running in 30 Seconds
+      <h2 class="font-display text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
+        Up and running in minutes
       </h2>
       <p class="mt-4 text-lg mkt-text-muted">
-        One Docker command pulls the full stack — no build step, no toolchain needed.
-        Or embed the Rust crate, hit the REST API, or clone and build from source.
+        One Docker command starts the full stack. Or hit the REST API, or follow
+        the web UI after the wizard detects your local models.
       </p>
     </div>
 
     <div class="mt-12 max-w-3xl mx-auto">
-      <!-- Tabs -->
       <div
         class="mkt-tablist flex"
         role="tablist"
@@ -109,7 +95,6 @@ curl -X POST http://localhost:8080/api/v1/query \\
         }
       </div>
 
-      <!-- Code panels -->
       {
         tabs.map((tab, i) => (
           <div
@@ -123,7 +108,7 @@ curl -X POST http://localhost:8080/api/v1/query \\
             <div class="mkt-code-showcase rounded-b-2xl border border-t-0 p-4 sm:p-6 overflow-x-auto">
               <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p class="text-sm mkt-text-secondary">{tab.summary}</p>
-                <span class="mkt-badge inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
+                <span class="mkt-badge inline-flex w-fit items-center rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
                   {tab.label}
                 </span>
               </div>

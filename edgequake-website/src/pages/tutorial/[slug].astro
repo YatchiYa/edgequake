@@ -1,0 +1,163 @@
+---
+import { getCollection, render } from "astro:content";
+import MarketingLayout from "../../layouts/MarketingLayout.astro";
+import { adjacentChapters, TUTORIAL_CHAPTERS } from "../../lib/tutorial";
+
+export async function getStaticPaths() {
+  const entries = await getCollection("tutorial");
+  return entries.map((entry) => ({
+    params: { slug: entry.id.replace(/\.md$/, "") },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const slug = entry.id.replace(/\.md$/, "");
+const { prev, next } = adjacentChapters(slug);
+const meta = TUTORIAL_CHAPTERS.find((c) => c.slug === slug);
+---
+
+<MarketingLayout
+  title={`${entry.data.title} — Picture Tour`}
+  description={entry.data.description ??
+    `EdgeQuake picture tour: ${entry.data.title}`}
+>
+  <article class="py-12 sm:py-16">
+    <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+      <nav class="text-sm mkt-text-dim mb-8 flex flex-wrap gap-x-3 gap-y-1">
+        <a href="/tutorial/" class="mkt-accent-text hover:underline">Contents</a>
+        {
+          prev && (
+            <a
+              href={`/tutorial/${prev.slug}/`}
+              class="hover:mkt-text transition-colors"
+            >
+              ← {prev.title}
+            </a>
+          )
+        }
+        {
+          next && (
+            <a
+              href={`/tutorial/${next.slug}/`}
+              class="hover:mkt-text transition-colors"
+            >
+              {next.title} →
+            </a>
+          )
+        }
+      </nav>
+
+      {
+        meta?.image && (
+          <figure class="mb-10 overflow-hidden rounded-xl border mkt-border">
+            <img
+              src={`/tutorial/${meta.image}`}
+              alt=""
+              class="w-full h-auto"
+              loading="eager"
+            />
+          </figure>
+        )
+      }
+
+      <div class="tutorial-prose">
+        <Content />
+      </div>
+
+      <nav
+        class="mt-12 flex flex-wrap items-center justify-between gap-4 border-t mkt-border pt-8 text-sm"
+      >
+        {
+          prev ? (
+            <a
+              href={`/tutorial/${prev.slug}/`}
+              class="mkt-accent-text hover:underline"
+            >
+              ← {prev.title}
+            </a>
+          ) : (
+            <span />
+          )
+        }
+        <a href="/tutorial/" class="mkt-text-muted hover:mkt-text"
+          >All chapters</a
+        >
+        {
+          next ? (
+            <a
+              href={`/tutorial/${next.slug}/`}
+              class="mkt-accent-text hover:underline"
+            >
+              {next.title} →
+            </a>
+          ) : (
+            <a href="/demo/" class="mkt-accent-text hover:underline">
+              Try the demo →
+            </a>
+          )
+        }
+      </nav>
+    </div>
+  </article>
+</MarketingLayout>
+
+<style is:global>
+  .tutorial-prose {
+    line-height: 1.7;
+  }
+  .tutorial-prose h1 {
+    font-family: var(--font-display, "Source Serif 4", Georgia, serif);
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 1rem;
+    color: var(--mkt-text);
+  }
+  .tutorial-prose h2 {
+    font-family: var(--font-display, "Source Serif 4", Georgia, serif);
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+    color: var(--mkt-text);
+  }
+  .tutorial-prose p,
+  .tutorial-prose li {
+    color: var(--mkt-text-muted);
+    margin-bottom: 0.85rem;
+  }
+  .tutorial-prose ul,
+  .tutorial-prose ol {
+    padding-left: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .tutorial-prose ul {
+    list-style: disc;
+  }
+  .tutorial-prose ol {
+    list-style: decimal;
+  }
+  .tutorial-prose a {
+    color: var(--mkt-accent-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .tutorial-prose strong {
+    color: var(--mkt-text);
+    font-weight: 600;
+  }
+  .tutorial-prose img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.75rem;
+    border: 1px solid var(--mkt-border);
+    margin: 1.25rem 0;
+  }
+  .tutorial-prose code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--mkt-text-secondary);
+  }
+</style>

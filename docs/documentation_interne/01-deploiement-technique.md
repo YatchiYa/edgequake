@@ -1,6 +1,6 @@
 ---
-title: EdgeQuake — Documentation technique de déploiement
-description: Dossier client v0.26.4 : architecture de déploiement, prérequis, Docker Compose, configuration réseau et sécurité, activation de l'authentification et recette (historique).
+title: "EdgeQuake — Documentation technique de déploiement"
+description: "Dossier client v0.26.4 : architecture de déploiement, prérequis, Docker Compose, configuration réseau et sécurité, activation de l'authentification et recette (historique)."
 ---
 
 > Historical note, 2026-08-30 (produit v0.26.4); may not match current code.

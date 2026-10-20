@@ -140,9 +140,11 @@ export default defineConfig({
         {
           label: "Resources",
           items: [
+            { slug: "docs/whats-new" },
             { slug: "docs/cookbook" },
             { slug: "docs/faq" },
             { slug: "docs/features" },
+            { slug: "docs/changelog" },
           ],
         },
       ],

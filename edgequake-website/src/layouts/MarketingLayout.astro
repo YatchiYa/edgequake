@@ -1,6 +1,7 @@
 ---
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
+import { getProductVersion } from "../lib/product";
 import "../styles/global.css";
 
 interface Props {
@@ -13,11 +14,13 @@ interface Props {
 
 const {
   title,
-  description = "Graph-RAG framework built in Rust. Turn documents into knowledge graphs, query with 6 modes, 10x faster than Python RAG.",
+  description = "Graph-RAG in Rust: one binary, one Postgres, any LLM. Turn documents into a knowledge graph and get answers with sources.",
   ogImage = "/og-default.png",
-  ogImageAlt = "EdgeQuake – Graph-RAG Built to Ship. Dark card showing the EdgeQuake logo, hero headline, knowledge graph visualization, and three metric badges: 10x faster, 6 query modes, PostgreSQL.",
+  ogImageAlt = "EdgeQuake – Graph-RAG Built to Ship. Upload documents, explore the knowledge graph, ask grounded questions.",
   noIndex = false,
 } = Astro.props;
+
+const productVersion = getProductVersion();
 
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
 const ogImageUrl = new URL(ogImage, Astro.site);
@@ -84,7 +87,7 @@ const schema = {
         height: 630,
         caption: "EdgeQuake Graph-RAG framework social preview",
       },
-      softwareVersion: "0.7.0",
+      softwareVersion: productVersion,
       programmingLanguage: ["Rust", "TypeScript"],
       keywords: "graph-rag, knowledge-graph, rust, llm, postgresql, rag, ai, nlp",
       offers: {
@@ -192,11 +195,11 @@ const schema = {
       set:html={JSON.stringify(schema)}
     />
 
-    <!-- Fonts -->
+    <!-- Fonts: Source Serif 4 (display) + Source Sans 3 (body) + JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap"
       rel="stylesheet"
     />
 

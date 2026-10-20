@@ -51,18 +51,18 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
         </div>
 
         <div class="mkt-card rounded-xl p-8">
-          <h2 class="text-xl font-semibold mkt-text">Multi-Tenant</h2>
+          <h2 class="text-xl font-semibold mkt-text">Multi-tenant + SSO</h2>
           <p class="mt-3 mkt-text-muted">
-            Workspace isolation built into the core. Run multiple teams,
-            clients, or projects on a single deployment with zero knowledge
-            bleed.
+            Postgres row-level security isolates workspaces. Invite members,
+            set roles, and connect Keycloak / OIDC when you need enterprise
+            sign-in.
           </p>
           <ul class="mt-4 space-y-2 text-sm mkt-text-muted">
             <li class="flex items-center gap-2">
-              <span class="mkt-success-text">✓</span> Per-workspace encryption
+              <span class="mkt-success-text">✓</span> Members, invites, magic links
             </li>
             <li class="flex items-center gap-2">
-              <span class="mkt-success-text">✓</span> RBAC-ready architecture
+              <span class="mkt-success-text">✓</span> OIDC / Keycloak SSO
             </li>
             <li class="flex items-center gap-2">
               <span class="mkt-success-text">✓</span> Audit logging

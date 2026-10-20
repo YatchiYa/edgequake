@@ -1,6 +1,6 @@
 ---
 title: Docker deployment verification
-description: Incident note from 2026-02-09: the manual and scripted checks used after the frontend-backend Docker fix, and how to run them on v0.32.2.
+description: "Incident note from 2026-02-09: the manual and scripted checks used after the frontend-backend Docker fix, and how to run them on v0.32.2."
 ---
 
 > Historical note, 2026-02-09; may not match current code. Prefer: [Docker quick reference](DOCKER_QUICK_START.md) · [Troubleshooting](../troubleshooting/common-issues.md)

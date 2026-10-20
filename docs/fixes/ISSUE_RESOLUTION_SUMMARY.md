@@ -1,6 +1,6 @@
 ---
-title: Issue resolution: cannot import documents
-description: Incident note: users posted multipart to the JSON documents endpoint; docs and tests were fixed. Includes the current upload routes (v0.32.2).
+title: "Issue resolution: cannot import documents"
+description: "Incident note: users posted multipart to the JSON documents endpoint; docs and tests were fixed. Includes the current upload routes (v0.32.2)."
 ---
 
 > Historical note, date unknown (pre-v0.32); may not match current code. Prefer: [Upload errors](../troubleshooting/common-issues.md#1-document-upload-errors) · [Upload quick reference](../api-reference/document-upload-quick-reference.md)

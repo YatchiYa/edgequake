@@ -3,7 +3,7 @@ title: "What's new"
 description: "Per-release highlights moved out of the README."
 ---
 
-This page lists the highlights of each release from v0.35.1 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide.
+This page lists the highlights of each release from v0.36.0 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide. A plain-English [picture tour](https://edgequake.com/tutorial/) of the UI is on the marketing site.
 
 ## Schema train at a glance
 
@@ -27,11 +27,28 @@ timeline
     v0.34.0 : 169 pinned
     v0.35.0 : 206
     v0.35.1 : 207
+    v0.36.0 : 214
 ```
 
-The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.35.1.
+The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.36.0.
 
 Run `edgequake migrate` when you move to a release with a higher number. The [upgrading guide](operations/upgrading.md) covers the steps.
+
+### What's new in 0.36.0
+
+Members, invitations, and one-time sign-in / password-reset links (SPEC-169). Schema moves **207 → 214**. Upgrade from 0.35.x runs migrations **208** through **214**.
+
+- **Members screen** (`/members`): directory with search, filters, role changes, suspend/restore, and a roles matrix from `GET /roles`.
+- **Invitations**: create/resend/delete; public accept flow; 7-day single-use tokens (hash stored only).
+- **Magic links**: admin-issued sign-in (15 min) and password-reset (24 h) links; redeem is POST so mail scanners cannot consume them.
+- **Change password** from the user menu; shared `PasswordField` with strength rules.
+- Guards refuse SSO-pinned, suspended, self, and under-ranked targets as documented in the upgrade guide.
+
+SPEC-001 Acc on this cut (medical-mid n=200): EdgeQuake **0.8240** vs LightRAG **0.8016** — statistical tie (95% CI includes 0). EdgeQuake does not claim a win.
+
+Upgrade: **[upgrade-to-0.36.0.md](operations/upgrade-to-0.36.0.md)** ·
+changelog: [CHANGELOG.md](CHANGELOG.md) ·
+UI tour: [Members and invites](https://edgequake.com/tutorial/14-members-and-invites/).
 
 ### What's new in 0.35.1
 

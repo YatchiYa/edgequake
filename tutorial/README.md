@@ -1,6 +1,6 @@
 # Click through EdgeQuake
 
-This is a picture tour of the EdgeQuake website. Every chapter is one screen, written in plain English. The pictures were taken on the public demo at [https://demo.edgequake.com/](https://demo.edgequake.com/). The corner of those pictures says **UI v0.33.0**. This release does not change those screens.
+This is a picture tour of the EdgeQuake website. Every chapter is one screen, written in plain English. The published version lives at **[https://edgequake.com/tutorial/](https://edgequake.com/tutorial/)**. Original pictures were taken on the public demo at [https://demo.edgequake.com/](https://demo.edgequake.com/); Members & invites shots are from the v0.36.0 UI.
 
 Open the demo, sign in with the username and password you were given, and follow the chapters in order. You can also jump to the screen you care about.
 
@@ -39,6 +39,7 @@ A **model** is the language program that reads documents and writes answers. You
 11. [Costs](11-costs.md) — what the model calls have cost.
 12. [API Explorer](12-api-explorer.md) — the same product, as web requests a program can send.
 13. [Settings](13-settings.md) — theme, language, connections, and the switches that change pictures and answers.
+14. [Members and invites](https://edgequake.com/tutorial/14-members-and-invites/) — invite teammates, roles, and one-time sign-in links (v0.36.0).
 
 ## How the pages link
 

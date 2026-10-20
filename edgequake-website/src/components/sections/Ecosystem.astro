@@ -1,56 +1,66 @@
 ---
 /**
- * Ecosystem section — Crate overview grid.
- * Content ported from _archive/ecosystem.tsx
+ * Ecosystem — product surfaces + crate map at current version.
  */
+import { getProductVersion } from "../../lib/product";
+
+const version = getProductVersion();
+
+const surfaces = [
+  {
+    name: "Web UI",
+    description:
+      "Documents, query, knowledge graph, members, connections, and settings in one app.",
+  },
+  {
+    name: "REST + OpenAPI",
+    description:
+      "Ingest, query, stream, and manage workspaces. Swagger at /swagger-ui.",
+  },
+  {
+    name: "MCP",
+    description:
+      "Search, ingest, upload, delete, poll tasks, download docs, and graph images for agents.",
+  },
+  {
+    name: "GHCR images",
+    description:
+      "api, frontend, postgres (pg16/17/18), and keycloak — multi-arch amd64 + arm64.",
+  },
+];
+
 const crates = [
   {
     name: "edgequake-core",
-    version: "0.7.0",
-    description:
-      "Coordinates the pipeline, workspace lifecycle, and top-level APIs used to assemble the full system.",
+    description: "Pipeline orchestration, workspaces, and top-level APIs.",
   },
   {
     name: "edgequake-api",
-    version: "0.7.0",
-    description:
-      "Exposes ingestion, query, health, and streaming endpoints for applications that need a service boundary.",
+    description: "HTTP service: ingest, query, health, streaming, auth.",
   },
   {
     name: "edgequake-storage",
-    version: "0.7.0",
-    description:
-      "Implements unified key-value, vector, and graph storage on top of PostgreSQL and Apache AGE.",
+    description: "KV, vector, and graph storage on PostgreSQL + pgvector.",
   },
   {
     name: "edgequake-pipeline",
-    version: "0.7.0",
-    description:
-      "Handles chunking, extraction, relationship mapping, normalization, and the work required to build graph context from source files.",
+    description: "Chunking, extraction, relationships, and graph build.",
   },
   {
     name: "edgequake-query",
-    version: "0.7.0",
-    description:
-      "Contains the retrieval engine behind local, global, hybrid, naive, mix, and graph-aware querying.",
+    description: "naive, local, global, hybrid, mix, and bypass retrieval.",
   },
   {
     name: "edgequake-llm",
-    version: "0.7.0",
-    description:
-      "Abstracts LLM providers so teams can move between OpenAI, Ollama, LM Studio, and mocks without rewriting the stack.",
+    description: "Provider adapters: OpenAI, Ollama, Anthropic, mocks, and more.",
   },
   {
     name: "edgequake-pdf",
-    version: "0.7.0",
-    description:
-      "Turns PDFs into markdown and structured extraction inputs, including layout-heavy documents and vision-assisted flows.",
+    description: "PDF → markdown, vision layouts, manuscript pages.",
   },
   {
-    name: "edgequake-graph",
-    version: "0.7.0",
-    description:
-      "Provides graph algorithms, traversal, community detection, and entity resolution primitives for graph-aware retrieval.",
+    name: "edgequake-auth",
+    description: "Sessions, SSO (OIDC), members, invitations, magic links.",
   },
 ];
 ---
@@ -58,26 +68,44 @@ const crates = [
 <section class="py-20 sm:py-24">
   <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
     <div class="text-center max-w-3xl mx-auto">
-      <h2 class="text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
-        Modular by Design
+      <h2 class="font-display text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
+        One product, clear surfaces
       </h2>
       <p class="mt-4 text-lg mkt-text-muted">
-        {crates.length} focused crates. Adopt the whole platform or pull in the pieces
-        you need for your own retrieval stack.
+        Run the full stack from Docker, or embed the Rust crates. Everything
+        below ships as <span class="mkt-text-secondary">v{version}</span>.
       </p>
     </div>
 
-    <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+      {
+        surfaces.map((s) => (
+          <div>
+            <h3 class="text-base font-semibold mkt-text">{s.name}</h3>
+            <p class="mt-2 text-sm mkt-text-muted leading-relaxed">
+              {s.description}
+            </p>
+          </div>
+        ))
+      }
+    </div>
+
+    <h3
+      class="mt-16 text-center text-sm font-semibold uppercase tracking-[0.14em] mkt-text-dim"
+    >
+      Rust workspace crates
+    </h3>
+    <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {
         crates.map((c) => (
-          <div class="mkt-card rounded-xl p-5 hover:border-accent-500/30 transition-colors">
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold font-mono mkt-accent-text">
+          <div class="rounded-lg border mkt-border p-4">
+            <div class="flex items-center justify-between gap-2">
+              <h4 class="text-sm font-semibold font-mono mkt-accent-text">
                 {c.name}
-              </h3>
-              <span class="text-xs mkt-text-dim">v{c.version}</span>
+              </h4>
+              <span class="text-xs mkt-text-dim shrink-0">v{version}</span>
             </div>
-            <p class="mt-3 text-xs mkt-text-muted leading-relaxed">
+            <p class="mt-2 text-xs mkt-text-muted leading-relaxed">
               {c.description}
             </p>
           </div>

@@ -1,6 +1,6 @@
 ---
 title: Kotlin SDK
-description: Use the EdgeQuake Kotlin client (io.edgequake:edgequake-sdk-kotlin 0.4.0). JVM 17. Not on Maven Central yet.
+description: "Use the EdgeQuake Kotlin client (io.edgequake:edgequake-sdk-kotlin 0.4.0). JVM 17. Not on Maven Central yet."
 ---
 
 # Kotlin SDK

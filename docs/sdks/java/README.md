@@ -1,6 +1,6 @@
 ---
 title: Java SDK
-description: Use the EdgeQuake Java client (io.edgequake:edgequake-sdk 0.4.0). Requires Java 17. Not on Maven Central yet; install from the monorepo.
+description: "Use the EdgeQuake Java client (io.edgequake:edgequake-sdk 0.4.0). Requires Java 17. Not on Maven Central yet; install from the monorepo."
 ---
 
 # Java SDK

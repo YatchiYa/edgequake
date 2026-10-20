@@ -1,6 +1,7 @@
 ---
 const navLinks = [
   { label: "Docs", href: "/docs/" },
+  { label: "Tutorial", href: "/tutorial/" },
   { label: "Demo", href: "/demo/" },
   { label: "Ecosystem", href: "/ecosystem/" },
   { label: "Enterprise", href: "/enterprise/" },
@@ -8,11 +9,11 @@ const navLinks = [
 
 const pathname = Astro.url.pathname;
 const isActivePath = (href: string) => {
-  if (href === "/docs/") {
-    return pathname.startsWith("/docs/");
+  if (href === "/docs/" || href === "/tutorial/") {
+    return pathname.startsWith(href);
   }
 
-  return pathname === href;
+  return pathname === href || pathname.startsWith(href);
 };
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: Docker setup implementation
-description: Incident note from 2026-02-09: how make docker-up and the frontend Dockerfile were wired, and what has changed since (v0.32.2).
+description: "Incident note from 2026-02-09: how make docker-up and the frontend Dockerfile were wired, and what has changed since (v0.32.2)."
 ---
 
 > Historical note, 2026-02-09. The wiring below is the 2026-02-09 design. For the current stack, read the [Docker quick reference](DOCKER_QUICK_START.md) first.

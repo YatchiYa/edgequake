@@ -1,6 +1,6 @@
 ---
-title: Fix: embedding API validation error
-description: Incident note from 2026-02-10: pipeline embedding error '$.input' is invalid, the empty-string filter fix, and what is verifiable in the pinned edgequake-llm crate today.
+title: "Fix: embedding API validation error"
+description: "Incident note from 2026-02-10: pipeline embedding error '$.input' is invalid, the empty-string filter fix, and what is verifiable in the pinned edgequake-llm crate today."
 ---
 
 > Historical note, 2026-02-10; may not match current code. Prefer: [Troubleshooting](../troubleshooting/common-issues.md) · [Roles](../providers/roles.md)

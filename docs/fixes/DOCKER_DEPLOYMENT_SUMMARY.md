@@ -1,6 +1,6 @@
 ---
 title: Docker deployment summary
-description: Incident note from 2026-02-09: how the frontend got its API URL and how OPENAI_API_KEY reaches the API container in Compose, and what is still true in v0.32.2.
+description: "Incident note from 2026-02-09: how the frontend got its API URL and how OPENAI_API_KEY reaches the API container in Compose, and what is still true in v0.32.2."
 ---
 
 > Historical note, 2026-02-09; may not match current code. Prefer: [Docker quick reference](DOCKER_QUICK_START.md) · [Docker deployment options](../operations/docker-deployment-options.md) · [Troubleshooting](../troubleshooting/common-issues.md)

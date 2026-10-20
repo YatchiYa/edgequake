@@ -1,6 +1,6 @@
 ---
 title: "Integration: Open WebUI"
-description: Connect Open WebUI to EdgeQuake's Ollama-compatible API for a chat UI backed by Graph-RAG. Pins product image 0.32.2 and model edgequake:latest.
+description: "Connect Open WebUI to EdgeQuake's Ollama-compatible API for a chat UI backed by Graph-RAG. Pins product image 0.32.2 and model edgequake:latest."
 ---
 
 # Integration: Open WebUI
