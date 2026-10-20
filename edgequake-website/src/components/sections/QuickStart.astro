@@ -79,7 +79,7 @@ curl -X POST http://localhost:8080/api/v1/query \\
               type="button"
               role="tab"
               data-tab={tab.id}
-              class={`mkt-tab px-4 py-2.5 text-sm font-medium transition-colors ${i === 0 ? "is-active" : ""}`}
+              class={`mkt-tab min-h-11 cursor-pointer px-4 py-2.5 text-sm font-medium transition-colors duration-200 ${i === 0 ? "is-active" : ""}`}
               aria-selected={i === 0 ? "true" : "false"}
               aria-controls={`panel-${tab.id}`}
               id={`tab-${tab.id}`}

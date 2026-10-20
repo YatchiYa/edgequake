@@ -33,6 +33,8 @@ const fullAfter = ls(join(ROOT, "after")).filter((f) => f.startsWith("home-"));
 const fullBase = ls(join(ROOT, "baseline")).filter((f) => f.startsWith("home-"));
 const sections = ls(join(ROOT, "after/sections"));
 const product = ls(join(ROOT, "product"));
+const pages = ls(join(ROOT, "pages"));
+const audit = ls(join(ROOT, "audit"));
 
 // pair baseline vs after by view name
 const views = ["desktop-light", "desktop-dark", "mobile-light", "mobile-dark"];
@@ -80,7 +82,13 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
   <h2>Before / After (full page)</h2>
   ${beforeAfter}
 
-  <h2>After — all viewports</h2>
+  <h2>All marketing pages (desktop/mobile · light/dark)</h2>
+  <div class="gallery">${grid("pages", pages, 360)}</div>
+
+  <h2>Audit desk dark (one per route)</h2>
+  <div class="gallery">${grid("audit", audit, 360)}</div>
+
+  <h2>After — home viewports</h2>
   <div class="gallery">${grid("after", fullAfter)}</div>
 
   <h2>After — per section (desktop + mobile · light + dark)</h2>
@@ -92,4 +100,4 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 
 writeFileSync(join(ROOT, "index.html"), html);
 console.log("wrote", join(ROOT, "index.html"));
-console.log(`full(after)=${fullAfter.length} baseline=${fullBase.length} sections=${sections.length} product=${product.length}`);
+console.log(`pages=${pages.length} audit=${audit.length} full(after)=${fullAfter.length} baseline=${fullBase.length} sections=${sections.length} product=${product.length}`);

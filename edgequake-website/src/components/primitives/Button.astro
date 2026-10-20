@@ -47,7 +47,8 @@ const target = external ? "_blank" : undefined;
   target={target}
   class:list={[base, sizes[size], variants[variant], className]}
 >
-  {icon && <Icon name={icon} class="h-4 w-4" />}
-  <span><slot /></span>
-  {iconRight && <Icon name={iconRight} class="h-4 w-4" />}
+  {icon && <Icon name={icon} class="h-4 w-4 shrink-0" />}
+  {/* Slot children (text and/or inline SVG) participate in flex gap. */}
+  <slot />
+  {iconRight && <Icon name={iconRight} class="h-4 w-4 shrink-0" />}
 </a>

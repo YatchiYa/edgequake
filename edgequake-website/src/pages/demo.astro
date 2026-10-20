@@ -65,12 +65,20 @@ const checklist: { icon: IconName; label: string }[] = [
   <!-- Paths 1 + 2 -->
   <section class="pb-6 sm:pb-8" aria-labelledby="try-paths-heading">
     <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-      <h2 id="try-paths-heading" class="sr-only">Ways to try EdgeQuake</h2>
+      <h2
+        id="try-paths-heading"
+        class="font-display text-xl font-semibold tracking-[-0.02em] mkt-text sm:text-2xl"
+      >
+        Ways to try
+      </h2>
+      <p class="mt-2 max-w-2xl text-sm mkt-text-muted">
+        Pick the path that matches how much time you have.
+      </p>
 
-      <ol class="grid gap-6 md:grid-cols-2">
+      <ol class="mt-8 grid gap-6 md:grid-cols-2">
         <Reveal as="li" delay={0} class="h-full">
           <div
-            class="mkt-card flex h-full flex-col rounded-2xl border-accent-500/25 p-6 sm:p-7"
+            class="mkt-card mkt-card-static flex h-full flex-col rounded-2xl border-accent-500/25 p-6 sm:p-7"
           >
             <div class="flex items-center gap-3">
               <span
@@ -123,7 +131,7 @@ const checklist: { icon: IconName; label: string }[] = [
         </Reveal>
 
         <Reveal as="li" delay={80} class="h-full">
-          <div class="mkt-card flex h-full flex-col rounded-2xl p-6 sm:p-7">
+          <div class="mkt-card mkt-card-static flex h-full flex-col rounded-2xl p-6 sm:p-7">
             <div class="flex items-center gap-3">
               <span
                 class="mkt-accent-surface inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
@@ -161,7 +169,7 @@ const checklist: { icon: IconName; label: string }[] = [
 
       <!-- Path 3: full width so the terminal command stays readable -->
       <Reveal as="div" delay={140} class="mt-6">
-        <div class="mkt-card rounded-2xl p-6 sm:p-8">
+        <div class="mkt-card mkt-card-static rounded-2xl p-6 sm:p-8">
           <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-10">
             <div class="lg:max-w-sm lg:shrink-0">
               <div class="flex items-center gap-3">

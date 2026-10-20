@@ -12,15 +12,18 @@ Measurable "visual inspection" (no eyeballing): CLS, overflow, contrast, motion.
 | `capture-product.mjs` | Authenticated product screens from demo.edgequake.com (env creds) |
 | `capture-graph.mjs` | Multiple knowledge-graph states (overview/zoom/selection) |
 | `capture.mjs` | Generic route capture (public demo + marketing baseline/after) |
+| `capture-pages.mjs` | Every marketing route × desktop/mobile × light/dark → `screenshots/pages/` |
+| `audit-all.mjs` | CLS / overflow / defect scan across all marketing routes |
 
 ## Run (marketing site must be served on :4321)
 
 ```bash
-cd edgequake-website && npm run dev        # → http://localhost:4321
+cd edgequake-website && bun run build && bun run preview -- --host 127.0.0.1 --port 4321
 cd specs/170-perfect-astra-design/e2e
-node metrics.mjs baseline                  # before
-node metrics.mjs after                     # after each change
-node verify-a11y.mjs
+node capture-pages.mjs http://127.0.0.1:4321
+node audit-all.mjs http://127.0.0.1:4321
+node metrics.mjs after http://127.0.0.1:4321
+node verify-a11y.mjs http://127.0.0.1:4321
 ```
 
 ## Refresh product screenshots (credentials required — never hardcode)

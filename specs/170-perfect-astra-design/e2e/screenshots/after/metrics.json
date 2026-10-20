@@ -1,60 +1,59 @@
 {
   "label": "after",
-  "baseURL": "http://localhost:4321",
-  "when": "2026-10-20T01:40:17.311Z",
+  "baseURL": "http://127.0.0.1:4321",
+  "when": "2026-10-20T05:21:37.883Z",
   "pages": [
     {
       "viewport": 1440,
       "theme": "light",
-      "cls": 0.001,
-      "shifts": [
-        {
-          "value": 0.0006,
-          "sources": [
-            "#text"
-          ]
-        }
-      ],
+      "cls": 0,
+      "shifts": [],
       "bodyScrollWidth": 1440,
       "horizontalOverflowPx": 0,
-      "overflowers": [],
+      "overflowers": [
+        {
+          "tag": "div.absolute.right-[-160px]",
+          "right": 1600,
+          "left": 880
+        }
+      ],
       "sectionCount": 9,
       "sections": [
         {
-          "h": 621,
-          "top": 73
+          "h": 663,
+          "top": 65
         },
         {
-          "h": 944,
-          "top": 694
+          "h": 782,
+          "top": 728
         },
         {
-          "h": 933,
-          "top": 1638
+          "h": 706,
+          "top": 1510
         },
         {
-          "h": 1633,
-          "top": 2571
+          "h": 1737,
+          "top": 2215
         },
         {
-          "h": 898,
-          "top": 4204
+          "h": 801,
+          "top": 3953
         },
         {
-          "h": 813,
-          "top": 5102
+          "h": 756,
+          "top": 4754
         },
         {
-          "h": 897,
-          "top": 5915
+          "h": 821,
+          "top": 5511
         },
         {
-          "h": 895,
-          "top": 6812
+          "h": 828,
+          "top": 6332
         },
         {
-          "h": 659,
-          "top": 7707
+          "h": 657,
+          "top": 7160
         }
       ],
       "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-desktop-light.png"
@@ -62,55 +61,54 @@
     {
       "viewport": 1440,
       "theme": "dark",
-      "cls": 0.0007,
-      "shifts": [
-        {
-          "value": 0.0006,
-          "sources": [
-            "#text"
-          ]
-        }
-      ],
+      "cls": 0,
+      "shifts": [],
       "bodyScrollWidth": 1440,
       "horizontalOverflowPx": 0,
-      "overflowers": [],
+      "overflowers": [
+        {
+          "tag": "div.absolute.right-[-160px]",
+          "right": 1600,
+          "left": 880
+        }
+      ],
       "sectionCount": 9,
       "sections": [
         {
-          "h": 621,
-          "top": 73
+          "h": 663,
+          "top": 65
         },
         {
-          "h": 944,
-          "top": 694
+          "h": 782,
+          "top": 728
         },
         {
-          "h": 933,
-          "top": 1638
+          "h": 706,
+          "top": 1510
         },
         {
-          "h": 1633,
-          "top": 2571
+          "h": 1737,
+          "top": 2215
         },
         {
-          "h": 898,
-          "top": 4204
+          "h": 801,
+          "top": 3953
         },
         {
-          "h": 813,
-          "top": 5102
+          "h": 756,
+          "top": 4754
         },
         {
-          "h": 897,
-          "top": 5915
+          "h": 821,
+          "top": 5511
         },
         {
-          "h": 895,
-          "top": 6812
+          "h": 828,
+          "top": 6332
         },
         {
-          "h": 659,
-          "top": 7707
+          "h": 657,
+          "top": 7160
         }
       ],
       "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-desktop-dark.png"
@@ -118,116 +116,109 @@
     {
       "viewport": 390,
       "theme": "light",
-      "cls": 0.0007,
-      "shifts": [
-        {
-          "value": 0.0007,
-          "sources": [
-            "#text"
-          ]
-        }
-      ],
+      "cls": 0,
+      "shifts": [],
       "bodyScrollWidth": 390,
       "horizontalOverflowPx": 0,
       "overflowers": [
         {
-          "tag": "div.absolute.left-1/2",
-          "right": 575,
-          "left": -185
+          "tag": "div.absolute.right-[-160px]",
+          "right": 550,
+          "left": -170
         },
         {
           "tag": "code",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         },
         {
           "tag": "div.ec-line",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         },
         {
           "tag": "div.code",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         },
         {
           "tag": "div.ec-line",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         },
         {
           "tag": "div.code",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         },
         {
           "tag": "span",
-          "right": 894,
-          "left": 151
+          "right": 862,
+          "left": 140
         },
         {
           "tag": "span",
-          "right": 902,
-          "left": 894
+          "right": 871,
+          "left": 862
         },
         {
           "tag": "span",
-          "right": 911,
-          "left": 902
+          "right": 879,
+          "left": 871
         },
         {
           "tag": "span",
-          "right": 920,
-          "left": 911
+          "right": 888,
+          "left": 879
         },
         {
           "tag": "span",
-          "right": 937,
-          "left": 920
+          "right": 905,
+          "left": 888
         },
         {
           "tag": "div.ec-line",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         }
       ],
       "sectionCount": 9,
       "sections": [
         {
-          "h": 1045,
-          "top": 73
+          "h": 1121,
+          "top": 65
         },
         {
-          "h": 2235,
-          "top": 1118
+          "h": 1392,
+          "top": 1186
         },
         {
-          "h": 2080,
-          "top": 3353
+          "h": 1569,
+          "top": 2578
         },
         {
-          "h": 1540,
-          "top": 5433
-        },
-        {
-          "h": 959,
-          "top": 6973
-        },
-        {
-          "h": 1068,
-          "top": 7933
+          "h": 1531,
+          "top": 4147
         },
         {
           "h": 937,
-          "top": 9001
+          "top": 5678
         },
         {
-          "h": 2209,
-          "top": 9938
+          "h": 1056,
+          "top": 6615
         },
         {
-          "h": 1216,
-          "top": 12148
+          "h": 834,
+          "top": 7671
+        },
+        {
+          "h": 1479,
+          "top": 8506
+        },
+        {
+          "h": 1094,
+          "top": 9985
         }
       ],
       "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-mobile-light.png"
@@ -235,116 +226,109 @@
     {
       "viewport": 390,
       "theme": "dark",
-      "cls": 0.001,
-      "shifts": [
-        {
-          "value": 0.0007,
-          "sources": [
-            "#text"
-          ]
-        }
-      ],
+      "cls": 0,
+      "shifts": [],
       "bodyScrollWidth": 390,
       "horizontalOverflowPx": 0,
       "overflowers": [
         {
-          "tag": "div.absolute.left-1/2",
-          "right": 575,
-          "left": -185
+          "tag": "div.absolute.right-[-160px]",
+          "right": 550,
+          "left": -170
         },
         {
           "tag": "code",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         },
         {
           "tag": "div.ec-line",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         },
         {
           "tag": "div.code",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         },
         {
           "tag": "div.ec-line",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         },
         {
           "tag": "div.code",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         },
         {
           "tag": "span",
-          "right": 894,
-          "left": 151
+          "right": 862,
+          "left": 140
         },
         {
           "tag": "span",
-          "right": 902,
-          "left": 894
+          "right": 871,
+          "left": 862
         },
         {
           "tag": "span",
-          "right": 911,
-          "left": 902
+          "right": 879,
+          "left": 871
         },
         {
           "tag": "span",
-          "right": 920,
-          "left": 911
+          "right": 888,
+          "left": 879
         },
         {
           "tag": "span",
-          "right": 937,
-          "left": 920
+          "right": 905,
+          "left": 888
         },
         {
           "tag": "div.ec-line",
-          "right": 953,
-          "left": 41
+          "right": 921,
+          "left": 33
         }
       ],
       "sectionCount": 9,
       "sections": [
         {
-          "h": 1045,
-          "top": 73
+          "h": 1121,
+          "top": 65
         },
         {
-          "h": 2235,
-          "top": 1118
+          "h": 1392,
+          "top": 1186
         },
         {
-          "h": 2080,
-          "top": 3353
+          "h": 1569,
+          "top": 2578
         },
         {
-          "h": 1540,
-          "top": 5433
-        },
-        {
-          "h": 959,
-          "top": 6973
-        },
-        {
-          "h": 1068,
-          "top": 7933
+          "h": 1531,
+          "top": 4147
         },
         {
           "h": 937,
-          "top": 9001
+          "top": 5678
         },
         {
-          "h": 2209,
-          "top": 9938
+          "h": 1056,
+          "top": 6615
         },
         {
-          "h": 1216,
-          "top": 12148
+          "h": 834,
+          "top": 7671
+        },
+        {
+          "h": 1479,
+          "top": 8506
+        },
+        {
+          "h": 1094,
+          "top": 9985
         }
       ],
       "shot": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/170-perfect-astra-design/e2e/screenshots/after/home-mobile-dark.png"

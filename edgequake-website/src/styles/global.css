@@ -297,6 +297,18 @@
     transform: translateY(-2px);
   }
 
+  /* Prefer reduced motion / static choice cards: keep elevation, skip lift. */
+  .mkt-card-static,
+  .mkt-card-static:hover {
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mkt-card:hover {
+      transform: none;
+    }
+  }
+
   .mkt-section-alt {
     background:
       linear-gradient(180deg, transparent, var(--mkt-bg-alt) 14%, var(--mkt-bg-alt) 86%, transparent);

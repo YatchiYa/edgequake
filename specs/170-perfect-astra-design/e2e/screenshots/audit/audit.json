@@ -1,0 +1,366 @@
+{
+  "base": "http://127.0.0.1:4321",
+  "when": "2026-10-20T05:25:22.312Z",
+  "routes": [
+    {
+      "name": "home",
+      "path": "/",
+      "vn": "desktop",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "home",
+      "path": "/",
+      "vn": "desktop",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "home",
+      "path": "/",
+      "vn": "mobile",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "home",
+      "path": "/",
+      "vn": "mobile",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "demo",
+      "path": "/demo/",
+      "vn": "desktop",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "demo",
+      "path": "/demo/",
+      "vn": "desktop",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "demo",
+      "path": "/demo/",
+      "vn": "mobile",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "demo",
+      "path": "/demo/",
+      "vn": "mobile",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "ecosystem",
+      "path": "/ecosystem/",
+      "vn": "desktop",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "ecosystem",
+      "path": "/ecosystem/",
+      "vn": "desktop",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "ecosystem",
+      "path": "/ecosystem/",
+      "vn": "mobile",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "ecosystem",
+      "path": "/ecosystem/",
+      "vn": "mobile",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "enterprise",
+      "path": "/enterprise/",
+      "vn": "desktop",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "enterprise",
+      "path": "/enterprise/",
+      "vn": "desktop",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "enterprise",
+      "path": "/enterprise/",
+      "vn": "mobile",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "enterprise",
+      "path": "/enterprise/",
+      "vn": "mobile",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "contact",
+      "path": "/contact/",
+      "vn": "desktop",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "contact",
+      "path": "/contact/",
+      "vn": "desktop",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "contact",
+      "path": "/contact/",
+      "vn": "mobile",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "contact",
+      "path": "/contact/",
+      "vn": "mobile",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "work-with-raphael",
+      "path": "/work-with-raphael/",
+      "vn": "desktop",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "work-with-raphael",
+      "path": "/work-with-raphael/",
+      "vn": "desktop",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "work-with-raphael",
+      "path": "/work-with-raphael/",
+      "vn": "mobile",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "work-with-raphael",
+      "path": "/work-with-raphael/",
+      "vn": "mobile",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "tutorial-index",
+      "path": "/tutorial/",
+      "vn": "desktop",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "tutorial-index",
+      "path": "/tutorial/",
+      "vn": "desktop",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "tutorial-index",
+      "path": "/tutorial/",
+      "vn": "mobile",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "tutorial-index",
+      "path": "/tutorial/",
+      "vn": "mobile",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "tutorial-chapter",
+      "path": "/tutorial/01-what-this-is/",
+      "vn": "desktop",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "tutorial-chapter",
+      "path": "/tutorial/01-what-this-is/",
+      "vn": "desktop",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "tutorial-chapter",
+      "path": "/tutorial/01-what-this-is/",
+      "vn": "mobile",
+      "theme": "light",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "tutorial-chapter",
+      "path": "/tutorial/01-what-this-is/",
+      "vn": "mobile",
+      "theme": "dark",
+      "status": 200,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "404",
+      "path": "/this-page-does-not-exist/",
+      "vn": "desktop",
+      "theme": "light",
+      "status": 404,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "404",
+      "path": "/this-page-does-not-exist/",
+      "vn": "desktop",
+      "theme": "dark",
+      "status": 404,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "404",
+      "path": "/this-page-does-not-exist/",
+      "vn": "mobile",
+      "theme": "light",
+      "status": 404,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    },
+    {
+      "name": "404",
+      "path": "/this-page-does-not-exist/",
+      "vn": "mobile",
+      "theme": "dark",
+      "status": 404,
+      "cls": 0,
+      "overflow": 0,
+      "defects": []
+    }
+  ]
+}
