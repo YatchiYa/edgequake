@@ -5,6 +5,7 @@ const navLinks = [
   { label: "Demo", href: "/demo/" },
   { label: "Ecosystem", href: "/ecosystem/" },
   { label: "Enterprise", href: "/enterprise/" },
+  { label: "Collaborate", href: "/work-with-raphael/" },
 ];
 
 const pathname = Astro.url.pathname;
@@ -44,7 +45,7 @@ const isActivePath = (href: string) => {
     </a>
 
     <!-- Desktop nav -->
-    <nav class="hidden md:flex items-center gap-1" aria-label="Main navigation">
+    <nav class="hidden lg:flex items-center gap-1" aria-label="Main navigation">
       {
         navLinks.map((link) => (
           <a
@@ -127,7 +128,7 @@ const isActivePath = (href: string) => {
       <!-- Mobile menu button -->
       <button
         type="button"
-        class="md:hidden inline-flex items-center justify-center rounded-md p-2 mkt-text-muted hover:mkt-text mkt-hover-bg"
+        class="lg:hidden inline-flex items-center justify-center rounded-md p-2 mkt-text-muted hover:mkt-text mkt-hover-bg"
         aria-controls="mobile-menu"
         aria-expanded="false"
         aria-label="Open menu"
@@ -152,7 +153,7 @@ const isActivePath = (href: string) => {
   <!-- Mobile menu -->
   <nav
     id="mobile-menu"
-    class="hidden md:hidden mkt-border-subtle border-t mkt-bg-header backdrop-blur-lg"
+    class="hidden lg:hidden mkt-border-subtle border-t mkt-bg-header backdrop-blur-lg"
     aria-label="Mobile navigation"
     aria-hidden="true"
   >

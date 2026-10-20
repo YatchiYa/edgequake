@@ -26,6 +26,14 @@ export function getProductVersion(): string {
 
 export const GITHUB_REPO_URL = "https://github.com/raphaelmansuy/edgequake";
 export const DEMO_URL = "https://demo.edgequake.com/";
+
+/** Author / maintainer contact (single source of truth). */
+export const AUTHOR_NAME = "Raphael Mansuy";
+export const AUTHOR_LINKEDIN = "https://www.linkedin.com/in/raphaelmansuy/";
+export const AUTHOR_GITHUB = "https://github.com/raphaelmansuy";
+export const AUTHOR_COMPANY = "Elitizon";
+export const AUTHOR_COMPANY_URL = "https://elitizon.com";
+
 export const QUERY_MODES = [
   "naive",
   "local",

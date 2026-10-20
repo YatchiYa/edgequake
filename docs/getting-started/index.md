@@ -9,6 +9,10 @@ description: Pick an install path, connect a model provider, and run your first 
 
 This section takes you from nothing to a first answer from your own documents. It is for developers and operators who are new to EdgeQuake.
 
+## Prefer to look before you install?
+
+There is a hosted demo at [demo.edgequake.com](https://demo.edgequake.com/) with a real knowledge graph you can explore. The demo is access-controlled: to get a sign-in, message the maintainer, [Raphael Mansuy, on LinkedIn](https://www.linkedin.com/in/raphaelmansuy/) with a sentence about what you want to try, and you will receive an invite. You can also follow the [picture tour](https://edgequake.com/tutorial/) for a screenshot walkthrough, or read about [collaborating on EdgeQuake](https://edgequake.com/work-with-raphael/).
+
 ## Choose an install path
 
 There are three supported paths. Pick the one that matches your goal.

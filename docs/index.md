@@ -19,6 +19,8 @@ hero:
 
 EdgeQuake turns your documents into a knowledge graph and answers questions from it. It is written in Rust and stores everything in PostgreSQL. These pages are for developers and operators.
 
+> **Want the hosted demo?** There is a live stack at [demo.edgequake.com](https://demo.edgequake.com/). It is access-controlled — message [Raphael Mansuy on LinkedIn](https://www.linkedin.com/in/raphaelmansuy/) to request a sign-in, or see [work with Raphael](https://edgequake.com/work-with-raphael/) for collaboration and business enquiries built on EdgeQuake.
+
 ## Where to start
 
 ```mermaid

@@ -1,7 +1,7 @@
 {
   "label": "after",
   "baseURL": "http://localhost:4321",
-  "when": "2026-10-20T03:23:53.727Z",
+  "when": "2026-10-20T03:49:21.279Z",
   "views": [
     {
       "viewport": "wide",
@@ -124,7 +124,7 @@
     {
       "viewport": "desktop",
       "theme": "light",
-      "cls": 0.0001,
+      "cls": 0.0002,
       "shifts": [],
       "vw": 1440,
       "bodyOverflow": 0,
@@ -183,7 +183,7 @@
     {
       "viewport": "desktop",
       "theme": "dark",
-      "cls": 0.0001,
+      "cls": 0.0002,
       "shifts": [],
       "vw": 1440,
       "bodyOverflow": 0,
@@ -242,7 +242,7 @@
     {
       "viewport": "tablet",
       "theme": "light",
-      "cls": 0.0002,
+      "cls": 0.0003,
       "shifts": [],
       "vw": 834,
       "bodyOverflow": 0,
@@ -301,7 +301,7 @@
     {
       "viewport": "tablet",
       "theme": "dark",
-      "cls": 0.0004,
+      "cls": 0.0003,
       "shifts": [],
       "vw": 834,
       "bodyOverflow": 0,
@@ -419,7 +419,7 @@
     {
       "viewport": "mobile",
       "theme": "dark",
-      "cls": 0.0001,
+      "cls": 0,
       "shifts": [],
       "vw": 390,
       "bodyOverflow": 0,
