@@ -3,7 +3,7 @@ title: Quick Start
 description: Upload one document, wait for it to be indexed, explore the graph, and ask questions with the REST API.
 ---
 
-> **Released: v0.32.2** · Contract: [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) · Ops: [Ingestion cancel and fairness](../ingestion-cancel-and-fairness.md)
+> **Released: v0.36.0** · Contract: [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) · Ops: [Ingestion cancel and fairness](../ingestion-cancel-and-fairness.md)
 
 # Quick Start
 

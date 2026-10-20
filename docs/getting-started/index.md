@@ -3,7 +3,7 @@ title: Getting Started
 description: Pick an install path, connect a model provider, and run your first query with EdgeQuake.
 ---
 
-> **Released: v0.32.2** (schema 168) · **On main: v0.33.0 in progress** (schema 169, SPEC-163 provider onboarding) · [Providers](../providers/index.md)
+> **Released: v0.36.0** (schema 214) · [Providers](../providers/index.md) · [What’s new](../whats-new.md)
 
 # Getting Started
 
@@ -11,7 +11,13 @@ This section takes you from nothing to a first answer from your own documents. I
 
 ## Prefer to look before you install?
 
-There is a hosted demo at [demo.edgequake.com](https://demo.edgequake.com/) with a real knowledge graph you can explore. The demo is access-controlled: to get a sign-in, message the maintainer, [Raphael Mansuy, on LinkedIn](https://www.linkedin.com/in/raphaelmansuy/) with a sentence about what you want to try, and you will receive an invite. You can also follow the [picture tour](https://edgequake.com/tutorial/) for a screenshot walkthrough, or read about [collaborating on EdgeQuake](https://edgequake.com/work-with-raphael/).
+Three short paths are summarized on the marketing [Try EdgeQuake](https://edgequake.com/demo/) page:
+
+1. **Live demo** — hosted at [demo.edgequake.com](https://demo.edgequake.com/). Access is invite-only: message [Raphael Mansuy on LinkedIn](https://www.linkedin.com/in/raphaelmansuy/) with a sentence about what you want to try.
+2. **Picture tour** — a screenshot walkthrough at [edgequake.com/tutorial](https://edgequake.com/tutorial/).
+3. **Run locally** — Docker quickstart below (or the same command on the demo page).
+
+For collaboration and business enquiries built on EdgeQuake, see [work with Raphael](https://edgequake.com/work-with-raphael/).
 
 ## Choose an install path
 
@@ -39,7 +45,7 @@ Read the chart from the top. Each branch ends at the install path and the ports 
 
 ## Fastest start
 
-This script checks for Docker, downloads the Compose file, asks which model provider you want, generates a JWT secret and a secrets key, and starts the stack. Set `EDGEQUAKE_VERSION=0.32.2` to pin the image version; the default is `latest`.
+This script checks for Docker, downloads the Compose file, asks which model provider you want, generates a JWT secret and a secrets key, and starts the stack. Set `EDGEQUAKE_VERSION=0.36.0` to pin the image version; the default is `latest`.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/quickstart.sh | sh
@@ -75,4 +81,4 @@ Add `--json` for machine-readable output. Exit code 0 means all checks passed, 1
 
 For a live view of the running server, call `GET /health`. It reports schema state, the active providers and a `security_posture` block.
 
-> `edgequake doctor` and the stored provider Connections come with SPEC-163. They are on `main` and ship with v0.33.0. The v0.32.2 images do not include them. See [Upgrade to v0.33.0](../operations/upgrade-to-0.33.0.md).
+> `edgequake doctor` and stored provider Connections shipped with [v0.33.0](../operations/upgrade-to-0.33.0.md) and remain part of the current v0.36.0 product line.

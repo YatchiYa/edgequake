@@ -4,7 +4,7 @@ description: Documentation for EdgeQuake, the Graph-RAG framework built in Rust.
 template: splash
 hero:
   title: EdgeQuake Documentation
-  tagline: Install, run, and operate EdgeQuake. Current release is v0.32.2.
+  tagline: Install, run, and operate EdgeQuake. Current release is v0.36.0.
   actions:
     - text: Get Started
       link: /docs/getting-started/
@@ -15,11 +15,11 @@ hero:
       variant: minimal
 ---
 
-> **Released: v0.32.2** · Contract: [OpenAPI snapshot](../edgequake_webui/openapi/openapi.snapshot.json) · Ops: [Ingestion cancel and fairness](ingestion-cancel-and-fairness.md)
+> **Released: v0.36.0** (schema 214) · Contract: [OpenAPI snapshot](../edgequake_webui/openapi/openapi.snapshot.json) · Ops: [Ingestion cancel and fairness](ingestion-cancel-and-fairness.md)
 
 EdgeQuake turns your documents into a knowledge graph and answers questions from it. It is written in Rust and stores everything in PostgreSQL. These pages are for developers and operators.
 
-> **Want the hosted demo?** There is a live stack at [demo.edgequake.com](https://demo.edgequake.com/). It is access-controlled — message [Raphael Mansuy on LinkedIn](https://www.linkedin.com/in/raphaelmansuy/) to request a sign-in, or see [work with Raphael](https://edgequake.com/work-with-raphael/) for collaboration and business enquiries built on EdgeQuake.
+> **Want to try before you install?** Use the three paths on [Try EdgeQuake](https://edgequake.com/demo/): request access to the hosted stack at [demo.edgequake.com](https://demo.edgequake.com/), follow the [picture tour](https://edgequake.com/tutorial/), or run locally with Docker. For collaboration and business enquiries, see [work with Raphael](https://edgequake.com/work-with-raphael/).
 
 ## Where to start
 

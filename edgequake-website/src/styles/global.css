@@ -265,6 +265,7 @@
   .mkt-nav-link {
     border-radius: 0.625rem;
     color: var(--mkt-text-muted);
+    cursor: pointer;
     transition:
       color 160ms ease,
       background-color 160ms ease;
@@ -305,10 +306,12 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
     border-radius: 0.75rem;
     border: 1px solid var(--mkt-border);
     color: var(--mkt-text-secondary);
     background: transparent;
+    min-height: 2.75rem;
     transition:
       background-color 160ms ease,
       color 160ms ease,

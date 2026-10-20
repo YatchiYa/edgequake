@@ -1,7 +1,22 @@
 ---
+/**
+ * Demo — three ways to try EdgeQuake (ui-ux-pro-max + SPEC-170).
+ * Pattern: choice paths as interaction cards (not a hero card kit).
+ * Checklist: SVG icons, cursor-pointer CTAs, 44px targets, focus rings,
+ * sequential headings, reduced-motion via Reveal + MarketingLayout.
+ */
 import MarketingLayout from "../layouts/MarketingLayout.astro";
 import { Code } from "@astrojs/starlight/components";
-import { AUTHOR_LINKEDIN, AUTHOR_NAME, DEMO_URL, getProductVersion } from "../lib/product";
+import Button from "../components/primitives/Button.astro";
+import Icon from "../components/primitives/Icon.astro";
+import Reveal from "../components/primitives/Reveal.astro";
+import type { IconName } from "../components/data/icons";
+import {
+  AUTHOR_LINKEDIN,
+  AUTHOR_NAME,
+  DEMO_URL,
+  getProductVersion,
+} from "../lib/product";
 
 const version = getProductVersion();
 const quickstart = `curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/quickstart.sh | sh
@@ -10,105 +25,210 @@ const quickstart = `curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/e
 # EDGEQUAKE_VERSION=${version} sh quickstart.sh
 
 # Web UI → http://localhost:3000`;
+
+const checklist: { icon: IconName; label: string }[] = [
+  { icon: "file-text", label: "Document upload and processing status" },
+  { icon: "brain", label: "Entity extraction and the knowledge graph" },
+  { icon: "layers", label: "The same question in hybrid vs local vs global" },
+  { icon: "share-2", label: "Citations that open the source PDF page" },
+  { icon: "users", label: "Members invite flow (if you have admin access)" },
+];
 ---
 
 <MarketingLayout
   title="Try EdgeQuake — Demo and local run"
-  description="Open the public demo, follow the picture tour, or start the full stack locally with one Docker command."
+  description="Open the hosted demo, follow the picture tour, or start the full stack locally with one Docker command."
 >
-  <section class="py-16 sm:py-24">
-    <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-      <h1 class="font-display text-4xl font-bold tracking-tight mkt-text sm:text-5xl">
+  <!-- Hero: brand + one job -->
+  <section class="relative mkt-band-focal overflow-clip">
+    <div class="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+      <div class="mkt-grid-bg absolute inset-x-0 top-0 h-[420px]"></div>
+      <div
+        class="absolute right-[-140px] top-[-120px] h-[380px] w-[560px] rounded-full bg-accent-500/12 blur-[120px]"
+      >
+      </div>
+    </div>
+
+    <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+      <h1
+        class="font-display font-bold tracking-[-0.03em] mkt-text text-[clamp(2.4rem,1.8rem+2.4vw,3.4rem)] leading-[1.05] text-balance"
+      >
         Try EdgeQuake
       </h1>
-      <p class="mt-6 text-lg mkt-text-muted leading-relaxed">
+      <p class="mt-5 max-w-2xl text-lg leading-relaxed mkt-text-secondary">
         Three short paths: a live demo, a screenshot tour, or your own machine
         with Docker.
       </p>
+    </div>
+  </section>
 
-      <ol class="mt-12 space-y-10">
-        <li>
-          <h2 class="text-xl font-semibold mkt-text">1. Live demo</h2>
-          <p class="mt-2 text-sm mkt-text-muted leading-relaxed">
-            A hosted stack at demo.edgequake.com. The demo is access-controlled,
-            so to get a sign-in, message {AUTHOR_NAME} on LinkedIn with a sentence
-            about what you want to try. You will get an invite, then you can
-            upload, query, and open the graph.
-          </p>
-          <div class="mt-4 flex flex-wrap gap-3">
-            <a
-              href={AUTHOR_LINKEDIN}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center rounded-lg bg-accent-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-500 transition-colors"
-            >
-              <svg class="mr-2 h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"
-                ></path>
-              </svg>
-              Request access on LinkedIn
-            </a>
-            <a
-              href={DEMO_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex mkt-outline-button px-5 py-2.5 text-sm font-semibold"
-            >
-              Open demo.edgequake.com
-            </a>
-          </div>
-          <p class="mt-3 text-sm mkt-text-dim">
-            More on collaborating with the maintainer:
-            <a href="/work-with-raphael/" class="mkt-accent-text hover:underline"
-              >work with Raphael</a
-            >.
-          </p>
-        </li>
+  <!-- Paths 1 + 2 -->
+  <section class="pb-6 sm:pb-8" aria-labelledby="try-paths-heading">
+    <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+      <h2 id="try-paths-heading" class="sr-only">Ways to try EdgeQuake</h2>
 
-        <li>
-          <h2 class="text-xl font-semibold mkt-text">2. Picture tour</h2>
-          <p class="mt-2 text-sm mkt-text-muted leading-relaxed">
-            Fourteen chapters with screenshots: sign-in, documents, six query
-            modes, the map, connections, and members &amp; invites (v{version}).
-          </p>
-          <a
-            href="/tutorial/"
-            class="mt-4 inline-flex mkt-outline-button px-5 py-2.5 text-sm font-semibold"
+      <ol class="grid gap-6 md:grid-cols-2">
+        <Reveal as="li" delay={0} class="h-full">
+          <div
+            class="mkt-card flex h-full flex-col rounded-2xl border-accent-500/25 p-6 sm:p-7"
           >
-            Start the tour
-          </a>
-        </li>
-
-        <li>
-          <h2 class="text-xl font-semibold mkt-text">3. Run locally</h2>
-          <p class="mt-2 text-sm mkt-text-muted leading-relaxed">
-            Needs Docker only. The wizard detects Ollama, LM Studio, or a cloud
-            key. Ports bind to localhost.
-          </p>
-          <div class="mt-4 mkt-code-showcase rounded-xl border p-4 overflow-x-auto">
-            <Code code={quickstart} lang="bash" title="Terminal" />
+            <div class="flex items-center gap-3">
+              <span
+                class="mkt-accent-surface inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Icon name="globe" class="h-5 w-5" />
+              </span>
+              <div>
+                <p
+                  class="text-xs font-semibold uppercase tracking-wider mkt-accent-text"
+                >
+                  Path 1
+                </p>
+                <h3 class="text-lg font-semibold mkt-text">Live demo</h3>
+              </div>
+            </div>
+            <p class="mt-4 flex-1 text-sm leading-relaxed mkt-text-muted">
+              A hosted stack at demo.edgequake.com. Access is invite-only:
+              message {AUTHOR_NAME} on LinkedIn with a sentence about what you
+              want to try. After the invite you can upload, query, and open the
+              graph.
+            </p>
+            <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <Button href={AUTHOR_LINKEDIN} variant="primary" size="md" external>
+                <svg
+                  class="h-4 w-4"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"
+                  ></path>
+                </svg>
+                Request access on LinkedIn
+              </Button>
+              <Button href={DEMO_URL} variant="outline" size="md" external>
+                Open demo.edgequake.com
+              </Button>
+            </div>
+            <p class="mt-4 text-sm mkt-text-dim">
+              Collaborating with the maintainer?{" "}
+              <a
+                href="/work-with-raphael/"
+                class="cursor-pointer mkt-accent-text hover:underline"
+                >Work with Raphael</a
+              >.
+            </p>
           </div>
-          <p class="mt-3 text-sm mkt-text-dim">
-            Full install notes:
-            <a
-              href="/docs/getting-started/installation/"
-              class="mkt-accent-text hover:underline">installation guide</a
-            >.
-          </p>
-        </li>
+        </Reveal>
+
+        <Reveal as="li" delay={80} class="h-full">
+          <div class="mkt-card flex h-full flex-col rounded-2xl p-6 sm:p-7">
+            <div class="flex items-center gap-3">
+              <span
+                class="mkt-accent-surface inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
+              >
+                <Icon name="images" class="h-5 w-5" />
+              </span>
+              <div>
+                <p
+                  class="text-xs font-semibold uppercase tracking-wider mkt-text-dim"
+                >
+                  Path 2
+                </p>
+                <h3 class="text-lg font-semibold mkt-text">Picture tour</h3>
+              </div>
+            </div>
+            <p class="mt-4 flex-1 text-sm leading-relaxed mkt-text-muted">
+              Fourteen chapters with screenshots: sign-in, documents, six query
+              modes, the map, connections, and members &amp; invites (v{
+                version
+              }).
+            </p>
+            <div class="mt-6">
+              <Button
+                href="/tutorial/"
+                variant="outline"
+                size="md"
+                iconRight="arrow-right"
+              >
+                Start the tour
+              </Button>
+            </div>
+          </div>
+        </Reveal>
       </ol>
 
-      <div class="mt-14 border-t mkt-border pt-8">
-        <h2 class="text-lg font-semibold mkt-text">What to check</h2>
-        <ul class="mt-3 space-y-2 text-sm mkt-text-muted list-disc pl-5">
-          <li>Document upload and processing status</li>
-          <li>Entity extraction and the knowledge graph</li>
-          <li>The same question in hybrid vs local vs global</li>
-          <li>Citations that open the source PDF page</li>
-          <li>Members invite flow (if you have admin access)</li>
-        </ul>
-      </div>
+      <!-- Path 3: full width so the terminal command stays readable -->
+      <Reveal as="div" delay={140} class="mt-6">
+        <div class="mkt-card rounded-2xl p-6 sm:p-8">
+          <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-10">
+            <div class="lg:max-w-sm lg:shrink-0">
+              <div class="flex items-center gap-3">
+                <span
+                  class="mkt-accent-surface inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
+                >
+                  <Icon name="terminal" class="h-5 w-5" />
+                </span>
+                <div>
+                  <p
+                    class="text-xs font-semibold uppercase tracking-wider mkt-text-dim"
+                  >
+                    Path 3
+                  </p>
+                  <h3 class="text-lg font-semibold mkt-text">Run locally</h3>
+                </div>
+              </div>
+              <p class="mt-4 text-sm leading-relaxed mkt-text-muted">
+                Needs Docker only. The wizard detects Ollama, LM Studio, or a
+                cloud key. Ports bind to localhost.
+              </p>
+              <p class="mt-4 text-sm mkt-text-dim">
+                Full install notes:{" "}
+                <a
+                  href="/docs/getting-started/installation/"
+                  class="cursor-pointer mkt-accent-text hover:underline"
+                  >installation guide</a
+                >.
+              </p>
+            </div>
+            <div
+              class="min-w-0 flex-1 mkt-code-showcase rounded-xl border p-3 overflow-x-auto"
+            >
+              <Code code={quickstart} lang="bash" title="Terminal" />
+            </div>
+          </div>
+        </div>
+      </Reveal>
+    </div>
+  </section>
+
+  <!-- What to check -->
+  <section class="mkt-band mkt-section-alt" aria-labelledby="what-to-check">
+    <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+      <h2
+        id="what-to-check"
+        class="font-display text-xl font-semibold tracking-[-0.02em] mkt-text sm:text-2xl"
+      >
+        What to check
+      </h2>
+      <p class="mt-2 max-w-2xl text-sm mkt-text-muted">
+        Use any path above, then confirm these product beats work end to end.
+      </p>
+      <ul class="mt-8 grid gap-4 sm:grid-cols-2">
+        {
+          checklist.map((item) => (
+            <li class="flex items-start gap-3">
+              <span class="mkt-accent-surface mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
+                <Icon name={item.icon} class="h-4 w-4" />
+              </span>
+              <span class="pt-1.5 text-sm leading-relaxed mkt-text-secondary">
+                {item.label}
+              </span>
+            </li>
+          ))
+        }
+      </ul>
     </div>
   </section>
 </MarketingLayout>

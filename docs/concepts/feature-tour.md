@@ -3,7 +3,7 @@ title: Feature Tour
 description: A short tour of what EdgeQuake can do - knowledge graph, query modes, PDF pipeline, and production features.
 ---
 
-> **Released: v0.32.2** · Feature IDs and code anchors: [Feature registry](../features.md)
+> **Released: v0.36.0** · Feature IDs and code anchors: [Feature registry](../features.md)
 
 # Feature Tour
 

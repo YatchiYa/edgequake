@@ -1,5 +1,6 @@
 ---
 import EnterpriseCTA from "../components/sections/EnterpriseCTA.astro";
+import Icon from "../components/primitives/Icon.astro";
 import MarketingLayout from "../layouts/MarketingLayout.astro";
 ---
 
@@ -10,7 +11,7 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
   <section class="py-24 sm:py-32">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <div class="text-center max-w-3xl mx-auto">
-        <h1 class="text-4xl font-bold tracking-tight mkt-text sm:text-5xl">
+        <h1 class="font-display text-4xl font-bold tracking-tight mkt-text sm:text-5xl">
           EdgeQuake for Enterprise
         </h1>
         <p class="mt-6 text-lg mkt-text-muted">
@@ -39,13 +40,16 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
           </p>
           <ul class="mt-4 space-y-2 text-sm mkt-text-muted">
             <li class="flex items-center gap-2">
-              <span class="mkt-success-text">✓</span> Docker & Kubernetes ready
+              <Icon name="check" class="h-4 w-4 shrink-0 mkt-success-text" />
+              Docker &amp; Kubernetes ready
             </li>
             <li class="flex items-center gap-2">
-              <span class="mkt-success-text">✓</span> Private LLM support (Ollama/vLLM)
+              <Icon name="check" class="h-4 w-4 shrink-0 mkt-success-text" />
+              Private LLM support (Ollama/vLLM)
             </li>
             <li class="flex items-center gap-2">
-              <span class="mkt-success-text">✓</span> No data leaves your network
+              <Icon name="check" class="h-4 w-4 shrink-0 mkt-success-text" />
+              No data leaves your network
             </li>
           </ul>
         </div>
@@ -59,13 +63,16 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
           </p>
           <ul class="mt-4 space-y-2 text-sm mkt-text-muted">
             <li class="flex items-center gap-2">
-              <span class="mkt-success-text">✓</span> Members, invites, magic links
+              <Icon name="check" class="h-4 w-4 shrink-0 mkt-success-text" />
+              Members, invites, magic links
             </li>
             <li class="flex items-center gap-2">
-              <span class="mkt-success-text">✓</span> OIDC / Keycloak SSO
+              <Icon name="check" class="h-4 w-4 shrink-0 mkt-success-text" />
+              OIDC / Keycloak SSO
             </li>
             <li class="flex items-center gap-2">
-              <span class="mkt-success-text">✓</span> Audit logging
+              <Icon name="check" class="h-4 w-4 shrink-0 mkt-success-text" />
+              Audit logging
             </li>
           </ul>
         </div>
@@ -78,13 +85,16 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
           </p>
           <ul class="mt-4 space-y-2 text-sm mkt-text-muted">
             <li class="flex items-center gap-2">
-              <span class="mkt-success-text">✓</span> 300MB memory per core
+              <Icon name="check" class="h-4 w-4 shrink-0 mkt-success-text" />
+              300MB memory per core
             </li>
             <li class="flex items-center gap-2">
-              <span class="mkt-success-text">✓</span> Horizontal API scaling
+              <Icon name="check" class="h-4 w-4 shrink-0 mkt-success-text" />
+              Horizontal API scaling
             </li>
             <li class="flex items-center gap-2">
-              <span class="mkt-success-text">✓</span> Connection pooling built-in
+              <Icon name="check" class="h-4 w-4 shrink-0 mkt-success-text" />
+              Connection pooling built-in
             </li>
           </ul>
         </div>
@@ -93,7 +103,7 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
       <div class="mt-10 grid gap-6 lg:grid-cols-3">
         <a
           href="/docs/operations/deployment/"
-          class="mkt-card rounded-xl p-6 transition-colors hover:border-accent-500/30"
+          class="mkt-card cursor-pointer rounded-xl p-6 transition-colors hover:border-accent-500/30 focus-visible:outline-2 focus-visible:outline-offset-4"
         >
           <h2 class="text-lg font-semibold mkt-text">Deployment guide</h2>
           <p class="mt-2 text-sm mkt-text-muted">
@@ -103,7 +113,7 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
         </a>
         <a
           href="/docs/operations/configuration/"
-          class="mkt-card rounded-xl p-6 transition-colors hover:border-accent-500/30"
+          class="mkt-card cursor-pointer rounded-xl p-6 transition-colors hover:border-accent-500/30 focus-visible:outline-2 focus-visible:outline-offset-4"
         >
           <h2 class="text-lg font-semibold mkt-text">
             Configuration reference
@@ -114,7 +124,7 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
         </a>
         <a
           href="/contact/"
-          class="mkt-card rounded-xl p-6 transition-colors hover:border-accent-500/30"
+          class="mkt-card cursor-pointer rounded-xl p-6 transition-colors hover:border-accent-500/30 focus-visible:outline-2 focus-visible:outline-offset-4"
         >
           <h2 class="text-lg font-semibold mkt-text">Implementation support</h2>
           <p class="mt-2 text-sm mkt-text-muted">

@@ -3,7 +3,7 @@ title: Frequently Asked Questions
 description: Short answers about EdgeQuake setup, providers, cost, scale, security, ingestion, PDFs, and troubleshooting.
 ---
 
-> **Released: v0.32.2** · Contract: [OpenAPI snapshot](../edgequake_webui/openapi/openapi.snapshot.json) · Ops: [Ingestion cancel and fairness](ingestion-cancel-and-fairness.md)
+> **Released: v0.36.0** · Contract: [OpenAPI snapshot](../edgequake_webui/openapi/openapi.snapshot.json) · Ops: [Ingestion cancel and fairness](ingestion-cancel-and-fairness.md)
 
 # Frequently Asked Questions
 
@@ -86,7 +86,7 @@ Only for tests. The mock provider is used by `cargo test`. For real use you need
 
 ### How do I add and test a provider?
 
-Set the provider through environment variables, or in **Settings** in the UI. Provider connections stored in the database, `POST /api/v1/providers/test` and `edgequake doctor` are part of SPEC-163. They are on `main` and ship with v0.33.0; the v0.32.2 images do not have them. See [Providers](providers/index.md) and [Upgrade to v0.33.0](operations/upgrade-to-0.33.0.md).
+Set the provider through environment variables, or in **Settings** in the UI. Provider connections stored in the database, `POST /api/v1/providers/test`, and `edgequake doctor` shipped with [v0.33.0](operations/upgrade-to-0.33.0.md) and are part of the current product line. See [Providers](providers/index.md).
 
 ## Cost
 
