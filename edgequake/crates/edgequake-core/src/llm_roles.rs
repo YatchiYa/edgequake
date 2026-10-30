@@ -219,6 +219,7 @@ pub fn resolve_role_reasoning_effort(
     } else {
         None // query/chat Auto
     };
+    let effective = mistral_thinking_off(provider, effective);
 
     let clamped = match (&desired, &effective) {
         (Some(d), Some(e)) => !d.eq_ignore_ascii_case(e),
@@ -233,6 +234,41 @@ pub fn resolve_role_reasoning_effort(
         source,
         clamped,
     }
+}
+
+/// Fork: with any reasoning effort but `none`, Mistral replies with `content` as a list of
+/// `thinking` + `text` parts, which edgequake-llm 0.10.9 cannot parse ("invalid type: sequence,
+/// expected a string"): every extraction failed for a workspace set to `high`. Models that
+/// accept an effort also accept `none`; models without reasoning already resolve to `None`.
+// ponytail: reasoning is off for all Mistral roles; drop this once edgequake-llm parses content parts.
+fn mistral_thinking_off(provider: &str, effective: Option<String>) -> Option<String> {
+    match effective {
+        Some(e)
+            if provider.to_ascii_lowercase().contains("mistral")
+                && !e.eq_ignore_ascii_case("none") =>
+        {
+            Some("none".to_string())
+        }
+        other => other,
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn mistral_effort_is_forced_off_others_untouched() {
+    assert_eq!(
+        mistral_thinking_off("mistral", Some("high".into())).as_deref(),
+        Some("none")
+    );
+    assert_eq!(
+        mistral_thinking_off("mistral", Some("none".into())).as_deref(),
+        Some("none")
+    );
+    assert_eq!(mistral_thinking_off("mistral", None), None); // mistral-large: field omitted
+    assert_eq!(
+        mistral_thinking_off("openai", Some("high".into())).as_deref(),
+        Some("high")
+    );
 }
 
 /// SPEC-163: `llm_roles.<role>.connection_id`, including non-LLM keys such as `embedding`.

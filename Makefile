@@ -1056,6 +1056,12 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	fi; \
 	(bash $(FRONTEND_DIR)/scripts/ensure-dev-cache.sh && sleep 2 && cd $(FRONTEND_DIR) && PORT="$$FRONTEND_PORT" EDGEQUAKE_API_URL="$$EDGEQUAKE_API_URL" NEXT_PUBLIC_API_URL="$$NEXT_PUBLIC_API_URL" NEXT_PUBLIC_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" NEXT_PUBLIC_DISABLE_DEMO_LOGIN="$(DEV_DISABLE_DEMO_LOGIN)" sh -c 'pnpm run dev || bun run dev' 2>&1 | sed 's/^/[frontend] /') & \
 	FRONTEND_PID=$$!; \
+	if [ -f $(ROOT_DIR)/agents/.env ] && command -v uv >/dev/null 2>&1; then \
+		echo "$(YELLOW)→ Starting agents service on port 8765 (SPEC-165)...$(RESET)"; \
+		(cd $(ROOT_DIR)/agents && RUST_LOG=warn EDGEQUAKE_URL="$$BACKEND_URL" uv run --quiet python server.py 2>&1 | sed 's/^/[agents] /') & \
+	else \
+		echo "$(YELLOW)→ Agents service skipped (needs agents/.env and uv; see agents/README.md)$(RESET)"; \
+	fi; \
 	echo ""; \
 	echo "$(BOLD)$(GREEN)  Website: $$FRONTEND_URL$(RESET)"; \
 	echo "  API:      $$BACKEND_URL"; \
@@ -1337,6 +1343,7 @@ kill-app: ## Kill backend and frontend processes (leaves PostgreSQL + OrbStack r
 	@-pkill -f "node.*edgequake_webui" 2>/dev/null || true
 	@-set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
 	$(SAFE_KILL_LISTEN_PORTS) "$${FRONTEND_PORT:-$(FRONTEND_PORT)}" "$(DEFAULT_FRONTEND_PORT)" "$(FRONTEND_PORT)"
+	@-$(SAFE_KILL_LISTEN_PORTS) 8765
 	@rm -rf /tmp/edgequake-make-dev.lock
 	@echo "$(GREEN)✓ App processes cleared (PostgreSQL + OrbStack left running)$(RESET)"
 
@@ -1351,6 +1358,8 @@ stop: ## Stop all development services
 	@-if [ -f /tmp/edgequake-frontend.pid ]; then kill -9 $$(cat /tmp/edgequake-frontend.pid) 2>/dev/null || true; fi
 	@-pkill -f "node.*edgequake_webui" 2>/dev/null || true
 	@-rm -f /tmp/edgequake-frontend.pid /tmp/edgequake-frontend-start.sh
+	@echo "$(BLUE)→ Stopping agents service (port 8765)...$(RESET)"
+	@-$(SAFE_KILL_LISTEN_PORTS) 8765
 	@$(MAKE) stop-docker-services --no-print-directory 2>/dev/null || true
 	@BACKEND_STILL_UP=0; FRONTEND_STILL_UP=0; DB_STILL_UP=0; \
 	if curl -fsS "$(BACKEND_URL)/health" >/dev/null 2>&1; then BACKEND_STILL_UP=1; fi; \
