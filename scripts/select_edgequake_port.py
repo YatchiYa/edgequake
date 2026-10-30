@@ -12,6 +12,7 @@ from __future__ import annotations
 import socket
 import sys
 import urllib.error
+import http.client
 import urllib.request
 
 
@@ -38,7 +39,8 @@ def is_edgequake(kind: str, port: int) -> bool:
                 or '"status": "degraded"' in body.lower()
             )
         return "EdgeQuake" in body
-    except (urllib.error.URLError, TimeoutError, ValueError):
+    # OSError covers URLError and dropped connections (RemoteDisconnected from foreign listeners).
+    except (OSError, http.client.HTTPException, ValueError):
         return False
 
 

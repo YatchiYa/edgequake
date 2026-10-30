@@ -6,6 +6,7 @@ from __future__ import annotations
 import pathlib
 import sys
 import unittest
+import http.client
 from unittest.mock import patch
 
 _SCRIPT_DIR = pathlib.Path(__file__).resolve().parent.parent
@@ -15,6 +16,13 @@ import select_edgequake_port as ports  # noqa: E402
 
 
 class ChoosePortTests(unittest.TestCase):
+    def test_listener_that_drops_the_connection_is_not_edgequake(self) -> None:
+        # A foreign proxy that accepts then hangs up must not crash `make dev`.
+        dropped = http.client.RemoteDisconnected("Remote end closed connection without response")
+        with patch.object(ports.urllib.request, "urlopen", side_effect=dropped):
+            self.assertFalse(ports.is_edgequake("backend", 8095))
+            self.assertFalse(ports.is_edgequake("frontend", 3001))
+
     def test_skips_foreign_backend_on_preferred_port(self) -> None:
         with (
             patch.object(ports, "is_edgequake", return_value=False),
