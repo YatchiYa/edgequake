@@ -36,7 +36,16 @@ pub async fn org() -> Org {
     )
     .await;
     let platform = sso.platform_admin_token().await;
-    let acme = sso.create_tenant("Acme", "acme").await;
+    // v0.39 plans default to 3 seats, and this org already seats 3: room for the invitations under test.
+    let acme = {
+        let t = edgequake_core::Tenant::new("Acme", "acme");
+        let max_workspaces = t.max_workspaces;
+        sso.state
+            .workspace_service
+            .create_tenant(t.with_quota(max_workspaces, 20))
+            .await
+            .expect("create tenant")
+    };
 
     let mut tokens = Vec::new();
     for (sub, email) in [

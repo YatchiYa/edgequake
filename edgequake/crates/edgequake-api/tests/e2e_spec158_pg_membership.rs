@@ -40,6 +40,25 @@ async fn pg_membership_metadata_roundtrips_and_survives_role_update() {
     .await
     .expect("insert user");
 
+    // v0.39 (SPEC-181) refuses membership changes that leave an organization without an owner.
+    let owner_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO users (user_id, tenant_id, username, role) VALUES ($1, $2, $3, 'user')",
+    )
+    .bind(owner_id)
+    .bind(tenant.tenant_id)
+    .bind(format!("o-{}", &owner_id.to_string()[..8]))
+    .execute(&pool)
+    .await
+    .expect("insert owner");
+    svc.add_membership(Membership::new(
+        owner_id,
+        tenant.tenant_id,
+        MembershipRole::Owner,
+    ))
+    .await
+    .expect("add owner");
+
     let mut membership = Membership::new(user_id, tenant.tenant_id, MembershipRole::Member);
     membership.metadata.insert("source".into(), json!("sso"));
     membership
@@ -66,10 +85,14 @@ async fn pg_membership_metadata_roundtrips_and_survives_role_update() {
     );
 
     let by_tenant = svc.get_tenant_memberships(tenant.tenant_id).await.unwrap();
-    assert_eq!(by_tenant[0].metadata.get("source"), Some(&json!("sso")));
+    let mine = by_tenant
+        .iter()
+        .find(|m| m.user_id == user_id)
+        .expect("member listed");
+    assert_eq!(mine.metadata.get("source"), Some(&json!("sso")));
 
-    let _ = sqlx::query("DELETE FROM users WHERE user_id = $1")
-        .bind(user_id)
+    let _ = sqlx::query("DELETE FROM users WHERE user_id = ANY($1)")
+        .bind(vec![user_id, owner_id])
         .execute(&pool)
         .await;
     let _ = svc.delete_tenant(tenant.tenant_id).await;

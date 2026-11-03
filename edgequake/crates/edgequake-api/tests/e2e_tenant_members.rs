@@ -293,7 +293,14 @@ async fn members_api_grants_and_revokes_workspace_isolation() {
 
     let (status, _, list) = call(&app, "GET", &members, &admin_h, None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(list["items"].as_array().unwrap().len(), 4, "{list}");
+    // v0.39 also lists the creator's automatic owner rows: count the four members added here.
+    let added = list["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["username"].as_str().is_some_and(|u| u.starts_with("m_")))
+        .count();
+    assert_eq!(added, 4, "{list}");
     let alice_row = list["items"]
         .as_array()
         .unwrap()
@@ -451,6 +458,16 @@ async fn members_api_grants_and_revokes_workspace_isolation() {
     );
     assert_eq!(body["role"], "readonly");
 
+    // v0.39 makes the organization's creator an owner too; drop those rows so dave is the last owner.
+    sqlx::query(
+        "DELETE FROM memberships WHERE tenant_id = $1::uuid
+           AND user_id = (SELECT user_id FROM users WHERE username = $2)",
+    )
+    .bind(&t)
+    .bind(&admin)
+    .execute(&pool)
+    .await
+    .expect("drop creator owner rows");
     // The last owner can be neither removed nor demoted — even by a platform admin.
     let dave_url = format!("{members}/{}", ids[dave]);
     let (status, _, _) = call(&app, "DELETE", &dave_url, &admin_h, None).await;

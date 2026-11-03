@@ -43,13 +43,14 @@ describe('graph-merge-progress', () => {
     expect(detail).toContain('deep_2604.pdf');
     expect(detail).toContain('Saving relationships');
     expect(detail).toContain('128');
-    expect(detail).toContain('1,999');
+    // Counts use the runtime locale (1,999 in en, 1 999 in fr): build the expectation the same way.
+    expect(detail).toContain((1999).toLocaleString());
     expect(detail).toContain('(6%)');
   });
 
   it('formats compact stage message for badges', () => {
     const compact = formatGraphMergeStageMessage(BACKEND_MSG);
-    expect(compact).toBe('Saving relationships: 128/1,999 (6%)');
+    expect(compact).toBe(`Saving relationships: 128/${(1999).toLocaleString()} (6%)`);
   });
 
   it('resolves max stage_progress across active documents', () => {

@@ -37,7 +37,7 @@ async fn delete_tenant(app: &axum::Router, id: &str) -> StatusCode {
 }
 
 #[tokio::test]
-async fn delete_missing_tenant_is_404_existing_is_204() {
+async fn delete_missing_tenant_is_404_existing_is_202() {
     let app = test_app();
     assert_eq!(
         delete_tenant(&app, &Uuid::new_v4().to_string()).await,
@@ -70,6 +70,7 @@ async fn delete_missing_tenant_is_404_existing_is_204() {
     let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let id = body["id"].as_str().expect("tenant id");
 
-    assert_eq!(delete_tenant(&app, id).await, StatusCode::NO_CONTENT);
+    // v0.39 (SPEC-181): deletion starts an organization purge and returns its receipt.
+    assert_eq!(delete_tenant(&app, id).await, StatusCode::ACCEPTED);
     assert_eq!(delete_tenant(&app, id).await, StatusCode::NOT_FOUND);
 }
