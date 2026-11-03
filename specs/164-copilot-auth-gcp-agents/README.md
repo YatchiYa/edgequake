@@ -59,3 +59,9 @@ Checked end to end through the website (`make dev-auth`): sign-in, all workspace
 - **Mistral reasoning** (`edgequake-core/src/llm_roles.rs`): with any `reasoning_effort` but `none`, Mistral returns `content` as a list of `thinking` + `text` parts that edgequake-llm 0.10.9 cannot parse, so every extraction failed in a workspace set to `high`. The effective effort is forced to `none` for Mistral until edgequake-llm parses content parts.
 
 Local data notes (not code): vectors stored since 2026-08 were registered under a 1024-d `text-embedding-3-small` model row although they are `mistral-embed` vectors (cosine 1.0 against a fresh call); the new search filters by the workspace's model, so every question found 0 passages until they were relabelled. The local database still has Apache AGE, so `edgequake/docker/docker-compose.override.yml` (git-excluded) runs the AGE-capable `edgequake-postgres:0.35.4` image until `edgequake migrate --drop-age` is run.
+
+## Rebased on edgequake-main v0.39.1 (2026-11-03)
+
+Replayed both fork commits on `origin/edgequake-main` (v0.39.1) as `feat/agents-x-copilot-v0.39.1`. Migration `workspace_metrics_history_public` is now **227** (upstream owns 225–226); `request_authorization` keeps upstream's SPEC-181 archive/restore lifecycle branches and routes every other request through the fork's `authorize_scope_in`; session refresh moved to `session-refresh.ts` upstream and the fork's `serializeAuth` wrap followed it. Upstream rewrote the dev port picker with a `/live` probe that had the old narrow `except`, so the `RemoteDisconnected` crash came back; fixed again (the fork's regression test caught it).
+
+Two upstream e2e suites fail on pure v0.39.1 too (verified on an untouched worktree): `e2e_spec158_pg_membership` hits upstream's new `organization_requires_owner` rule, and `e2e_spec169_access_links` hits the new default 3-seat limit (`seat_limit_reached`).

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import socket
 import sys
-import urllib.error
 import http.client
 import urllib.request
 
@@ -36,8 +35,8 @@ def is_edgequake(kind: str, port: int) -> bool:
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/live", timeout=2.0) as response:
                 if 200 <= response.status < 300:
                     return True
-        except (urllib.error.URLError, TimeoutError, ValueError):
-            pass  # older build without /live: try the deep document below
+        except (OSError, http.client.HTTPException, ValueError):
+            pass  # older build without /live, or a foreign listener: try the deep document below
     url = (
         f"http://127.0.0.1:{port}/health"
         if kind == "backend"
