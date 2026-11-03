@@ -8,9 +8,11 @@
 #   ./scripts/dev_safe_kill_listen_port.sh 8090 3010
 # Env:
 #   EDGEQUAKE_SAFE_KILL_DRY_RUN=1  print what would be killed, do not kill
+#   EDGEQUAKE_SAFE_KILL_ANY=1      also kill listeners that are not processes of this checkout
 set -euo pipefail
 
 DRY="${EDGEQUAKE_SAFE_KILL_DRY_RUN:-0}"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 _is_host_runtime() {
   local cmd="$1"
@@ -22,10 +24,27 @@ _is_host_runtime() {
   return 1
 }
 
+# Working directory of a PID (Linux /proc, else lsof on macOS).
+_cwd_of() {
+  readlink "/proc/$1/cwd" 2>/dev/null || lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1
+}
+
+# Only processes of this checkout: another project listening on the same port is left alone.
+_is_ours() {
+  local pid="$1" cmd="$2"
+  case "$cmd" in *"$REPO"*|*target/*/edgequake*) return 0 ;; esac
+  case "$(_cwd_of "$pid")" in "$REPO"|"$REPO"/*) return 0 ;; esac
+  return 1
+}
+
 _kill_pid() {
   local pid="$1" port="$2" cmd="$3"
   if _is_host_runtime "$cmd"; then
     echo "  Skipping PID $pid on :$port (host container runtime — never kill): ${cmd:0:80}" >&2
+    return 0
+  fi
+  if [ "${EDGEQUAKE_SAFE_KILL_ANY:-0}" != "1" ] && ! _is_ours "$pid" "$cmd"; then
+    echo "  Skipping PID $pid on :$port (not an EdgeQuake process from $REPO; set EDGEQUAKE_SAFE_KILL_ANY=1 to force): ${cmd:0:80}" >&2
     return 0
   fi
   if [ "$DRY" = "1" ]; then
