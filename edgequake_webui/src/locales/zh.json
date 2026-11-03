@@ -2161,7 +2161,7 @@
     "scopeTenant": "整个租户",
     "add": "添加成员",
     "forbidden": "只有租户所有者/管理员和平台管理员可以管理成员。",
-    "empty": "暂无成员。",
+    "emptyCard": "暂无成员。",
     "user": "用户",
     "allWorkspaces": "所有工作区",
     "roleFor": "{{name}} 的角色",
@@ -2230,7 +2230,8 @@
       "workspace_status": "正在检查工作区",
       "propose_graph_changes": "正在准备修改",
       "navigate": "正在打开页面",
-      "highlight_nodes": "正在图谱上高亮"
+      "highlight_nodes": "正在图谱上高亮",
+      "search_product_docs": "正在查阅 EdgeQuake 文档"
     }
   },
   "agentsPlatform": {

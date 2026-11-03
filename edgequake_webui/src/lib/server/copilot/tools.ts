@@ -10,6 +10,8 @@
  * text cannot make the copilot edit the graph on its own).
  */
 
+import { searchProductDocs } from "./product-docs";
+
 export interface CallerScope {
   authorization: string | null;
   tenantId: string | null;
@@ -243,6 +245,22 @@ export const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
+      name: "search_product_docs",
+      description:
+        "Search the EdgeQuake product documentation (how EdgeQuake works: architecture, graph storage and its limits, " +
+        "Cypher/Apache AGE/Neo4j, scaling, retrieval modes, settings, providers, agents, deployment, troubleshooting). " +
+        "Use for questions about EdgeQuake itself, not about the workspace content. The docs are mostly in English: " +
+        "write the query as English keywords, plus the user's own key terms.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 4 } },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "workspace_status",
       description: "Workspace statistics (documents, entities, relationships) and ingestion pipeline status.",
       parameters: { type: "object", properties: {} },
@@ -300,6 +318,7 @@ export const TOOL_LABELS: Record<string, string> = {
   list_documents: "Listing documents",
   get_document: "Reading document",
   ask_knowledge_base: "Querying the knowledge base",
+  search_product_docs: "Reading the EdgeQuake docs",
   workspace_status: "Checking workspace",
   propose_graph_changes: "Preparing changes",
   navigate: "Opening page",
@@ -403,6 +422,15 @@ export async function runReadTool(name: string, args: Args, scope: CallerScope):
         })),
       });
     }
+    case "search_product_docs":
+      return clip({
+        // 4 × 1600 chars stays under MAX_TOOL_RESULT_CHARS; ask again with other words for more.
+        sections: searchProductDocs(str(args.query), num(args.limit, 4, 4)).map(({ path, heading, version, text }) => ({
+          source: `${path} › ${heading}`,
+          written_for: version ? `v${version}` : "unversioned",
+          text: text.slice(0, 1600),
+        })),
+      });
     case "workspace_status": {
       const [stats, pipeline] = await Promise.all([
         scope.workspaceId

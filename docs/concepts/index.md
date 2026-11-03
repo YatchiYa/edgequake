@@ -27,6 +27,7 @@ Read the chart left to right. Entity extraction builds the knowledge graph. Hybr
 1. [Graph-RAG](graph-rag.md): why a graph helps retrieval-augmented generation.
 2. [Entity extraction](entity-extraction.md): how text becomes entities and relationships.
 3. [Knowledge graph](knowledge-graph.md): how the graph is stored and isolated per tenant.
+   - [Graph storage at scale (FR)](graph-storage-at-scale-fr.md): limits of the PostgreSQL graph, Cypher after Apache AGE, Neo4j, and measurements at 1 million entities.
 4. [Hybrid retrieval](hybrid-retrieval.md): how a question is answered with vectors and graph together.
 5. [Decision extraction](decision-extraction.md): preview mode that answers closed questions with a small local model (SPEC-160).
 6. [Feature tour](feature-tour.md): one page that lists what the product can do.

@@ -2161,7 +2161,7 @@
     "scopeTenant": "Tout le tenant",
     "add": "Ajouter un membre",
     "forbidden": "Seuls les propriétaires/administrateurs du tenant et les administrateurs de la plateforme peuvent gérer les membres.",
-    "empty": "Aucun membre.",
+    "emptyCard": "Aucun membre.",
     "user": "Utilisateur",
     "allWorkspaces": "Tous les espaces de travail",
     "roleFor": "Rôle de {{name}}",
@@ -2230,7 +2230,8 @@
       "workspace_status": "État de l’espace de travail",
       "propose_graph_changes": "Préparation des modifications",
       "navigate": "Ouverture de la page",
-      "highlight_nodes": "Surlignage sur le graphe"
+      "highlight_nodes": "Surlignage sur le graphe",
+      "search_product_docs": "Lecture de la documentation EdgeQuake"
     }
   },
   "agentsPlatform": {

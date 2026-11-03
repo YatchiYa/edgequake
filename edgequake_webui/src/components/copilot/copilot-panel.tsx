@@ -8,6 +8,7 @@
  * graph edits only after the user approves the proposal card.
  */
 import { StreamingMarkdown } from '@/components/query/markdown';
+import { unlinkDocPaths } from '@/lib/copilot/unlink-doc-paths';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { refreshAccessToken } from '@/lib/api/client';
@@ -587,7 +588,7 @@ function MessageItem({
       )}
       {message.content && (
         <div className="min-w-0 break-words text-sm">
-          <StreamingMarkdown content={message.content} isStreaming={!!message.streaming} />
+          <StreamingMarkdown content={unlinkDocPaths(message.content)} isStreaming={!!message.streaming} />
         </div>
       )}
       {message.proposal && <ProposalCard proposal={message.proposal} busy={busy} onDecide={onDecide} />}

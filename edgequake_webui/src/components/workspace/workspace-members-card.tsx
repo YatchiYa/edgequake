@@ -154,7 +154,7 @@ export function WorkspaceMembersCard() {
         ) : members.error ? (
           <p className="px-6 pb-6 text-sm text-destructive">{errMsg(members.error)}</p>
         ) : rows.length === 0 ? (
-          <p className="px-6 pb-6 text-sm text-muted-foreground">{t('members.empty', 'No members.')}</p>
+          <p className="px-6 pb-6 text-sm text-muted-foreground">{t('members.emptyCard', 'No members.')}</p>
         ) : (
           <div className="border-t">
             <Table>

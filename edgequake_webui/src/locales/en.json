@@ -2161,7 +2161,7 @@
     "scopeTenant": "Whole tenant",
     "add": "Add member",
     "forbidden": "Only tenant owners/admins and platform admins can manage members.",
-    "empty": "No members.",
+    "emptyCard": "No members.",
     "user": "User",
     "allWorkspaces": "All workspaces",
     "roleFor": "Role for {{name}}",
@@ -2230,7 +2230,8 @@
       "workspace_status": "Checking workspace",
       "propose_graph_changes": "Preparing changes",
       "navigate": "Opening page",
-      "highlight_nodes": "Highlighting on graph"
+      "highlight_nodes": "Highlighting on graph",
+      "search_product_docs": "Reading the EdgeQuake docs"
     }
   },
   "agentsPlatform": {
