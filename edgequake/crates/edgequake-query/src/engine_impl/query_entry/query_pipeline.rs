@@ -573,6 +573,11 @@ impl QueryEngine {
             && keyword_override.is_none()
             && !matches!(keyword_mode, crate::keywords::KeywordMode::Heuristic);
 
+        // The warm peek serves cached keywords without calling the extractor, which is
+        // what sets this flag otherwise; override/heuristic/off paths are never hits.
+        self.keyword_cache_hit_flag
+            .store(peeked.is_some(), std::sync::atomic::Ordering::Relaxed);
+
         let extract_keywords = async {
             let t0 = Instant::now();
             let result = if !self.config.use_keyword_extraction {
@@ -867,6 +872,11 @@ impl QueryEngine {
         } else {
             retrieve.await?
         };
+
+        // Naive is chunk vectors only (docs/concepts/hybrid-retrieval.md): no graph admit.
+        if matches!(mode, QueryMode::Naive | QueryMode::Bypass) {
+            return Ok(context);
+        }
 
         // Ask / exact-name: admit AGE entities when ANN misses (workspace model gap).
         let seeds = request.seed_entity_ids.as_deref().unwrap_or(&[]);

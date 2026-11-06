@@ -43,6 +43,7 @@ fn schema() -> EntityExtractionSchema {
                 target: "LOCATION".into(),
             },
         ],
+        ontology: None,
     }
 }
 

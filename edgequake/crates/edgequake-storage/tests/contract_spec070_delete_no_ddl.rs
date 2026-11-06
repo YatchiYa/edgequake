@@ -18,7 +18,8 @@ fn contract_cascade_and_deletion_avoid_schema_ddl() {
 
 #[test]
 fn contract_discovery_gin_join_still_required() {
-    let scan = include_str!("../src/adapters/postgres/graph/scan_ops.rs");
+    // The discovery SQL moved from scan_ops into the shared lineage helper.
+    let scan = include_str!("../src/adapters/postgres/graph/helpers/source_lineage_sql.rs");
     assert!(
         scan.contains("to_jsonb(pr.probe_id)") || scan.contains("@> to_jsonb"),
         "discovery must use GIN @> probes"

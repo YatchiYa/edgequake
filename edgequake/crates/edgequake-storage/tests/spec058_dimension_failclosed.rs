@@ -50,7 +50,8 @@ fn contract_ensure_dimension_fail_closed_source() {
 
 #[test]
 fn contract_boot_uses_prefer_existing() {
-    let src = include_str!("../../edgequake-api/src/state/postgres.rs");
+    // The default vector table is built by the data-access provider factory (SPEC-149).
+    let src = include_str!("../../edgequake-api/src/state/data_access_providers/postgres.rs");
     assert!(
         src.contains("DimensionReconcilePolicy::PreferExisting"),
         "AppState::new_postgres must PreferExisting on default vector table"

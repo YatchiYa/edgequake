@@ -262,6 +262,9 @@ export function CopilotPanel() {
           } else if (event.action === 'refresh_graph') {
             awaitingRefresh.current = true;
             invalidateKnowledgeGraph(queryClient);
+            // SPEC-184: approved ontology changes also update the workspace page.
+            void queryClient.invalidateQueries({ queryKey: ['workspaceOntology'] });
+            void queryClient.invalidateQueries({ queryKey: ['workspace'] });
           } else if (event.action === 'highlight') {
             pendingHighlight.current = event.names;
             if (!pathname.includes('/graph')) {

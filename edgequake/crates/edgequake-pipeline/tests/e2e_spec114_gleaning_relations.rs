@@ -59,6 +59,7 @@ fn schema_strict_relations_with_edges() -> EntityExtractionSchema {
             relation: "WORKS_AT".into(),
             target: "ORGANIZATION".into(),
         }],
+        ontology: None,
     }
 }
 
@@ -69,6 +70,7 @@ fn schema_strict_relations_no_edges() -> EntityExtractionSchema {
         relation_types: vec!["WORKS_AT".into(), "RELATED_TO".into()],
         relation_strict: true,
         relation_edges: Vec::new(),
+        ontology: None,
     }
 }
 
@@ -79,6 +81,7 @@ fn schema_permissive_relations() -> EntityExtractionSchema {
         relation_types: vec!["WORKS_AT".into(), "RELATED_TO".into()],
         relation_strict: false,
         relation_edges: Vec::new(),
+        ontology: None,
     }
 }
 
@@ -89,6 +92,7 @@ fn schema_free_form_relations() -> EntityExtractionSchema {
         relation_types: Vec::new(),
         relation_strict: true,
         relation_edges: Vec::new(),
+        ontology: None,
     }
 }
 

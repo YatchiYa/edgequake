@@ -25,7 +25,9 @@ async fn contract_double_persist_merges_to_single_normalized_entity() {
         },
         Arc::new(NoopEntitySink),
         None,
-    );
+    )
+    // In-memory store: not the typed authority (the orchestrator asks the store the same way).
+    .with_typed_authority(false);
     let ctx = sample_persist_context();
     let options = ChunkVectorBuildOptions::STANDARD;
 
@@ -94,7 +96,9 @@ async fn contract_chunk_vector_metadata_uses_content_ref_not_inline_body() {
         },
         Arc::new(NoopEntitySink),
         None,
-    );
+    )
+    // In-memory store: not the typed authority (the orchestrator asks the store the same way).
+    .with_typed_authority(false);
     let ctx = sample_persist_context();
     let result = sample_processing_result();
 
@@ -164,7 +168,9 @@ async fn contract_cross_document_entity_merge() {
         },
         Arc::new(NoopEntitySink),
         None,
-    );
+    )
+    // In-memory store: not the typed authority (the orchestrator asks the store the same way).
+    .with_typed_authority(false);
 
     let mut doc_a = sample_processing_result();
     doc_a.document_id = "doc-a".to_string();
@@ -239,7 +245,9 @@ async fn contract_persister_trait_matches_free_function() {
         },
         Arc::new(NoopEntitySink),
         None,
-    );
+    )
+    // In-memory store: not the typed authority (the orchestrator asks the store the same way).
+    .with_typed_authority(false);
     let ctx = sample_persist_context();
     let result = sample_processing_result();
 
@@ -268,7 +276,9 @@ async fn contract_persister_trait_matches_free_function() {
         Arc::new(NoopEntitySink),
         None,
         None,
-    );
+    )
+    // In-memory store: not the typed authority (the orchestrator asks the store the same way).
+    .with_typed_authority(false);
     use edgequake_pipeline::IngestionPersister;
     let trait_out = persister
         .persist(&ctx, &result, ChunkVectorBuildOptions::STANDARD)

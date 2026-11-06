@@ -605,6 +605,25 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
             post(handlers::rebuild_embeddings),
         )
         // Rebuild knowledge graph (LLM model change)
+        // SPEC-184: workspace ontology (writes need owner/admin like PUT /workspaces/{id}).
+        .route(
+            "/workspaces/{workspace_id}/ontology",
+            get(handlers::get_workspace_ontology)
+                .put(handlers::put_workspace_ontology)
+                .delete(handlers::delete_workspace_ontology),
+        )
+        .route(
+            "/workspaces/{workspace_id}/ontology/draft",
+            post(handlers::draft_workspace_ontology),
+        )
+        .route(
+            "/workspaces/{workspace_id}/ontology/plan",
+            post(handlers::plan_workspace_ontology),
+        )
+        .route(
+            "/workspaces/{workspace_id}/ontology/realign",
+            post(handlers::realign_workspace_ontology),
+        )
         .route(
             "/workspaces/{workspace_id}/rebuild-knowledge-graph",
             post(handlers::rebuild_knowledge_graph),

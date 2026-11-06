@@ -144,9 +144,11 @@ fn contract_escape_ssot_and_bound_cypher_hot_reads() {
         "cypher_format must delegate to escape SSOT"
     );
     let read = include_str!("../src/adapters/postgres/graph/nodes_ops/read.rs");
+    // SPEC-164: hot node reads are native batched SQL — no Cypher string at all
+    // (stronger than bound Cypher: nothing to inject into).
     assert!(
-        read.contains("cypher_query_bound"),
-        "hot node reads must use bound Cypher"
+        read.contains("pg_get_nodes_batch") && !read.contains("cypher_query("),
+        "hot node reads must not build Cypher strings"
     );
     let isp = include_str!("../src/adapters/postgres/graph/nodes_ops/mod.rs");
     assert!(isp.contains("GraphStorageReadOps") || isp.contains("read"));

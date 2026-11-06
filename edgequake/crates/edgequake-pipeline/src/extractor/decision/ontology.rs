@@ -88,7 +88,13 @@ fn entity_types(
     Ok(ids
         .into_iter()
         .map(|id| EntityType {
-            description: type_description(&id),
+            // SPEC-184: the workspace ontology's definition when it has one.
+            description: schema
+                .ontology
+                .as_deref()
+                .and_then(|o| o.type_description(&id))
+                .map(str::to_string)
+                .unwrap_or_else(|| type_description(&id)),
             id,
             aliases: Vec::new(),
             color: "#64748b".into(),
@@ -231,6 +237,7 @@ mod tests {
             relation_types: Vec::new(),
             relation_strict: true,
             relation_edges: Vec::new(),
+            ontology: None,
         }
     }
 

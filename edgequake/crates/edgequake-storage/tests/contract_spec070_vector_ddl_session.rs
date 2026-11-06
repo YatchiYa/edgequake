@@ -8,7 +8,7 @@ fn contract_vector_ddl_session_gucs() {
         "vector ddl must expose setup_vector_ddl_session"
     );
     assert!(
-        ddl.contains("SET statement_timeout = 0"),
+        ddl.contains("statement_timeout = 0"),
         "vector DDL must clear statement_timeout"
     );
     assert!(

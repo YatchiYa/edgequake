@@ -68,7 +68,9 @@ async fn contract_batch_merge_creates_all_entity_nodes() {
         Arc::new(NoopEntitySink),
         None,
         None,
-    );
+    )
+    // In-memory store: not the typed authority (the orchestrator asks the store the same way).
+    .with_typed_authority(false);
 
     persister
         .persist(

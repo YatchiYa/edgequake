@@ -12,8 +12,10 @@ fn ingest_profile_exported_and_applied_from_env() {
         "env wiring required for chunk_only / retrieve_only"
     );
     let ingestion = include_str!("../src/ingestion_pipeline.rs");
+    // `from_env()` is `from_env_for_provider("")`; the provider-aware form reads the same env.
     assert!(
-        ingestion.contains("PipelineConfig::from_env()"),
+        ingestion.contains("PipelineConfig::from_env()")
+            || ingestion.contains("PipelineConfig::from_env_for_provider("),
         "build_ingestion_pipeline must honour from_env (profile + tunables)"
     );
 }

@@ -1,6 +1,7 @@
 //! SPEC-024 2.4 — cross-encoder reranker env resolution via edgequake-llm factory.
 
 #[tokio::test]
+#[serial_test::serial]
 async fn contract_cross_encoder_uses_bi_encoder_with_mock_embedding() {
     use std::sync::Arc;
 
@@ -31,6 +32,7 @@ async fn contract_cross_encoder_uses_bi_encoder_with_mock_embedding() {
 }
 
 #[test]
+#[serial_test::serial]
 fn contract_cross_encoder_without_embedding_falls_back_to_bm25() {
     let saved = (
         std::env::var("JINA_API_KEY").ok(),

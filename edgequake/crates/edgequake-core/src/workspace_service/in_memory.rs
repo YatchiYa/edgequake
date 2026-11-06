@@ -664,6 +664,17 @@ impl WorkspaceService for InMemoryWorkspaceService {
             &mut workspace.metadata,
             request.relation_edges,
         );
+        // SPEC-184: ontology document + the lists it replaced (sparse JSON keys).
+        crate::type_list::apply_json_metadata_key(
+            &mut workspace.metadata,
+            "ontology",
+            request.ontology,
+        );
+        crate::type_list::apply_json_metadata_key(
+            &mut workspace.metadata,
+            "ontology_schema_before",
+            request.ontology_schema_before,
+        );
         apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
         crate::chunking_metadata::apply_chunking_metadata(
             &mut workspace.metadata,

@@ -74,6 +74,7 @@ async fn seeded_engine(embed: Arc<CountingEmbed>, llm: Arc<MockProvider>) -> Que
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn e2e_warm_keyword_hit_skips_embed_one_uses_one_batch() {
     {
         let _guard = ENV_LOCK.lock().unwrap();
@@ -113,6 +114,7 @@ async fn e2e_warm_keyword_hit_skips_embed_one_uses_one_batch() {
 /// Acc Mix injects a fresh workspace embedder (same model, new Arc). Without
 /// coerce, the engine LRU is bypassed and every query pays mistral-embed RTT.
 #[tokio::test]
+#[serial_test::serial]
 async fn e2e_workspace_role_llms_reuses_engine_embed_cache() {
     {
         let _guard = ENV_LOCK.lock().unwrap();

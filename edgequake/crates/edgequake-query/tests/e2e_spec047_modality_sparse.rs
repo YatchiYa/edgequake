@@ -9,6 +9,7 @@ use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{MemoryVectorStorage, MetadataFilter};
 
 #[tokio::test]
+#[serial_test::serial]
 async fn e2e_sparse_fusion_prefers_chart_modality_under_fts() {
     std::env::set_var("EDGEQUAKE_CHART_MODALITY_FILTER", "true");
     std::env::set_var("EDGEQUAKE_BM25_RETRIEVAL", "true");

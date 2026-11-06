@@ -31,6 +31,7 @@ fn schema() -> EntityExtractionSchema {
             relation: "WORKS_AT".into(),
             target: "ORGANIZATION".into(),
         }],
+        ontology: None,
     }
 }
 

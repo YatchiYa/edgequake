@@ -230,14 +230,16 @@ async fn streaming_query_without_images_uses_text_stream_path() {
     let mut stream = engine.query_stream(req).await.unwrap();
     while stream.next().await.is_some() {}
 
+    // SPEC-083: providers with tool streaming stream live; a provider without it
+    // (this recorder) answers through one chat() call. Either way: one generation
+    // call, and no image ever reaches a text-only question.
     assert_eq!(
-        recorder.stream_calls.load(Ordering::SeqCst),
+        recorder.stream_calls.load(Ordering::SeqCst) + recorder.chat_calls.load(Ordering::SeqCst),
         1,
-        "text-only streaming must use stream()"
+        "text-only streaming makes exactly one generation call"
     );
-    assert_eq!(
-        recorder.chat_calls.load(Ordering::SeqCst),
-        0,
-        "text-only streaming must NOT use chat()"
+    assert!(
+        !recorder.saw_images.load(Ordering::SeqCst),
+        "text-only streaming must not send images"
     );
 }

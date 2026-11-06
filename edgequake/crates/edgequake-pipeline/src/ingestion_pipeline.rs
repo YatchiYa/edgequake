@@ -339,6 +339,7 @@ pub fn build_ingestion_pipeline(
         max_total_records = caps.max_total_records,
         "Resolved extraction caps for ingestion pipeline"
     );
+    let ontology = entity_schema.ontology.clone();
     let base_extractor: Arc<dyn EntityExtractor> = Arc::new(
         LLMExtractor::new(llm.clone())
             .with_entity_schema(entity_schema.clone())
@@ -359,6 +360,8 @@ pub fn build_ingestion_pipeline(
     } else {
         base_extractor
     };
+    // SPEC-184: aliases → canonical terms on the final output (no-op without an ontology).
+    let extractor = crate::ontology::OntologyExtractor::wrap(extractor, ontology.as_ref());
 
     Pipeline::new(pipeline_config)
         .with_extractor(extractor)

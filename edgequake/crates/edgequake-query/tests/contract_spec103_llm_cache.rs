@@ -46,6 +46,7 @@ impl KeywordExtractor for CountingKeywordExtractor {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn spec103_tiered_memory_then_postgres() {
     // MemoryKV stands in for public.llm_cache (same KV upsert/get contract).
     let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("spec103"));
@@ -77,6 +78,7 @@ async fn spec103_tiered_memory_then_postgres() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn spec103_keyword_hit_skips_llm() {
     let _g = ENV_LOCK.lock().await;
     std::env::set_var("EDGEQUAKE_LLM_CACHE", "1");
@@ -137,6 +139,7 @@ async fn spec103_keyword_hit_skips_llm() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn spec103_query_answer_hit_skips_generate() {
     let _g = ENV_LOCK.lock().await;
     std::env::set_var("EDGEQUAKE_LLM_CACHE", "1");
@@ -207,6 +210,7 @@ async fn spec103_query_answer_hit_skips_generate() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn spec103_master_off_disables_both() {
     let _g = ENV_LOCK.lock().await;
     std::env::set_var("EDGEQUAKE_LLM_CACHE", "0");
@@ -241,6 +245,7 @@ async fn spec103_master_off_disables_both() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn spec103_persist_across_engine_rebuild() {
     let _g = ENV_LOCK.lock().await;
     std::env::set_var("EDGEQUAKE_LLM_CACHE", "1");
@@ -319,6 +324,7 @@ async fn spec103_persist_across_engine_rebuild() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn spec103_vision_or_empty_context_bypass() {
     let _g = ENV_LOCK.lock().await;
     std::env::set_var("EDGEQUAKE_LLM_CACHE", "1");

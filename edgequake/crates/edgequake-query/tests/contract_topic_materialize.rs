@@ -10,6 +10,7 @@ use edgequake_storage::adapters::memory::MemoryKVStorage;
 use edgequake_storage::traits::KVStorage;
 
 #[tokio::test]
+#[serial_test::serial]
 async fn materialize_injects_missing_topic_body_from_kv() {
     std::env::set_var("EDGEQUAKE_TOPIC_MATERIALIZE", "1");
     std::env::remove_var("EDGEQUAKE_TOPIC_MATERIALIZE_CONTENT");
@@ -48,6 +49,7 @@ async fn materialize_injects_missing_topic_body_from_kv() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn content_gate_skips_offtopic_and_keeps_phrase_hit() {
     std::env::set_var("EDGEQUAKE_TOPIC_MATERIALIZE", "1");
     std::env::set_var("EDGEQUAKE_TOPIC_MATERIALIZE_CONTENT", "1");
@@ -91,6 +93,7 @@ async fn content_gate_skips_offtopic_and_keeps_phrase_hit() {
 }
 
 #[test]
+#[serial_test::serial]
 fn content_phrases_include_bone_cancers() {
     let phrases = question_content_phrases(
         "How are bone cancers staged and what factors are considered in determining the stage?",

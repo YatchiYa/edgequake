@@ -3,6 +3,7 @@
 use edgequake_query::fusion::{reciprocal_rank_fusion, MixFusionMode, RRF_K};
 
 #[test]
+#[serial_test::serial]
 fn contract_rrf_respects_zero_weight_arm() {
     let lists = vec![
         vec!["local_only".to_string()],
@@ -16,6 +17,7 @@ fn contract_rrf_respects_zero_weight_arm() {
 }
 
 #[test]
+#[serial_test::serial]
 fn contract_rrf_equal_weights_ties_on_swap() {
     let lists = vec![
         vec!["x".to_string(), "y".to_string()],
@@ -31,6 +33,7 @@ fn contract_rrf_equal_weights_ties_on_swap() {
 }
 
 #[test]
+#[serial_test::serial]
 fn contract_mix_fusion_env_modes() {
     std::env::remove_var("EDGEQUAKE_MIX_FUSION");
     assert_eq!(

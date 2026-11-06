@@ -569,6 +569,17 @@ impl WorkspaceServiceImpl {
         apply_kg_schema_preset_metadata(&mut workspace.metadata, request.kg_schema_preset)
             .map_err(Error::validation)?;
         apply_relation_edges_metadata(&mut workspace.metadata, request.relation_edges);
+        // SPEC-184: ontology document + the lists it replaced (sparse JSON keys).
+        crate::type_list::apply_json_metadata_key(
+            &mut workspace.metadata,
+            "ontology",
+            request.ontology,
+        );
+        crate::type_list::apply_json_metadata_key(
+            &mut workspace.metadata,
+            "ontology_schema_before",
+            request.ontology_schema_before,
+        );
         apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
             .map_err(Error::validation)?;
         apply_chunking_metadata(

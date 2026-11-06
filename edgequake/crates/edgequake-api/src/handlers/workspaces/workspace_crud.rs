@@ -534,6 +534,9 @@ pub async fn update_workspace(
         ),
         default_reasoning_effort: request.default_reasoning_effort,
         llm_roles: request.llm_roles,
+        // SPEC-184: the ontology has its own routes (`…/ontology`).
+        ontology: None,
+        ontology_schema_before: None,
         vision_extract_images: request.vision_extract_images,
         vision_extract_charts: request.vision_extract_charts,
         vision_extract_figures: request.vision_extract_figures,

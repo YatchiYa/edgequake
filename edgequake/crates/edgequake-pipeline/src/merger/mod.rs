@@ -580,20 +580,18 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
 
     /// The vector store is, or is not, the typed embedding authority.
     ///
-    /// Unset means "read `EDGEQUAKE_VECTOR_BACKEND` at merge time". The
-    /// persister sets it from the store so an in-memory backend is not treated
-    /// as typed just because the process default is.
+    /// Unset means "ask the vector store" ([`VectorStorage::is_typed_authority`]):
+    /// Postgres follows `EDGEQUAKE_VECTOR_BACKEND`, memory is never typed.
     pub fn with_typed_authority(mut self, typed_authority: bool) -> Self {
         self.typed_authority_override = Some(typed_authority);
         self
     }
 
     pub(super) fn typed_reads(&self) -> bool {
-        self.typed_authority_override.unwrap_or_else(|| {
-            edgequake_storage::vector_backend_reads_typed(
-                edgequake_storage::vector_backend_from_env(),
-            )
-        })
+        // Unset: ask the store. Postgres answers from `EDGEQUAKE_VECTOR_BACKEND`
+        // (same as before); an in-memory store has no typed tables.
+        self.typed_authority_override
+            .unwrap_or_else(|| self.vector_storage.is_typed_authority())
     }
 
     /// SPEC-091 IW2: mirror entity/relationship/report vectors into typed tables.
@@ -893,6 +891,18 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
         progress: Option<&MergeProgressCallback>,
     ) -> Result<MergeStats> {
         let mut stats = MergeStats::default();
+        // SPEC-091 RM2: every row merged here comes from a result that names its chunk.
+        // The ingest path stamps this lineage already (idempotent); doing it here too
+        // keeps the citation contract for every caller. An empty chunk id still fails.
+        let results: Vec<ExtractionResult> = results
+            .into_iter()
+            .map(|mut r| {
+                if !r.source_chunk_id.trim().is_empty() {
+                    r.stamp_chunk_lineage("");
+                }
+                r
+            })
+            .collect();
 
         // ── Totals for progress reporting ────────────────────────────────
         let total_entities: usize = results.iter().map(|r| r.entities.len()).sum();
@@ -1944,7 +1954,9 @@ mod tests {
         graph.initialize().await.unwrap();
         vector.initialize().await.unwrap();
 
-        let merger = KnowledgeGraphMerger::new(MergerConfig::default(), graph, vector);
+        let merger = KnowledgeGraphMerger::new(MergerConfig::default(), graph, vector)
+            // The typed ordering is what this test pins (memory is not typed by itself).
+            .with_typed_authority(true);
 
         let phases_seen: Arc<Mutex<Vec<MergePhase>>> = Arc::new(Mutex::new(Vec::new()));
         let phases_clone = Arc::clone(&phases_seen);
@@ -1990,14 +2002,10 @@ mod tests {
             phases.contains(&MergePhase::Finalizing),
             "Expected Finalizing phase"
         );
-        if edgequake_storage::vector_backend::vector_backend_reads_typed(
-            edgequake_storage::vector_backend_from_env(),
-        ) {
-            assert!(
-                !phases.contains(&MergePhase::EntityVectors),
-                "EntityVectors should be skipped when embeddings are absent under typed authority"
-            );
-        }
+        assert!(
+            !phases.contains(&MergePhase::EntityVectors),
+            "EntityVectors should be skipped when embeddings are absent under typed authority"
+        );
     }
 
     /// SPEC-032 W-06: Similarity gate — identical descriptions must not call LLM.

@@ -487,6 +487,14 @@ pub struct UpdateWorkspaceRequest {
     /// SPEC-109: merge role effort overrides into metadata `llm_roles`.
     pub llm_roles: Option<serde_json::Value>,
 
+    /// SPEC-184: workspace ontology document. Omit = leave unchanged; `null` removes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ontology: Option<serde_json::Value>,
+
+    /// SPEC-184: SPEC-114 lists saved before an ontology replaced them. `null` removes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ontology_schema_before: Option<serde_json::Value>,
+
     // === Vision extract (SPEC-015V) ===
     pub vision_extract_images: Option<bool>,
     pub vision_extract_charts: Option<bool>,

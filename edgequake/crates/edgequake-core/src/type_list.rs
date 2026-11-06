@@ -87,6 +87,27 @@ pub fn apply_type_list_metadata(
     }
 }
 
+/// Set or remove one JSON metadata key (SPEC-184 ontology keys).
+///
+/// - `None` → leave unchanged
+/// - `Some(null)` → remove key
+/// - otherwise → store the value
+pub fn apply_json_metadata_key(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    key: &str,
+    value: Option<serde_json::Value>,
+) {
+    match value {
+        None => {}
+        Some(serde_json::Value::Null) => {
+            metadata.remove(key);
+        }
+        Some(value) => {
+            metadata.insert(key.to_string(), value);
+        }
+    }
+}
+
 /// Apply sparse strict flag (default true when key absent).
 ///
 /// - `None` → leave unchanged

@@ -39,6 +39,7 @@ fn config_from_database_url(url: &str, namespace: &str) -> Option<PostgresConfig
 }
 
 #[tokio::test]
+#[serial_test::serial]
 #[ignore = "requires DATABASE_URL + running Postgres with llm_cache"]
 async fn e2e_spec103_persist_across_engine_rebuild_postgres() {
     let url = match std::env::var("DATABASE_URL") {

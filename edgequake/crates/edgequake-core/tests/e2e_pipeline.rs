@@ -310,8 +310,10 @@ async fn test_multi_document_ingestion_pipeline() {
     let graph_storage = Arc::new(MemoryGraphStorage::new("test_multi_doc"));
 
     // 2. Create EdgeQuake instance
+    // One scripted extraction response per document: no gleaning pass.
     let config = EdgeQuakeConfig::new()
         .with_namespace("test_multi_doc")
+        .with_gleaning(false, 0)
         .with_storage(StorageConfig {
             backend: StorageBackend::Memory,
             ..Default::default()

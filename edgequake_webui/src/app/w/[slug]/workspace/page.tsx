@@ -21,6 +21,7 @@ import {
 } from '@/components/workspace/workspace-deeplink-states';
 import { WorkspaceEntityTypesCard } from '@/components/workspace/workspace-entity-types-card';
 import { WorkspaceRelationTypesCard } from '@/components/workspace/workspace-relation-types-card';
+import { WorkspaceOntologyCard } from '@/components/workspace/workspace-ontology-card';
 import { WorkspaceExtractionLanguageCard } from '@/components/workspace/workspace-extraction-language-card';
 import { WorkspaceChunkingCard } from '@/components/workspace/workspace-chunking-card';
 import { WorkspaceExtractBudgetCard } from '@/components/workspace/workspace-extract-budget-card';
@@ -274,6 +275,8 @@ export default function WorkspacePage() {
 
         <WorkspaceRelationTypesCard workspace={workspace} />
       </div>
+
+      <WorkspaceOntologyCard workspace={workspace} />
 
       <WorkspaceActionsCard
         workspace={workspace}

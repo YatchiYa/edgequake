@@ -100,6 +100,7 @@ fn has_gemma(entities: &[RetrievedEntity]) -> bool {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn graph_only_entity_ask_sentence_admits_without_ann() {
     let engine = graph_only_engine().await;
     // No forced ll_keywords — hyphenated token from the Ask sentence is enough.
@@ -125,6 +126,7 @@ async fn graph_only_entity_ask_sentence_admits_without_ann() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn graph_only_entity_seed_ids_admits_neighbors() {
     let engine = graph_only_engine().await;
     let mut req = QueryRequest::new(ASK_SENTENCE).with_seed_entity_ids(vec![ENTITY_ID.into()]);
@@ -140,6 +142,7 @@ async fn graph_only_entity_seed_ids_admits_neighbors() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn graph_only_entity_stream_is_not_apology() {
     let engine = graph_only_engine().await;
     let mut req = QueryRequest::new(ASK_SENTENCE).with_seed_entity_ids(vec![ENTITY_ID.into()]);
@@ -157,6 +160,7 @@ async fn graph_only_entity_stream_is_not_apology() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn hollow_ann_skips_popular_and_admits_label() {
     std::env::set_var("EDGEQUAKE_POPULAR_NODE_FALLBACK", "1");
     let dim = 1536;
@@ -230,6 +234,7 @@ async fn hollow_ann_skips_popular_and_admits_label() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn global_popular_skipped_when_exact_label_candidates_exist() {
     std::env::set_var("EDGEQUAKE_POPULAR_NODE_FALLBACK", "1");
     let dim = 1536;
@@ -279,6 +284,7 @@ async fn global_popular_skipped_when_exact_label_candidates_exist() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn popular_skipped_when_exact_label_candidates_exist() {
     std::env::set_var("EDGEQUAKE_POPULAR_NODE_FALLBACK", "1");
     let dim = 1536;

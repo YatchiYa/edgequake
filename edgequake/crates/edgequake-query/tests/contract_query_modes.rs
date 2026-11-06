@@ -162,6 +162,9 @@ async fn mix_with_skewed_weights_differs_from_hybrid() {
         mix_local_weight: 0.0,
         mix_global_weight: 0.0,
         mix_naive_weight: 1.0,
+        // D-39 keeps min_score on every chunk; the KG chunk is orthogonal to the
+        // uniform mock query on purpose, so the floor would hide what this test measures.
+        min_score: 0.0,
         ..Default::default()
     };
     let engine_naive = make_engine(
@@ -183,6 +186,9 @@ async fn mix_with_skewed_weights_differs_from_hybrid() {
         mix_local_weight: 1.0,
         mix_global_weight: 0.0,
         mix_naive_weight: 0.0,
+        // D-39 keeps min_score on every chunk; the KG chunk is orthogonal to the
+        // uniform mock query on purpose, so the floor would hide what this test measures.
+        min_score: 0.0,
         ..Default::default()
     };
     let engine_local = make_engine(vector, graph, mock, mix_local);
@@ -196,7 +202,10 @@ async fn mix_with_skewed_weights_differs_from_hybrid() {
 
     assert!(
         !resp_n.context.chunks.is_empty() && !resp_l.context.chunks.is_empty(),
-        "both Mix skews must return chunks"
+        "both Mix skews must return chunks (naive: {} chunks, local: {} chunks, {} entities)",
+        resp_n.context.chunks.len(),
+        resp_l.context.chunks.len(),
+        resp_l.context.entities.len()
     );
 
     let n_ids: Vec<String> = resp_n.context.chunks.iter().map(|c| c.id.clone()).collect();

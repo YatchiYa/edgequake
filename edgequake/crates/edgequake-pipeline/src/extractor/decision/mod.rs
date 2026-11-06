@@ -267,6 +267,7 @@ mod tests {
                     target: "LOCATION".into(),
                 },
             ],
+            ontology: None,
         }
     }
 

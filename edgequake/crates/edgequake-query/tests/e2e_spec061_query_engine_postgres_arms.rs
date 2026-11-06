@@ -32,6 +32,7 @@ fn percentile_p95(sorted: &[u64]) -> u64 {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn e2e_spec061_postgres_mix_hybrid_arm_walls() {
     let Some(config) = postgres_test_config::require_or_skip_postgres("perf061_qe") else {
         return;

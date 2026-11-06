@@ -7,6 +7,7 @@ use edgequake_query::fusion::{self, MixFusionMode, RRF_K};
 use edgequake_query::sparse_retrieval::sparse_fusion_mode_from_env;
 
 #[test]
+#[serial_test::serial]
 fn sparse_fusion_default_weighted_rrf_tip_opt_in() {
     // Sequential: env is process-global; keep tip/default asserts in one test.
     std::env::remove_var("EDGEQUAKE_SPARSE_FUSION");
@@ -23,6 +24,7 @@ fn sparse_fusion_default_weighted_rrf_tip_opt_in() {
 
 /// Lexical eval: code/name token lives in FTS rank-1; ANN buries it.
 #[test]
+#[serial_test::serial]
 fn lexical_bakeoff_rrf_beats_ann_only() {
     // ANN semantic neighbors (miss the SKU token)
     let ann = vec![
@@ -57,6 +59,7 @@ fn lexical_bakeoff_rrf_beats_ann_only() {
 }
 
 #[test]
+#[serial_test::serial]
 fn content_tsv_upsert_honesty_still_wired() {
     // Cross-crate honesty: storage upsert must keep writing content_tsv (SPEC-058/076).
     let impl_src =

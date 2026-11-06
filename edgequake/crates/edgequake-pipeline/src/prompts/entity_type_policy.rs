@@ -36,6 +36,8 @@ pub struct EntityExtractionSchema {
     pub relation_strict: bool,
     /// Typed edges (SPEC-114b). Empty ⇒ unconstrained endpoints.
     pub relation_edges: Vec<RelationEdge>,
+    /// Workspace ontology (SPEC-184). `None` ⇒ extraction exactly as without it.
+    pub ontology: Option<std::sync::Arc<crate::ontology::CompiledOntology>>,
 }
 
 impl EntityExtractionSchema {
@@ -47,6 +49,7 @@ impl EntityExtractionSchema {
             relation_types: Vec::new(),
             relation_strict: true,
             relation_edges: Vec::new(),
+            ontology: None,
         }
     }
 
@@ -105,6 +108,7 @@ impl EntityExtractionSchema {
             relation_types,
             relation_strict,
             relation_edges,
+            ontology: crate::ontology::CompiledOntology::from_workspace_metadata(metadata),
         }
     }
 
@@ -116,6 +120,7 @@ impl EntityExtractionSchema {
             relation_types: Vec::new(),
             relation_strict: true,
             relation_edges: Vec::new(),
+            ontology: None,
         }
     }
 
@@ -149,6 +154,20 @@ pub fn normalize_type_token(raw: &str) -> String {
 ///
 /// Returns `(enforced_type, was_remapped)`.
 pub fn enforce_entity_type(raw_type: &str, schema: &EntityExtractionSchema) -> (String, bool) {
+    // SPEC-184: a type written with an ontology synonym is that type.
+    if let Some(id) = schema
+        .ontology
+        .as_ref()
+        .and_then(|o| o.canonical_type(raw_type))
+        .filter(|id| *id != normalize_type_token(raw_type))
+    {
+        let (enforced, _) = enforce_entity_type_inner(id, schema);
+        return (enforced, true);
+    }
+    enforce_entity_type_inner(raw_type, schema)
+}
+
+fn enforce_entity_type_inner(raw_type: &str, schema: &EntityExtractionSchema) -> (String, bool) {
     let allowed_types = &schema.types;
     if allowed_types.is_empty() {
         return (normalize_type_token(raw_type), false);
@@ -448,6 +467,7 @@ mod tests {
             relation_types: Vec::new(),
             relation_strict: true,
             relation_edges: Vec::new(),
+            ontology: None,
         }
     }
 
@@ -458,6 +478,7 @@ mod tests {
             relation_types: Vec::new(),
             relation_strict: true,
             relation_edges: Vec::new(),
+            ontology: None,
         }
     }
 
@@ -468,6 +489,7 @@ mod tests {
             relation_types: vec!["WORKS_AT".into(), "RELATED_TO".into()],
             relation_strict: strict,
             relation_edges: Vec::new(),
+            ontology: None,
         }
     }
 
@@ -482,6 +504,7 @@ mod tests {
                 relation: "WORKS_AT".into(),
                 target: "ORGANIZATION".into(),
             }],
+            ontology: None,
         }
     }
 
@@ -655,6 +678,7 @@ mod tests {
             relation_types: vec!["WORKS_AT".into(), "PART_OF".into()],
             relation_strict: true,
             relation_edges: Vec::new(),
+            ontology: None,
         };
         let (t, remapped) = enforce_relation_type("EMPLOYS", &schema);
         assert_eq!(t, "WORKS_AT");
@@ -721,6 +745,7 @@ mod tests {
             relation_types: Vec::new(),
             relation_strict: true,
             relation_edges: Vec::new(),
+            ontology: None,
         };
         let (t, remapped) = enforce_entity_type("widget", &schema);
         assert_eq!(t, "WIDGET");

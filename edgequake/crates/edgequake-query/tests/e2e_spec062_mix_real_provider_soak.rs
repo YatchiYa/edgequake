@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 #[tokio::test]
+#[serial_test::serial]
 async fn e2e_spec062_mix_real_provider_optional_soak() {
     let enabled = std::env::var("EDGEQUAKE_PERF_REAL_LLM")
         .ok()

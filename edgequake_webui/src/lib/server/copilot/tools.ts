@@ -27,7 +27,23 @@ export type GraphOperation =
   | { op: "delete_entity"; name: string }
   | { op: "create_relationship"; source: string; target: string; keywords: string; description: string; weight?: number }
   | { op: "update_relationship"; id: string; keywords?: string; description?: string; weight?: number }
-  | { op: "delete_relationship"; id: string };
+  | { op: "delete_relationship"; id: string }
+  // SPEC-184 workspace ontology
+  | { op: "set_ontology"; ontology: OntologyDocument }
+  | { op: "realign_ontology" }
+  | { op: "rebuild_knowledge_graph" };
+
+/** Workspace ontology document (validated again by the backend on save). */
+export interface OntologyDocument {
+  name?: string;
+  entity_types?: { id: string; description?: string; parent?: string | null; synonyms?: string[] }[];
+  relation_types?: { id: string; description?: string; source_types?: string[]; target_types?: string[] }[];
+  terms?: { name: string; entity_type?: string | null; aliases?: string[]; description?: string }[];
+  [key: string]: unknown;
+}
+
+/** Largest ontology an approval may carry (the backend caps terms at 5000). */
+export const MAX_ONTOLOGY_JSON_CHARS = 3_000_000;
 
 export interface OperationResult {
   index: number;
@@ -269,6 +285,69 @@ export const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
+      name: "get_ontology",
+      description:
+        "The workspace ontology (entity types with definitions/parents/synonyms, relation types, reference terms with aliases) " +
+        "that guides extraction, or that there is none. Read it before proposing ontology changes.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "draft_ontology_from_document",
+      description:
+        "Read a workspace document that holds the organization's reference (ontology, glossary, nomenclature, list of parts/systems/" +
+        "programs/document types) and draft an ontology from it. Nothing is saved: returns a summary, and keeps the full draft for " +
+        "plan_ontology_alignment and propose_ontology in this same turn. The user uploads PDFs/DOCX as documents first.",
+      parameters: {
+        type: "object",
+        properties: { document_id: { type: "string", description: "document id from list_documents" } },
+        required: ["document_id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "plan_ontology_alignment",
+      description:
+        "Compare an ontology with the current graph: alias entities that would merge into canonical ones, entities to retype, how many " +
+        "reference terms are already in the graph, how many entities have an ontology type, number of documents. Uses the draft of this " +
+        "turn when there is one, else the saved ontology.",
+      parameters: { type: "object", properties: { use: { type: "string", enum: ["draft", "saved"] } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_ontology",
+      description:
+        "Propose ontology changes for approval (nothing runs until the user clicks Approve), in this order: save the ontology " +
+        "(the draft of this turn, or `ontology` you pass, or keep the saved one), realign the existing graph (merge alias entities, " +
+        "retype terms — fast, no LLM cost), and/or rebuild the knowledge graph (re-extract every document with the ontology — best " +
+        "quality, costs LLM calls, the graph is empty until reprocessing ends). Explain the trade-off in the rationale.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          rationale: { type: "string" },
+          source: {
+            type: "string",
+            enum: ["draft", "inline", "saved"],
+            description: "draft = the draft of this turn; inline = the `ontology` argument; saved = keep the saved ontology",
+          },
+          ontology: { type: "object", description: "full ontology when source=inline (small edits of the saved one)" },
+          realign: { type: "boolean" },
+          rebuild: { type: "boolean" },
+        },
+        required: ["title", "source"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "propose_graph_changes",
       description:
         "Propose knowledge-graph edits (merge, split, regroup, rename, retype, create/delete entities and relationships). " +
@@ -321,6 +400,10 @@ export const TOOL_LABELS: Record<string, string> = {
   search_product_docs: "Reading the EdgeQuake docs",
   workspace_status: "Checking workspace",
   propose_graph_changes: "Preparing changes",
+  get_ontology: "Reading the ontology",
+  draft_ontology_from_document: "Drafting an ontology",
+  plan_ontology_alignment: "Comparing ontology and graph",
+  propose_ontology: "Preparing ontology changes",
   navigate: "Opening page",
   highlight_nodes: "Highlighting on graph",
 };
@@ -440,6 +523,10 @@ export async function runReadTool(name: string, args: Args, scope: CallerScope):
       ]);
       return clip({ stats, pipeline });
     }
+    case "get_ontology": {
+      const ontology = await getOntology(scope);
+      return ontology ? summarizeOntology(ontology) : "This workspace has no ontology. Extraction uses its entity/relation type lists.";
+    }
     default:
       throw new Error(`Unknown tool ${name}`);
   }
@@ -467,7 +554,88 @@ export function describeOperation(op: GraphOperation): string {
       return `Update relationship ${op.id}${op.keywords ? ` · keywords → ${op.keywords}` : ""}${op.weight !== undefined ? ` · weight → ${op.weight}` : ""}${op.description ? ` · description →${quote(op.description)}` : ""}`;
     case "delete_relationship":
       return `Remove relationship ${op.id}`;
+    case "set_ontology": {
+      const o = op.ontology;
+      const aliases = (o.terms ?? []).reduce((sum, t) => sum + (t.aliases?.length ?? 0), 0);
+      return `Save ontology “${short(o.name || "Unnamed", 80)}”: ${o.entity_types?.length ?? 0} entity types, ${o.relation_types?.length ?? 0} relation types, ${o.terms?.length ?? 0} terms (${aliases} aliases). Future extractions follow it; the workspace type lists are replaced (restored if it is removed).`;
+    }
+    case "realign_ontology":
+      return "Realign the existing graph to the saved ontology: merge alias entities into their canonical entity and give reference terms their ontology type";
+    case "rebuild_knowledge_graph":
+      return "Rebuild the knowledge graph: clear entities and relationships, then re-extract every document with the ontology (LLM cost; the graph fills again while documents reprocess)";
   }
+}
+
+/** One-screen summary of an ontology for the model (full JSON can be large). */
+export function summarizeOntology(o: OntologyDocument, extra: Record<string, unknown> = {}): string {
+  const types = (o.entity_types ?? []).map((t) => ({
+    id: t.id,
+    parent: t.parent ?? undefined,
+    synonyms: t.synonyms?.length ? t.synonyms : undefined,
+    description: short(t.description, 120),
+  }));
+  const terms = (o.terms ?? []).slice(0, 40).map((t) => `${t.name}${t.entity_type ? ` (${t.entity_type})` : ""}${t.aliases?.length ? ` ≈ ${t.aliases.join(" | ")}` : ""}`);
+  return clip({
+    name: o.name,
+    entity_types: types,
+    relation_types: (o.relation_types ?? []).map((r) => ({ id: r.id, from: r.source_types, to: r.target_types, description: short(r.description, 120) })),
+    terms_total: o.terms?.length ?? 0,
+    terms_sample: terms,
+    ...extra,
+  });
+}
+
+const isOntology = (value: unknown): value is OntologyDocument =>
+  !!value && typeof value === "object" && !Array.isArray(value) &&
+  ["entity_types", "relation_types", "terms"].some((k) => Array.isArray((value as Record<string, unknown>)[k]));
+
+export async function getOntology(scope: CallerScope): Promise<OntologyDocument | null> {
+  const res = await call<{ ontology: OntologyDocument | null }>(scope, "GET", `/workspaces/${enc(scope.workspaceId ?? "")}/ontology`);
+  return res.ontology;
+}
+
+export async function draftOntologyFromDocument(
+  documentId: string,
+  scope: CallerScope,
+): Promise<{ ontology: OntologyDocument; summary: string }> {
+  const doc = await call<{ content?: string; title?: string; file_name?: string }>(scope, "GET", `/documents/${enc(documentId)}`);
+  if (!doc.content?.trim()) throw new Error("This document has no text yet (still processing?).");
+  const draft = await call<{ ontology: OntologyDocument; counts: unknown; format: string; warnings: string[]; segments: number; truncated: boolean }>(
+    scope,
+    "POST",
+    `/workspaces/${enc(scope.workspaceId ?? "")}/ontology/draft`,
+    { text: doc.content, file_name: doc.file_name ?? doc.title ?? documentId, document_id: documentId, source_kind: "copilot" },
+  );
+  return {
+    ontology: draft.ontology,
+    summary: summarizeOntology(draft.ontology, {
+      read_as: draft.format,
+      llm_segments: draft.segments,
+      truncated: draft.truncated,
+      warnings: draft.warnings.slice(0, 15),
+      next: "Draft kept for this turn: plan_ontology_alignment, then propose_ontology with source=draft.",
+    }),
+  };
+}
+
+export async function planOntologyAlignment(ontology: OntologyDocument | null, scope: CallerScope): Promise<string> {
+  const plan = await call<{
+    plan: { merges: { source: string; target: string; target_exists: boolean }[]; retypes: { entity: string; from: string; to: string }[]; terms_total: number; terms_in_graph: number };
+    types: { entity_type: string; count: number; in_ontology: boolean }[];
+    entities_total: number;
+    entities_in_ontology_types: number;
+    documents: number;
+  }>(scope, "POST", `/workspaces/${enc(scope.workspaceId ?? "")}/ontology/plan`, ontology ? { ontology } : {});
+  return clip({
+    reference_terms_in_graph: `${plan.plan.terms_in_graph}/${plan.plan.terms_total}`,
+    entities_with_ontology_type: `${plan.entities_in_ontology_types}/${plan.entities_total}`,
+    documents: plan.documents,
+    merges_planned: plan.plan.merges.length,
+    merges_sample: plan.plan.merges.slice(0, 25).map((m) => `${m.source} → ${m.target}${m.target_exists ? "" : " (created)"}`),
+    retypes_planned: plan.plan.retypes.length,
+    retypes_sample: plan.plan.retypes.slice(0, 25).map((r) => `${r.entity}: ${r.from} → ${r.to}`),
+    graph_types_outside_ontology: plan.types.filter((t) => !t.in_ontology).slice(0, 20).map((t) => `${t.entity_type} (${t.count})`),
+  });
 }
 
 /** Validate model output into typed operations (drops malformed entries). */
@@ -528,6 +696,16 @@ export function parseOperations(raw: unknown): GraphOperation[] {
       case "delete_relationship":
         if (str(o.id)) out.push({ op: "delete_relationship", id: str(o.id) });
         break;
+      case "set_ontology":
+        if (isOntology(o.ontology) && JSON.stringify(o.ontology).length <= MAX_ONTOLOGY_JSON_CHARS)
+          out.push({ op: "set_ontology", ontology: o.ontology });
+        break;
+      case "realign_ontology":
+        out.push({ op: "realign_ontology" });
+        break;
+      case "rebuild_knowledge_graph":
+        out.push({ op: "rebuild_knowledge_graph" });
+        break;
     }
   }
   return out;
@@ -586,6 +764,30 @@ async function applyOne(op: GraphOperation, scope: CallerScope): Promise<string[
     case "delete_relationship":
       await call(scope, "DELETE", `/graph/relationships/${enc(op.id)}`);
       return [];
+    case "set_ontology":
+      await call(scope, "PUT", `/workspaces/${enc(scope.workspaceId ?? "")}/ontology`, op.ontology);
+      return [];
+    case "realign_ontology": {
+      const touched: string[] = [];
+      for (let round = 0; round < 25; round++) {
+        const r = await call<{ steps: { op: string; entity: string; ok: boolean; detail: string }[]; merged: number; retyped: number; failed: number; remaining: number }>(
+          scope,
+          "POST",
+          `/workspaces/${enc(scope.workspaceId ?? "")}/ontology/realign`,
+          { max_operations: 200 },
+        );
+        touched.push(...r.steps.filter((s) => s.ok && s.op !== "create").map((s) => s.entity));
+        if (r.failed > 0 && r.merged + r.retyped === 0) throw new Error(r.steps.find((s) => !s.ok)?.detail ?? "realign failed");
+        if (r.remaining === 0 || r.merged + r.retyped === 0) break;
+      }
+      return touched.slice(0, 50);
+    }
+    case "rebuild_knowledge_graph": {
+      const ws = enc(scope.workspaceId ?? "");
+      await call(scope, "POST", `/workspaces/${ws}/rebuild-knowledge-graph`, { force: true, rebuild_embeddings: false });
+      await call(scope, "POST", `/workspaces/${ws}/reprocess-documents`, { include_completed: true, max_documents: 10000 });
+      return [];
+    }
   }
 }
 

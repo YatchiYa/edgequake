@@ -1076,18 +1076,22 @@ mod chunk_ranking_and_hybrid_tests {
         }
     }
 
-    /// Enqueue two directional embeddings so that, after the default occupies
-    /// position 0 (query), positions 1 (high_level) and 2 (low_level) both
-    /// resolve to `[1.0, 0.0, ...]`.
+    /// Make every query-side embedding resolve to `[1.0, 0.0, ...]`.
     ///
-    /// MockProvider starts with one default `[0.1; 1536]` embedding. When
-    /// `embed(&[query, high_level, low_level])` is called, the three pops are:
-    ///   0 = default (query)   -- unused in Local/Global/Hybrid modes
-    ///   1 = directional       -- high_level (Global mode)
-    ///   2 = directional       -- low_level  (Local mode)
+    /// MockProvider starts with one default `[0.1; 1536]` embedding in its queue.
+    /// With keyword extraction off, query, high-level and low-level texts are the
+    /// same, so the engine embeds once (one pop); older engines embedded three
+    /// texts. Drain the default, then queue three directional vectors: both
+    /// shapes resolve to the directional vector.
     async fn enqueue_directional_embeddings(provider: &MockProvider) {
-        provider.add_embedding(make_directional_vec(1.0, 0.0)).await;
-        provider.add_embedding(make_directional_vec(1.0, 0.0)).await;
+        let _ = edgequake_llm::traits::EmbeddingProvider::embed(
+            provider,
+            &["drain default".to_string()],
+        )
+        .await;
+        for _ in 0..3 {
+            provider.add_embedding(make_directional_vec(1.0, 0.0)).await;
+        }
     }
 
     // -----------------------------------------------------------------
@@ -1467,6 +1471,9 @@ mod chunk_ranking_and_hybrid_tests {
 
         let mut config = base_config();
         config.max_chunks = 3; // Keep only top 3
+                               // LightRAG VECTOR budget (024 Q2) takes related_chunk_number * n_entities / 2
+                               // chunks before max_chunks: with one entity, 10 → 5 candidates, then top 3.
+        config.related_chunk_number = 10;
 
         let engine = QueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
 

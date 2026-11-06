@@ -81,7 +81,7 @@ pub async fn export_document_lineage(
             // WHY: CSV flattens hierarchical lineage into a chunk-per-row table.
             // This is useful for spreadsheet analysis and data pipeline ingestion.
             let mut lineage_data = lineage_data;
-            fill_chunk_text(storage.kv_storage.as_ref(), &mut lineage_data).await;
+            fill_chunk_text(&storage, &mut lineage_data).await;
             let csv_content = lineage_to_csv(&document_id, &lineage_data);
             let filename = format!("{}-lineage.csv", document_id);
             Ok((
@@ -122,10 +122,7 @@ pub async fn export_document_lineage(
 /// Persisted lineage chunks carry ids + offsets only; fill `content` and
 /// `token_count` from the chunk store in one batched read. Older payloads that
 /// already inline those fields are left untouched.
-async fn fill_chunk_text(
-    kv: &dyn edgequake_storage::traits::KVStorage,
-    lineage: &mut serde_json::Value,
-) {
+async fn fill_chunk_text(storage: &StorageRuntime, lineage: &mut serde_json::Value) {
     let Some(chunks) = lineage.get_mut("chunks").and_then(|c| c.as_array_mut()) else {
         return;
     };
@@ -137,7 +134,7 @@ async fn fill_chunk_text(
     if ids.is_empty() {
         return;
     }
-    let Ok(records) = kv.get_by_ids_ordered(&ids).await else {
+    let Ok(records) = storage.kv_storage.get_by_ids_ordered(&ids).await else {
         return;
     };
     let by_id: std::collections::HashMap<String, serde_json::Value> = ids
@@ -224,18 +221,19 @@ pub(super) fn lineage_to_csv(document_id: &str, lineage: &serde_json::Value) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use edgequake_storage::traits::KVStorage;
 
     /// N1: chunk text + tokens come from the chunk store; entity_count from entity_ids.
     #[tokio::test]
     async fn csv_fills_chunk_text_from_store_for_persisted_lineage() {
-        let kv = edgequake_storage::MemoryKVStorage::new("lineage-export-n1");
-        kv.upsert(&[(
-            "doc-chunk-0".to_string(),
-            serde_json::json!({ "content": "Sarah Chen leads", "token_count": 7 }),
-        )])
-        .await
-        .unwrap();
+        let storage = crate::state::AppState::test_state().storage;
+        storage
+            .kv_storage
+            .upsert(&[(
+                "doc-chunk-0".to_string(),
+                serde_json::json!({ "content": "Sarah Chen leads", "token_count": 7 }),
+            )])
+            .await
+            .unwrap();
         let mut lineage = serde_json::json!({
             "chunks": [{
                 "chunk_id": "doc-chunk-0",
@@ -245,7 +243,7 @@ mod tests {
                 "entity_ids": ["a", "b", "c", "d", "e", "f"]
             }]
         });
-        fill_chunk_text(&kv, &mut lineage).await;
+        fill_chunk_text(&storage, &mut lineage).await;
         let csv = lineage_to_csv("doc", &lineage);
         assert_eq!(
             csv.lines().nth(1),

@@ -11,6 +11,7 @@ use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::MemoryVectorStorage;
 
 #[tokio::test]
+#[serial_test::serial]
 async fn contract_in_memory_bm25_fallback_promotes_exact_token_match() {
     let vector_results = vec![
         VectorSearchResult {
@@ -67,6 +68,7 @@ async fn contract_in_memory_bm25_fallback_promotes_exact_token_match() {
 }
 
 #[test]
+#[serial_test::serial]
 fn contract_sparse_fusion_env_modes() {
     std::env::remove_var("EDGEQUAKE_SPARSE_FUSION");
     assert_eq!(
@@ -83,6 +85,7 @@ fn contract_sparse_fusion_env_modes() {
 }
 
 #[test]
+#[serial_test::serial]
 fn contract_bm25_retrieval_default_and_env_opt_out() {
     std::env::remove_var("EDGEQUAKE_BM25_RETRIEVAL");
     let config = QueryEngineConfig::default();

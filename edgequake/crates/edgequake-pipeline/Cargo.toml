@@ -40,6 +40,8 @@ sha2 = "0.10"
 edgextract = { version = "0.1.0", default-features = false }
 web-time = "1.1"
 indexmap = "2"
+# SPEC-184: whole-word reference term lookup per chunk (already in the lockfile via regex).
+aho-corasick = "1.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]

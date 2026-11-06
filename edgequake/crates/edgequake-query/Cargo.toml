@@ -38,6 +38,8 @@ sqlx = { version = "0.8", features = [
 ], optional = true }
 
 [dev-dependencies]
+# Tests that set process env vars must not run concurrently.
+serial_test = "3"
 tokio = { workspace = true, features = ["full", "macros", "rt-multi-thread"] }
 reqwest = { version = "0.12", features = ["json"] }
 serde_json.workspace = true

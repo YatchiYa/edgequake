@@ -166,7 +166,7 @@ where
             &language,
             self.resolved_caps(),
         );
-        let user = crate::prompts::json_extraction_user_prompt(&text);
+        let user = crate::prompts::json_extraction_user_prompt_for(&text, &self.entity_schema);
         let messages = vec![
             edgequake_llm::traits::ChatMessage::system(&system),
             edgequake_llm::traits::ChatMessage::user(&user),

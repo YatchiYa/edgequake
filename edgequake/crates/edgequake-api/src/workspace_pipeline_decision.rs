@@ -108,10 +108,13 @@ pub async fn build_decision_pipeline(
     let options = options
         .with_llm_provider(provider_name)
         .with_extraction_mode(edgequake_pipeline::ExtractionMode::Decision);
-    Ok(Arc::new(build_pipeline_with_extractor(
+    // SPEC-184: same alias canonicalization as the LLM path.
+    let extractor = edgequake_pipeline::ontology::OntologyExtractor::wrap(
         Arc::new(extractor),
-        embedding,
-        options,
+        schema.ontology.as_ref(),
+    );
+    Ok(Arc::new(build_pipeline_with_extractor(
+        extractor, embedding, options,
     )))
 }
 

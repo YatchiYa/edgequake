@@ -18,8 +18,7 @@ fn contract_ensure_indexes_single_flight_and_verified_flag() {
         "ensure_indexes must early-exit / set indexes_verified when eq_* ready"
     );
     assert!(
-        life.contains("eq_id_schema_ready")
-            && life.contains("SPEC-069: eq_* schema already present"),
+        life.contains("eq_id_schema_ready") && life.contains("eq_* schema present"),
         "ensure_eq_id_columns must catalog early-exit when columns/indexes/triggers exist"
     );
     // D-30: readiness must require multigraph arbiter (not legacy 2-col alone).

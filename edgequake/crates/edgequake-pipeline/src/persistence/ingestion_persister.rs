@@ -714,7 +714,10 @@ async fn persist_processing_result_impl(
     };
 
     let mut chunk_kv_ids: Vec<String> = Vec::new();
-    if chunk_text_authority_writes_kv(authority) {
+    // The default authority is relational. A store wired with no relational chunk
+    // writer (in-memory / library use) would keep the chunk text nowhere: KV holds it.
+    let has_relational_writer = committed_relational || config.relational_chunks.is_some();
+    if chunk_text_authority_writes_kv(authority) || !has_relational_writer {
         if let Some(kv) = &config.kv_storage {
             let records = crate::chunk_storage::build_chunk_kv_records(
                 &ctx.document_id,

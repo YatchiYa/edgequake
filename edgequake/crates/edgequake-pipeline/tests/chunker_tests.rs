@@ -485,3 +485,38 @@ fn test_split_into_sentences_with_abbreviations() {
     // Should NOT split on "Dr."
     assert!(sentences.len() <= 2);
 }
+
+/// No strategy may drop the end of a text because it is shorter than `min_chunk_size`.
+#[tokio::test]
+async fn test_short_tail_is_never_dropped() {
+    let config = ChunkerConfig {
+        chunk_size: 20,
+        chunk_overlap: 0,
+        min_chunk_size: 10,
+        ..Default::default()
+    };
+    let long = "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon";
+    let sentence_text = format!("{long}. {long}. Short end TAILWORD.");
+    let chunks = SentenceBoundaryChunking::new()
+        .chunk(&sentence_text, &config)
+        .await
+        .unwrap();
+    let joined: String = chunks
+        .iter()
+        .map(|c| c.content.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(joined.contains("TAILWORD"), "sentence tail lost: {joined}");
+
+    let paragraph_text = format!("{long}\n\n{long}\n\nShort end PARATAIL");
+    let chunks = ParagraphBoundaryChunking::new()
+        .chunk(&paragraph_text, &config)
+        .await
+        .unwrap();
+    let joined: String = chunks
+        .iter()
+        .map(|c| c.content.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(joined.contains("PARATAIL"), "paragraph tail lost: {joined}");
+}

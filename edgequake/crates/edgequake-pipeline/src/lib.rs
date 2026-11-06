@@ -71,6 +71,7 @@ pub mod lineage;
 pub mod markdown_ir;
 pub mod merger;
 pub mod multimodal;
+pub mod ontology;
 pub mod persistence;
 pub mod pipeline;
 pub mod progress;

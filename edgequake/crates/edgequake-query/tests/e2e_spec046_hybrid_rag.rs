@@ -34,6 +34,7 @@ use edgequake_storage::traits::{
 use edgequake_storage::{Community, CommunityDetectionResult, VectorSearchResult};
 
 #[test]
+#[serial_test::serial]
 fn e2e_spec046_bench_routing_table() {
     for case in spec046_synthetic_bench() {
         assert_case_routing(&case);
@@ -41,6 +42,7 @@ fn e2e_spec046_bench_routing_table() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_spec046_bench_report_full_pass() {
     let report = run_spec046_bench_report();
     assert_eq!(report.failed, 0, "failures: {:?}", report.cases);
@@ -51,6 +53,7 @@ fn e2e_spec046_bench_report_full_pass() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_spec046_acc_harness_full_pass() {
     let report = run_spec046_acc_report();
     assert!(
@@ -65,6 +68,7 @@ fn e2e_spec046_acc_harness_full_pass() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_factual_heuristic_maps_to_naive() {
     let intent = QueryIntent::classify_heuristic("What is Rust?");
     assert_eq!(intent, QueryIntent::Factual);
@@ -72,6 +76,7 @@ fn e2e_factual_heuristic_maps_to_naive() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn e2e_ppr_walk_expands_seed_neighborhood() {
     let graph = MemoryGraphStorage::new("ppr-e2e");
     graph.initialize().await.unwrap();
@@ -100,6 +105,7 @@ async fn e2e_ppr_walk_expands_seed_neighborhood() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_path_prune_reduces_relation_tax() {
     let rels: Vec<_> = (0..20)
         .map(|i| {
@@ -119,6 +125,7 @@ fn e2e_path_prune_reduces_relation_tax() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_dynamic_truncation_gives_chunks_remainder() {
     let tokenizer = MockTokenizer::with_rate(1.0);
     let config = TruncationConfig {
@@ -143,6 +150,7 @@ fn e2e_dynamic_truncation_gives_chunks_remainder() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn e2e_local_mode_with_ppr_config_completes() {
     let config = QueryEngineConfig {
         use_adaptive_mode: false,
@@ -162,6 +170,15 @@ async fn e2e_local_mode_with_ppr_config_completes() {
     vs.initialize().await.unwrap();
     let gs = Arc::new(MemoryGraphStorage::new("ppr-local"));
     gs.initialize().await.unwrap();
+    // Entities are graph nodes: an ANN hit without a node is a hydration hole (skipped).
+    for name in ["ALPHA", "BETA"] {
+        gs.upsert_node(
+            name,
+            HashMap::from([("entity_type".to_string(), serde_json::json!("CONCEPT"))]),
+        )
+        .await
+        .unwrap();
+    }
     gs.upsert_edge("ALPHA", "BETA", HashMap::new())
         .await
         .unwrap();
@@ -197,6 +214,7 @@ async fn e2e_local_mode_with_ppr_config_completes() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_kg_chunk_pick_weight_orders_by_frequency() {
     let mut ctx = QueryContext::new();
     let mut e1 = RetrievedEntity::new("A", "P", "d");
@@ -210,6 +228,7 @@ fn e2e_kg_chunk_pick_weight_orders_by_frequency() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_community_report_vector_chunks_merge_into_context() {
     let mut ctx = QueryContext::new();
     let hits = vec![
@@ -244,6 +263,7 @@ fn e2e_community_report_vector_chunks_merge_into_context() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn e2e_community_report_index_with_embedder() {
     std::env::set_var("EDGEQUAKE_COMMUNITY_REPORTS", "true");
 
@@ -287,6 +307,7 @@ async fn e2e_community_report_index_with_embedder() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_role_llm_keyword_and_summary_resolve() {
     use edgequake_core::{resolve_role_llm, role_config_from_workspace, LlmRole, Workspace};
     use uuid::Uuid;
@@ -329,6 +350,7 @@ fn e2e_role_llm_keyword_and_summary_resolve() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_multimodal_orphan_injection_guarantees_entity() {
     let mm = MmChunkSidecarMeta {
         item_id: "eq1".into(),
@@ -372,6 +394,7 @@ fn e2e_multimodal_orphan_injection_guarantees_entity() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_multimodal_injection_links_existing_entities() {
     let mm = MmChunkSidecarMeta {
         item_id: "d1".into(),
@@ -415,6 +438,7 @@ fn e2e_multimodal_injection_links_existing_entities() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_dual_node_ppr_chunk_pick_orders_by_entity_score() {
     use edgequake_query::kg_chunk_pick::pick_chunks_by_entity_ppr;
 
@@ -434,6 +458,7 @@ fn e2e_dual_node_ppr_chunk_pick_orders_by_entity_score() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_semantic_chunk_strategy_requires_embeddings() {
     use edgequake_pipeline::ChunkStrategy;
     assert!(ChunkStrategy::Semantic.requires_embeddings());
@@ -445,6 +470,7 @@ fn e2e_semantic_chunk_strategy_requires_embeddings() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn e2e_llm_text_embedder_adapter_embeds() {
     use edgequake_pipeline::LlmTextEmbedder;
     use edgequake_storage::TextEmbedder;
@@ -459,6 +485,7 @@ async fn e2e_llm_text_embedder_adapter_embeds() {
 }
 
 #[test]
+#[serial_test::serial]
 fn e2e_summary_role_helper_prefers_configured_model() {
     use edgequake_core::{resolve_role_llm, role_config_from_workspace, LlmRole, Workspace};
     use uuid::Uuid;

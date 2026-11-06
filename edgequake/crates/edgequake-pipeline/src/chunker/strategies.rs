@@ -217,15 +217,25 @@ impl ChunkingStrategy for SentenceBoundaryChunking {
             sentence_buffer.push(sentence);
         }
 
-        // Add final chunk if non-empty
-        if current_tokens >= min_tokens {
-            chunks.push(ChunkResult {
-                content: current_chunk.trim().to_string(),
-                tokens: current_tokens,
-                chunk_order_index: chunk_index,
-                section: None,
-                ..Default::default()
-            });
+        // Final chunk. Text is never dropped: a short tail joins the previous chunk
+        // (only its new sentences — the overlap is already there), and a short
+        // document is kept as its single chunk.
+        if current_tokens >= min_tokens || chunks.is_empty() {
+            if !current_chunk.trim().is_empty() {
+                chunks.push(ChunkResult {
+                    content: current_chunk.trim().to_string(),
+                    tokens: current_tokens,
+                    chunk_order_index: chunk_index,
+                    section: None,
+                    ..Default::default()
+                });
+            }
+        } else if let Some(last) = chunks.last_mut() {
+            let tail = sentence_buffer.join(" ");
+            if !tail.trim().is_empty() {
+                last.content = format!("{} {}", last.content, tail.trim());
+                last.tokens = estimate_tokens(&last.content);
+            }
         }
 
         Ok(chunks)
@@ -369,15 +379,22 @@ fn chunk_paragraphs(paragraphs: &[&str], config: &ChunkerConfig) -> Result<Vec<C
         current_tokens += para_tokens;
     }
 
-    // Add final chunk
-    if current_tokens >= min_tokens {
-        chunks.push(ChunkResult {
-            content: current_chunk.trim().to_string(),
-            tokens: current_tokens,
-            chunk_order_index: chunk_index,
-            section: None,
-            ..Default::default()
-        });
+    // Final chunk. Text is never dropped: a short tail joins the previous chunk,
+    // a short document is kept as its single chunk.
+    if !current_chunk.trim().is_empty() {
+        match chunks.last_mut() {
+            Some(last) if current_tokens < min_tokens => {
+                last.content = format!("{}\n\n{}", last.content, current_chunk.trim());
+                last.tokens = estimate_tokens(&last.content);
+            }
+            _ => chunks.push(ChunkResult {
+                content: current_chunk.trim().to_string(),
+                tokens: current_tokens,
+                chunk_order_index: chunk_index,
+                section: None,
+                ..Default::default()
+            }),
+        }
     }
 
     Ok(chunks)

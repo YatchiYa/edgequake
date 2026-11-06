@@ -56,18 +56,23 @@ async fn contract_rerank_time_ms_populated_when_reranker_applied() {
 
 #[test]
 fn contract_query_execute_wires_engine_rerank_time_ms() {
-    let src = include_str!("../../edgequake-api/src/handlers/query/query_execute.rs");
+    // One mapper (services/query_stats_mapper.rs) builds API stats for query and chat.
+    let mapper = include_str!("../../edgequake-api/src/services/query_stats_mapper.rs");
+    let src = include_str!("../../edgequake-api/src/services/query_context.rs");
     assert!(
-        src.contains("result.stats.rerank_time_ms"),
+        mapper.contains("rerank_time_ms: engine.rerank_time_ms")
+            && src.contains("from_engine_stats("),
         "API must forward engine rerank_time_ms (SPEC-024 4.1)"
     );
 }
 
 #[test]
 fn contract_chat_completion_wires_engine_rerank_time_ms() {
+    let mapper = include_str!("../../edgequake-api/src/services/query_stats_mapper.rs");
     let src = include_str!("../../edgequake-api/src/handlers/chat/completion.rs");
     assert!(
-        src.contains("result.stats.rerank_time_ms"),
+        mapper.contains("rerank_time_ms: engine.rerank_time_ms")
+            && src.contains("from_engine_stats("),
         "chat completion must forward engine rerank_time_ms (SPEC-024 4.7)"
     );
     assert!(

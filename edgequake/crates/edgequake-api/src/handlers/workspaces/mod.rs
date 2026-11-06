@@ -53,6 +53,7 @@
 mod bulk_ops;
 mod helpers;
 mod members;
+mod ontology;
 mod stats;
 pub(crate) mod tenant_access;
 mod tenants;
@@ -62,6 +63,7 @@ mod workspace_crud;
 pub use bulk_ops::*;
 pub use helpers::invalidate_workspace_stats_cache;
 pub use members::*;
+pub use ontology::*;
 pub use stats::*;
 pub use tenants::*;
 pub use workspace_crud::*;

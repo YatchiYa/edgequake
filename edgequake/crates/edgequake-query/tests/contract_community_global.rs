@@ -10,6 +10,7 @@ use edgequake_storage::{community_features_enabled, GraphReadView, MemoryGraphSt
 use serde_json::json;
 
 #[tokio::test]
+#[serial_test::serial]
 async fn contract_community_global_expands_co_community_entities() {
     assert!(
         community_features_enabled(),
@@ -68,6 +69,7 @@ async fn contract_community_global_expands_co_community_entities() {
 }
 
 #[test]
+#[serial_test::serial]
 fn contract_community_global_default_and_env_opt_out() {
     std::env::remove_var("EDGEQUAKE_COMMUNITY_GLOBAL");
     assert!(

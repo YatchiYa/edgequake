@@ -39,7 +39,11 @@ pub fn json_extraction_system_prompt_with_caps(
 ) -> String {
     let types_section = json_entity_types_prompt_section(schema);
     let relation_section = json_relation_types_prompt_section(schema);
-    let edges_section = json_relation_edges_prompt_section(schema);
+    let edges_section = format!(
+        "{}{}",
+        json_relation_edges_prompt_section(schema),
+        ontology_prompt_section(schema)
+    );
     let limits = caps.prompt_quantity_limits_section();
     let language_section = json_language_instruction(language);
 
@@ -65,6 +69,26 @@ pub fn json_extraction_system_prompt_with_caps(
 /// Dynamic half of JSON extract (unique chunk text — keep after the stable system prefix).
 pub fn json_extraction_user_prompt(text: &str) -> String {
     format!("## Text to Analyze\n{text}\n\n## JSON Response")
+}
+
+/// SPEC-184: static ontology section of the system prompt; empty without an ontology.
+fn ontology_prompt_section(schema: &EntityExtractionSchema) -> &str {
+    schema
+        .ontology
+        .as_deref()
+        .map(|o| o.system_prompt_section())
+        .unwrap_or("")
+}
+
+/// User turn with the reference terms this chunk mentions (SPEC-184). Without an
+/// ontology, or when the chunk mentions none, this is [`json_extraction_user_prompt`].
+pub fn json_extraction_user_prompt_for(text: &str, schema: &EntityExtractionSchema) -> String {
+    let hints = schema
+        .ontology
+        .as_deref()
+        .map(|o| o.term_hints_section(text))
+        .unwrap_or_default();
+    format!("{hints}{}", json_extraction_user_prompt(text))
 }
 
 /// Build the primary JSON entity-extraction prompt with explicit caps.
@@ -107,7 +131,11 @@ pub fn json_gleaning_system_prompt_with_caps(
 ) -> String {
     let types_section = json_entity_types_prompt_section(schema);
     let relation_section = json_relation_types_prompt_section(schema);
-    let edges_section = json_relation_edges_prompt_section(schema);
+    let edges_section = format!(
+        "{}{}",
+        json_relation_edges_prompt_section(schema),
+        ontology_prompt_section(schema)
+    );
     let limits = caps.prompt_quantity_limits_section();
     let language_section = json_language_instruction(language);
     let continue_section = if after_caps_truncate {
@@ -253,6 +281,7 @@ mod tests {
             relation_types: Vec::new(),
             relation_strict: true,
             relation_edges: Vec::new(),
+            ontology: None,
         };
         let prompt = json_gleaning_prompt("x", &[], &schema, "English");
         assert!(prompt.contains("API_OR_INTERFACE"));
@@ -310,5 +339,78 @@ mod tests {
         assert!(!sys.contains("PRIOR_ENTITY"));
         assert!(user.contains("UNIQUE_CHUNK_TEXT"));
         assert!(user.contains("PRIOR_ENTITY"));
+    }
+
+    /// SPEC-184 LAW-184-1: without an ontology the prompts are exactly the pre-ontology ones.
+    #[test]
+    fn no_ontology_leaves_prompts_unchanged_and_ontology_adds_its_sections() {
+        let caps = ExtractionCaps::from_env();
+        let plain = EntityExtractionSchema::server_default();
+        let text = "The LEAP 1A powers the A320neo.";
+        let system = json_extraction_system_prompt_with_caps(&plain, "English", caps);
+        assert!(!system.contains("Domain Ontology"));
+        assert!(system.contains(&format!(
+            "{}\n\n",
+            json_relation_edges_prompt_section(&plain)
+        )));
+        assert_eq!(
+            json_extraction_user_prompt_for(text, &plain),
+            json_extraction_user_prompt(text)
+        );
+
+        let mut md = std::collections::HashMap::new();
+        md.insert(
+            "ontology".to_string(),
+            serde_json::json!({
+                "name": "Propulsion",
+                "entity_types": [{"id": "ENGINE", "description": "A gas turbine engine."}],
+                "terms": [{"name": "LEAP-1A", "entity_type": "ENGINE", "aliases": ["LEAP 1A"]}]
+            }),
+        );
+        let with = EntityExtractionSchema::from_workspace_metadata(&md);
+        assert!(with.ontology.is_some());
+        let system = json_extraction_system_prompt_with_caps(&with, "English", caps);
+        assert!(system.contains("## Domain Ontology: Propulsion"));
+        assert!(system.contains("- ENGINE: A gas turbine engine."));
+        let user = json_extraction_user_prompt_for(text, &with);
+        assert!(user.starts_with("## Reference Terms In This Text"));
+        assert!(user.ends_with(&json_extraction_user_prompt(text)));
+        // Gleaning sees the same definitions.
+        assert!(
+            json_gleaning_system_prompt_with_caps(&with, "English", caps, false)
+                .contains("## Domain Ontology")
+        );
+    }
+
+    /// SPEC-184: a type written with an ontology synonym is enforced as the ontology type.
+    #[test]
+    fn ontology_synonyms_map_before_strict_enforcement() {
+        let mut md = std::collections::HashMap::new();
+        md.insert(
+            "entity_types".to_string(),
+            serde_json::json!(["ENGINE", "OTHER"]),
+        );
+        md.insert(
+            "ontology".to_string(),
+            serde_json::json!({"entity_types": [{"id": "ENGINE", "synonyms": ["TURBOFAN"]}, {"id": "OTHER"}]}),
+        );
+        let schema = EntityExtractionSchema::from_workspace_metadata(&md);
+        assert_eq!(
+            crate::prompts::enforce_entity_type("turbofan", &schema),
+            ("ENGINE".to_string(), true)
+        );
+        assert_eq!(
+            crate::prompts::enforce_entity_type("ENGINE", &schema),
+            ("ENGINE".to_string(), false)
+        );
+        let plain =
+            EntityExtractionSchema::from_workspace_metadata(&std::collections::HashMap::from([(
+                "entity_types".to_string(),
+                serde_json::json!(["ENGINE", "OTHER"]),
+            )]));
+        assert_eq!(
+            crate::prompts::enforce_entity_type("turbofan", &plain).0,
+            "OTHER"
+        );
     }
 }

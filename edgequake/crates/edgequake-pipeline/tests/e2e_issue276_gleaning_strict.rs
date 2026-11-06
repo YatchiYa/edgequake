@@ -54,6 +54,7 @@ fn issue_276_strict_schema() -> EntityExtractionSchema {
         relation_types: Vec::new(),
         relation_strict: true,
         relation_edges: Vec::new(),
+        ontology: None,
     }
 }
 

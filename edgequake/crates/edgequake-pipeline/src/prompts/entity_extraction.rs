@@ -284,6 +284,7 @@ mod tests {
             relation_types: Vec::new(),
             relation_strict: true,
             relation_edges: Vec::new(),
+            ontology: None,
         }
     }
 
