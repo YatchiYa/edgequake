@@ -1,17 +1,17 @@
 {
-  "corpus_size": 1000,
-  "dimension": 64,
-  "gate_recall_at_10": 0.95,
-  "git_sha": "bdbfaa3f1340c1a092591d691c166059459795f0",
-  "hnsw_plan_verified": false,
+  "schema_version": 1,
+  "profile": "P0",
   "index": "chunk_embeddings",
   "measurement_kind": "typed_adapter_recall",
+  "hnsw_plan_verified": false,
   "model": "spec149-p0-ann-model",
-  "p50_ms": 8.16,
-  "p95_ms": 31.159792,
+  "corpus_size": 1000,
+  "dimension": 64,
+  "top_k": 10,
   "probes": 20,
-  "profile": "P0",
-  "recall_at_10": 0.9699999690055847,
-  "schema_version": 1,
-  "top_k": 10
+  "recall_at_10": 0.9550000429153442,
+  "p50_ms": 5.6207080000000005,
+  "p95_ms": 12.794281,
+  "git_sha": "b14659459b69832604a550ac86c89e1932580207",
+  "gate_recall_at_10": 0.95
 }

@@ -82,55 +82,73 @@ impl InMemoryWorkspaceService {
             .to_string()
     }
 
-    async fn seed_default_workspace_inner(&self) {
+    /// Default tenant and workspace rows at their canonical UUIDs (2 / 3).
+    fn default_rows() -> (Tenant, Workspace) {
         let tenant_id = uuid::Uuid::from_u128(2);
         let workspace_id = uuid::Uuid::from_u128(3);
+        let mut tenant = Tenant::new("Default Tenant", "default").with_plan(TenantPlan::Pro);
+        tenant.tenant_id = tenant_id;
+        let now = chrono::Utc::now();
+        let (llm_model, llm_provider) = Workspace::default_llm_config();
+        let (embedding_model, embedding_provider, embedding_dimension) =
+            Workspace::default_embedding_config();
+        let ws = Workspace {
+            workspace_id,
+            tenant_id,
+            name: "Default Workspace".to_string(),
+            slug: "default".to_string(),
+            description: None,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+            metadata: HashMap::new(),
+            llm_model,
+            llm_provider,
+            embedding_model,
+            embedding_provider,
+            embedding_dimension,
+            vision_llm_provider: None,
+            vision_llm_model: None,
+            pdf_parser_backend: Some(edgequake_pdf::PdfParserBackend::Vision),
+            rag_profile: Default::default(),
+            embedding_modalities: Default::default(),
+            fts_regconfig: Default::default(),
+            archived_at: None,
+            archived_by: None,
+        };
+        (tenant, ws)
+    }
 
-        // Ensure the default tenant exists (idempotent).
-        if self.get_tenant(tenant_id).await.ok().flatten().is_none() {
-            let tenant = Tenant::new("Default Tenant", "default").with_plan(TenantPlan::Pro);
-            // Force the canonical tenant id.
-            let mut tenant = tenant;
-            tenant.tenant_id = tenant_id;
-            self.tenants.write().await.insert(tenant_id, tenant);
+    /// A service that already holds the built-in default tenant + workspace — what the
+    /// Postgres path seeds at boot. Requests without scope headers resolve to that
+    /// workspace, so a memory-mode server must have it (uploads check its quota).
+    pub fn with_default_workspace() -> Self {
+        let service = Self::new();
+        let (tenant, ws) = Self::default_rows();
+        // Fresh, uncontended locks: try_write cannot fail here and needs no runtime.
+        if let Ok(mut tenants) = service.tenants.try_write() {
+            tenants.insert(tenant.tenant_id, tenant);
         }
+        if let Ok(mut workspaces) = service.workspaces.try_write() {
+            workspaces.insert(ws.workspace_id, ws);
+        }
+        service
+    }
 
+    async fn seed_default_workspace_inner(&self) {
+        let (tenant, ws) = Self::default_rows();
+        // Ensure the default tenant exists (idempotent).
+        if self.get_tenant(tenant.tenant_id).await.ok().flatten().is_none() {
+            self.tenants.write().await.insert(tenant.tenant_id, tenant);
+        }
         if self
-            .get_workspace(workspace_id)
+            .get_workspace(ws.workspace_id)
             .await
             .ok()
             .flatten()
             .is_none()
         {
-            let now = chrono::Utc::now();
-            let (llm_model, llm_provider) = Workspace::default_llm_config();
-            let (embedding_model, embedding_provider, embedding_dimension) =
-                Workspace::default_embedding_config();
-            let ws = Workspace {
-                workspace_id,
-                tenant_id,
-                name: "Default Workspace".to_string(),
-                slug: "default".to_string(),
-                description: None,
-                is_active: true,
-                created_at: now,
-                updated_at: now,
-                metadata: HashMap::new(),
-                llm_model,
-                llm_provider,
-                embedding_model,
-                embedding_provider,
-                embedding_dimension,
-                vision_llm_provider: None,
-                vision_llm_model: None,
-                pdf_parser_backend: Some(edgequake_pdf::PdfParserBackend::Vision),
-                rag_profile: Default::default(),
-                embedding_modalities: Default::default(),
-                fts_regconfig: Default::default(),
-                archived_at: None,
-                archived_by: None,
-            };
-            self.workspaces.write().await.insert(workspace_id, ws);
+            self.workspaces.write().await.insert(ws.workspace_id, ws);
         }
     }
 }

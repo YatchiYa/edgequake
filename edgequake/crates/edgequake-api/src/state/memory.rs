@@ -230,7 +230,7 @@ impl AppState {
         );
 
         // Create workspace service with default tenant
-        let workspace_service: SharedWorkspaceService = Arc::new(InMemoryWorkspaceService::new());
+        let workspace_service: SharedWorkspaceService = Arc::new(InMemoryWorkspaceService::with_default_workspace());
 
         // Create conversation service
         let conversation_service = memory_conversation_service();
@@ -406,7 +406,7 @@ impl AppState {
         );
 
         // Create workspace service
-        let workspace_service: SharedWorkspaceService = Arc::new(InMemoryWorkspaceService::new());
+        let workspace_service: SharedWorkspaceService = Arc::new(InMemoryWorkspaceService::with_default_workspace());
 
         // Create conversation service
         let conversation_service = memory_conversation_service();
