@@ -269,7 +269,7 @@ impl CompiledOntology {
             return String::new();
         }
         let mut out = String::from(
-            "## Reference Terms In This Text\nThe text mentions these reference terms. Use exactly the canonical name and type given here, even when the text uses another spelling:\n",
+            "## Reference Terms In This Text\nThe text mentions these reference terms. Use exactly the canonical name and type given here, even when the text uses another spelling. Do not build longer names around a term (write the term as its own entity and link it with a relationship):\n",
         );
         for i in seen {
             let t = &self.terms[i];
